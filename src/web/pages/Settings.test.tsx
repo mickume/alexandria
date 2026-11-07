@@ -396,3 +396,12 @@ describe('importing from the settings page', () => {
     ).toBeTruthy();
   });
 });
+
+describe('exporting from the settings page', () => {
+  it('offers the whole library as a download', async () => {
+    renderPage('/settings', fakeApi());
+    const link = await screen.findByRole('link', { name: 'Export library' });
+    expect(link.getAttribute('href')).toBe('/api/v1/export');
+    expect(link.hasAttribute('download')).toBe(true);
+  });
+});

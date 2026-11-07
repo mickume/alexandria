@@ -139,6 +139,13 @@ const FILTER_PARAMETERS: Operation['query'] = {
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
+/** A topic or tag in the export. */
+const ExportedLabel = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  link_count: z.number().int(),
+});
+
 /** An import's report. */
 const ImportReport = z.strictObject({
   id: z.string(),
@@ -358,6 +365,43 @@ export const operations: Operation[] = [
         description:
           'text/plain attachment alexandria-import-<YYYY-MM-DD>.txt: the counts, invalid lines, duplicates and the limit stop',
         mediaType: 'text/plain',
+      },
+    },
+  },
+  {
+    method: 'get',
+    path: '/export',
+    operationId: 'exportLibrary',
+    summary:
+      'The whole library as one JSON document, streamed as a download, ending with "complete": true',
+    responses: {
+      200: {
+        description:
+          'attachment alexandria-export-<YYYY-MM-DD>.json: the user, links (each its GET /links/{id} body with snapshot_url and reader_url), workspaces, topics and tags',
+        schema: z.strictObject({
+          format: z.literal('alexandria-export'),
+          version: z.literal(1),
+          exported_at: z.string(),
+          user: z.strictObject({ email: z.string(), name: z.string() }),
+          links: z.array(
+            LinkWithNote.extend({
+              snapshot_url: z.string().nullable(),
+              reader_url: z.string().nullable(),
+            }),
+          ),
+          workspaces: z.array(
+            z.strictObject({
+              id: z.string(),
+              name: z.string(),
+              description: z.string(),
+              note: z.string(),
+              link_ids: z.array(z.string()),
+            }),
+          ),
+          topics: z.array(ExportedLabel),
+          tags: z.array(ExportedLabel),
+          complete: z.literal(true),
+        }),
       },
     },
   },

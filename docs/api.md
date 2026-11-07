@@ -705,6 +705,45 @@ invalid line (`line 57: not-a-url`) and every duplicate
 Both answer `404 {"error": "not_found"}` for an id that is not one of the
 user's imports.
 
+### Export
+
+#### `GET /api/v1/export`
+
+The whole library as one JSON document, sent as a download
+(`Content-Disposition: attachment; filename="alexandria-export-<YYYY-MM-DD>.json"`):
+
+```json
+{
+  "format": "alexandria-export",
+  "version": 1,
+  "exported_at": "2026-11-07T10:00:00.000Z",
+  "user": { "email": "owner@example.com", "name": "Ada Owner" },
+  "links": [
+    {
+      "id": "…",
+      "…": "every field GET /api/v1/links/{id} returns, the whole note included",
+      "snapshot_url": "https://alexandria.example.com/api/v1/export/links/…/snapshot",
+      "reader_url": "https://alexandria.example.com/api/v1/export/links/…/reader"
+    }
+  ],
+  "workspaces": [
+    { "id": "…", "name": "Research", "description": "", "note": "…", "link_ids": ["…"] }
+  ],
+  "topics": [{ "id": "…", "name": "databases", "link_count": 2 }],
+  "tags": [{ "id": "…", "name": "sql", "link_count": 3 }],
+  "complete": true
+}
+```
+
+Every link is there, in every state (archived included), as
+`GET /api/v1/links/{id}` returns it, with `snapshot_url` and `reader_url`
+(`null` when nothing of that kind is stored). A workspace's `link_ids` are in
+its manual order. The document is sent as it is read: when reading fails
+part-way the download breaks off, so a file that does not end with
+`"complete": true` (and does not parse) is not a whole export. The export holds
+nothing else: no settings, no part of the AI key, no tokens, sessions or import
+reports.
+
 ## MCP server
 
 `POST /mcp` is a Model Context Protocol server over the Streamable HTTP

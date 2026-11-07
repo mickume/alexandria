@@ -3,11 +3,11 @@
   "spec_id": "09",
   "spec_name": "export_and_account_deletion",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T19:47:40Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

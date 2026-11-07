@@ -118,6 +118,14 @@ export function Settings() {
       <AiKeySection />
       <DecaySection />
       <ImportSection />
+      <h2>Export</h2>
+      <p className="muted">
+        Your whole library as one JSON file: every link, workspace, topic and tag, with the
+        addresses of each link’s stored copies.
+      </p>
+      <a className="button" href="/api/v1/export" download>
+        Export library
+      </a>
     </section>
   );
 }
