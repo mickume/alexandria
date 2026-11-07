@@ -123,3 +123,80 @@ export async function getLink(db: D1Database, userId: string, id: string): Promi
     .bind(id, userId)
     .first<LinkRow>();
 }
+
+/** The most links one user may pin. */
+export const PIN_LIMIT = 30;
+
+/** Statements that take a pinned link out of the pinned section and close the gap it leaves. */
+function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `UPDATE links SET pin_position = pin_position - 1
+         WHERE user_id = ?1 AND pin_position > (
+           SELECT pin_position FROM links WHERE id = ?2 AND user_id = ?1)`,
+      )
+      .bind(userId, id),
+    db
+      .prepare('UPDATE links SET pin_position = NULL WHERE id = ? AND user_id = ?')
+      .bind(id, userId),
+  ];
+}
+
+/** What pinning a link did. */
+export type PinOutcome =
+  { status: 'pinned'; link: LinkView } | { status: 'not_found' } | { status: 'pin_limit' };
+
+/**
+ * Pins one of the user's links at `position` (1-based; past the end means the
+ * end), or at the end of the pinned section when no position is given, keeping
+ * the other pinned links in order. A link already pinned and given no position
+ * stays where it is. The positions stay 1..n in one transaction; a new pin
+ * past PIN_LIMIT changes nothing.
+ */
+export async function pinLink(
+  db: D1Database,
+  userId: string,
+  id: string,
+  position?: number,
+): Promise<PinOutcome> {
+  const current = await getLink(db, userId, id);
+  if (!current) return { status: 'not_found' };
+  if (position === undefined && current.pin_position !== null) {
+    return { status: 'pinned', link: toView(current) };
+  }
+  // After the link is taken out, "others" is the number of other pinned links.
+  const others = `(SELECT COUNT(*) FROM links WHERE user_id = ?1 AND pin_position IS NOT NULL)`;
+  const target = `MIN(?3, ${others} + 1)`;
+  await db.batch([
+    ...unpinStatements(db, userId, id),
+    db
+      .prepare(
+        `UPDATE links SET pin_position = pin_position + 1
+         WHERE user_id = ?1 AND pin_position >= ${target} AND ${others} < ?4`,
+      )
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+    db
+      .prepare(
+        `UPDATE links SET pin_position = ${target}
+         WHERE id = ?2 AND user_id = ?1 AND ${others} < ?4`,
+      )
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+  ]);
+  const after = await getLink(db, userId, id);
+  if (!after) return { status: 'not_found' };
+  if (after.pin_position === null) return { status: 'pin_limit' };
+  return { status: 'pinned', link: toView(after) };
+}
+
+/** Unpins one of the user's links, closing the gap in the pinned section. Null when there is no such link. */
+export async function unpinLink(
+  db: D1Database,
+  userId: string,
+  id: string,
+): Promise<LinkView | null> {
+  if (!(await getLink(db, userId, id))) return null;
+  await db.batch(unpinStatements(db, userId, id));
+  const after = await getLink(db, userId, id);
+  return after ? toView(after) : null;
+}

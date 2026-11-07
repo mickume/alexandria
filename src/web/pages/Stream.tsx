@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { links as linksApi, type Link } from '../api';
+import { ApiError, links as linksApi, type Link, type Page } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 
@@ -36,23 +36,42 @@ export function Stream() {
   const [items, setItems] = useState<Link[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const loading = useRef(false);
+  const dragged = useRef<Link | null>(null);
+
+  function showFirstPage(page: Page<Link>) {
+    setItems(page.items);
+    setCursor(page.next_cursor);
+    setLoaded(true);
+  }
+
+  /** Loads the first page again, so the stream shows the order the API returns. */
+  async function refresh() {
+    showFirstPage(await linksApi.list());
+  }
 
   useEffect(() => {
     let live = true;
     linksApi
       .list()
-      .then((page) => {
-        if (!live) return;
-        setItems(page.items);
-        setCursor(page.next_cursor);
-        setLoaded(true);
-      })
+      .then((page) => live && showFirstPage(page))
       .catch(() => live && setLoaded(true));
     return () => {
       live = false;
     };
   }, []);
+
+  /** Runs a pin change, then shows the stream as the API orders it. */
+  async function change(action: () => Promise<unknown>) {
+    setNotice(null);
+    try {
+      await action();
+      await refresh();
+    } catch (err) {
+      setNotice(err instanceof ApiError ? err.message : 'something went wrong, try again');
+    }
+  }
 
   const loadMore = useCallback(() => {
     if (!cursor || loading.current) return;
@@ -75,14 +94,28 @@ export function Stream() {
   const sentinel = useSentinel(loadMore);
 
   const actions: CardActions = {
-    onPin: () => undefined,
-    onUnpin: () => undefined,
+    onPin: (link) => void change(() => linksApi.pin(link.id)),
+    onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
     onDelete: () => undefined,
+    onDragStart: (link) => {
+      dragged.current = link;
+    },
+    onDropOn: (target) => {
+      const moving = dragged.current;
+      dragged.current = null;
+      if (!moving || moving.id === target.id || target.pin_position === null) return;
+      void change(() => linksApi.pin(moving.id, target.pin_position ?? undefined));
+    },
   };
 
   return (
     <section className="stream">
       <AddLinks onAdded={(fresh) => setItems((current) => withOnTop(current, fresh))} />
+      {notice && (
+        <p className="notice" role="alert">
+          {notice}
+        </p>
+      )}
       <div className="cards">
         {items.map((link) => (
           <LinkCard key={link.id} link={link} actions={actions} />

@@ -7,6 +7,10 @@ export interface CardActions {
   onPin: (link: Link) => void;
   onUnpin: (link: Link) => void;
   onDelete: (link: Link) => void;
+  /** A pinned card is being dragged. */
+  onDragStart?: (link: Link) => void;
+  /** A dragged card was dropped on this pinned card. */
+  onDropOn?: (link: Link) => void;
 }
 
 /** One link in the stream: favicon, title, host, dates, state and actions. */
@@ -19,7 +23,21 @@ export function LinkCard({
 }) {
   const open = openUrl(link.id);
   return (
-    <article className="card" aria-label={link.title}>
+    <article
+      className={link.pinned ? 'card pinned' : 'card'}
+      aria-label={link.title}
+      draggable={link.pinned}
+      onDragStart={link.pinned ? () => actions.onDragStart?.(link) : undefined}
+      onDragOver={link.pinned ? (e) => e.preventDefault() : undefined}
+      onDrop={
+        link.pinned
+          ? (e) => {
+              e.preventDefault();
+              actions.onDropOn?.(link);
+            }
+          : undefined
+      }
+    >
       <div className="card-head">
         {link.favicon_url && (
           <img className="favicon" src={link.favicon_url} alt="" width={16} height={16} />

@@ -100,4 +100,11 @@ export const links = {
   list: (cursor?: string | null) =>
     request<Page<Link>>('GET', `/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   addBatch: (urls: string[]) => request<BatchResult>('POST', '/links/batch', { urls }),
+  pin: (id: string, position?: number) =>
+    request<Link>(
+      'POST',
+      `/links/${encodeURIComponent(id)}/pin`,
+      position === undefined ? undefined : { position },
+    ),
+  unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
 };

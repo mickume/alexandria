@@ -48,15 +48,22 @@
 
 ### readJson()
 
-> **readJson**(`c`): `Promise`\<\{ `body`: `Record`\<`string`, `unknown`\>; `ok`: `true`; \} \| \{ `ok`: `false`; `response`: `Response`; \}\>
+> **readJson**(`c`, `__namedParameters?`): `Promise`\<\{ `body`: `Record`\<`string`, `unknown`\>; `ok`: `true`; \} \| \{ `ok`: `false`; `response`: `Response`; \}\>
 
-The parsed JSON body of a request, or the 400 invalid_json answer when it does not parse.
+The parsed JSON body of a request, or the 400 invalid_json answer when it
+does not parse. With `optional`, an empty body reads as {}.
 
 #### Parameters
 
 ##### c
 
 `Context`
+
+##### \_\_namedParameters?
+
+###### optional?
+
+`boolean` = `false`
 
 #### Returns
 

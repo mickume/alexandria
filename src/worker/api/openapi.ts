@@ -239,6 +239,26 @@ export const operations: Operation[] = [
       400: error('invalid_limit or invalid_cursor'),
     },
   },
+  {
+    method: 'post',
+    path: '/links/{id}/pin',
+    operationId: 'pinLink',
+    summary:
+      'Pin the link at a position (1-based; past the end means the end), or at the end without one',
+    body: z.object({ position: z.number().int().min(1).optional() }),
+    responses: {
+      200: { description: 'The pinned link', schema: Link },
+      400: error('invalid_json, or invalid_position: an integer of at least 1'),
+      409: error('pin_limit: 30 links are pinned, "unpin something first"'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/links/{id}/pin',
+    operationId: 'unpinLink',
+    summary: 'Unpin the link; it returns to its place by last use',
+    responses: { 200: { description: 'The unpinned link', schema: Link } },
+  },
 ];
 
 function jsonSchema(schema: z.ZodType): object {

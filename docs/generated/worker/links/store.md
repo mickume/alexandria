@@ -128,6 +128,14 @@ One URL to add: its normalised form and the input it came from.
 
 What adding one URL did.
 
+***
+
+### PinOutcome
+
+> **PinOutcome** = \{ `link`: [`LinkView`](#linkview); `status`: `"pinned"`; \} \| \{ `status`: `"not_found"`; \} \| \{ `status`: `"pin_limit"`; \}
+
+What pinning a link did.
+
 ## Variables
 
 ### LIBRARY\_LIMIT
@@ -135,6 +143,14 @@ What adding one URL did.
 > `const` **LIBRARY\_LIMIT**: `20000` = `20_000`
 
 The most links one library holds, in any state.
+
+***
+
+### PIN\_LIMIT
+
+> `const` **PIN\_LIMIT**: `30` = `30`
+
+The most links one user may pin.
 
 ## Functions
 
@@ -218,6 +234,40 @@ One of the user's links, or null when the user has no link with this id.
 
 ***
 
+### pinLink()
+
+> **pinLink**(`db`, `userId`, `id`, `position?`): `Promise`\<[`PinOutcome`](#pinoutcome)\>
+
+Pins one of the user's links at `position` (1-based; past the end means the
+end), or at the end of the pinned section when no position is given, keeping
+the other pinned links in order. A link already pinned and given no position
+stays where it is. The positions stay 1..n in one transaction; a new pin
+past PIN_LIMIT changes nothing.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+##### position?
+
+`number`
+
+#### Returns
+
+`Promise`\<[`PinOutcome`](#pinoutcome)\>
+
+***
+
 ### toView()
 
 > **toView**(`row`): [`LinkView`](#linkview)
@@ -233,3 +283,29 @@ The API's view of a stored link.
 #### Returns
 
 [`LinkView`](#linkview)
+
+***
+
+### unpinLink()
+
+> **unpinLink**(`db`, `userId`, `id`): `Promise`\<[`LinkView`](#linkview) \| `null`\>
+
+Unpins one of the user's links, closing the gap in the pinned section. Null when there is no such link.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<[`LinkView`](#linkview) \| `null`\>

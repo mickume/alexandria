@@ -406,6 +406,38 @@ A personal access token as listed.
 
 `Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
 
+##### pin
+
+> **pin**: (`id`, `position?`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### position?
+
+`number`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
+##### unpin
+
+> **unpin**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
 ***
 
 ### tokens

@@ -3,7 +3,16 @@ import { limitReached, notFound, readJson, validationError } from '../api/errors
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { normalizeUrl } from './normalize';
-import { addLink, addLinks, getLink, toView, type LinkView, type NewLink } from './store';
+import {
+  addLink,
+  addLinks,
+  getLink,
+  pinLink,
+  toView,
+  unpinLink,
+  type LinkView,
+  type NewLink,
+} from './store';
 import { isStreamCursor, listStream } from './stream';
 import { isHistoryCursor, listHistory, recordUse } from './use';
 
@@ -139,4 +148,32 @@ linkRoutes.get('/:id/history', async (c) => {
     items: page.items,
     next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
   });
+});
+
+linkRoutes.post('/:id/pin', async (c) => {
+  const parsed = await readJson(c, { optional: true });
+  if (!parsed.ok) return parsed.response;
+  const position = parsed.body.position;
+  if (position !== undefined && !(Number.isInteger(position) && (position as number) >= 1)) {
+    return validationError(
+      c,
+      'invalid_position',
+      'position',
+      'position must be an integer of at least 1',
+    );
+  }
+  const result = await pinLink(
+    c.env.DB,
+    c.get('user').id,
+    c.req.param('id'),
+    position as number | undefined,
+  );
+  if (result.status === 'not_found') return notFound(c);
+  if (result.status === 'pin_limit') return limitReached(c, 'pin_limit', 'unpin something first');
+  return c.json(result.link);
+});
+
+linkRoutes.delete('/:id/pin', async (c) => {
+  const link = await unpinLink(c.env.DB, c.get('user').id, c.req.param('id'));
+  return link ? c.json(link) : notFound(c);
 });

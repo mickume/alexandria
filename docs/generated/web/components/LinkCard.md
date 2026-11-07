@@ -22,6 +22,38 @@ What a card's actions do; the stream page supplies them.
 
 `void`
 
+##### onDragStart?
+
+> `optional` **onDragStart?**: (`link`) => `void`
+
+A pinned card is being dragged.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
+##### onDropOn?
+
+> `optional` **onDropOn?**: (`link`) => `void`
+
+A dragged card was dropped on this pinned card.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
 ##### onPin
 
 > **onPin**: (`link`) => `void`

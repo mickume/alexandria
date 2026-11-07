@@ -179,3 +179,21 @@ open links, so that every use is counted. Concurrent opens are each counted.
 
 The link's events, newest first: `200 {"items": [{"kind": "use", "at": "…"}], "next_cursor"}`.
 Query: `limit` (1 to 100, default 100), `cursor`.
+
+#### `POST /api/v1/links/{id}/pin`
+
+Pins the link. The pinned links form the top of the stream in their own
+order, positions `1..n`. Optional body `{"position": <integer ≥ 1>}`: the
+link goes to that place (a position past the end means the end) and the
+others keep their order; without one, a new pin goes to the end and an
+already pinned link stays where it is. At most 30 links are pinned.
+
+- `200 <link>` with `pinned: true` and its `pin_position`
+- `400 {"error": "invalid_position", "field": "position", "message"}`
+- `409 {"error": "pin_limit", "message": "unpin something first"}`; nothing
+  changes. Moving a link that is already pinned is always possible.
+
+#### `DELETE /api/v1/links/{id}/pin`
+
+Unpins the link: `200 <link>` with `pinned: false` and `pin_position: null`.
+It returns to its place by last use, and the remaining positions close up.
