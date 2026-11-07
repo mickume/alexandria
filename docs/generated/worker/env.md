@@ -2,6 +2,18 @@
 
 ## Interfaces
 
+### AccountMessage
+
+A run of the deletion job of one account marked for deletion.
+
+#### Properties
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
 ### AppEnv
 
 The Hono environment of the application: its bindings and per-request variables.
@@ -89,6 +101,12 @@ Milliseconds since the epoch before which a throttled job must not run.
 The bindings and variables of the Worker, as wrangler.jsonc declares them.
 
 #### Properties
+
+##### ACCOUNT\_QUEUE
+
+> **ACCOUNT\_QUEUE**: `Queue`\<[`AccountMessage`](#accountmessage)\>
+
+The queue of account deletion jobs, one message per run.
 
 ##### ALLOWED\_EMAILS
 

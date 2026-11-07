@@ -766,6 +766,38 @@ A workspace on its own, with its note.
 
 ## Variables
 
+### account
+
+> `const` **account**: `object`
+
+#### Type Declaration
+
+##### me
+
+> **me**: () => `Promise`\<\{ `email`: `string`; `name`: `string`; \}\>
+
+###### Returns
+
+`Promise`\<\{ `email`: `string`; `name`: `string`; \}\>
+
+##### remove
+
+> **remove**: (`confirmEmail`) => `Promise`\<\{ `status`: `"deleting"`; \}\>
+
+Deletes the account, confirmed by its email typed by the owner.
+
+###### Parameters
+
+###### confirmEmail
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"deleting"`; \}\>
+
+***
+
 ### ai
 
 > `const` **ai**: `object`
