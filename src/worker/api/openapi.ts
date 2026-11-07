@@ -26,6 +26,8 @@ export interface Operation {
   summary: string;
   query?: Record<string, { description: string; schema: z.ZodType }>;
   body?: z.ZodType;
+  /** Whether the body may be left out. */
+  bodyOptional?: boolean;
   responses: Record<number, ResponseSpec>;
 }
 
@@ -253,6 +255,7 @@ export const operations: Operation[] = [
     summary:
       'Pin the link at a position (1-based; past the end means the end), or at the end without one',
     body: z.object({ position: z.number().int().min(1).optional() }),
+    bodyOptional: true,
     responses: {
       200: { description: 'The pinned link', schema: Link },
       400: error('invalid_json, or invalid_position: an integer of at least 1'),
@@ -303,7 +306,7 @@ export function openApiDocument(): object {
       ...(op.body
         ? {
             requestBody: {
-              required: true,
+              required: !op.bodyOptional,
               content: { 'application/json': { schema: jsonSchema(op.body) } },
             },
           }

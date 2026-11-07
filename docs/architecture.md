@@ -16,10 +16,19 @@ browser ──► Worker (src/worker/index.ts)
 ```
 
 - **The Worker** (`src/worker/`): `index.ts` is the entry point and hands every
-  request to the Hono application built in `app.ts`. `env.ts` declares the
+  request to the Hono application built in `app.ts`, which mounts the API
+  under `/api/v1/` (behind authentication and the rate limit), the sign-in
+  routes under `/auth/`, and the website's pages. `env.ts` declares the
   bindings and variables, `clock.ts` the injectable clock. Feature code lives
-  in one directory per area: `links/` (normalisation, the link store, the
-  stream), `auth/` (sign-in, sessions) and `api/` as they are added.
+  in one directory per area:
+  - `auth/`: sign-in with Google (`google.ts`, `allowlist.ts`), sessions
+    (`sessions.ts`), personal access tokens (`tokens.ts`), the authentication
+    middleware and the page guard (`middleware.ts`), and their routes.
+  - `api/`: the error envelope (`errors.ts`), the rate limit (`ratelimit.ts`),
+    signed cursors (`pagination.ts`) and the OpenAPI document (`openapi.ts`).
+  - `links/`: URL normalisation (`normalize.ts`), the link store with adding,
+    pinning and deleting (`store.ts`), the stream (`stream.ts`), uses and
+    history (`use.ts`), and the routes.
 
 ## Sign-in
 
@@ -40,8 +49,26 @@ The end-to-end tests point `GOOGLE_AUTH_URL` and `GOOGLE_TOKEN_URL` at
 `e2e/fake-google.ts`, a local fake provider that signs in one configured
 account and checks the PKCE verifier as Google does.
 - **The website** (`src/web/`): a React single-page application built by Vite.
-  `main.tsx` mounts `App.tsx`, which picks the page for the current path.
-  `styles.css` holds the whole visual design.
+  `main.tsx` mounts `App.tsx`, which picks the page for the current path:
+  `pages/SignIn`, `pages/Stream` (the add input, the cards, infinite scroll,
+  pinning by drag, deleting with undo), `pages/LinkDetail` and
+  `pages/Settings` (tokens). `api.ts` is the client of the API, `format.ts`
+  formats dates. `styles.css` holds the whole visual design: one system
+  typeface, light and dark from `prefers-color-scheme`.
+
+## Data
+
+| Table | Holds |
+|---|---|
+| `users` | email (lower-case) and display name, nothing else from Google |
+| `sessions` | the SHA-256 hash of each session id, its user and expiry |
+| `tokens` | the SHA-256 hash of each token secret, its name, dates and revocation |
+| `links` | per user: normalised and original URL, host, title, state, dates, use count, pin position |
+| `link_uses` | one row per use of a link, the source of its history |
+| `rate_limits` | requests per user per minute |
+
+Every query of a user's resources is filtered by the authenticated user, so
+another user's id is answered exactly as a missing one.
 - **The database** (`migrations/`): plain SQL migrations applied in order.
 
 ## Test layers

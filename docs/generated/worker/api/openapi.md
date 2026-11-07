@@ -12,6 +12,12 @@ One documented operation.
 
 > `optional` **body?**: `ZodType`\<`unknown`, `unknown`, `$ZodTypeInternals`\<`unknown`, `unknown`\>\>
 
+##### bodyOptional?
+
+> `optional` **bodyOptional?**: `boolean`
+
+Whether the body may be left out.
+
 ##### method
 
 > **method**: `Method`
