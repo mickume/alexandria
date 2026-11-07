@@ -754,6 +754,26 @@ so that fetching a backup does not reset the library's decay. A link of the
 user with nothing of that kind stored answers `404 {"error": "no_content"}`;
 another user's link and an unknown id answer `404 {"error": "not_found"}`.
 
+### Deleting the account
+
+#### `DELETE /api/v1/me`
+
+Deletes the account and everything of it: `{"confirm_email": "<the account's email>"}`,
+compared ignoring case and surrounding whitespace. Only a session (the
+website) can do it: with a personal access token the answer is
+`403 {"error": "session_required", "message": "delete the account from the settings page"}`.
+Any other email, or none, is
+`400 {"error": "confirmation_mismatch", "field": "confirm_email", "message": "type your email address to confirm"}`
+and nothing changes.
+
+On success, at once: every session and token of the user and the AI key are
+deleted, the account is marked for deletion and the session cookie is
+cleared; `202 {"status": "deleting"}`. The deletion job then removes every
+link, snapshot, workspace and everything else of the account within minutes,
+and the user record last. There is no undo. Signing in with the same Google
+account while the job runs is refused (`/signin?error=deleting`); afterwards
+it starts a new, empty library.
+
 ## MCP server
 
 `POST /mcp` is a Model Context Protocol server over the Streamable HTTP

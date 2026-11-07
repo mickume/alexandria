@@ -230,6 +230,25 @@ export const operations: Operation[] = [
     responses: { 200: { description: 'The user’s email and display name', schema: Me } },
   },
   {
+    method: 'delete',
+    path: '/me',
+    operationId: 'deleteAccount',
+    summary:
+      'Delete the account and all its data, confirmed by its email; with a session only. No undo',
+    body: z.object({ confirm_email: z.string() }),
+    responses: {
+      202: {
+        description:
+          'Signed out everywhere at once; the rest of the account is removed within minutes',
+        schema: z.strictObject({ status: z.literal('deleting') }),
+      },
+      400: error('invalid_json, or confirmation_mismatch: "type your email address to confirm"'),
+      403: error(
+        'session_required: "delete the account from the settings page" (a token cannot), or forbidden_origin',
+      ),
+    },
+  },
+  {
     method: 'get',
     path: '/openapi.json',
     operationId: 'getOpenApi',

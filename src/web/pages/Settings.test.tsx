@@ -405,3 +405,66 @@ describe('exporting from the settings page', () => {
     expect(link.hasAttribute('download')).toBe(true);
   });
 });
+
+describe('deleting the account from the settings page', () => {
+  function meApi() {
+    return fakeApi().on('GET', '/api/v1/me', {
+      status: 200,
+      body: { email: 'owner@example.test', name: 'Ada Owner' },
+    });
+  }
+
+  async function typeEmail(text: string) {
+    const field = await screen.findByLabelText('Type your email address to confirm');
+    fireEvent.change(field, { target: { value: text } });
+    return screen.getByRole('button', { name: 'Delete account' }) as HTMLButtonElement;
+  }
+
+  it.each([
+    ['', true],
+    ['owner@example.tes', true],
+    [' OWNER@example.test ', false],
+  ])('keeps the button disabled until the email is typed: %j', async (text, disabled) => {
+    renderPage('/settings', meApi());
+    const button = await typeEmail(text);
+    await waitFor(() => expect(button.disabled).toBe(disabled));
+    expect(screen.getByText(/cannot be undone/)).toBeTruthy();
+    expect(screen.getByText(/every link, snapshot, workspace, token and the AI key/)).toBeTruthy();
+  });
+
+  it('deletes the account and goes to the sign-in page', async () => {
+    const api = meApi().on('DELETE', '/api/v1/me', { status: 202, body: { status: 'deleting' } });
+    renderPage('/settings', api);
+    const button = await typeEmail('Owner@example.test');
+    await waitFor(() => expect(button.disabled).toBe(false));
+    await act(async () => button.click());
+    expect(api.sent('DELETE', '/api/v1/me').map((r) => r.body)).toEqual([
+      { confirm_email: 'Owner@example.test' },
+    ]);
+    expect(window.location.pathname + window.location.search).toBe('/signin?deleted=1');
+  });
+
+  it.each([
+    [
+      {
+        status: 400,
+        body: {
+          error: 'confirmation_mismatch',
+          field: 'confirm_email',
+          message: 'type your email address to confirm',
+        },
+      },
+      'type your email address to confirm',
+    ],
+    ['network-error' as const, 'could not delete the account, try again'],
+    [{ status: 500, body: { error: 'internal' } }, 'could not delete the account, try again'],
+  ])('stays on the page and says why when the deletion fails (%#)', async (answer, message) => {
+    renderPage('/settings', meApi().on('DELETE', '/api/v1/me', answer));
+    const button = await typeEmail('owner@example.test');
+    await waitFor(() => expect(button.disabled).toBe(false));
+    await act(async () => button.click());
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(window.location.pathname).toBe('/settings');
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
+  });
+});

@@ -3,6 +3,7 @@ import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
 import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
+import { DeleteAccountSection } from './DeleteAccountSection';
 import { ImportSection } from './ImportSection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
@@ -126,6 +127,7 @@ export function Settings() {
       <a className="button" href="/api/v1/export" download>
         Export library
       </a>
+      <DeleteAccountSection />
     </section>
   );
 }

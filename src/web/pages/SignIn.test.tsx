@@ -18,4 +18,12 @@ describe('the sign-in page', () => {
       else expect(screen.queryByText(text)).toBeNull();
     }
   });
+
+  it.each([
+    ['?error=deleting', 'Your account is being deleted, try again in a few minutes'],
+    ['?deleted=1', 'Your account and all its data are being deleted.'],
+  ])('says the account is being deleted for "%s"', (query, message) => {
+    renderPage(`/signin${query}`);
+    expect(screen.getByText(message)).toBeTruthy();
+  });
 });

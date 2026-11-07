@@ -665,3 +665,20 @@ select {
   flex-wrap: wrap;
   gap: calc(var(--space) / 2);
 }
+
+.danger-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--space) / 2);
+}
+
+.danger-zone input {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}

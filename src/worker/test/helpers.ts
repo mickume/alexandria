@@ -9,7 +9,7 @@ import {
   getQueueResult,
   SELF,
 } from 'cloudflare:test';
-import type { EnrichMessage, FetchMessage, LivenessMessage } from '../env';
+import type { AccountMessage, EnrichMessage, FetchMessage, LivenessMessage } from '../env';
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
@@ -244,6 +244,13 @@ function recorder<T>(sent: SentMessage<T>[]): Queue<T> {
 export function recordFetchQueue(): SentMessage<FetchMessage>[] {
   const sent: SentMessage<FetchMessage>[] = [];
   env.FETCH_QUEUE = recorder(sent);
+  return sent;
+}
+
+/** Replaces ACCOUNT_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordAccountQueue(): SentMessage<AccountMessage>[] {
+  const sent: SentMessage<AccountMessage>[] = [];
+  env.ACCOUNT_QUEUE = recorder(sent);
   return sent;
 }
 
