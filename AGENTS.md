@@ -77,7 +77,7 @@ The TypeScript version is **6.0** (Node.js 22 or later).
 |---------|-------------|
 | `make help` | List all targets |
 | `make build` | Build the website and the Worker bundle into `dist/` |
-| `make test` | Run the unit and integration tests (Vitest: Worker in workerd, website in happy-dom) |
+| `make test` | Run the unit and integration tests (Vitest: Worker in workerd, website in jsdom) |
 | `make e2e` | Run the end-to-end tests (Playwright in Chromium against `wrangler dev`) |
 | `make coverage` | Run all tests with a coverage report |
 | `make fmt` | Format all source files in place |

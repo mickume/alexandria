@@ -93,11 +93,16 @@ export interface BatchResult {
   invalid: { url: string; error: 'invalid_url' | 'library_full' }[];
 }
 
-/** One event of a link's history. */
-export interface LinkEvent {
-  kind: string;
-  at: string;
-}
+/** One event of a link's history: a use, or a fetch attempt. */
+export type LinkEvent =
+  | { kind: 'use'; at: string }
+  | {
+      kind: 'fetch';
+      at: string;
+      outcome: 'ok' | 'failed';
+      http_status: number | null;
+      reason: string | null;
+    };
 
 /** The address that opens a link through the API, recording the use. */
 export function openUrl(id: string): string {
@@ -110,7 +115,23 @@ export interface Changes {
   server_time: string;
 }
 
+/** A link's stored reader view. */
+export interface ReaderView {
+  content_kind: 'html' | 'pdf';
+  title: string | null;
+  byline: string | null;
+  html: string | null;
+  text: string;
+  empty: boolean;
+}
+
+/** The address of a link's stored snapshot; `download` asks for a PDF as an attachment. */
+export function snapshotUrl(id: string, { download = false } = {}): string {
+  return `/api/v1/links/${encodeURIComponent(id)}/snapshot${download ? '?download=1' : ''}`;
+}
+
 export const links = {
+  reader: (id: string) => request<ReaderView>('GET', `/links/${encodeURIComponent(id)}/reader`),
   changedSince: (since: string) =>
     request<Changes>('GET', `/links?changed_since=${encodeURIComponent(since)}`),
   get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),

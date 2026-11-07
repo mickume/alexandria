@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 8788;
 const FAKE_GOOGLE_PORT = 8790;
+const FAKE_ORIGIN_PORT = 8791;
 
 /**
  * The end-to-end tests run against a production build served by wrangler dev
@@ -25,6 +26,11 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
+      command: `node e2e/fake-origin.ts ${FAKE_ORIGIN_PORT}`,
+      url: `http://localhost:${FAKE_ORIGIN_PORT}/health`,
+      reuseExistingServer: false,
+    },
+    {
       command: [
         'rm -rf .wrangler/e2e',
         'npx vite build',
@@ -35,7 +41,8 @@ export default defineConfig({
           ` --var GOOGLE_CLIENT_SECRET:e2e-secret` +
           ` --var GOOGLE_AUTH_URL:http://localhost:${FAKE_GOOGLE_PORT}/auth` +
           ` --var GOOGLE_TOKEN_URL:http://localhost:${FAKE_GOOGLE_PORT}/token` +
-          ` --var PUBLIC_ORIGIN:http://localhost:${PORT}`,
+          ` --var PUBLIC_ORIGIN:http://localhost:${PORT}` +
+          ` --var ORIGIN_PROXY_URL:http://localhost:${FAKE_ORIGIN_PORT}/`,
       ].join(' && '),
       url: `http://localhost:${PORT}/signin`,
       timeout: 180_000,

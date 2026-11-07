@@ -116,7 +116,7 @@ One link in the stream: favicon, title, host, dates, state and actions.
 
 ###### link
 
-[`Link`](../api.md#link) & `object`
+[`Link`](../api.md#link)
 
 #### Returns
 

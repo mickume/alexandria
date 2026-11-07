@@ -4,8 +4,18 @@ import { extractText, getDocumentProxy, getMeta } from 'unpdf';
 export interface PdfContent {
   /** The Title of its document information, if it has one. */
   title: string | null;
-  /** Its text, pages joined, whitespace collapsed; '' when it has none. */
+  /** Its text, pages joined, spaces collapsed and blank lines kept; '' when it has none. */
   text: string;
+}
+
+/** Collapses runs of spaces, keeps line breaks and at most one blank line between blocks. */
+function tidy(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
@@ -22,7 +32,7 @@ export async function readPdf(bytes: Uint8Array): Promise<PdfContent> {
     ]);
     const rawTitle = (info as unknown as Record<string, unknown> | undefined)?.Title;
     const title = typeof rawTitle === 'string' && rawTitle.trim() ? rawTitle.trim() : null;
-    return { title, text: text.replace(/\s+/g, ' ').trim() };
+    return { title, text: tidy(text) };
   } catch {
     return { title: null, text: '' };
   }

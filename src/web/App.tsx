@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { LinkDetail } from './pages/LinkDetail';
+import { Read, Snapshot } from './pages/Read';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
 import { Stream } from './pages/Stream';
@@ -76,8 +77,11 @@ export function App() {
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
   else if (path.startsWith('/links/')) {
-    const id = decodeURIComponent(path.slice('/links/'.length));
-    page = <LinkDetail key={id} id={id} />;
+    const [rawId = '', view] = path.slice('/links/'.length).split('/');
+    const id = decodeURIComponent(rawId);
+    if (view === 'read') page = <Read key={id} id={id} />;
+    else if (view === 'snapshot') page = <Snapshot key={id} id={id} />;
+    else page = <LinkDetail key={id} id={id} />;
   }
   return <Layout>{page}</Layout>;
 }

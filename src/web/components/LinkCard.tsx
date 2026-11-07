@@ -53,13 +53,7 @@ export interface CardActions {
 }
 
 /** One link in the stream: favicon, title, host, dates, state and actions. */
-export function LinkCard({
-  link,
-  actions,
-}: {
-  link: Link & { favicon_url?: string | null };
-  actions: CardActions;
-}) {
+export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const open = openUrl(link.id);
   return (
     <article
@@ -89,12 +83,31 @@ export function LinkCard({
         <span>{link.host}</span>
         <span>Added {formatDate(link.added_at)}</span>
         <span>Used {formatWhen(link.last_used_at)}</span>
-        <span className={`state state-${link.state}`}>{link.state}</span>
+        <span className={`state state-${link.state}`}>
+          {link.state === 'unreachable' && link.state_reason
+            ? `unreachable: ${link.state_reason}`
+            : link.state}
+        </span>
+        {link.notes.map((note) => (
+          <span key={note} className="note">
+            {note}
+          </span>
+        ))}
       </div>
       <div className="card-actions">
         <a className="link-button" href={open}>
           Open
         </a>
+        {link.has_snapshot && (
+          <>
+            <PageLink to={`/links/${link.id}/read`} className="link-button">
+              Read
+            </PageLink>
+            <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
+              Snapshot
+            </PageLink>
+          </>
+        )}
         <PageLink to={`/links/${link.id}`} className="link-button">
           Details
         </PageLink>

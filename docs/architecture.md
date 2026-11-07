@@ -92,7 +92,7 @@ least one second apart, across all users and jobs. `robots.txt` is not read.
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |
 | --------------------------- | ------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
 | Worker unit and integration | `src/worker/**/*.test.ts` | workerd via `@cloudflare/vitest-plugin`, local D1 | Routes, middleware, SQL and pure functions, through the real Worker |
-| Website                     | `src/web/**/*.test.tsx`   | happy-dom, fake API                               | Pages and components                                                |
+| Website                     | `src/web/**/*.test.tsx`   | jsdom, fake API                                   | Pages and components                                                |
 | End to end                  | `e2e/*.spec.ts`           | Playwright (Chromium) against `wrangler dev`      | The whole flows, with only Google faked                             |
 
 Shared helpers: `src/worker/test/helpers.ts` (requests through the Worker,

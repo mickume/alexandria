@@ -10,6 +10,7 @@
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/LinkDetail](web/pages/LinkDetail.md)
+- [web/pages/Read](web/pages/Read.md)
 - [web/pages/Settings](web/pages/Settings.md)
 - [web/pages/SignIn](web/pages/SignIn.md)
 - [web/pages/Stream](web/pages/Stream.md)

@@ -342,22 +342,6 @@ A link as the API shows it.
 
 ***
 
-### LinkEvent
-
-One event of a link's history.
-
-#### Properties
-
-##### at
-
-> **at**: `string`
-
-##### kind
-
-> **kind**: `string`
-
-***
-
 ### Page
 
 One page of a list.
@@ -377,6 +361,38 @@ One page of a list.
 ##### next\_cursor
 
 > **next\_cursor**: `string` \| `null`
+
+***
+
+### ReaderView
+
+A link's stored reader view.
+
+#### Properties
+
+##### byline
+
+> **byline**: `string` \| `null`
+
+##### content\_kind
+
+> **content\_kind**: `"html"` \| `"pdf"`
+
+##### empty
+
+> **empty**: `boolean`
+
+##### html
+
+> **html**: `string` \| `null`
+
+##### text
+
+> **text**: `string`
+
+##### title
+
+> **title**: `string` \| `null`
 
 ***
 
@@ -401,6 +417,14 @@ A personal access token as listed.
 ##### name
 
 > **name**: `string`
+
+## Type Aliases
+
+### LinkEvent
+
+> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
+
+One event of a link's history: a use, or a fetch attempt.
 
 ## Variables
 
@@ -497,6 +521,20 @@ A personal access token as listed.
 ###### Returns
 
 `Promise`\<[`Link`](#link)\>
+
+##### reader
+
+> **reader**: (`id`) => `Promise`\<[`ReaderView`](#readerview)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`ReaderView`](#readerview)\>
 
 ##### refresh
 
@@ -645,3 +683,27 @@ Sends a request to the API and returns its parsed JSON body (undefined for 204).
 #### Returns
 
 `Promise`\<`T`\>
+
+***
+
+### snapshotUrl()
+
+> **snapshotUrl**(`id`, `__namedParameters?`): `string`
+
+The address of a link's stored snapshot; `download` asks for a PDF as an attachment.
+
+#### Parameters
+
+##### id
+
+`string`
+
+##### \_\_namedParameters?
+
+###### download?
+
+`boolean` = `false`
+
+#### Returns
+
+`string`

@@ -12,7 +12,7 @@ What a PDF says about itself.
 
 > **text**: `string`
 
-Its text, pages joined, whitespace collapsed; '' when it has none.
+Its text, pages joined, spaces collapsed and blank lines kept; '' when it has none.
 
 ##### title
 
