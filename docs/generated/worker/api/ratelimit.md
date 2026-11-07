@@ -8,7 +8,8 @@
 
 Counts the authenticated user's requests per clock minute and refuses those
 past the limit with 429 and Retry-After, before the route runs. Runs after
-authentication, so each user has a budget of their own.
+authentication, so each user has a budget of their own. The Worker's own
+internal requests are not counted: the request they serve was.
 
 ***
 
