@@ -285,3 +285,28 @@ textarea {
 .sentinel {
   height: 1px;
 }
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem var(--space);
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.history {
+  list-style: none;
+  padding: 0;
+}
+
+.history li {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--line);
+}

@@ -282,6 +282,22 @@ A link as the API shows it.
 
 ***
 
+### LinkEvent
+
+One event of a link's history.
+
+#### Properties
+
+##### at
+
+> **at**: `string`
+
+##### kind
+
+> **kind**: `string`
+
+***
+
 ### Page
 
 One page of a list.
@@ -348,6 +364,34 @@ A personal access token as listed.
 
 `Promise`\<[`BatchResult`](#batchresult)\>
 
+##### get
+
+> **get**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
+##### history
+
+> **history**: (`id`) => `Promise`\<[`Page`](#page)\<[`LinkEvent`](#linkevent)\>\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Page`](#page)\<[`LinkEvent`](#linkevent)\>\>
+
 ##### list
 
 > **list**: (`cursor?`) => `Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
@@ -407,6 +451,24 @@ A personal access token as listed.
 `Promise`\<`void`\>
 
 ## Functions
+
+### openUrl()
+
+> **openUrl**(`id`): `string`
+
+The address that opens a link through the API, recording the use.
+
+#### Parameters
+
+##### id
+
+`string`
+
+#### Returns
+
+`string`
+
+***
 
 ### request()
 

@@ -1,4 +1,5 @@
-import type { Link } from '../api';
+import { Link as PageLink } from '../App';
+import { openUrl, type Link } from '../api';
 import { formatDate, formatWhen } from '../format';
 
 /** What a card's actions do; the stream page supplies them. */
@@ -16,7 +17,7 @@ export function LinkCard({
   link: Link & { favicon_url?: string | null };
   actions: CardActions;
 }) {
-  const open = link.url;
+  const open = openUrl(link.id);
   return (
     <article className="card" aria-label={link.title}>
       <div className="card-head">
@@ -37,6 +38,9 @@ export function LinkCard({
         <a className="link-button" href={open}>
           Open
         </a>
+        <PageLink to={`/links/${link.id}`} className="link-button">
+          Details
+        </PageLink>
         {link.pinned ? (
           <button type="button" className="link-button" onClick={() => actions.onUnpin(link)}>
             Unpin

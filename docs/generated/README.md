@@ -8,6 +8,7 @@
 - [web/components/LinkCard](web/components/LinkCard.md)
 - [web/format](web/format.md)
 - [web/main](web/main.md)
+- [web/pages/LinkDetail](web/pages/LinkDetail.md)
 - [web/pages/Settings](web/pages/Settings.md)
 - [web/pages/SignIn](web/pages/SignIn.md)
 - [web/pages/Stream](web/pages/Stream.md)
@@ -30,3 +31,4 @@
 - [worker/links/routes](worker/links/routes.md)
 - [worker/links/store](worker/links/store.md)
 - [worker/links/stream](worker/links/stream.md)
+- [worker/links/use](worker/links/use.md)

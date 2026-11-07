@@ -167,3 +167,15 @@ once.
 #### `GET /api/v1/links/{id}`
 
 One link: `200 <link>`, or `404 {"error": "not_found"}`.
+
+#### `GET /api/v1/links/{id}/open`
+
+Records a use of the link (its `use_count` goes up by one, `last_used_at`
+becomes now, and a `use` event is stored) and redirects to its normalised
+URL: `302` with `Location: <url>`. This is how the website, scripts and apps
+open links, so that every use is counted. Concurrent opens are each counted.
+
+#### `GET /api/v1/links/{id}/history`
+
+The link's events, newest first: `200 {"items": [{"kind": "use", "at": "…"}], "next_cursor"}`.
+Query: `limit` (1 to 100, default 100), `cursor`.

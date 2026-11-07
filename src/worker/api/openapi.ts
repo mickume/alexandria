@@ -205,6 +205,40 @@ export const operations: Operation[] = [
     summary: 'One link',
     responses: { 200: { description: 'The link', schema: Link } },
   },
+  {
+    method: 'get',
+    path: '/links/{id}/open',
+    operationId: 'openLink',
+    summary: 'Record a use of the link and redirect to its normalised URL',
+    responses: {
+      302: {
+        description: 'To the link’s URL; the use count is one higher and last_used_at is now',
+        headers: {
+          Location: { description: 'The link’s normalised URL', schema: { type: 'string' } },
+        },
+      },
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}/history',
+    operationId: 'getLinkHistory',
+    summary: 'The link’s events, newest first',
+    query: {
+      limit: { description: 'Events per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of events',
+        schema: z.strictObject({
+          items: z.array(z.strictObject({ kind: z.string(), at: z.string() })),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
 ];
 
 function jsonSchema(schema: z.ZodType): object {

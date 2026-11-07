@@ -82,7 +82,21 @@ export interface BatchResult {
   invalid: { url: string; error: 'invalid_url' | 'library_full' }[];
 }
 
+/** One event of a link's history. */
+export interface LinkEvent {
+  kind: string;
+  at: string;
+}
+
+/** The address that opens a link through the API, recording the use. */
+export function openUrl(id: string): string {
+  return `/api/v1/links/${encodeURIComponent(id)}/open`;
+}
+
 export const links = {
+  get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),
+  history: (id: string) =>
+    request<Page<LinkEvent>>('GET', `/links/${encodeURIComponent(id)}/history`),
   list: (cursor?: string | null) =>
     request<Page<Link>>('GET', `/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   addBatch: (urls: string[]) => request<BatchResult>('POST', '/links/batch', { urls }),

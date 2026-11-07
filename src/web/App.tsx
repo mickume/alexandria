@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { LinkDetail } from './pages/LinkDetail';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
 import { Stream } from './pages/Stream';
@@ -74,5 +75,9 @@ export function App() {
   let page: ReactNode = <p>{path}</p>;
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
+  else if (path.startsWith('/links/')) {
+    const id = decodeURIComponent(path.slice('/links/'.length));
+    page = <LinkDetail key={id} id={id} />;
+  }
   return <Layout>{page}</Layout>;
 }
