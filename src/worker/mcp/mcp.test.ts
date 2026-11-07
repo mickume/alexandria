@@ -693,3 +693,195 @@ describe('workspaces, pins and the archive', () => {
     },
   );
 });
+
+describe('one user, one contract', () => {
+  it.each([
+    ['get_link', (l: string) => ({ id: l })],
+    ['get_link_content', (l: string) => ({ id: l, format: 'text' })],
+    [
+      'add_to_workspace (their link)',
+      (l: string, _w: string, mine: { ws: string }) => ({ link_id: l, workspace: mine.ws }),
+    ],
+    [
+      'add_to_workspace (their workspace)',
+      (_l: string, w: string, mine: { link: string }) => ({ link_id: mine.link, workspace: w }),
+    ],
+    ['pin_link', (l: string) => ({ link_id: l })],
+    ['archive_link', (l: string) => ({ link_id: l })],
+  ] as const)(
+    '%s answers for another user’s resource as for one that does not exist',
+    async (name, args) => {
+      const a = await agent();
+      const b = await agent('other@example.test');
+      const [mineLink] = await seedLinks(a, [{ url: 'https://mine.example' }]);
+      const mineWs = await createWorkspace(a, 'Mine');
+      const [theirLink] = await seedLinks(b, [{ url: 'https://shared.example', state: 'active' }]);
+      await storeCopies(b, theirLink!, 'html');
+      const theirWs = await createWorkspace(b, 'Theirs');
+      const mine = { link: mineLink!, ws: mineWs };
+      const tool = name.split(' ')[0]!;
+      const before = await env.DB.prepare(
+        'SELECT state, pin_position, use_count FROM links WHERE id = ?',
+      )
+        .bind(theirLink)
+        .first();
+      const foreign = await mcpTool(a.secret, tool, args(theirLink!, theirWs, mine));
+      const nowhere = await mcpTool(a.secret, tool, args('no-such-id', 'no-such-id', mine));
+      expect(foreign.isError).toBe(true);
+      expect(foreign.structuredContent).toEqual(nowhere.structuredContent);
+      expect(foreign.structuredContent.error).toBe('not_found');
+      expect(
+        await env.DB.prepare('SELECT state, pin_position, use_count FROM links WHERE id = ?')
+          .bind(theirLink)
+          .first(),
+      ).toEqual(before);
+      expect(await workspaceLinks(b, theirWs)).toEqual([]);
+      expect(await workspaceLinks(a, mineWs)).toEqual([]);
+      const found = await mcpTool(a.secret, 'search_links', { query: 'shared' });
+      const recent = await mcpTool(a.secret, 'list_recent', { limit: 100 });
+      const ids = [
+        ...found.structuredContent.items.map((i: { link: { id: string } }) => i.link.id),
+        ...recent.structuredContent.items.map((l: { id: string }) => l.id),
+      ];
+      expect(ids).not.toContain(theirLink);
+    },
+  );
+
+  /** A body with every id, time and cursor replaced, so that twin libraries compare equal. */
+  function normalised(body: unknown): unknown {
+    return JSON.parse(
+      JSON.stringify(body)
+        .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, 'ID')
+        .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/g, 'TIME')
+        .replace(/"next_cursor":"[^"]+"/g, '"next_cursor":"CURSOR"')
+        .replace(/twin-[ab]/g, 'twin'),
+    );
+  }
+
+  /** Two users with the same library: links, one pinned, one fetched, one workspace. */
+  async function twins() {
+    setNow('2026-11-07T10:00:00.000Z');
+    const users = [await agent('twin-a@example.test'), await agent('twin-b@example.test')];
+    const libraries = [];
+    for (const user of users) {
+      const ids = await seedLinks(user, [
+        { url: 'https://one.example', lastUsedAt: '2026-11-01T00:00:00.000Z' },
+        { url: 'https://two.example', lastUsedAt: '2026-11-02T00:00:00.000Z', pinPosition: 1 },
+        { url: 'https://read.example', lastUsedAt: '2026-11-03T00:00:00.000Z' },
+      ]);
+      await storeCopies(user, ids[2]!, 'html', { text: 'Twin reader text about queues.' });
+      const ws = await createWorkspace(user, 'Research');
+      libraries.push({ user, ids, ws });
+    }
+    return libraries as [(typeof libraries)[0], (typeof libraries)[0]];
+  }
+
+  type Lib = Awaited<ReturnType<typeof twins>>[0];
+  const cases: [string, string, (l: Lib) => unknown, (l: Lib) => [string, string, unknown?]][] = [
+    [
+      'add_link new',
+      'add_link',
+      () => ({ url: 'https://new.example/' }),
+      () => ['POST', '/api/v1/links', { url: 'https://new.example/' }],
+    ],
+    [
+      'add_link duplicate',
+      'add_link',
+      () => ({ url: 'https://one.example' }),
+      () => ['POST', '/api/v1/links', { url: 'https://one.example' }],
+    ],
+    [
+      'add_link refused',
+      'add_link',
+      () => ({ url: 'not a url' }),
+      () => ['POST', '/api/v1/links', { url: 'not a url' }],
+    ],
+    [
+      'get_link',
+      'get_link',
+      (l) => ({ id: l.ids[0] }),
+      (l) => ['GET', `/api/v1/links/${l.ids[0]}`],
+    ],
+    ['get_link refused', 'get_link', () => ({ id: 'nope' }), () => ['GET', '/api/v1/links/nope']],
+    [
+      'get_link_content refused',
+      'get_link_content',
+      () => ({ id: 'nope', format: 'text' }),
+      () => ['GET', '/api/v1/links/nope/reader'],
+    ],
+    [
+      'pin_link',
+      'pin_link',
+      (l) => ({ link_id: l.ids[0] }),
+      (l) => ['POST', `/api/v1/links/${l.ids[0]}/pin`],
+    ],
+    [
+      'pin_link refused',
+      'pin_link',
+      () => ({ link_id: 'nope' }),
+      () => ['POST', '/api/v1/links/nope/pin'],
+    ],
+    [
+      'archive_link',
+      'archive_link',
+      (l) => ({ link_id: l.ids[0] }),
+      (l) => ['POST', `/api/v1/links/${l.ids[0]}/archive`],
+    ],
+    [
+      'archive_link refused',
+      'archive_link',
+      () => ({ link_id: 'nope' }),
+      () => ['POST', '/api/v1/links/nope/archive'],
+    ],
+    [
+      'add_to_workspace',
+      'add_to_workspace',
+      (l) => ({ link_id: l.ids[0], workspace: l.ws }),
+      (l) => ['POST', `/api/v1/workspaces/${l.ws}/links`, { link_id: l.ids[0] }],
+    ],
+    [
+      'add_to_workspace refused',
+      'add_to_workspace',
+      (l) => ({ link_id: 'nope', workspace: l.ws }),
+      (l) => ['POST', `/api/v1/workspaces/${l.ws}/links`, { link_id: 'nope' }],
+    ],
+    [
+      'search_links',
+      'search_links',
+      () => ({ query: 'queues' }),
+      () => ['GET', '/api/v1/search?q=queues&limit=10'],
+    ],
+    [
+      'search_links refused',
+      'search_links',
+      () => ({ query: 'x'.repeat(201) }),
+      () => ['GET', `/api/v1/search?q=${'x'.repeat(201)}&limit=10`],
+    ],
+    ['list_recent', 'list_recent', () => ({}), () => ['GET', '/api/v1/links?limit=20']],
+  ];
+
+  it.each(cases)('%s answers as the API does', async (_case, tool, args, request) => {
+    const [a, b] = await twins();
+    const r = await mcpTool(a.user.secret, tool, args(a));
+    const [method, path, body] = request(b);
+    const direct = await api(method, path, { bearer: b.user.secret, body });
+    expect(r.response.json.error).toBeUndefined();
+    expect(Boolean(r.isError)).toBe(direct.status >= 400);
+    expect(normalised(r.structuredContent)).toEqual(normalised(direct.json));
+    expect(JSON.parse(r.content[0]!.text)).toEqual(r.structuredContent);
+  });
+
+  it('get_link_content text carries what GET /api/v1/links/{id}/reader serves', async () => {
+    const [a, b] = await twins();
+    const r = await mcpTool(a.user.secret, 'get_link_content', { id: a.ids[2], format: 'text' });
+    const direct = await api('GET', `/api/v1/links/${b.ids[2]}/reader`, { bearer: b.user.secret });
+    expect(r.structuredContent.content).toBe(direct.json.text);
+  });
+
+  it('list_workspaces carries the items of GET /api/v1/workspaces', async () => {
+    const [a, b] = await twins();
+    const r = await mcpTool(a.user.secret, 'list_workspaces', {});
+    const direct = await api('GET', '/api/v1/workspaces', { bearer: b.user.secret });
+    expect(normalised(r.structuredContent.items)).toEqual(normalised(direct.json.items));
+  });
+});
