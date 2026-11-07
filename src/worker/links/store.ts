@@ -84,13 +84,8 @@ export interface LinkView {
   edited_fields: string[];
 }
 
-/** A stored JSON array of strings, parsed; [] for anything else. */
-export function parseStrings(json: string | null | undefined): string[] {
-  return parseNotes(json);
-}
-
-/** A link's notes, parsed from their stored JSON. */
-export function parseNotes(notes: string | null | undefined): string[] {
+/** A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else. */
+export function parseStrings(notes: string | null | undefined): string[] {
   try {
     const parsed: unknown = JSON.parse(notes ?? '[]');
     return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
@@ -120,7 +115,7 @@ export function toView(row: LinkRow): LinkView {
     language: row.language,
     fetched_at: row.fetched_at,
     state_reason: row.state_reason,
-    notes: parseNotes(row.notes),
+    notes: parseStrings(row.notes),
     content_kind: row.content_kind,
     has_snapshot: row.has_snapshot === 1,
     updated_at: row.updated_at,

@@ -1,7 +1,7 @@
 import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
 import { afterFetch } from '../enrich/queue';
-import { getLink, parseNotes, type LinkRow } from '../links/store';
+import { getLink, parseStrings, type LinkRow } from '../links/store';
 import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { extractMetadata } from './html';
 import { readPdf } from './pdf';
@@ -297,7 +297,7 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     if (result.ok) {
       if (await storeResult(env, link, result)) {
         const stored = await getLink(env.DB, link.user_id, link.id);
-        if (stored) await afterFetch(env, stored, parseNotes(stored.notes));
+        if (stored) await afterFetch(env, stored, parseStrings(stored.notes));
       }
     } else {
       await recordFailure(env, link, message.body, result);

@@ -4,16 +4,79 @@ import { ai, ApiError, type AiSettings } from '../api';
 /** The default Anthropic model, shown as the model input's placeholder. */
 const DEFAULT_MODEL = 'claude-opus-5-5';
 
+type Provider = 'anthropic' | 'openrouter';
+
 /**
- * The AI section of the settings page: the provider (Anthropic preselected),
- * the key and the model, 'key verified' or the provider's refusal, the stored
- * key by its last 4 characters, and Replace and Remove.
+ * The form that saves a key: the provider (Anthropic preselected), the key and
+ * the model, which OpenRouter requires. The key input is emptied after any save.
+ */
+function KeyForm({
+  onSaved,
+  onMessage,
+}: {
+  onSaved: (settings: AiSettings) => void;
+  onMessage: (message: string) => void;
+}) {
+  const [provider, setProvider] = useState<Provider>('anthropic');
+  const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState('');
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    try {
+      const body = { provider, api_key: apiKey, ...(model.trim() ? { model: model.trim() } : {}) };
+      onSaved(await ai.save(body));
+      onMessage('key verified');
+    } catch (err) {
+      onMessage(err instanceof ApiError ? err.message : 'could not save the key, try again');
+    } finally {
+      setApiKey('');
+    }
+  }
+
+  return (
+    <form className="stacked-form" onSubmit={save}>
+      <label htmlFor="ai-provider">Provider</label>
+      <select
+        id="ai-provider"
+        value={provider}
+        onChange={(e) => setProvider(e.target.value as Provider)}
+      >
+        <option value="anthropic">Anthropic</option>
+        <option value="openrouter">OpenRouter</option>
+      </select>
+      <label htmlFor="ai-key">API key</label>
+      <input
+        id="ai-key"
+        type="password"
+        autoComplete="off"
+        required
+        value={apiKey}
+        onChange={(e) => setApiKey(e.target.value)}
+      />
+      <label htmlFor="ai-model">Model</label>
+      <input
+        id="ai-model"
+        placeholder={provider === 'anthropic' ? DEFAULT_MODEL : 'provider/model'}
+        required={provider === 'openrouter'}
+        maxLength={200}
+        value={model}
+        onChange={(e) => setModel(e.target.value)}
+      />
+      <button type="submit" className="button primary">
+        Save key
+      </button>
+    </form>
+  );
+}
+
+/**
+ * The AI section of the settings page: the stored key by its last 4
+ * characters (or its rejection), Replace and Remove, 'Enrich all unenriched
+ * links', and the form that saves a key.
  */
 export function AiKeySection() {
   const [settings, setSettings] = useState<AiSettings | null>(null);
-  const [provider, setProvider] = useState<'anthropic' | 'openrouter'>('anthropic');
-  const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,44 +89,28 @@ export function AiKeySection() {
     };
   }, []);
 
-  async function save(e: FormEvent) {
-    e.preventDefault();
+  async function act(action: () => Promise<string | null>, failure: string) {
     setMessage(null);
     try {
-      const saved = await ai.save({
-        provider,
-        api_key: apiKey,
-        ...(model.trim() ? { model: model.trim() } : {}),
-      });
-      setSettings({ ...saved, unenriched_count: settings?.unenriched_count ?? 0 } as AiSettings);
-      setMessage('key verified');
+      setMessage(await action());
     } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : 'could not save the key, try again');
-    } finally {
-      setApiKey('');
+      setMessage(err instanceof ApiError ? err.message : failure);
     }
   }
 
-  async function enrichAll() {
-    setMessage(null);
-    try {
+  const enrichAll = () =>
+    act(async () => {
       const { queued } = await ai.enrichUnenriched();
-      setMessage(`queued ${queued} links`);
       setSettings((s) => (s ? { ...s, unenriched_count: 0 } : s));
-    } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : 'could not queue the links, try again');
-    }
-  }
+      return `queued ${queued} links`;
+    }, 'could not queue the links, try again');
 
-  async function remove() {
-    setMessage(null);
-    try {
+  const remove = () =>
+    act(async () => {
       await ai.remove();
-      setSettings({ configured: false, unenriched_count: settings?.unenriched_count ?? 0 });
-    } catch {
-      setMessage('could not remove the key, try again');
-    }
-  }
+      setSettings((s) => ({ configured: false, unenriched_count: s?.unenriched_count ?? 0 }));
+      return null;
+    }, 'could not remove the key, try again');
 
   if (!settings) return null;
   return (
@@ -104,38 +151,14 @@ export function AiKeySection() {
         </div>
       )}
       {message && <p role="status">{message}</p>}
-      <form className="stacked-form" onSubmit={save}>
-        <label htmlFor="ai-provider">Provider</label>
-        <select
-          id="ai-provider"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value as 'anthropic' | 'openrouter')}
-        >
-          <option value="anthropic">Anthropic</option>
-          <option value="openrouter">OpenRouter</option>
-        </select>
-        <label htmlFor="ai-key">API key</label>
-        <input
-          id="ai-key"
-          type="password"
-          autoComplete="off"
-          required
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
-        <label htmlFor="ai-model">Model</label>
-        <input
-          id="ai-model"
-          placeholder={provider === 'anthropic' ? DEFAULT_MODEL : 'provider/model'}
-          required={provider === 'openrouter'}
-          maxLength={200}
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-        />
-        <button type="submit" className="button primary">
-          Save key
-        </button>
-      </form>
+      <KeyForm
+        onSaved={(saved) =>
+          setSettings(
+            (s) => ({ ...saved, unenriched_count: s?.unenriched_count ?? 0 }) as AiSettings,
+          )
+        }
+        onMessage={setMessage}
+      />
     </section>
   );
 }

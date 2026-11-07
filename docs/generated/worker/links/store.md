@@ -442,33 +442,15 @@ One of the user's links, or null when the user has no link with this id.
 
 ***
 
-### parseNotes()
+### parseStrings()
 
-> **parseNotes**(`notes`): `string`[]
+> **parseStrings**(`notes`): `string`[]
 
-A link's notes, parsed from their stored JSON.
+A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else.
 
 #### Parameters
 
 ##### notes
-
-`string` \| `null` \| `undefined`
-
-#### Returns
-
-`string`[]
-
-***
-
-### parseStrings()
-
-> **parseStrings**(`json`): `string`[]
-
-A stored JSON array of strings, parsed; [] for anything else.
-
-#### Parameters
-
-##### json
 
 `string` \| `null` \| `undefined`
 
