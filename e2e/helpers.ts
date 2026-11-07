@@ -109,3 +109,14 @@ export const fakeAi = {
     await fetch(`${this.url}/__answer`, { method: 'POST', body: JSON.stringify(result) });
   },
 };
+
+/** Runs the Worker's hourly scheduled handler through wrangler dev's test endpoint. */
+export async function runScheduled(page: Page): Promise<void> {
+  const r = await page.request.get('/cdn-cgi/local/scheduled?cron=0+*+*+*+*');
+  expect(r.status()).toBeLessThan(400);
+}
+
+/** The time `days` before now, as stored. */
+export function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
