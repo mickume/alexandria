@@ -15,14 +15,24 @@ DATABASE=alexandria
 wrangler() { npx --no-install wrangler "$@"; }
 
 # Without these the deploy would stop halfway with a bare "Authentication error".
-missing=()
-wrangler d1 list >/dev/null 2>&1 || missing+=("Account > D1 > Edit")
-wrangler queues list >/dev/null 2>&1 || missing+=("Account > Queues > Edit")
-wrangler r2 bucket list >/dev/null 2>&1 || missing+=("Account > Workers R2 Storage > Edit")
-if [ ${#missing[@]} -gt 0 ]; then
-  echo "The Cloudflare API token cannot manage what Alexandria needs. Add these permissions:" >&2
-  printf '  - %s\n' "${missing[@]}" >&2
-  echo "(with Account > Workers Scripts > Edit, and CLOUDFLARE_ACCOUNT_ID set)" >&2
+# Each failed check prints wrangler's own error, which says why (a permission
+# the token lacks, or R2 not yet enabled on the account).
+failed=0
+check() {
+  local what=$1 permission=$2
+  shift 2
+  local out
+  if ! out=$(wrangler "$@" 2>&1); then
+    failed=1
+    echo "Cannot reach $what: the token needs $permission." >&2
+    echo "$out" | grep -E 'ERROR|\[code:|enable|permission' | sed 's/^/    /' >&2 || true
+  fi
+}
+check D1 "Account > D1 > Edit" d1 list
+check Queues "Account > Queues > Edit" queues list
+check R2 "Account > Workers R2 Storage > Edit" r2 bucket list
+if [ "$failed" = 1 ]; then
+  echo "(The token also needs Account > Workers Scripts > Edit, and CLOUDFLARE_ACCOUNT_ID set.)" >&2
   exit 1
 fi
 
