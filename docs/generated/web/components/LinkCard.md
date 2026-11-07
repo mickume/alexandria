@@ -162,3 +162,23 @@ refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 #### Returns
 
 `Element`
+
+***
+
+### WorkspaceChips()
+
+> **WorkspaceChips**(`__namedParameters`): `Element` \| `null`
+
+The workspaces a link is in, each a chip linking to the workspace's page.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### workspaces
+
+`object`[]
+
+#### Returns
+
+`Element` \| `null`
