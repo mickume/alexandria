@@ -89,6 +89,13 @@ export interface Link {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on a link read on its own. */
   note?: string;
+  sticky: boolean;
+  archived_at: string | null;
+  removal_at: string | null;
+  dead_since: string | null;
+  last_checked_at: string | null;
+  last_check_result: string | null;
+  decay_note: string;
 }
 
 /** One page of a list. */

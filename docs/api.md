@@ -149,6 +149,15 @@ without text, a PDF too large), or `waiting_for_key` (the key was rejected);
 it is `null` before the first fetch. `edited_fields` lists the fields the
 owner set by hand, which enrichment and refresh never overwrite.
 
+Decay adds `sticky` (at least 5 uses on 5 UTC days: never dormant or archived
+by decay), `archived_at`, `removal_at`, `dead_since`, `last_checked_at`,
+`last_check_result` and `decay_note`, one sentence saying the link's decay
+state and why: "unused for 3 days" (in months of 30 days from 60 days),
+"sticky: 7 uses on 6 days, never archived", "pinned: never archived, unused
+for …", "in a workspace: never archived, unused for …", or "archived on
+2027-03-01, removed on 2027-08-28". A use, a re-paste or a restore makes a
+`dormant` link `active` again at once.
+
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
 are accepted; scheme and host are lower-cased; the fragment and a default port

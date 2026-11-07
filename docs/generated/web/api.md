@@ -256,9 +256,21 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
 ##### content\_kind
 
 > **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
+
+##### dead\_since
+
+> **dead\_since**: `string` \| `null`
+
+##### decay\_note
+
+> **decay\_note**: `string`
 
 ##### description
 
@@ -308,6 +320,14 @@ A link as the API shows it.
 
 > **language**: `string` \| `null`
 
+##### last\_check\_result
+
+> **last\_check\_result**: `string` \| `null`
+
+##### last\_checked\_at
+
+> **last\_checked\_at**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
@@ -338,6 +358,10 @@ The whole note: only on a link read on its own.
 
 > **pinned**: `boolean`
 
+##### removal\_at
+
+> **removal\_at**: `string` \| `null`
+
 ##### state
 
 > **state**: `string`
@@ -345,6 +369,10 @@ The whole note: only on a link read on its own.
 ##### state\_reason
 
 > **state\_reason**: `string` \| `null`
+
+##### sticky
+
+> **sticky**: `boolean`
 
 ##### summary
 

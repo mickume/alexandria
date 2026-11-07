@@ -12,9 +12,21 @@ A link as stored.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
+##### check\_enqueued\_at
+
+> **check\_enqueued\_at**: `string` \| `null`
+
 ##### content\_kind
 
 > **content\_kind**: `string` \| `null`
+
+##### dead\_since
+
+> **dead\_since**: `string` \| `null`
 
 ##### description
 
@@ -74,9 +86,25 @@ A JSON array of the fields the owner has set by hand.
 
 > **language**: `string` \| `null`
 
+##### last\_check\_result
+
+> **last\_check\_result**: `string` \| `null`
+
+##### last\_checked\_at
+
+> **last\_checked\_at**: `string` \| `null`
+
+##### last\_manual\_check\_at
+
+> **last\_manual\_check\_at**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+##### liveness\_failures
+
+> **liveness\_failures**: `number`
 
 ##### note
 
@@ -150,9 +178,25 @@ The topic's name, when read through link_views.
 
 > **use\_count**: `number`
 
+##### use\_days?
+
+> `optional` **use\_days?**: `number`
+
+##### use\_events?
+
+> `optional` **use\_events?**: `number`
+
+Read through link_views: the stored uses, and the UTC days they fall on.
+
 ##### user\_id
 
 > **user\_id**: `string`
+
+##### user\_remove\_days?
+
+> `optional` **user\_remove\_days?**: `number`
+
+Read through link_views: the link's user's removal threshold.
 
 ##### workspaces\_json?
 
@@ -172,11 +216,25 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
 ##### content\_kind
 
 > **content\_kind**: `string` \| `null`
 
 What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fetch.
+
+##### dead\_since
+
+> **dead\_since**: `string` \| `null`
+
+##### decay\_note
+
+> **decay\_note**: `string`
+
+One sentence: the link's decay state and why.
 
 ##### description
 
@@ -234,6 +292,14 @@ Whether a snapshot is stored, so that Read and Snapshot can be offered.
 
 > **language**: `string` \| `null`
 
+##### last\_check\_result
+
+> **last\_check\_result**: `string` \| `null`
+
+##### last\_checked\_at
+
+> **last\_checked\_at**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
@@ -268,6 +334,12 @@ Short notes such as "truncated" or "not a web page (image/png)".
 
 > **pinned**: `boolean`
 
+##### removal\_at
+
+> **removal\_at**: `string` \| `null`
+
+When an archived link will be removed.
+
 ##### state
 
 > **state**: `string`
@@ -277,6 +349,12 @@ Short notes such as "truncated" or "not a web page (image/png)".
 > **state\_reason**: `string` \| `null`
 
 Why the link is in its state, such as "HTTP 503" for a pending or unreachable link.
+
+##### sticky
+
+> **sticky**: `boolean`
+
+At least 5 uses on at least 5 UTC days: never dormant or archived by decay.
 
 ##### summary
 

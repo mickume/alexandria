@@ -42,6 +42,13 @@ describe('adding a link', () => {
         edited_fields: [],
         note_preview: null,
         workspaces: [],
+        sticky: false,
+        archived_at: null,
+        removal_at: null,
+        dead_since: null,
+        last_checked_at: null,
+        last_check_result: null,
+        decay_note: expect.any(String),
       },
     });
   });
@@ -260,6 +267,13 @@ describe('reading a link', () => {
       note_preview: null,
       workspaces: [],
       note: '',
+      sticky: false,
+      archived_at: null,
+      removal_at: null,
+      dead_since: null,
+      last_checked_at: null,
+      last_check_result: null,
+      decay_note: expect.any(String),
     });
   });
 });
