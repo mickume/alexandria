@@ -15,12 +15,13 @@
   "d1_databases": [
     {
       "binding": "DB",
+      // No database_id: `wrangler deploy` finds the account's database named
+      // alexandria, or creates it on the first deploy.
       "database_name": "alexandria",
-      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations",
     },
   ],
-  // The hourly run: decay evaluation and the weekly liveness checks.
+  // Hourly: decay and liveness checks; every minute: imports; every 5 minutes: account deletions.
   "triggers": { "crons": ["0 * * * *", "* * * * *", "*/5 * * * *"] },
   "queues": {
     "producers": [
@@ -41,17 +42,18 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HostGate"] }],
   // Snapshots and reader views, under u/{user_id}/l/{link_id}/.
   "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "alexandria-snapshots" }],
+  // The settings every deployment shares. ALLOWED_EMAILS, GOOGLE_CLIENT_ID and
+  // PUBLIC_ORIGIN belong to one deployment and are not here: set them, with the
+  // secrets GOOGLE_CLIENT_SECRET and KEY_ENCRYPTION_KEY, with `wrangler secret
+  // put <NAME>` (or in the dashboard), and in .dev.vars for local development.
+  // keep_vars keeps what the dashboard holds across deploys.
+  "keep_vars": true,
   "vars": {
-    "ALLOWED_EMAILS": "",
-    "GOOGLE_CLIENT_ID": "",
     "GOOGLE_AUTH_URL": "https://accounts.google.com/o/oauth2/v2/auth",
     "GOOGLE_TOKEN_URL": "https://oauth2.googleapis.com/token",
-    "PUBLIC_ORIGIN": "http://localhost:8787",
     // ORIGIN_PROXY_URL is left unset in production; the end-to-end tests set it.
     "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
     "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
   },
-  // GOOGLE_CLIENT_SECRET and KEY_ENCRYPTION_KEY are secrets: `wrangler secret put <NAME>`,
-  // or lines in .dev.vars for local development.
   "observability": { "enabled": true },
 }

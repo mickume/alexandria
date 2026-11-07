@@ -7,13 +7,19 @@ for local development.
 
 ## Variables
 
-| Name               | Default                                        | Meaning                                                                                                                                                                                        |
-| ------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALLOWED_EMAILS`   | empty (nobody)                                 | Comma-separated email addresses that may sign in. Compared case-insensitively; whitespace around each entry is ignored. Read on every request that needs it, so a change takes effect at once. |
-| `GOOGLE_CLIENT_ID` | empty                                          | The OAuth 2.0 client id of the Google Cloud project.                                                                                                                                           |
-| `GOOGLE_AUTH_URL`  | `https://accounts.google.com/o/oauth2/v2/auth` | Google's authorization endpoint. Changed only to run against a local fake provider in tests.                                                                                                   |
-| `GOOGLE_TOKEN_URL` | `https://oauth2.googleapis.com/token`          | Google's token endpoint. Changed only for tests, as above.                                                                                                                                     |
-| `PUBLIC_ORIGIN`    | `http://localhost:8787`                        | The site's own origin, such as `https://alexandria.example.com`. Used for the OAuth redirect URI.                                                                                              |
+`wrangler.jsonc` holds the settings every deployment shares. The settings of
+one deployment are not in it: set them with `wrangler secret put <NAME>` (or
+as variables in the dashboard; `keep_vars` keeps those across deploys), and in
+`.dev.vars` for local development. Without them nobody can sign in.
+
+| Name               | Where                       | Meaning |
+| ------------------ | --------------------------- | ------- |
+| `ALLOWED_EMAILS`   | per deployment              | Comma-separated email addresses that may sign in. Compared case-insensitively; whitespace around each entry is ignored. Read on every request that needs it, so a change takes effect at once. Unset: nobody. |
+| `GOOGLE_CLIENT_ID` | per deployment              | The OAuth 2.0 client id of the Google Cloud project. |
+| `PUBLIC_ORIGIN`    | per deployment              | The site's own origin, such as `https://alexandria.example.com`. Used for the OAuth redirect URI (`<PUBLIC_ORIGIN>/auth/google/callback`) and to check that changes made with the session cookie come from the site. |
+| `GOOGLE_AUTH_URL`  | `wrangler.jsonc`            | Google's authorization endpoint, `https://accounts.google.com/o/oauth2/v2/auth`. Changed only to run against a local fake provider in tests. |
+| `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
+| `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
 
 ## Secrets
 
@@ -45,6 +51,26 @@ for local development.
   for deletion more than 5 minutes ago.
 
 The `scheduled` handler tells them apart by `controller.cron`.
+
+## Deploying
+
+`npm run deploy` (`scripts/deploy.sh`) deploys from a fresh checkout with
+`CLOUDFLARE_API_TOKEN` set (and `CLOUDFLARE_ACCOUNT_ID` when the token cannot
+list its accounts). It builds the website and the Worker (`vite build`, which
+writes the deployable configuration to `dist/alexandria/wrangler.json`),
+creates the four queues and the R2 bucket when they do not exist, applies the
+D1 migrations, and deploys; the D1 database `alexandria` is created by the
+first deploy, and the migrations follow it then. Every step is a no-op when
+there is nothing to do, so it is also the command to deploy every change.
+
+`npx wrangler deploy` on its own does not work from a fresh checkout: the
+root `wrangler.jsonc` is the source the Vite plugin builds from, and only the
+built configuration names the assets directory. With Workers Builds, set the
+deploy command to `npm run deploy` and leave the build command empty.
+
+Set the per-deployment settings once (above), with the secrets below, and add
+`<PUBLIC_ORIGIN>/auth/google/callback` as an authorised redirect URI of the
+Google OAuth client.
 
 ## Development environment
 
