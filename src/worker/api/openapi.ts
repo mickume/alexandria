@@ -75,6 +75,25 @@ export const Link = z.strictObject({
   content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
   has_snapshot: z.boolean(),
   updated_at: z.string().describe('When the link last changed in any way'),
+  summary: z.string().nullable(),
+  tags: z.array(z.string()),
+  topic: z.string().nullable(),
+  enrichment_status: z
+    .enum(['no_key', 'queued', 'enriched', 'failed', 'skipped', 'waiting_for_key'])
+    .nullable()
+    .describe('Why the link has or has not a summary; null before its first fetch'),
+  enrichment_reason: z.string().nullable(),
+  edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
+});
+
+/** The AI settings, never with the key beyond its last 4 characters. */
+const AiSettingsView = z.strictObject({
+  configured: z.literal(true),
+  provider: z.enum(['anthropic', 'openrouter']),
+  model: z.string(),
+  key_last4: z.string(),
+  status: z.enum(['verified', 'rejected']),
+  rejected_message: z.string().nullable(),
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
@@ -125,6 +144,50 @@ export const operations: Operation[] = [
     },
   },
   {
+    method: 'get',
+    path: '/settings/ai',
+    operationId: 'getAiSettings',
+    summary: 'The AI provider, model and key (by its last 4 characters), and how many links wait',
+    responses: {
+      200: {
+        description: 'The settings, or configured: false without a key',
+        schema: z.union([
+          AiSettingsView.extend({ unenriched_count: z.number().int() }),
+          z.strictObject({ configured: z.literal(false), unenriched_count: z.number().int() }),
+        ]),
+      },
+    },
+  },
+  {
+    method: 'put',
+    path: '/settings/ai',
+    operationId: 'saveAiSettings',
+    summary: 'Store the AI provider, model and key after a test request the provider accepts',
+    body: z.object({
+      provider: z.enum(['anthropic', 'openrouter']),
+      api_key: z.string().min(1),
+      model: z
+        .string()
+        .max(200)
+        .optional()
+        .describe('Required for OpenRouter; default claude-opus-5-5'),
+    }),
+    responses: {
+      200: { description: 'Stored and verified', schema: AiSettingsView },
+      400: error(
+        'invalid_json, invalid_provider, invalid_key, model_required, invalid_model, or key_rejected with the provider’s message',
+      ),
+      502: error('provider_unavailable: the provider could not be reached or did not answer'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/settings/ai',
+    operationId: 'deleteAiSettings',
+    summary: 'Forget the AI provider, model and key',
+    responses: { 204: { description: 'Removed' } },
+  },
+  {
     method: 'post',
     path: '/tokens',
     operationId: 'createToken',
@@ -173,6 +236,19 @@ export const operations: Operation[] = [
       },
       400: error('invalid_json, or invalid_url with the input as url: "not a valid web address"'),
       409: error('library_full: "library full (20,000 links)"'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/enrich-unenriched',
+    operationId: 'enrichUnenriched',
+    summary: 'Enrich every link waiting for it (no_key, waiting_for_key, failed), 20 a minute',
+    responses: {
+      202: {
+        description: 'How many links were queued',
+        schema: z.strictObject({ queued: z.number().int() }),
+      },
+      409: error('no_ai_key: "add an AI key in settings" (no key, or a rejected one)'),
     },
   },
   {
@@ -270,6 +346,16 @@ export const operations: Operation[] = [
   },
   {
     method: 'post',
+    path: '/links/{id}/enrich',
+    operationId: 'enrichLink',
+    summary: 'Run the enrichment of the link again, at once',
+    responses: {
+      202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
+      409: error('no_ai_key, or nothing_to_enrich for a pending, unreachable or skipped link'),
+    },
+  },
+  {
+    method: 'post',
     path: '/links/{id}/refresh',
     operationId: 'refreshLink',
     summary: 'Fetch the link again, replacing its stored copy; at most once per 10 minutes',
@@ -284,6 +370,23 @@ export const operations: Operation[] = [
           },
         },
       },
+    },
+  },
+  {
+    method: 'patch',
+    path: '/links/{id}',
+    operationId: 'editLink',
+    summary:
+      'Edit title, summary, tags or topic; edited fields are never overwritten automatically',
+    body: z.object({
+      title: z.string().min(1).max(500).optional(),
+      summary: z.string().max(2000).optional(),
+      tags: z.array(z.string()).max(20).optional(),
+      topic: z.string().min(1).max(100).optional(),
+    }),
+    responses: {
+      200: { description: 'The link, with edited_fields', schema: Link },
+      400: error('invalid_json, invalid_title, invalid_summary, invalid_tags or invalid_topic'),
     },
   },
   {

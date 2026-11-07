@@ -6,7 +6,8 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { ApiError, links as linksApi, type Link, type Page } from '../api';
+import { Link as PageLink } from '../App';
+import { ai, ApiError, links as linksApi, type Link, type Page } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { Toast } from '../components/Toast';
@@ -178,13 +179,15 @@ function useUndoableDelete(items: Link[], setItems: SetItems) {
 const POLL_MS = 5_000;
 
 /**
- * While any card is pending or being refreshed, asks every 5 seconds for the
+ * While any card is pending, being refreshed or queued for enrichment, asks every 5 seconds for the
  * links changed since the last server time and replaces those cards in place.
  */
 function useChangeFeed(items: Link[], setItems: SetItems) {
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set());
   const since = useRef<string | null>(null);
-  const watching = items.some((l) => l.state === 'pending') || refreshing.size > 0;
+  const watching =
+    items.some((l) => l.state === 'pending' || l.enrichment_status === 'queued') ||
+    refreshing.size > 0;
   const latest = useRef(items);
   useEffect(() => {
     latest.current = items;
@@ -220,6 +223,26 @@ function useChangeFeed(items: Link[], setItems: SetItems) {
   return {
     markRefreshing: (link: Link) => setRefreshing((ids) => new Set(ids).add(link.id)),
   };
+}
+
+/** 'not enriched: add an AI key in settings', once, while there is no key and links wait. */
+function NoKeyBanner() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    let live = true;
+    ai.get()
+      .then((s) => live && setShow(!s.configured && s.unenriched_count > 0))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!show) return null;
+  return (
+    <PageLink to="/settings" className="banner">
+      not enriched: add an AI key in settings
+    </PageLink>
+  );
 }
 
 /** The stream: the home page. Pinned links first, then the rest by last use. */
@@ -261,6 +284,7 @@ export function Stream() {
   return (
     <section className="stream">
       <AddLinks onAdded={(fresh) => setItems((current) => withOnTop(current, fresh))} />
+      <NoKeyBanner />
       {notice && (
         <p className="notice" role="alert">
           {notice}

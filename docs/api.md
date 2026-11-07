@@ -123,7 +123,13 @@ A link is shown as:
   "notes": [],
   "content_kind": null,
   "has_snapshot": false,
-  "updated_at": "2026-06-01T08:00:00.000Z"
+  "updated_at": "2026-06-01T08:00:00.000Z",
+  "summary": null,
+  "tags": [],
+  "topic": null,
+  "enrichment_status": null,
+  "enrichment_reason": null,
+  "edited_fields": []
 }
 ```
 
@@ -134,6 +140,14 @@ out", "HTTP 503", …). A fetch fills `final_url`, `http_status`, `title`,
 (`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
+
+Enrichment adds `summary` (at most 60 words), `tags` (3 to 8, lower-case,
+hyphenated) and `topic`. `enrichment_status` says where the link stands:
+`no_key` (no AI key), `queued`, `enriched`, `failed` (with
+`enrichment_reason`), `skipped` (nothing to read: not a web page, a PDF
+without text, a PDF too large), or `waiting_for_key` (the key was rejected);
+it is `null` before the first fetch. `edited_fields` lists the fields the
+owner set by hand, which enrichment and refresh never overwrite.
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
@@ -278,3 +292,75 @@ event (a refresh is not retried). At most one refresh per link per 10
 minutes: a second one is
 `429 {"error": "refreshed_recently", "message": "already refreshed recently"}`
 with `Retry-After` in seconds.
+
+### AI provider settings
+
+Enrichment runs only with the owner's own AI key ("bring your own key"),
+Anthropic or OpenRouter. The key is stored encrypted and never returned: the
+API shows only its last 4 characters.
+
+#### `GET /api/v1/settings/ai`
+
+`200 {"configured": true, "provider": "anthropic" | "openrouter", "model", "key_last4", "status": "verified" | "rejected", "rejected_message": <string or null>, "unenriched_count"}`,
+or `{"configured": false, "unenriched_count"}` without a key. `unenriched_count`
+counts the links waiting to be enriched (`no_key`, `waiting_for_key` or
+`failed`).
+
+#### `PUT /api/v1/settings/ai`
+
+Body `{"provider": "anthropic" | "openrouter", "api_key": "…", "model": "…"}`.
+The model is optional for Anthropic (default `claude-opus-5-5`) and required
+for OpenRouter (at most 200 characters). The key is stored only after a test
+request the provider accepts, replacing any earlier settings and lifting a
+rejection.
+
+- `200` with the settings as above (without `unenriched_count`), `status: "verified"`
+- `400 {"error": "invalid_provider" | "invalid_key" | "model_required" | "invalid_model", "field", "message"}`,
+  without calling the provider
+- `400 {"error": "key_rejected", "field": "api_key", "message": <the provider's message>}`
+- `502 {"error": "provider_unavailable", "message"}` when the provider cannot
+  be reached, answers 5xx, or does not answer within 60 seconds
+
+When the provider later answers an enrichment with HTTP 401, 402 or 403 (a
+revoked key, no credit), the key's `status` becomes `rejected` with the
+provider's message in `rejected_message`, the user's enrichment pauses, and
+links reaching enrichment wait as `waiting_for_key`. Saving a key the
+provider accepts lifts the pause; the waiting links are enriched by
+`POST /api/v1/links/enrich-unenriched`.
+
+#### `DELETE /api/v1/settings/ai`
+
+Forgets the provider, model and key: `204`. Later links are not enriched.
+
+#### `POST /api/v1/links/enrich-unenriched`
+
+Schedules every link waiting to be enriched (`no_key`, `waiting_for_key` or
+`failed`) through the background throttle, at most 20 a minute, and marks
+them `queued`: `202 {"queued": <n>}`. Without a key, or with a rejected one:
+`409 {"error": "no_ai_key", "message": "add an AI key in settings"}`.
+
+#### `POST /api/v1/links/{id}/enrich`
+
+Runs the link's enrichment again, at once and outside the throttle:
+`202 {"status": "queued"}`. Without a verified key:
+`409 {"error": "no_ai_key", …}`; for a link that is pending, unreachable or
+skipped: `409 {"error": "nothing_to_enrich", "message"}`.
+
+A failed automatic enrichment (a provider error, a rate limit, a refusal, no
+answer within 60 seconds, or an unusable result) leaves the link `active`
+with its fetched title and description, marks it `failed` with
+`enrichment_reason`, and is tried once more 10 minutes later; a re-run asked
+for here is not retried.
+
+#### `PATCH /api/v1/links/{id}`
+
+Edits any of `title` (1 to 500 characters), `summary` (at most 2,000),
+`tags` (a list of at most 20 names, each non-empty once normalised as
+enrichment's tags are) and `topic` (1 to 100 characters). Tag and topic
+names reuse the user's existing ones (case ignored, spaces read as hyphens).
+Each given field is recorded in `edited_fields` for good: later enrichment,
+re-runs and refreshes never overwrite it.
+
+- `200 <link>`
+- `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
+  nothing is changed when any field is invalid.

@@ -31,6 +31,17 @@ export interface LinkRow {
   reader_empty: number;
   refresh_requested_at: string | null;
   updated_at: string;
+  summary: string | null;
+  topic_id: string | null;
+  enriched_at: string | null;
+  enrichment_status: string | null;
+  enrichment_reason: string | null;
+  /** A JSON array of the fields the owner has set by hand. */
+  edited_fields: string;
+  /** The topic's name, when read through link_views. */
+  topic?: string | null;
+  /** A JSON array of the tag names in order, when read through link_views. */
+  tags_json?: string;
 }
 
 /** A link as the API shows it. */
@@ -63,10 +74,18 @@ export interface LinkView {
   has_snapshot: boolean;
   /** When the link last changed in any way. */
   updated_at: string;
+  summary: string | null;
+  tags: string[];
+  topic: string | null;
+  /** no_key, queued, enriched, failed, skipped or waiting_for_key; null before the first fetch. */
+  enrichment_status: string | null;
+  enrichment_reason: string | null;
+  /** The fields the owner has set by hand, which automatic work never overwrites. */
+  edited_fields: string[];
 }
 
-/** A link's notes, parsed from their stored JSON. */
-export function parseNotes(notes: string | null | undefined): string[] {
+/** A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else. */
+export function parseStrings(notes: string | null | undefined): string[] {
   try {
     const parsed: unknown = JSON.parse(notes ?? '[]');
     return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
@@ -96,10 +115,16 @@ export function toView(row: LinkRow): LinkView {
     language: row.language,
     fetched_at: row.fetched_at,
     state_reason: row.state_reason,
-    notes: parseNotes(row.notes),
+    notes: parseStrings(row.notes),
     content_kind: row.content_kind,
     has_snapshot: row.has_snapshot === 1,
     updated_at: row.updated_at,
+    summary: row.summary ?? null,
+    tags: parseStrings(row.tags_json),
+    topic: row.topic ?? null,
+    enrichment_status: row.enrichment_status ?? null,
+    enrichment_reason: row.enrichment_reason ?? null,
+    edited_fields: parseStrings(row.edited_fields),
   };
 }
 
@@ -143,11 +168,28 @@ function outcome(row: LinkRow | undefined, id: string): AddOutcome {
   return { status: row.id === id ? 'added' : 'boosted', link: toView(row) };
 }
 
+/** Reads the links of `outcomes` again through link_views, so they carry their tags and topic. */
+async function withViews(db: D1Database, outcomes: AddOutcome[]): Promise<AddOutcome[]> {
+  const ids = outcomes.flatMap((o) => (o.status === 'library_full' ? [] : [o.link.id]));
+  if (ids.length === 0) return outcomes;
+  const rows = await db
+    .prepare(`SELECT * FROM link_views WHERE id IN (${ids.map(() => '?').join(', ')})`)
+    .bind(...ids)
+    .all<LinkRow>();
+  const byId = new Map(rows.results.map((r) => [r.id, r]));
+  return outcomes.map((o) => {
+    if (o.status === 'library_full') return o;
+    const row = byId.get(o.link.id);
+    return row ? { status: o.status, link: toView(row) } : o;
+  });
+}
+
 /** Adds one link, or boosts the user's existing link for the same normalised URL. */
 export async function addLink(db: D1Database, userId: string, link: NewLink): Promise<AddOutcome> {
   const id = crypto.randomUUID();
   const row = await addStatement(db, userId, link, now().toISOString(), id).first<LinkRow>();
-  return outcome(row ?? undefined, id);
+  const [result] = await withViews(db, [outcome(row ?? undefined, id)]);
+  return result!;
 }
 
 /**
@@ -168,13 +210,16 @@ export async function addLinks(
       addStatement(db, userId, link, new Date(t - i).toISOString(), ids[i] ?? ''),
     ),
   );
-  return results.map((r, i) => outcome(r.results[0], ids[i] ?? ''));
+  return withViews(
+    db,
+    results.map((r, i) => outcome(r.results[0], ids[i] ?? '')),
+  );
 }
 
 /** One of the user's links, or null when the user has no link with this id. */
 export async function getLink(db: D1Database, userId: string, id: string): Promise<LinkRow | null> {
   return db
-    .prepare('SELECT * FROM links WHERE id = ? AND user_id = ?')
+    .prepare('SELECT * FROM link_views WHERE id = ? AND user_id = ?')
     .bind(id, userId)
     .first<LinkRow>();
 }

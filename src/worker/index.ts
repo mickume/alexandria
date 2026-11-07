@@ -1,5 +1,6 @@
 import { app } from './app';
-import type { Env, FetchMessage } from './env';
+import { handleEnrichBatch } from './enrich/queue';
+import type { EnrichMessage, Env, FetchMessage } from './env';
 import { handleFetchBatch } from './fetcher/queue';
 
 export { HostGate } from './fetcher/hostgate';
@@ -9,6 +10,9 @@ export default {
     return app.fetch(request, env, ctx);
   },
   queue(batch, env, ctx) {
-    return handleFetchBatch(batch, env, ctx);
+    if (batch.queue === 'alexandria-enrich') {
+      return handleEnrichBatch(batch as MessageBatch<EnrichMessage>, env);
+    }
+    return handleFetchBatch(batch as MessageBatch<FetchMessage>, env, ctx);
   },
-} satisfies ExportedHandler<Env, FetchMessage>;
+} satisfies ExportedHandler<Env, FetchMessage | EnrichMessage>;

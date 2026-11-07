@@ -9,7 +9,7 @@ import {
   getQueueResult,
   SELF,
 } from 'cloudflare:test';
-import type { FetchMessage } from '../env';
+import type { EnrichMessage, FetchMessage } from '../env';
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
@@ -54,10 +54,15 @@ export interface RecordedResponse {
   path: string;
   status: number;
   body: unknown;
+  /** The response's headers, as one string. */
+  headers: string;
 }
 
 /** Every response api() received in the current test file. */
 export const recordedResponses: RecordedResponse[] = [];
+
+/** Every AI key a test saved through the API in the current test file. */
+export const savedKeys = new Set<string>();
 
 /** Sends a request through the Worker, as a browser or a script would. */
 export async function api(
@@ -74,6 +79,8 @@ export async function api(
     headers.set('Origin', opts.origin);
   }
   if (opts.bearer !== undefined) headers.set('Authorization', `Bearer ${opts.bearer}`);
+  const apiKey = (opts.body as { api_key?: unknown } | undefined)?.api_key;
+  if (typeof apiKey === 'string' && apiKey.length > 4) savedKeys.add(apiKey);
   let body: string | undefined;
   if (opts.body !== undefined) {
     body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
@@ -95,6 +102,7 @@ export async function api(
     path: new URL(path, ORIGIN).pathname,
     status: response.status,
     body: json,
+    headers: [...response.headers].map(([k, v]) => `${k}: ${v}`).join('\n'),
   });
   return { status: response.status, headers: response.headers, json, response };
 }
@@ -217,17 +225,29 @@ export interface SentMessage<T = unknown> {
   delaySeconds?: number;
 }
 
+/** A queue that records what is sent on it instead of delivering it. */
+function recorder<T>(sent: SentMessage<T>[]): Queue<T> {
+  return {
+    async send(body: T, options?: QueueSendOptions) {
+      sent.push({ body, delaySeconds: options?.delaySeconds });
+    },
+    async sendBatch(messages: Iterable<MessageSendRequest<T>>) {
+      for (const m of messages) sent.push({ body: m.body, delaySeconds: m.delaySeconds });
+    },
+  } as unknown as Queue<T>;
+}
+
 /** Replaces FETCH_QUEUE with a recorder for this test; returns the recorded messages. */
 export function recordFetchQueue(): SentMessage<FetchMessage>[] {
   const sent: SentMessage<FetchMessage>[] = [];
-  env.FETCH_QUEUE = {
-    async send(body: FetchMessage, options?: QueueSendOptions) {
-      sent.push({ body, delaySeconds: options?.delaySeconds });
-    },
-    async sendBatch(messages: Iterable<MessageSendRequest<FetchMessage>>) {
-      for (const m of messages) sent.push({ body: m.body, delaySeconds: m.delaySeconds });
-    },
-  } as unknown as Queue<FetchMessage>;
+  env.FETCH_QUEUE = recorder(sent);
+  return sent;
+}
+
+/** Replaces ENRICH_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordEnrichQueue(): SentMessage<EnrichMessage>[] {
+  const sent: SentMessage<EnrichMessage>[] = [];
+  env.ENRICH_QUEUE = recorder(sent);
   return sent;
 }
 
@@ -240,12 +260,32 @@ export async function deliverFetches(
   bodies: FetchMessage[],
   bindings: Partial<Cloudflare.Env> = {},
 ): Promise<{ acked: string[]; retried: string[] }> {
-  const batch = createMessageBatch<FetchMessage>(
-    'alexandria-fetch',
+  return deliver('alexandria-fetch', bodies, bindings);
+}
+
+/** Delivers enrichment messages to the Worker's queue consumer in one batch. */
+export async function deliverEnrichments(
+  bodies: EnrichMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  return deliver('alexandria-enrich', bodies, bindings);
+}
+
+async function deliver<T>(
+  queue: string,
+  bodies: T[],
+  bindings: Partial<Cloudflare.Env>,
+): Promise<{ acked: string[]; retried: string[] }> {
+  const batch = createMessageBatch<T>(
+    queue,
     bodies.map((body, i) => ({ id: `m${i}`, timestamp: new Date(), attempts: 1, body })),
   );
   const ctx = createExecutionContext();
-  await worker.queue?.(batch as MessageBatch<FetchMessage>, { ...env, ...bindings }, ctx);
+  await worker.queue?.(
+    batch as unknown as MessageBatch<FetchMessage | EnrichMessage>,
+    { ...env, ...bindings },
+    ctx,
+  );
   const result = await getQueueResult(batch, ctx);
   return {
     acked: result.explicitAcks,

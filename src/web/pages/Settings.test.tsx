@@ -89,3 +89,145 @@ describe('the tokens section of the settings page', () => {
     expect(await screen.findByText('token limit reached')).toBeTruthy();
   });
 });
+
+describe('the AI key section of the settings page', () => {
+  function aiApi(): FakeApi {
+    let stored: Record<string, unknown> = { configured: false, unenriched_count: 0 };
+    return fakeApi()
+      .on('GET', '/api/v1/settings/ai', () => ({ status: 200, body: stored }))
+      .on('PUT', '/api/v1/settings/ai', (req) => {
+        const body = req.body as { provider: string; api_key: string; model?: string };
+        stored = {
+          configured: true,
+          provider: body.provider,
+          model: body.model ?? 'claude-opus-5-5',
+          key_last4: body.api_key.slice(-4),
+          status: 'verified',
+          rejected_message: null,
+          unenriched_count: 0,
+        };
+        const { unenriched_count: _ignored, ...view } = stored;
+        return { status: 200, body: view };
+      })
+      .on('DELETE', '/api/v1/settings/ai', () => {
+        stored = { configured: false, unenriched_count: 0 };
+        return { status: 204 };
+      });
+  }
+
+  it('saves a key, shows it verified by its last 4 characters, and removes it', async () => {
+    const api = aiApi();
+    renderPage('/settings', api);
+    const provider = (await screen.findByLabelText('Provider')) as unknown as HTMLSelectElement;
+    expect(provider.value).toBe('anthropic');
+    const model = screen.getByLabelText('Model') as HTMLInputElement;
+    expect(model.placeholder).toBe('claude-opus-5-5');
+    expect(model.required).toBe(false);
+    fireEvent.change(provider, { target: { value: 'openrouter' } });
+    expect((screen.getByLabelText('Model') as HTMLInputElement).required).toBe(true);
+    fireEvent.change(provider, { target: { value: 'anthropic' } });
+
+    const key = screen.getByLabelText('API key') as HTMLInputElement;
+    fireEvent.change(key, { target: { value: 'sk-ant-abcd1234' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save key' }));
+    });
+    expect(api.sent('PUT', '/api/v1/settings/ai')[0]?.body).toEqual({
+      provider: 'anthropic',
+      api_key: 'sk-ant-abcd1234',
+    });
+    expect(await screen.findByText('key verified')).toBeTruthy();
+    expect(screen.getByText('…1234')).toBeTruthy();
+    expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    });
+    expect(api.sent('DELETE', '/api/v1/settings/ai')).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByText('…1234')).toBeNull());
+  });
+
+  it('shows the provider’s message when it rejects the key', async () => {
+    const api = aiApi().on('PUT', '/api/v1/settings/ai', {
+      status: 400,
+      body: { error: 'key_rejected', field: 'api_key', message: 'invalid x-api-key' },
+    });
+    renderPage('/settings', api);
+    fireEvent.change(await screen.findByLabelText('API key'), { target: { value: 'sk-ant-bad' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save key' }));
+    });
+    expect(await screen.findByText('invalid x-api-key')).toBeTruthy();
+    expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('enriching all unenriched links from the settings page', () => {
+  const verified = (unenriched_count: number) => ({
+    configured: true,
+    provider: 'anthropic',
+    model: 'claude-opus-5-5',
+    key_last4: '1234',
+    status: 'verified',
+    rejected_message: null,
+    unenriched_count,
+  });
+
+  it('offers to enrich the waiting links and says how many were queued', async () => {
+    const api = fakeApi()
+      .on('GET', '/api/v1/settings/ai', { status: 200, body: verified(27) })
+      .on('POST', '/api/v1/links/enrich-unenriched', { status: 202, body: { queued: 27 } });
+    renderPage('/settings', api);
+    const button = await screen.findByRole('button', { name: 'Enrich all unenriched links (27)' });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(api.sent('POST', '/api/v1/links/enrich-unenriched')).toHaveLength(1);
+    expect(await screen.findByText('queued 27 links')).toBeTruthy();
+  });
+
+  it('offers nothing when no link is waiting', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', { status: 200, body: verified(0) }),
+    );
+    await screen.findByText('…1234');
+    expect(screen.queryByRole('button', { name: /Enrich all/ })).toBeNull();
+  });
+});
+
+describe('a rejected AI key on the settings page', () => {
+  const settings = (status: string, message: string | null) => ({
+    configured: true,
+    provider: 'anthropic',
+    model: 'claude-opus-5-5',
+    key_last4: '1234',
+    status,
+    rejected_message: message,
+    unenriched_count: 0,
+  });
+
+  it('is reported once, beside Replace and Remove', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', {
+        status: 200,
+        body: settings('rejected', 'insufficient credits'),
+      }),
+    );
+    expect(
+      await screen.findAllByText('your AI key was rejected: insufficient credits'),
+    ).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Replace' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeTruthy();
+  });
+
+  it('is not reported while the key is verified', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', { status: 200, body: settings('verified', null) }),
+    );
+    await screen.findByText('…1234');
+    expect(screen.queryByText(/your AI key was rejected/)).toBeNull();
+  });
+});

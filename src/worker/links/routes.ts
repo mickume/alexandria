@@ -3,6 +3,7 @@ import { limitReached, notFound, readJson, validationError } from '../api/errors
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv, Env } from '../env';
 import { now } from '../clock';
+import { applyEdit, parseEdit } from '../enrich/edits';
 import { deleteLinkObjects } from '../fetcher/snapshots';
 import { normalizeUrl } from './normalize';
 import {
@@ -210,4 +211,13 @@ linkRoutes.delete('/:id', async (c) => {
   if (!deleted) return notFound(c);
   await deleteLinkObjects(c.env, userId, c.req.param('id'));
   return c.body(null, 204);
+});
+
+linkRoutes.patch('/:id', async (c) => {
+  const parsed = await readJson(c);
+  if (!parsed.ok) return parsed.response;
+  const edit = parseEdit(parsed.body);
+  if ('error' in edit) return validationError(c, edit.error, edit.field, edit.message);
+  const link = await applyEdit(c.env.DB, c.get('user').id, c.req.param('id'), edit);
+  return link ? c.json(toView(link)) : notFound(c);
 });

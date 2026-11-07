@@ -50,6 +50,40 @@ The user a request is authenticated as.
 
 ***
 
+### EnrichMessage
+
+A request to enrich one link.
+
+#### Properties
+
+##### attempt?
+
+> `optional` **attempt?**: `number`
+
+1 for the first automatic attempt, 2 for its retry.
+
+##### link\_id
+
+> **link\_id**: `string`
+
+##### manual?
+
+> `optional` **manual?**: `boolean`
+
+Set when the owner asked for it: a failure is not retried.
+
+##### slot?
+
+> `optional` **slot?**: `number`
+
+Milliseconds since the epoch before which a throttled job must not run.
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
 ### Env
 
 The bindings and variables of the Worker, as wrangler.jsonc declares them.
@@ -61,6 +95,12 @@ The bindings and variables of the Worker, as wrangler.jsonc declares them.
 > **ALLOWED\_EMAILS**: `string`
 
 Comma-separated email addresses that may sign in, compared case-insensitively.
+
+##### ANTHROPIC\_BASE\_URL
+
+> **ANTHROPIC\_BASE\_URL**: `string`
+
+The Anthropic API's base URL; configurable so tests can run a local fake.
 
 ##### ASSETS
 
@@ -110,6 +150,12 @@ The website's built static files.
 
 The D1 database holding every user's data.
 
+##### ENRICH\_QUEUE
+
+> **ENRICH\_QUEUE**: `Queue`\<[`EnrichMessage`](#enrichmessage)\>
+
+The queue of enrichment messages, one per link to summarise, tag and file.
+
 ##### FETCH\_QUEUE
 
 > **FETCH\_QUEUE**: `Queue`\<[`FetchMessage`](#fetchmessage)\>
@@ -145,6 +191,18 @@ Google's token endpoint; configurable so tests can run a local fake.
 > **HOST\_GATE**: `DurableObjectNamespace`\<[`HostGate`](fetcher/hostgate.md#hostgate)\>
 
 The per-host rate limit: one Durable Object per host.
+
+##### KEY\_ENCRYPTION\_KEY
+
+> **KEY\_ENCRYPTION\_KEY**: `string`
+
+The secret the owners' AI keys are encrypted under.
+
+##### OPENROUTER\_BASE\_URL
+
+> **OPENROUTER\_BASE\_URL**: `string`
+
+OpenRouter's API base URL; configurable so tests can run a local fake.
 
 ##### ORIGIN\_PROXY\_URL?
 

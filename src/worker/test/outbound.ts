@@ -39,6 +39,15 @@ export function installOutbound(): void {
       throw new Error(`unexpected outbound request: ${request.method} ${request.url}`);
     }
     outboundRequests.push(request.clone() as Request);
-    return route.handler(request);
+    const answer = Promise.resolve(route.handler(request));
+    const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    if (!signal) return answer;
+    // A caller's abort (a timeout) ends the request, as it would on the network.
+    return new Promise<Response>((resolve, reject) => {
+      const onAbort = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+      if (signal.aborted) return onAbort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      answer.then(resolve, reject);
+    });
   };
 }

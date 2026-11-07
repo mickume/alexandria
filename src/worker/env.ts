@@ -18,12 +18,32 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** The queue of fetch messages, one per link to fetch. */
   FETCH_QUEUE: Queue<FetchMessage>;
+  /** The queue of enrichment messages, one per link to summarise, tag and file. */
+  ENRICH_QUEUE: Queue<EnrichMessage>;
   /** The per-host rate limit: one Durable Object per host. */
   HOST_GATE: DurableObjectNamespace<import('./fetcher/hostgate').HostGate>;
   /** Snapshots and reader views. */
   SNAPSHOTS: R2Bucket;
   /** End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target. */
   ORIGIN_PROXY_URL?: string;
+  /** The secret the owners' AI keys are encrypted under. */
+  KEY_ENCRYPTION_KEY: string;
+  /** The Anthropic API's base URL; configurable so tests can run a local fake. */
+  ANTHROPIC_BASE_URL: string;
+  /** OpenRouter's API base URL; configurable so tests can run a local fake. */
+  OPENROUTER_BASE_URL: string;
+}
+
+/** A request to enrich one link. */
+export interface EnrichMessage {
+  user_id: string;
+  link_id: string;
+  /** 1 for the first automatic attempt, 2 for its retry. */
+  attempt?: number;
+  /** Set when the owner asked for it: a failure is not retried. */
+  manual?: boolean;
+  /** Milliseconds since the epoch before which a throttled job must not run. */
+  slot?: number;
 }
 
 /** A request to fetch one link's page. */

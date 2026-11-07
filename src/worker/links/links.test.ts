@@ -34,6 +34,12 @@ describe('adding a link', () => {
         content_kind: null,
         has_snapshot: false,
         updated_at: t,
+        summary: null,
+        tags: [],
+        topic: null,
+        enrichment_status: null,
+        enrichment_reason: null,
+        edited_fields: [],
       },
     });
   });
@@ -243,6 +249,12 @@ describe('reading a link', () => {
       content_kind: null,
       has_snapshot: false,
       updated_at: expect.any(String),
+      summary: null,
+      tags: [],
+      topic: null,
+      enrichment_status: null,
+      enrichment_reason: null,
+      edited_fields: [],
     });
   });
 });

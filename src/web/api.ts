@@ -78,6 +78,13 @@ export interface Link {
   content_kind: 'html' | 'pdf' | 'other' | null;
   has_snapshot: boolean;
   updated_at: string;
+  summary: string | null;
+  tags: string[];
+  topic: string | null;
+  enrichment_status:
+    'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | null;
+  enrichment_reason: string | null;
+  edited_fields: string[];
 }
 
 /** One page of a list. */
@@ -147,6 +154,10 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
+  edit: (id: string, fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>>) =>
+    request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  enrich: (id: string) =>
+    request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/refresh`),
   /** Deletes a link for good; a link already gone counts as deleted. */
@@ -157,4 +168,25 @@ export const links = {
       if (!(err instanceof ApiError && err.status === 404)) throw err;
     }
   },
+};
+
+/** The owner's AI settings, never with the key beyond its last 4 characters. */
+export type AiSettings =
+  | {
+      configured: true;
+      provider: 'anthropic' | 'openrouter';
+      model: string;
+      key_last4: string;
+      status: 'verified' | 'rejected';
+      rejected_message: string | null;
+      unenriched_count: number;
+    }
+  | { configured: false; unenriched_count: number };
+
+export const ai = {
+  get: () => request<AiSettings>('GET', '/settings/ai'),
+  save: (body: { provider: string; api_key: string; model?: string }) =>
+    request<AiSettings>('PUT', '/settings/ai', body),
+  remove: () => request<void>('DELETE', '/settings/ai'),
+  enrichUnenriched: () => request<{ queued: number }>('POST', '/links/enrich-unenriched'),
 };

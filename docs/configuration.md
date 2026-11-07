@@ -20,6 +20,7 @@ for local development.
 | Name                   | Meaning                                                                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `GOOGLE_CLIENT_SECRET` | The OAuth 2.0 client secret of the Google Cloud project. Set with `wrangler secret put GOOGLE_CLIENT_SECRET`, or in `.dev.vars` locally. |
+| `KEY_ENCRYPTION_KEY` | Any long random string. The owners' AI keys are encrypted with AES-256-GCM under a key derived from it (its SHA-256), with each user's id bound as additional data. Changing it makes every stored AI key unreadable: owners then enter their keys again. |
 
 ## Bindings
 

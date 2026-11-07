@@ -166,6 +166,12 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     content_kind: null,
     has_snapshot: false,
     updated_at: '2026-03-05T10:00:00.000Z',
+    summary: null,
+    tags: [],
+    topic: null,
+    enrichment_status: null,
+    enrichment_reason: null,
+    edited_fields: [],
     ...overrides,
   };
 }

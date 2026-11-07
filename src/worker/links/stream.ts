@@ -35,7 +35,7 @@ export async function listStream(
   if (!after || after.s === 'p') {
     const pinned = await db
       .prepare(
-        `SELECT * FROM links
+        `SELECT * FROM link_views
          WHERE user_id = ? AND pin_position IS NOT NULL AND state <> 'archived' AND pin_position > ?
          ORDER BY pin_position LIMIT ?`,
       )
@@ -47,7 +47,7 @@ export async function listStream(
     const keyset =
       after?.s === 'u' ? 'AND (last_used_at < ?3 OR (last_used_at = ?3 AND id < ?4))' : '';
     const statement = db.prepare(
-      `SELECT * FROM links
+      `SELECT * FROM link_views
        WHERE user_id = ?1 AND pin_position IS NULL AND state <> 'archived' ${keyset}
        ORDER BY last_used_at DESC, id DESC LIMIT ?2`,
     );
@@ -92,7 +92,7 @@ export function parseTimestamp(value: string): Date | null {
 export async function listChanged(db: D1Database, userId: string, since: Date): Promise<LinkRow[]> {
   const rows = await db
     .prepare(
-      `SELECT * FROM links WHERE user_id = ? AND state <> 'archived' AND updated_at >= ?
+      `SELECT * FROM link_views WHERE user_id = ? AND state <> 'archived' AND updated_at >= ?
        ORDER BY updated_at, id LIMIT ?`,
     )
     .bind(userId, since.toISOString(), CHANGES_LIMIT)

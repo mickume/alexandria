@@ -264,6 +264,18 @@ A link as the API shows it.
 
 > **description**: `string` \| `null`
 
+##### edited\_fields
+
+> **edited\_fields**: `string`[]
+
+##### enrichment\_reason
+
+> **enrichment\_reason**: `string` \| `null`
+
+##### enrichment\_status
+
+> **enrichment\_status**: `"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `null`
+
 ##### favicon\_url
 
 > **favicon\_url**: `string` \| `null`
@@ -324,9 +336,21 @@ A link as the API shows it.
 
 > **state\_reason**: `string` \| `null`
 
+##### summary
+
+> **summary**: `string` \| `null`
+
+##### tags
+
+> **tags**: `string`[]
+
 ##### title
 
 > **title**: `string`
+
+##### topic
+
+> **topic**: `string` \| `null`
 
 ##### updated\_at
 
@@ -420,6 +444,14 @@ A personal access token as listed.
 
 ## Type Aliases
 
+### AiSettings
+
+> **AiSettings** = \{ `configured`: `true`; `key_last4`: `string`; `model`: `string`; `provider`: `"anthropic"` \| `"openrouter"`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; `unenriched_count`: `number`; \} \| \{ `configured`: `false`; `unenriched_count`: `number`; \}
+
+The owner's AI settings, never with the key beyond its last 4 characters.
+
+***
+
 ### LinkEvent
 
 > **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
@@ -427,6 +459,62 @@ A personal access token as listed.
 One event of a link's history: a use, or a fetch attempt.
 
 ## Variables
+
+### ai
+
+> `const` **ai**: `object`
+
+#### Type Declaration
+
+##### enrichUnenriched
+
+> **enrichUnenriched**: () => `Promise`\<\{ `queued`: `number`; \}\>
+
+###### Returns
+
+`Promise`\<\{ `queued`: `number`; \}\>
+
+##### get
+
+> **get**: () => `Promise`\<[`AiSettings`](#aisettings)\>
+
+###### Returns
+
+`Promise`\<[`AiSettings`](#aisettings)\>
+
+##### remove
+
+> **remove**: () => `Promise`\<`void`\>
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### save
+
+> **save**: (`body`) => `Promise`\<[`AiSettings`](#aisettings)\>
+
+###### Parameters
+
+###### body
+
+###### api_key
+
+`string`
+
+###### model?
+
+`string`
+
+###### provider
+
+`string`
+
+###### Returns
+
+`Promise`\<[`AiSettings`](#aisettings)\>
+
+***
 
 ### links
 
@@ -461,6 +549,38 @@ One event of a link's history: a use, or a fetch attempt.
 ###### Returns
 
 `Promise`\<[`Changes`](#changes)\>
+
+##### edit
+
+> **edit**: (`id`, `fields`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### fields
+
+`Partial`\<`Pick`\<[`Link`](#link), `"title"` \| `"summary"` \| `"tags"` \| `"topic"`\>\>
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
+##### enrich
+
+> **enrich**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"queued"`; \}\>
 
 ##### get
 

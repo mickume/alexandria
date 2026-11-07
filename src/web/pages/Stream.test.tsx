@@ -255,3 +255,128 @@ describe('the stream while links are being fetched', () => {
     }
   });
 });
+
+describe('the stream while links are being enriched', () => {
+  it('keeps asking for changes while a card is queued for enrichment, then shows its summary', async () => {
+    const queued = makeLink({
+      id: 'q',
+      title: 'Queued',
+      state: 'active',
+      enrichment_status: 'queued',
+      updated_at: '2026-03-05T10:00:00.000Z',
+    });
+    const api = new FakeApi().on('GET', '/api/v1/links', (req) =>
+      req.path.includes('changed_since=')
+        ? {
+            status: 200,
+            body: {
+              items: [
+                {
+                  ...queued,
+                  enrichment_status: 'enriched',
+                  summary: 'Now summarised.',
+                  updated_at: '2026-03-05T10:00:06.000Z',
+                },
+              ],
+              server_time: '2026-03-05T10:00:07.000Z',
+            },
+          }
+        : { status: 200, body: { items: [queued], next_cursor: null } },
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPage('/', api);
+      await screen.findByRole('article', { name: 'Queued' });
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(api.sent('GET', '/api/v1/links?changed_since=')).toHaveLength(1);
+      expect(screen.getByText('Now summarised.')).toBeTruthy();
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+      expect(api.sent('GET', '/api/v1/links?changed_since=')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('the banner of a library without an AI key', () => {
+  it.each([
+    {
+      label: 'no key and unenriched links',
+      settings: { configured: false, unenriched_count: 3 },
+      banners: 1,
+    },
+    {
+      label: 'no key and nothing waiting',
+      settings: { configured: false, unenriched_count: 0 },
+      banners: 0,
+    },
+    {
+      label: 'a verified key',
+      settings: {
+        configured: true,
+        provider: 'anthropic',
+        model: 'm',
+        key_last4: '1234',
+        status: 'verified',
+        rejected_message: null,
+        unenriched_count: 3,
+      },
+      banners: 0,
+    },
+  ])('shows $banners banner with $label', async ({ settings, banners }) => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/settings/ai', { status: 200, body: settings })
+      .on('GET', '/api/v1/links', {
+        status: 200,
+        body: {
+          items: makeLinks(3).map((l) => ({ ...l, state: 'active', enrichment_status: 'no_key' })),
+          next_cursor: null,
+        },
+      });
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 0' });
+    await waitFor(() => expect(api.sent('GET', '/api/v1/settings/ai')).toHaveLength(1));
+    const found = screen.queryAllByText('not enriched: add an AI key in settings');
+    expect(found).toHaveLength(banners);
+    if (banners)
+      expect(
+        found[0]!.closest('a')?.getAttribute('href') ??
+          found[0]!.querySelector('a')?.getAttribute('href'),
+      ).toBe('/settings');
+    for (const card of screen.getAllByRole('article'))
+      expect(card.textContent).not.toContain('add an AI key');
+  });
+});
+
+describe('the stream with a rejected AI key', () => {
+  it('carries no rejection message on any card', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/settings/ai', {
+        status: 200,
+        body: {
+          configured: true,
+          provider: 'anthropic',
+          model: 'm',
+          key_last4: '1234',
+          status: 'rejected',
+          rejected_message: 'insufficient credits',
+          unenriched_count: 2,
+        },
+      })
+      .on('GET', '/api/v1/links', {
+        status: 200,
+        body: {
+          items: makeLinks(2).map((l) => ({
+            ...l,
+            state: 'active',
+            enrichment_status: 'waiting_for_key',
+          })),
+          next_cursor: null,
+        },
+      });
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 0' });
+    await waitFor(() => expect(api.sent('GET', '/api/v1/settings/ai')).toHaveLength(1));
+    expect(screen.queryByText(/rejected/)).toBeNull();
+  });
+});
