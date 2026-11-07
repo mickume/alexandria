@@ -705,3 +705,40 @@ invalid line (`line 57: not-a-url`) and every duplicate
 Both answer `404 {"error": "not_found"}` for an id that is not one of the
 user's imports.
 
+## MCP server
+
+`POST /mcp` is a Model Context Protocol server over the Streamable HTTP
+transport, for agents. It is stateless: every request is answered on its
+own, as JSON (`Content-Type: application/json`), with no session id; send
+`Accept: application/json, text/event-stream` as the transport requires.
+`GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`.
+
+Only a personal access token authenticates it:
+`Authorization: Bearer <secret>`. A missing, unknown or revoked token, or a
+session cookie alone, is `401 {"error": "unauthorized"}` with
+`WWW-Authenticate: Bearer`, before any message is read. Every `/mcp` request
+counts once against the user's 600 requests a minute shared with the API
+(`429 {"error": "rate_limited"}` with `Retry-After`), however many API
+operations its tool performs.
+
+The server is named `alexandria`, offers tools only, and its instructions
+tell an agent that Alexandria is the owner's private library of web links and
+to try `search_links` before `add_link` to avoid duplicates.
+
+### Tools
+
+Each tool performs the equivalent API request(s) as the token's user, so it
+answers with the same shapes, errors and limits, and records a use exactly
+where the API does. A success carries the API's JSON body as
+`structuredContent` and as one text content item; a refusal is a tool result
+with `isError: true` and the API's error envelope (`error`, `message`, and
+`field` where the API gives one), never a JSON-RPC error. Arguments that do
+not fit a tool's input schema are
+`{"error": "invalid_arguments", "field": <the argument>, "message"}`; an
+unexpected failure is
+`{"error": "internal_error", "message": "something went wrong, try again"}`.
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
+

@@ -3,11 +3,11 @@
   "spec_id": "08",
   "spec_name": "mcp_server",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T19:22:38Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

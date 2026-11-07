@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 import { now } from '../clock';
+import { internalRequests } from '../auth/middleware';
 import type { AppEnv } from '../env';
 
 /** Requests a user may make to /api/v1/ in one minute, across sessions and tokens. */
@@ -10,9 +11,11 @@ const MINUTE = 60_000;
 /**
  * Counts the authenticated user's requests per clock minute and refuses those
  * past the limit with 429 and Retry-After, before the route runs. Runs after
- * authentication, so each user has a budget of their own.
+ * authentication, so each user has a budget of their own. The Worker's own
+ * internal requests are not counted: the request they serve was.
  */
 export const rateLimit = createMiddleware<AppEnv>(async (c, next) => {
+  if (internalRequests.has(c.req.raw)) return next();
   const t = now().getTime();
   const window = Math.floor(t / MINUTE) * MINUTE;
   const user = c.get('user').id;

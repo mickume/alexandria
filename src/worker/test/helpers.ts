@@ -381,3 +381,64 @@ export const FILTER_TABLE: [string, (keyof FilterLinks)[]][] = [
   ['is:pinned', ['a']],
   ['is:dead', ['b']],
 ];
+
+/** A response of the MCP endpoint, with its parsed JSON body. */
+export interface McpResponse {
+  status: number;
+  headers: Headers;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  json: any;
+}
+
+let mcpRequestId = 0;
+
+/**
+ * Sends one JSON-RPC request to POST /mcp, as an agent does: with the bearer
+ * secret (or none), and `init` changing the method or adding headers.
+ */
+export async function mcp(
+  bearer: string | null,
+  method: string,
+  params?: unknown,
+  init: { method?: string; headers?: Record<string, string> } = {},
+): Promise<McpResponse> {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...init.headers,
+  });
+  if (bearer !== null) headers.set('Authorization', `Bearer ${bearer}`);
+  const httpMethod = init.method ?? 'POST';
+  const response = await SELF.fetch(new URL('/mcp', ORIGIN), {
+    method: httpMethod,
+    headers,
+    body:
+      httpMethod === 'POST'
+        ? JSON.stringify({ jsonrpc: '2.0', id: ++mcpRequestId, method, params })
+        : undefined,
+  });
+  const text = await response.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = text;
+  }
+  return { status: response.status, headers: response.headers, json };
+}
+
+/** A tool's result as an agent receives it. */
+export interface ToolResult {
+  isError?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  structuredContent: any;
+  content: { type: string; text: string }[];
+  /** The whole JSON-RPC response. */
+  response: McpResponse;
+}
+
+/** Calls an MCP tool with the bearer secret and returns its result. */
+export async function mcpTool(bearer: string, name: string, args: unknown): Promise<ToolResult> {
+  const response = await mcp(bearer, 'tools/call', { name, arguments: args });
+  return { ...(response.json?.result ?? {}), response };
+}
