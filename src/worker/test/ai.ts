@@ -94,7 +94,10 @@ export class FakeAi {
 
   private async handle(provider: 'anthropic' | 'openrouter', request: Request): Promise<Response> {
     const body = (await request.json()) as Record<string, unknown>;
-    const enrichment = provider === 'anthropic' ? 'tools' in body : 'response_format' in body;
+    const enrichment =
+      provider === 'anthropic'
+        ? 'output_config' in body || 'tools' in body
+        : 'response_format' in body;
     this.requests.push({
       provider,
       url: request.url,
@@ -117,11 +120,26 @@ export class FakeAi {
     }
     const model = String(body.model ?? 'model');
     if (provider === 'anthropic') {
+      // As the real API answers for current models (Claude Opus 5.5 and the like).
+      const forced = (body.tool_choice as { type?: string } | undefined)?.type;
+      if (forced === 'tool' || forced === 'any') {
+        return Response.json(
+          {
+            type: 'error',
+            error: {
+              type: 'invalid_request_error',
+              message: 'tool_choice: type "tool" and "any" are not supported for this model.',
+            },
+          },
+          { status: 400 },
+        );
+      }
+      // Structured outputs answer with the JSON as text.
       const content =
         answer.kind === 'refusal'
           ? [{ type: 'text', text: 'I cannot help with that.' }]
           : enrichment
-            ? [{ type: 'tool_use', id: 'toolu_1', name: 'record_enrichment', input: answer.result }]
+            ? [{ type: 'text', text: JSON.stringify(answer.result) }]
             : [{ type: 'text', text: 'ok' }];
       return Response.json({
         id: 'msg_1',
@@ -129,7 +147,7 @@ export class FakeAi {
         role: 'assistant',
         model,
         content,
-        stop_reason: answer.kind === 'refusal' ? 'refusal' : enrichment ? 'tool_use' : 'end_turn',
+        stop_reason: answer.kind === 'refusal' ? 'refusal' : 'end_turn',
         stop_sequence: null,
         usage: { input_tokens: 1, output_tokens: 1 },
       });

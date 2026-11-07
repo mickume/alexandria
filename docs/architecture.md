@@ -134,9 +134,10 @@ handler for `alexandria-enrich`) decrypts the user's own key
 additional data), builds the request (`enrich/enrich.ts`: instructions, title,
 host, the user's 100 most used topics and 300 most used tags, and the first
 20,000 characters of the reader text, or the title and description), asks
-the user's provider for a structured result (`enrich/providers.ts`: a forced
-tool call through `@anthropic-ai/sdk`, or a JSON-schema response format
-through OpenRouter's HTTP API), normalises it, resolves the names against the
+the user's provider for a structured result (`enrich/providers.ts`: a JSON
+schema through structured outputs, `output_config.format`, with
+`@anthropic-ai/sdk`, since current models refuse a forced tool call; or a
+JSON-schema response format through OpenRouter's HTTP API), normalises it, resolves the names against the
 user's vocabulary (`enrich/vocabulary.ts`), and stores summary, topic and
 tags (`topics`, `tags`, `link_tags`). Links are read through the
 `link_views` view, which adds the topic's name and the tags in order.
