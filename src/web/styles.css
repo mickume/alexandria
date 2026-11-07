@@ -226,3 +226,62 @@ textarea {
   margin: 0.5rem 0 0;
   color: var(--muted);
 }
+
+.stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+}
+
+.card {
+  padding: var(--space) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.favicon {
+  flex: none;
+  border-radius: 0.2rem;
+}
+
+.card-title {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.state {
+  text-transform: lowercase;
+}
+
+.state-pending {
+  color: var(--accent);
+}
+
+.card-actions {
+  display: flex;
+  gap: var(--space);
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.sentinel {
+  height: 1px;
+}

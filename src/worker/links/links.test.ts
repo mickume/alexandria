@@ -199,3 +199,28 @@ describe('a full library', () => {
     expect(await count('links', 'user_id = ?', user.id)).toBe(20_000);
   }, 60_000);
 });
+
+describe('reading a link', () => {
+  it('returns every stored field, the original URL and the normalised one', async () => {
+    const user = await signIn();
+    const added = await api('POST', '/api/v1/links', {
+      as: user.session,
+      body: { url: 'https://example.com/a?utm_source=x' },
+    });
+    const r = await api('GET', `/api/v1/links/${added.json.link.id}`, { as: user.session });
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({
+      id: added.json.link.id,
+      url: 'https://example.com/a',
+      original_url: 'https://example.com/a?utm_source=x',
+      host: 'example.com',
+      title: 'example.com',
+      state: 'pending',
+      added_at: expect.any(String),
+      last_used_at: expect.any(String),
+      use_count: 0,
+      pinned: false,
+      pin_position: null,
+    });
+  });
+});

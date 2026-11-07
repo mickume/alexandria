@@ -192,6 +192,32 @@ the first of the batch ends highest in the stream.
 
 ***
 
+### getLink()
+
+> **getLink**(`db`, `userId`, `id`): `Promise`\<[`LinkRow`](#linkrow) \| `null`\>
+
+One of the user's links, or null when the user has no link with this id.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<[`LinkRow`](#linkrow) \| `null`\>
+
+***
+
 ### toView()
 
 > **toView**(`row`): [`LinkView`](#linkview)

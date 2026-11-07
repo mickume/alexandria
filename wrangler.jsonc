@@ -6,6 +6,7 @@
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Page routes go through the Worker first, so that a visitor without a
     // session is sent to the sign-in page; built files are served directly.

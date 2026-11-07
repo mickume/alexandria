@@ -129,4 +129,7 @@ grepping for declarations.
     that answers the Worker's outbound requests.
   - `src/worker/test/setup.ts`: applies the migrations and installs the
     router before each Worker test file.
-  - `src/web/test/helpers.tsx`: `renderPage(path, api)` and `FakeApi`.
+  - `src/web/test/helpers.tsx`: `renderPage(path, api)`, `FakeApi` and
+    `fakeIntersectionObserver()`.
+  - `e2e/helpers.ts`: `signIn(page)` through the fake Google provider,
+    `addLinks(page, urls)`, `longHost(i)`.

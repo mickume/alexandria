@@ -150,3 +150,20 @@ in the stream in the order given.
 - `200 {"added": [<link>], "boosted": [<link>], "invalid": [{"url": <input>, "error": "invalid_url" | "library_full"}]}`
 - `400 {"error": "no_urls" | "too_many_urls", "field": "urls", "message"}`;
   nothing is stored.
+
+#### `GET /api/v1/links`
+
+The stream: the links that are not archived, the pinned ones first in pin
+position order, then the rest by `last_used_at`, newest first, with the id
+breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
+
+- `200 {"items": [<link>], "next_cursor": <string or null>}`
+- `400 {"error": "invalid_limit", "field": "limit", "message"}` or
+  `400 {"error": "invalid_cursor", "field": "cursor", "message"}`
+
+While the library is unchanged, following the cursors returns every link
+once.
+
+#### `GET /api/v1/links/{id}`
+
+One link: `200 <link>`, or `404 {"error": "not_found"}`.

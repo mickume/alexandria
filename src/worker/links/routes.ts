@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { limitReached, readJson, validationError } from '../api/errors';
+import { limitReached, notFound, readJson, validationError } from '../api/errors';
+import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { normalizeUrl } from './normalize';
-import { addLink, addLinks, type LinkView, type NewLink } from './store';
+import { addLink, addLinks, getLink, toView, type LinkView, type NewLink } from './store';
+import { isStreamCursor, listStream } from './stream';
 
 /** The most URLs one batch may carry. */
 export const BATCH_LIMIT = 100;
@@ -64,4 +66,39 @@ linkRoutes.post('/batch', async (c) => {
     else invalid.push({ url: unique[i]?.original, error: 'library_full' });
   });
   return c.json({ added, boosted, invalid });
+});
+
+linkRoutes.get('/', async (c) => {
+  const limit = parseLimit(c.req.query('limit'));
+  if (limit === null) {
+    return validationError(
+      c,
+      'invalid_limit',
+      'limit',
+      `limit must be an integer from 1 to ${MAX_LIMIT}`,
+    );
+  }
+  const raw = c.req.query('cursor');
+  let after = null;
+  if (raw !== undefined) {
+    after = await decodeCursor(c.env, raw);
+    if (!isStreamCursor(after)) {
+      return validationError(
+        c,
+        'invalid_cursor',
+        'cursor',
+        'the cursor was not issued by this API',
+      );
+    }
+  }
+  const page = await listStream(c.env.DB, c.get('user').id, limit, after);
+  return c.json({
+    items: page.items.map(toView),
+    next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
+  });
+});
+
+linkRoutes.get('/:id', async (c) => {
+  const row = await getLink(c.env.DB, c.get('user').id, c.req.param('id'));
+  return row ? c.json(toView(row)) : notFound(c);
 });

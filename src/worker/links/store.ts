@@ -115,3 +115,11 @@ export async function addLinks(
   );
   return results.map((r, i) => outcome(r.results[0], ids[i] ?? ''));
 }
+
+/** One of the user's links, or null when the user has no link with this id. */
+export async function getLink(db: D1Database, userId: string, id: string): Promise<LinkRow | null> {
+  return db
+    .prepare('SELECT * FROM links WHERE id = ? AND user_id = ?')
+    .bind(id, userId)
+    .first<LinkRow>();
+}

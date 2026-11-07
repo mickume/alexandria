@@ -181,6 +181,30 @@ export const operations: Operation[] = [
       400: error('invalid_json, no_urls or too_many_urls'),
     },
   },
+  {
+    method: 'get',
+    path: '/links',
+    operationId: 'listLinks',
+    summary: 'The stream: pinned links by position, then the rest by last use, newest first',
+    query: {
+      limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of the stream; archived links are left out',
+        schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}',
+    operationId: 'getLink',
+    summary: 'One link',
+    responses: { 200: { description: 'The link', schema: Link } },
+  },
 ];
 
 function jsonSchema(schema: z.ZodType): object {

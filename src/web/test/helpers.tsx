@@ -94,3 +94,42 @@ export function renderPage(
   globalThis.fetch = api.fetch as typeof fetch;
   return { ...render(<App />), api };
 }
+
+/**
+ * Replaces IntersectionObserver with a fake whose entries the test triggers,
+ * since the test DOM lays nothing out. Returns `reveal`, which reports every
+ * observed element as visible.
+ */
+export function fakeIntersectionObserver(): { reveal: () => void } {
+  const observers = new Set<{ cb: IntersectionObserverCallback; els: Set<Element> }>();
+  class FakeObserver {
+    private entry: { cb: IntersectionObserverCallback; els: Set<Element> };
+    constructor(cb: IntersectionObserverCallback) {
+      this.entry = { cb, els: new Set() };
+      observers.add(this.entry);
+    }
+    observe(el: Element) {
+      this.entry.els.add(el);
+    }
+    unobserve(el: Element) {
+      this.entry.els.delete(el);
+    }
+    disconnect() {
+      observers.delete(this.entry);
+    }
+    takeRecords() {
+      return [];
+    }
+  }
+  globalThis.IntersectionObserver = FakeObserver as unknown as typeof IntersectionObserver;
+  return {
+    reveal: () => {
+      for (const { cb, els } of [...observers]) {
+        const entries = [...els].map(
+          (target) => ({ target, isIntersecting: true }) as IntersectionObserverEntry,
+        );
+        if (entries.length) cb(entries, {} as IntersectionObserver);
+      }
+    },
+  };
+}

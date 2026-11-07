@@ -5,6 +5,7 @@
 - [web/api](web/api.md)
 - [web/App](web/App.md)
 - [web/components/AddLinks](web/components/AddLinks.md)
+- [web/components/LinkCard](web/components/LinkCard.md)
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/Settings](web/pages/Settings.md)
@@ -28,3 +29,4 @@
 - [worker/links/normalize](worker/links/normalize.md)
 - [worker/links/routes](worker/links/routes.md)
 - [worker/links/store](worker/links/store.md)
+- [worker/links/stream](worker/links/stream.md)
