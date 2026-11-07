@@ -327,3 +327,54 @@ export async function addAndFetch(
   );
   return { id, delivery, sent, prefix: `u/${user.id}/l/${id}/` };
 }
+
+/** The links of the filter tests, by name. */
+export interface FilterLinks {
+  a: string;
+  b: string;
+  c: string;
+}
+
+/**
+ * Seeds the filter table's links through the API: a (tags cloudflare and
+ * queues, host developers.cloudflare.com, topic Infrastructure, in workspace
+ * Work, pinned), b (tag cloudflare, host cloudflare.com, dead) and c (no
+ * tags, host notcloudflare.com). Only a holds the word 'queues'.
+ */
+export async function seedFilterLinks(user: TestUser): Promise<FilterLinks> {
+  const add = async (url: string, edit: Record<string, unknown>) => {
+    const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
+    const id: string = r.json.link.id;
+    await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: edit });
+    return id;
+  };
+  const c = await add('https://notcloudflare.com/', { title: 'Not Cloudflare' });
+  const b = await add('https://cloudflare.com/', { title: 'Cloudflare', tags: ['cloudflare'] });
+  const a = await add('https://developers.cloudflare.com/queues', {
+    title: 'Cloudflare Queues',
+    tags: ['cloudflare', 'queues'],
+    topic: 'Infrastructure',
+  });
+  const ws = await api('POST', '/api/v1/workspaces', { as: user.session, body: { name: 'Work' } });
+  await api('POST', `/api/v1/workspaces/${ws.json.id}/links`, {
+    as: user.session,
+    body: { link_id: a },
+  });
+  await api('POST', `/api/v1/links/${a}/pin`, { as: user.session });
+  await env.DB.prepare('UPDATE links SET dead_since = ? WHERE id = ?')
+    .bind('2026-01-01T00:00:00.000Z', b)
+    .run();
+  return { a, b, c };
+}
+
+/** The filter table: each query and the links it finds. */
+export const FILTER_TABLE: [string, (keyof FilterLinks)[]][] = [
+  ['tag:Cloudflare', ['a', 'b']],
+  ['tag:cloudflare tag:queues', ['a']],
+  ['topic:infrastructure', ['a']],
+  ['host:cloudflare.com', ['a', 'b']],
+  ['in:work', ['a']],
+  ['in:"no such workspace"', []],
+  ['is:pinned', ['a']],
+  ['is:dead', ['b']],
+];

@@ -120,6 +120,20 @@ export const WorkspaceSummary = z.strictObject({
 /** A workspace on its own, with its note. */
 export const Workspace = WorkspaceSummary.extend({ note: z.string() });
 
+/** The link list's filters, with the meaning of the search's prefix filters; each may repeat. */
+const FILTER_PARAMETERS: Operation['query'] = {
+  tag: { description: 'Links with this tag (ignoring case)', schema: z.string() },
+  topic: { description: 'Links with this topic (ignoring case)', schema: z.string() },
+  host: { description: 'Links on this host or a subdomain of it', schema: z.string() },
+  state: {
+    description:
+      'pending, active, unreachable, dormant, archived or any; without it, archived links are left out',
+    schema: z.string(),
+  },
+  in: { description: 'Links in the workspace with this name (ignoring case)', schema: z.string() },
+  is: { description: 'pinned or dead', schema: z.string() },
+};
+
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
@@ -518,6 +532,7 @@ export const operations: Operation[] = [
           'Instead of a page: the links changed since this time (a server_time), oldest change first',
         schema: z.string(),
       },
+      ...FILTER_PARAMETERS,
     },
     responses: {
       200: {
@@ -528,7 +543,9 @@ export const operations: Operation[] = [
           z.strictObject({ items: z.array(Link), server_time: z.string() }),
         ]),
       },
-      400: error('invalid_limit, invalid_cursor or invalid_changed_since'),
+      400: error(
+        'invalid_limit, invalid_cursor, invalid_changed_since, or invalid_filter naming the parameter',
+      ),
     },
   },
   {

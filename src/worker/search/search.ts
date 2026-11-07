@@ -1,5 +1,6 @@
 /** Search: the full-text index of the user's links, and the searches over it. */
 import type { Env } from '../env';
+import type { Conditions } from './query';
 
 /** The most reader-view text the index holds for a link, in characters. */
 export const INDEXED_TEXT_MAX = 500_000;
@@ -93,12 +94,6 @@ function snippetSql(table: string): string {
 export interface RankedLink {
   id: string;
   snippet: Segment[];
-}
-
-/** Conditions on the links (aliased l) a search or list is restricted to, with their parameters. */
-export interface Conditions {
-  sql: string[];
-  params: unknown[];
 }
 
 /**

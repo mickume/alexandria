@@ -206,6 +206,13 @@ breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
 While the library is unchanged, following the cursors returns every link
 once.
 
+The filters of the search (below) narrow the list as query parameters, in
+the same stream order: `tag`, `topic`, `host`, `state`, `in` and `is`, each
+with the meaning of its prefix filter; repeated parameters all apply
+(`?tag=cloudflare&tag=queues`). A `state` other than pending, active,
+unreachable, dormant, archived or any, or an `is` other than pinned or dead,
+is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
+
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
 every link that is not archived and changed at or after that time (every
 write to a link sets its `updated_at`), oldest change first, with the
@@ -557,6 +564,23 @@ whose name, description or note holds every free word; later pages have
 
 An empty or blank query answers with the stream, exactly as
 `GET /api/v1/links` lists it, each snippet `[]`.
+
+Prefix filters narrow the results; each is a name, a colon and one word or
+a double-quoted phrase (`topic:"web development"`), names in any case, and
+every filter given applies:
+
+| Filter | Keeps the links |
+|---|---|
+| `tag:<name>` | with that tag, ignoring case |
+| `topic:<name>` | with that topic, ignoring case |
+| `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
+| `in:<workspace>` | in the workspace with that name, ignoring case |
+| `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
+| `state:<state>` | in that state: `pending`, `active`, `unreachable` or `dormant`; `archived` keeps only archived links, `any` every state |
+
+Without a `state:` filter archived links are left out. Any other `word:` is
+a free word. A query of filters only lists the matching links in stream
+order, each snippet `[]`, with the stream's cursor.
 
 Errors: `400 {"error": "query_too_long", "field": "q"}`, and
 `400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;

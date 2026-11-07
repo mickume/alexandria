@@ -4,8 +4,8 @@ import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagina
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { isStreamCursor, listStream } from '../links/stream';
-import { parseQuery } from './query';
-import { linkMatch, matchingWorkspaces, rankedLinks, type Conditions } from './search';
+import { filterConditions, parseQuery, type Filters } from './query';
+import { linkMatch, matchingWorkspaces, rankedLinks } from './search';
 
 /** GET /api/v1/search. */
 export const searchRoutes = new Hono<AppEnv>();
@@ -20,8 +20,6 @@ function isRankCursor(value: unknown): value is RankCursor {
   const c = value as RankCursor | null;
   return typeof c === 'object' && c !== null && c.s === 'r' && Number.isInteger(c.o) && c.o > 0;
 }
-
-const NOT_ARCHIVED: Conditions = { sql: ["l.state <> 'archived'"], params: [] };
 
 function invalidCursor(c: Context<AppEnv>) {
   return validationError(c, 'invalid_cursor', 'cursor', 'the cursor was not issued by this API');
@@ -39,14 +37,23 @@ async function linksInOrder(db: D1Database, userId: string, ids: string[]): Prom
   return ids.flatMap((id) => byId.get(id) ?? []);
 }
 
-/** A query without free words: the stream, as GET /api/v1/links lists it, without snippets. */
-async function streamPage(c: Context<AppEnv>, limit: number, raw: string | undefined) {
+/**
+ * A query without free words: the links satisfying its filters in stream
+ * order, as GET /api/v1/links lists them, without snippets.
+ */
+async function streamPage(
+  c: Context<AppEnv>,
+  filters: Filters,
+  limit: number,
+  raw: string | undefined,
+) {
   let after = null;
   if (raw !== undefined) {
     after = await decodeCursor(c.env, raw);
     if (!isStreamCursor(after)) return invalidCursor(c);
   }
-  const page = await listStream(c.env.DB, c.get('user').id, limit, after);
+  const where = filterConditions(filters);
+  const page = await listStream(c.env.DB, c.get('user').id, limit, after, where);
   return c.json({
     items: page.items.map((row) => ({ link: toView(row), snippet: [] })),
     workspaces: [],
@@ -57,7 +64,7 @@ async function streamPage(c: Context<AppEnv>, limit: number, raw: string | undef
 /** A query with free words: the matching links by relevance, and on the first page the workspaces. */
 async function rankedPage(
   c: Context<AppEnv>,
-  words: string[],
+  { words, filters }: { words: string[]; filters: Filters },
   limit: number,
   raw: string | undefined,
 ) {
@@ -70,7 +77,7 @@ async function rankedPage(
   const userId = c.get('user').id;
   const match = linkMatch(userId, words);
   const ranked = match
-    ? await rankedLinks(c.env.DB, userId, match, NOT_ARCHIVED, limit, offset)
+    ? await rankedLinks(c.env.DB, userId, match, filterConditions(filters), limit, offset)
     : [];
   const page = ranked.slice(0, limit);
   const rows = await linksInOrder(
@@ -101,6 +108,6 @@ searchRoutes.get('/', async (c) => {
   }
   const raw = c.req.query('cursor');
   return parsed.words.length === 0
-    ? streamPage(c, limit, raw)
-    : rankedPage(c, parsed.words, limit, raw);
+    ? streamPage(c, parsed.filters, limit, raw)
+    : rankedPage(c, parsed, limit, raw);
 });

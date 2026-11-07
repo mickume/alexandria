@@ -1,4 +1,5 @@
-/** The search query language: free words and prefix filters. */
+/** The search query language: free words and prefix filters, and what the filters select. */
+import { nameKey } from '../workspaces/store';
 
 /** The longest query, in characters. */
 export const QUERY_MAX = 200;
@@ -14,6 +15,15 @@ export type Filters = Partial<Record<FilterName, string[]>>;
 export const STATE_VALUES = ['pending', 'active', 'unreachable', 'dormant', 'archived', 'any'];
 /** The values `is:` accepts. */
 export const IS_VALUES = ['pinned', 'dead'];
+
+/**
+ * Why a filter's value is refused, or null when it is accepted: `state:` and
+ * `is:` take only their own values.
+ */
+export function refusal(name: FilterName, value: string): string | null {
+  const allowed = name === 'state' ? STATE_VALUES : name === 'is' ? IS_VALUES : null;
+  return allowed && !allowed.includes(value) ? `${name}: takes ${allowed.join(', ')}` : null;
+}
 
 /** A parsed query, or why it was refused. */
 export type ParsedQuery =
@@ -67,16 +77,82 @@ export function parseQuery(q: string): ParsedQuery {
       words.push(term);
       continue;
     }
-    const allowed =
-      filter.name === 'state' ? STATE_VALUES : filter.name === 'is' ? IS_VALUES : null;
-    if (allowed && !allowed.includes(filter.value)) {
-      return {
-        ok: false,
-        error: 'invalid_filter',
-        message: `${term} is not a filter: ${filter.name}: takes ${allowed.join(', ')}`,
-      };
+    const refused = refusal(filter.name, filter.value);
+    if (refused) {
+      return { ok: false, error: 'invalid_filter', message: `${term} is not a filter: ${refused}` };
     }
     (filters[filter.name] ??= []).push(filter.value);
   }
   return { ok: true, words, filters };
+}
+
+/** Conditions on the links (aliased l) a search or list is restricted to, with their parameters. */
+export interface Conditions {
+  sql: string[];
+  params: unknown[];
+}
+
+/**
+ * The conditions that select the links satisfying every filter: a tag or
+ * topic with that name and the workspace with that name, ignoring case; a
+ * host equal to the value or ending in '.' and the value; pinned; dead.
+ * Archived links are left out unless a `state:` filter is given: `archived`
+ * selects only them, `any` every state, another value that state.
+ */
+export function filterConditions(filters: Filters): Conditions {
+  const sql: string[] = [];
+  const params: unknown[] = [];
+  for (const tag of filters.tag ?? []) {
+    sql.push(`EXISTS (SELECT 1 FROM link_tags lt JOIN tags t ON t.id = lt.tag_id
+      WHERE lt.link_id = l.id AND t.name = ? COLLATE NOCASE)`);
+    params.push(tag);
+  }
+  for (const topic of filters.topic ?? []) {
+    sql.push(
+      'l.topic_id IN (SELECT id FROM topics WHERE user_id = l.user_id AND name = ? COLLATE NOCASE)',
+    );
+    params.push(topic);
+  }
+  for (const host of filters.host ?? []) {
+    const value = host.toLowerCase();
+    sql.push('(lower(l.host) = ? OR substr(lower(l.host), -?) = ?)');
+    params.push(value, value.length + 1, `.${value}`);
+  }
+  for (const name of filters.in ?? []) {
+    sql.push(`EXISTS (SELECT 1 FROM workspace_links wl JOIN workspaces w ON w.id = wl.workspace_id
+      WHERE wl.link_id = l.id AND w.user_id = l.user_id AND w.name_key = ?)`);
+    params.push(nameKey(name));
+  }
+  for (const value of filters.is ?? []) {
+    sql.push(value === 'pinned' ? 'l.pin_position IS NOT NULL' : 'l.dead_since IS NOT NULL');
+  }
+  const states = filters.state ?? [];
+  if (states.length === 0) sql.push("l.state <> 'archived'");
+  for (const state of states.filter((s) => s !== 'any')) {
+    sql.push('l.state = ?');
+    params.push(state);
+  }
+  return { sql, params };
+}
+
+/**
+ * The filters of the link list's query parameters, which have the meaning of
+ * the prefix filters: `values(name)` gives every value of a parameter. Empty
+ * tag, topic, host and in values are ignored; a refused state or is value is
+ * named with its parameter.
+ */
+export function filtersFromParams(
+  values: (name: FilterName) => string[] | undefined,
+): { ok: true; filters: Filters } | { ok: false; field: FilterName; message: string } {
+  const filters: Filters = {};
+  for (const name of FILTER_NAMES) {
+    for (const raw of values(name) ?? []) {
+      const value = name === 'state' || name === 'is' ? raw.toLowerCase() : raw;
+      const refused = refusal(name, value);
+      if (refused)
+        return { ok: false, field: name, message: `${name}=${raw} is not a filter: ${refused}` };
+      if (value.trim()) (filters[name] ??= []).push(value);
+    }
+  }
+  return { ok: true, filters };
 }

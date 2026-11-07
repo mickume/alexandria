@@ -5,7 +5,9 @@ import {
   api,
   deliverFetches,
   env,
+  FILTER_TABLE,
   recordFetchQueue,
+  seedFilterLinks,
   seedLinks,
   setNow,
   signIn,
@@ -428,6 +430,79 @@ describe('GET /api/v1/search', () => {
       expect([200, 400], q).toContain(r.status);
       if (r.status === 400) expect(r.json.error, q).toBe('invalid_filter');
     }
+  });
+});
+
+describe('filters', () => {
+  it.each([...FILTER_TABLE, ['queues is:dead', []], ['queues tag:queues', ['a']]] as const)(
+    '%s finds exactly %j',
+    async (query, expected) => {
+      const user = await signIn();
+      const links = await seedFilterLinks(user);
+      const found = await foundIds(user, query);
+      expect([...found].sort()).toEqual(expected.map((k) => links[k]).sort());
+    },
+  );
+
+  it('keeps archived links out unless state:archived or state:any asks for them', async () => {
+    const user = await signIn();
+    const [p, a, d, x] = await seedLinks(user, [
+      { url: 'https://kiwi-p.example/', state: 'pending' },
+      { url: 'https://kiwi-a.example/', state: 'active' },
+      { url: 'https://kiwi-d.example/', state: 'dormant' },
+      { url: 'https://kiwi-x.example/', state: 'archived' },
+    ]);
+    const sorted = async (q: string) => [...(await foundIds(user, q))].sort();
+    expect(await sorted('kiwi')).toEqual([p, a, d].sort());
+    expect(await sorted('kiwi state:archived')).toEqual([x]);
+    expect(await sorted('kiwi state:any')).toEqual([p, a, d, x].sort());
+    expect(await sorted('kiwi state:dormant')).toEqual([d]);
+    expect(await sorted('state:archived')).toEqual([x]);
+  });
+
+  it('lists a filter-only query in stream order without snippets', async () => {
+    const user = await signIn();
+    const [t1, t2, t3] = await seedLinks(user, [
+      { url: 'https://t1.example', lastUsedAt: '2026-01-01T00:00:00.000Z', pinPosition: 1 },
+      { url: 'https://t2.example', lastUsedAt: '2026-01-02T00:00:00.000Z' },
+      { url: 'https://t3.example', lastUsedAt: '2026-01-03T00:00:00.000Z' },
+      { url: 'https://untagged.example', lastUsedAt: '2026-01-04T00:00:00.000Z' },
+    ]);
+    for (const id of [t1, t2, t3]) await patch(user, id!, { tags: ['x'] });
+    const r = await search(user, 'tag:x');
+    expect(r.json.items.map((i: { link: { id: string } }) => i.link.id)).toEqual([t1, t3, t2]);
+    expect(r.json.items.every((i: { snippet: unknown[] }) => i.snippet.length === 0)).toBe(true);
+    expect(r.json.workspaces).toEqual([]);
+  });
+
+  it('follow every change to pins, workspaces and the archive', async () => {
+    const user = await signIn();
+    const id = await add(user, 'https://moving.example/');
+    const has = async (q: string) => (await foundIds(user, q)).includes(id);
+    const post = (path: string, body?: unknown) =>
+      api('POST', `/api/v1${path}`, { as: user.session, body });
+    const del = (path: string) => api('DELETE', `/api/v1${path}`, { as: user.session });
+
+    expect(await has('is:pinned')).toBe(false);
+    await post(`/links/${id}/pin`);
+    expect(await has('is:pinned')).toBe(true);
+    await del(`/links/${id}/pin`);
+    expect(await has('is:pinned')).toBe(false);
+
+    const ws = (await post('/workspaces', { name: 'Work' })).json.id;
+    expect(await has('in:work')).toBe(false);
+    await post(`/workspaces/${ws}/links`, { link_id: id });
+    expect(await has('in:work')).toBe(true);
+    await del(`/workspaces/${ws}/links/${id}`);
+    expect(await has('in:work')).toBe(false);
+
+    expect(await has('state:archived')).toBe(false);
+    await post(`/links/${id}/archive`);
+    expect(await has('state:archived')).toBe(true);
+    expect(await has('moving')).toBe(false);
+    await post(`/links/${id}/restore`);
+    expect(await has('state:archived')).toBe(false);
+    expect(await has('moving')).toBe(true);
   });
 });
 
