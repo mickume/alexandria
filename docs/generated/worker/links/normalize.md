@@ -10,6 +10,44 @@ The outcome of normalising one input.
 
 ## Functions
 
+### isFetchable()
+
+> **isFetchable**(`url`): `boolean`
+
+Whether the fetcher may request `url`: an http or https URL whose host is not
+localhost, a loopback, private or link-local address. Every redirect target
+is checked with this, so a public URL cannot lead the fetcher into a private network.
+
+#### Parameters
+
+##### url
+
+`URL`
+
+#### Returns
+
+`boolean`
+
+***
+
+### isPrivateHost()
+
+> **isPrivateHost**(`hostname`): `boolean`
+
+Whether a URL's hostname is localhost or a loopback, private, link-local or unspecified address.
+
+#### Parameters
+
+##### hostname
+
+`string`
+
+#### Returns
+
+`boolean`
+
+***
+
 ### normalizeUrl()
 
 > **normalizeUrl**(`input`): [`NormalizeResult`](#normalizeresult)

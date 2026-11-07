@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
-import type { AppEnv } from '../env';
+import type { AppEnv, Env } from '../env';
 import { normalizeUrl } from './normalize';
 import {
   addLink,
@@ -23,6 +23,12 @@ export const BATCH_LIMIT = 100;
 const INVALID_URL_MESSAGE = 'not a valid web address';
 const LIBRARY_FULL_MESSAGE = 'library full (20,000 links)';
 
+/** Asks the fetcher to fetch each newly added link. */
+async function queueFetches(env: Env, userId: string, links: LinkView[]): Promise<void> {
+  if (links.length === 0) return;
+  await env.FETCH_QUEUE.sendBatch(links.map((l) => ({ body: { user_id: userId, link_id: l.id } })));
+}
+
 /** The user's links, under /api/v1/links. */
 export const linkRoutes = new Hono<AppEnv>();
 
@@ -40,6 +46,7 @@ linkRoutes.post('/', async (c) => {
   });
   if (result.status === 'library_full')
     return limitReached(c, 'library_full', LIBRARY_FULL_MESSAGE);
+  if (result.status === 'added') await queueFetches(c.env, c.get('user').id, [result.link]);
   return c.json(result, result.status === 'added' ? 201 : 200);
 });
 
@@ -76,6 +83,7 @@ linkRoutes.post('/batch', async (c) => {
     else if (o.status === 'boosted') boosted.push(o.link);
     else invalid.push({ url: unique[i]?.original, error: 'library_full' });
   });
+  await queueFetches(c.env, c.get('user').id, added);
   return c.json({ added, boosted, invalid });
 });
 

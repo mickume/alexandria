@@ -9,10 +9,12 @@ the layout are in [ADR 01](adr/01-build-on-a-cloudflare-worker-with-d1.md).
 browser ──► Worker (src/worker/index.ts)
               ├── /api/v1/*   the JSON API (Hono)
               ├── /auth/*     sign-in with Google, sign-out
+              ├── /about/*    public pages (the fetcher)
               └── pages       website's static assets (dist/client), after the session check
                      │
-                     ▼
-                 D1 (DB)      users, sessions, tokens, links, link_uses, rate_limits
+                     ├──► D1 (DB)          users, sessions, tokens, links, link_uses, rate_limits, …
+                     ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites
+                     └──► R2 (SNAPSHOTS)   snapshots and reader views
 ```
 
 - **The Worker** (`src/worker/`): `index.ts` is the entry point and hands every
@@ -70,6 +72,20 @@ account and checks the PKCE verifier as Google does.
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
 - **The database** (`migrations/`): plain SQL migrations applied in order.
+
+## Fetching
+
+Adding a link sends one message `{user_id, link_id}` on `FETCH_QUEUE`
+(`links/routes.ts`). The queue consumer (`fetcher/queue.ts`, the Worker's
+`queue` handler) processes a batch's messages concurrently. Each fetch
+(`fetcher/fetch.ts`) sends a GET with `Accept: text/html, application/pdf` and
+`User-Agent: Alexandria/1.0 (+PUBLIC_ORIGIN/about/fetcher)`, follows at most 5
+redirects by hand and refuses any target that is not a public http(s) address
+(the normaliser's address rules), and gives each request and its body 15
+seconds. Before every request it waits for the host gate
+(`fetcher/hostgate.ts`): one Durable Object per host name hands out slots at
+least one second apart, across all users and jobs. `robots.txt` is not read.
+`GET /about/fetcher` is the public page that explains the fetcher.
 
 ## Test layers
 

@@ -20,12 +20,22 @@
       "migrations_dir": "migrations",
     },
   ],
+  "queues": {
+    "producers": [{ "binding": "FETCH_QUEUE", "queue": "alexandria-fetch" }],
+    "consumers": [{ "queue": "alexandria-fetch", "max_batch_size": 10, "max_retries": 5 }],
+  },
+  // One Durable Object per host spaces Alexandria's requests to it a second apart.
+  "durable_objects": { "bindings": [{ "name": "HOST_GATE", "class_name": "HostGate" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HostGate"] }],
+  // Snapshots and reader views, under u/{user_id}/l/{link_id}/.
+  "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "alexandria-snapshots" }],
   "vars": {
     "ALLOWED_EMAILS": "",
     "GOOGLE_CLIENT_ID": "",
     "GOOGLE_AUTH_URL": "https://accounts.google.com/o/oauth2/v2/auth",
     "GOOGLE_TOKEN_URL": "https://oauth2.googleapis.com/token",
     "PUBLIC_ORIGIN": "http://localhost:8787",
+    // ORIGIN_PROXY_URL is left unset in production; the end-to-end tests set it.
   },
   // GOOGLE_CLIENT_SECRET is a secret: `wrangler secret put GOOGLE_CLIENT_SECRET`,
   // or a line in .dev.vars for local development.

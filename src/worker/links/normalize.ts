@@ -76,7 +76,7 @@ function isWebHost(hostname: string): boolean {
 }
 
 /** Whether a URL's hostname is localhost or a loopback, private, link-local or unspecified address. */
-function isPrivateHost(hostname: string): boolean {
+export function isPrivateHost(hostname: string): boolean {
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
   if (hostname.startsWith('[')) return isPrivateIPv6(hostname.slice(1, -1));
   const v4 = parseIPv4(hostname);
@@ -113,4 +113,13 @@ function isPrivateIPv6(address: string): boolean {
   }
   const first = parseInt(address.split(':')[0] || '0', 16);
   return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+}
+
+/**
+ * Whether the fetcher may request `url`: an http or https URL whose host is not
+ * localhost, a loopback, private or link-local address. Every redirect target
+ * is checked with this, so a public URL cannot lead the fetcher into a private network.
+ */
+export function isFetchable(url: URL): boolean {
+  return (url.protocol === 'http:' || url.protocol === 'https:') && !isPrivateHost(url.hostname);
 }

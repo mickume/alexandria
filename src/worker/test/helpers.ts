@@ -2,7 +2,15 @@
  * Shared helpers of the Worker tests: requests through the real Worker,
  * signed-in users, tokens, seeded links and the clock.
  */
-import { env, SELF } from 'cloudflare:test';
+import {
+  createExecutionContext,
+  createMessageBatch,
+  env,
+  getQueueResult,
+  SELF,
+} from 'cloudflare:test';
+import type { FetchMessage } from '../env';
+import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
 
@@ -200,4 +208,46 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
     await env.DB.batch(statements.slice(i, i + 500));
   }
   return ids;
+}
+
+/** One message the Worker sent on a queue. */
+export interface SentMessage<T = unknown> {
+  body: T;
+  delaySeconds?: number;
+}
+
+/** Replaces FETCH_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordFetchQueue(): SentMessage<FetchMessage>[] {
+  const sent: SentMessage<FetchMessage>[] = [];
+  env.FETCH_QUEUE = {
+    async send(body: FetchMessage, options?: QueueSendOptions) {
+      sent.push({ body, delaySeconds: options?.delaySeconds });
+    },
+    async sendBatch(messages: Iterable<MessageSendRequest<FetchMessage>>) {
+      for (const m of messages) sent.push({ body: m.body, delaySeconds: m.delaySeconds });
+    },
+  } as unknown as Queue<FetchMessage>;
+  return sent;
+}
+
+/**
+ * Delivers fetch messages to the Worker's queue consumer in one batch, with
+ * `bindings` replacing some of env (to make a write fail), and returns which
+ * messages were acknowledged and which handed back for retry.
+ */
+export async function deliverFetches(
+  bodies: FetchMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  const batch = createMessageBatch<FetchMessage>(
+    'alexandria-fetch',
+    bodies.map((body, i) => ({ id: `m${i}`, timestamp: new Date(), attempts: 1, body })),
+  );
+  const ctx = createExecutionContext();
+  await worker.queue?.(batch as MessageBatch<FetchMessage>, { ...env, ...bindings }, ctx);
+  const result = await getQueueResult(batch, ctx);
+  return {
+    acked: result.explicitAcks,
+    retried: result.retryMessages.map((m) => m.msgId),
+  };
 }

@@ -29,3 +29,31 @@
 ###### Returns
 
 `Response` \| `Promise`\<`Response`\>
+
+##### queue()
+
+> **queue**(`batch`, `env`, `ctx`): `Promise`\<`void`\>
+
+###### Parameters
+
+###### batch
+
+`MessageBatch`\<[`FetchMessage`](worker/env.md#fetchmessage)\>
+
+###### env
+
+[`Env`](worker/env.md#env)
+
+###### ctx
+
+`ExecutionContext`\<`unknown`\>
+
+###### Returns
+
+`Promise`\<`void`\>
+
+## References
+
+### HostGate
+
+Re-exports [HostGate](worker/fetcher/hostgate.md#hostgate)

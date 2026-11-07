@@ -110,6 +110,12 @@ The website's built static files.
 
 The D1 database holding every user's data.
 
+##### FETCH\_QUEUE
+
+> **FETCH\_QUEUE**: `Queue`\<[`FetchMessage`](#fetchmessage)\>
+
+The queue of fetch messages, one per link to fetch.
+
 ##### GOOGLE\_AUTH\_URL
 
 > **GOOGLE\_AUTH\_URL**: `string`
@@ -134,8 +140,48 @@ The OAuth client secret of the Google project.
 
 Google's token endpoint; configurable so tests can run a local fake.
 
+##### HOST\_GATE
+
+> **HOST\_GATE**: `DurableObjectNamespace`\<[`HostGate`](fetcher/hostgate.md#hostgate)\>
+
+The per-host rate limit: one Durable Object per host.
+
+##### ORIGIN\_PROXY\_URL?
+
+> `optional` **ORIGIN\_PROXY\_URL?**: `string`
+
+End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target.
+
 ##### PUBLIC\_ORIGIN
 
 > **PUBLIC\_ORIGIN**: `string`
 
 The site's own origin, such as https://alexandria.example.com.
+
+##### SNAPSHOTS
+
+> **SNAPSHOTS**: `R2Bucket`
+
+Snapshots and reader views.
+
+***
+
+### FetchMessage
+
+A request to fetch one link's page.
+
+#### Properties
+
+##### link\_id
+
+> **link\_id**: `string`
+
+##### refresh?
+
+> `optional` **refresh?**: `boolean`
+
+Set for a refresh the owner asked for; a failed refresh is not retried.
+
+##### user\_id
+
+> **user\_id**: `string`
