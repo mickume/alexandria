@@ -214,3 +214,36 @@ describe('adding a link to a workspace from its card', () => {
     expect(api.sent('POST')).toHaveLength(1);
   });
 });
+
+describe('a card’s note and workspaces', () => {
+  it.each([
+    {
+      label: 'a note and two workspaces',
+      note_preview: 'Hotels',
+      workspaces: [
+        { id: 'wa', name: 'A' },
+        { id: 'wb', name: 'b' },
+      ],
+    },
+    { label: 'neither', note_preview: null, workspaces: [] },
+  ])('shows $label', ({ note_preview, workspaces }) => {
+    const l = makeLink({ id: 'n', title: 'Noted', note_preview, workspaces });
+    const { container } = render(
+      <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
+    );
+    const card = container.querySelector('article')!;
+    const preview = card.querySelector('.note-preview');
+    if (note_preview) {
+      expect(preview?.textContent).toBe(note_preview);
+      expect(card.firstElementChild).toBe(preview);
+    } else {
+      expect(preview).toBeNull();
+    }
+    const chips = [...card.querySelectorAll('a')].filter((a) =>
+      a.getAttribute('href')?.startsWith('/workspaces/'),
+    );
+    expect(chips.map((c) => [c.textContent, c.getAttribute('href')])).toEqual(
+      workspaces.map((w) => [w.name, `/workspaces/${w.id}`]),
+    );
+  });
+});

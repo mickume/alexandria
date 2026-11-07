@@ -118,6 +118,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           : undefined
       }
     >
+      {link.note_preview && <p className="note-preview">{link.note_preview}</p>}
       <div className="card-head">
         {link.favicon_url && (
           <img className="favicon" src={link.favicon_url} alt="" width={16} height={16} />

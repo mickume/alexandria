@@ -158,8 +158,10 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
-  edit: (id: string, fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>>) =>
-    request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  edit: (
+    id: string,
+    fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>> & { note?: string },
+  ) => request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>

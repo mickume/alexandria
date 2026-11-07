@@ -640,7 +640,7 @@ A workspace on its own, with its note.
 
 ###### fields
 
-`Partial`\<`Pick`\<[`Link`](#link), `"title"` \| `"summary"` \| `"tags"` \| `"topic"`\>\>
+`Partial`\<`Pick`\<[`Link`](#link), `"title"` \| `"summary"` \| `"tags"` \| `"topic"`\>\> & `object`
 
 ###### Returns
 

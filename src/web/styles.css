@@ -556,3 +556,9 @@ select {
 .member {
   cursor: grab;
 }
+
+.note-preview {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}

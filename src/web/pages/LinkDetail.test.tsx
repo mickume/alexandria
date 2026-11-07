@@ -153,3 +153,57 @@ describe('editing a link on its detail page', () => {
     expect(within(topic).getByText('a topic of 1 to 100 characters')).toBeTruthy();
   });
 });
+
+describe('the note of a link on its detail page', () => {
+  function noteApi(): FakeApi {
+    let current = makeLink({
+      id: 'abc',
+      title: 'Noted',
+      state: 'active',
+      note: '**read** first',
+      workspaces: [{ id: 'wa', name: 'A' }],
+    });
+    return new FakeApi()
+      .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('PATCH', '/api/v1/links/abc', (req) => {
+        current = { ...current, ...(req.body as object) };
+        return { status: 200, body: current };
+      });
+  }
+
+  it('shows the rendered note and the workspaces, and saves an edit', async () => {
+    const api = noteApi();
+    const { container } = renderPage('/links/abc', api);
+    expect((await screen.findByText('read')).tagName).toBe('STRONG');
+    const chip = [...container.querySelectorAll('a')].find(
+      (a) => a.getAttribute('href') === '/workspaces/wa',
+    );
+    expect(chip?.textContent).toBe('A');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit note' }));
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: '*new* text' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    });
+    expect(api.sent('PATCH', '/api/v1/links/abc')[0]?.body).toEqual({ note: '*new* text' });
+    expect((await screen.findByText('new')).tagName).toBe('EM');
+  });
+
+  it('keeps the editor open with the text when the note is too long', async () => {
+    const api = noteApi().on('PATCH', '/api/v1/links/abc', {
+      status: 400,
+      body: { error: 'note_too_long', field: 'note', message: 'note too long (20,000 characters)' },
+    });
+    renderPage('/links/abc', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit note' }));
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'too much' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+    });
+    expect(await screen.findByText('note too long (20,000 characters)')).toBeTruthy();
+    expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('too much');
+  });
+});
