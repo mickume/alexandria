@@ -331,3 +331,16 @@ Schedules every link waiting to be enriched (`no_key`, `waiting_for_key` or
 `failed`) through the background throttle, at most 20 a minute, and marks
 them `queued`: `202 {"queued": <n>}`. Without a key, or with a rejected one:
 `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`.
+
+#### `POST /api/v1/links/{id}/enrich`
+
+Runs the link's enrichment again, at once and outside the throttle:
+`202 {"status": "queued"}`. Without a verified key:
+`409 {"error": "no_ai_key", …}`; for a link that is pending, unreachable or
+skipped: `409 {"error": "nothing_to_enrich", "message"}`.
+
+A failed automatic enrichment (a provider error, a rate limit, a refusal, no
+answer within 60 seconds, or an unusable result) leaves the link `active`
+with its fetched title and description, marks it `failed` with
+`enrichment_reason`, and is tried once more 10 minutes later; a re-run asked
+for here is not retried.

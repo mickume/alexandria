@@ -1,5 +1,5 @@
 import { Hono, type Context } from 'hono';
-import { readJson, refusal, validationError } from '../api/errors';
+import { notFound, readJson, refusal, validationError } from '../api/errors';
 import { now } from '../clock';
 import type { AppEnv } from '../env';
 import {
@@ -10,7 +10,9 @@ import {
   type AiSettings,
   type Provider,
 } from './keys';
+import { getLink } from '../links/store';
 import { testKey } from './providers';
+import { setEnrichmentStatus } from './queue';
 import { sendThrottled } from './throttle';
 
 /** The longest model identifier accepted. */
@@ -143,4 +145,21 @@ enrichLinkRoutes.post('/enrich-unenriched', async (c) => {
   const ids = rows.results.map((r) => r.id);
   await sendThrottled(c.env, userId, ids);
   return c.json({ queued: ids.length }, 202);
+});
+
+enrichLinkRoutes.post('/:id/enrich', async (c) => {
+  const userId = c.get('user').id;
+  if (!(await hasVerifiedKey(c.env.DB, userId))) return c.json(NO_AI_KEY, 409);
+  const link = await getLink(c.env.DB, userId, c.req.param('id'));
+  if (!link) return notFound(c);
+  if (
+    link.state === 'pending' ||
+    link.state === 'unreachable' ||
+    link.enrichment_status === 'skipped'
+  ) {
+    return c.json({ error: 'nothing_to_enrich', message: 'this link has nothing to enrich' }, 409);
+  }
+  await setEnrichmentStatus(c.env.DB, link, 'queued');
+  await c.env.ENRICH_QUEUE.send({ user_id: userId, link_id: link.id, manual: true });
+  return c.json({ status: 'queued' }, 202);
 });

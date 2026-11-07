@@ -101,8 +101,34 @@ async function processEnrichment(env: Env, message: Message<EnrichMessage>): Pro
     await promptFor(env, link),
   );
   const result = outcome.ok ? normalizeResult(outcome.value) : null;
-  if (result) await storeEnrichment(env, link, result);
+  if (result) {
+    await storeEnrichment(env, link, result);
+  } else {
+    const reason = outcome.ok ? 'the result was not usable' : outcome.message;
+    await recordFailedEnrichment(env, link, message.body, reason);
+  }
   message.ack();
+}
+
+/** The delay before the one automatic retry of a failed enrichment. */
+const RETRY_DELAY_SECONDS = 600;
+
+/**
+ * Marks a link's enrichment failed with its reason, keeping what the fetch
+ * stored, and sends the first automatic attempt again in 10 minutes; a retry
+ * or a re-run the owner asked for is not retried.
+ */
+async function recordFailedEnrichment(
+  env: Env,
+  link: LinkRow,
+  body: EnrichMessage,
+  reason: string,
+): Promise<void> {
+  await setEnrichmentStatus(env.DB, link, 'failed', reason);
+  const firstAutomatic = !body.manual && (body.attempt ?? 1) === 1;
+  if (firstAutomatic) {
+    await env.ENRICH_QUEUE.send({ ...body, attempt: 2 }, { delaySeconds: RETRY_DELAY_SECONDS });
+  }
 }
 
 /** The ENRICH_QUEUE consumer. */

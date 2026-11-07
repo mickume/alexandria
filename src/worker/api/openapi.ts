@@ -346,6 +346,16 @@ export const operations: Operation[] = [
   },
   {
     method: 'post',
+    path: '/links/{id}/enrich',
+    operationId: 'enrichLink',
+    summary: 'Run the enrichment of the link again, at once',
+    responses: {
+      202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
+      409: error('no_ai_key, or nothing_to_enrich for a pending, unreachable or skipped link'),
+    },
+  },
+  {
+    method: 'post',
     path: '/links/{id}/refresh',
     operationId: 'refreshLink',
     summary: 'Fetch the link again, replacing its stored copy; at most once per 10 minutes',

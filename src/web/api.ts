@@ -154,6 +154,8 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
+  enrich: (id: string) =>
+    request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/refresh`),
   /** Deletes a link for good; a link already gone counts as deleted. */

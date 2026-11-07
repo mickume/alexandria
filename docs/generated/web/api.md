@@ -550,6 +550,20 @@ One event of a link's history: a use, or a fetch attempt.
 
 `Promise`\<[`Changes`](#changes)\>
 
+##### enrich
+
+> **enrich**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"queued"`; \}\>
+
 ##### get
 
 > **get**: (`id`) => `Promise`\<[`Link`](#link)\>

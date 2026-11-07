@@ -140,3 +140,25 @@ describe('an enriched card', () => {
     expect(screen.getByText('Programming')).toBeTruthy();
   });
 });
+
+describe('a card whose enrichment failed', () => {
+  it('says so and re-runs the enrichment on request', async () => {
+    const api = installFakeApi(
+      new FakeApi().on('POST', '/api/v1/links/bad/enrich', {
+        status: 202,
+        body: { status: 'queued' },
+      }),
+    );
+    const l = makeLink({
+      id: 'bad',
+      state: 'active',
+      enrichment_status: 'failed',
+      enrichment_reason: 'internal error',
+    });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    expect(screen.getByText('enrichment failed')).toBeTruthy();
+    await act(async () => screen.getByRole('button', { name: 're-run enrichment' }).click());
+    expect(api.sent('POST', '/api/v1/links/bad/enrich')).toHaveLength(1);
+    expect(screen.getByText('queued for enrichment')).toBeTruthy();
+  });
+});

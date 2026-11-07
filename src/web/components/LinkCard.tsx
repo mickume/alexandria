@@ -54,6 +54,34 @@ function Summary({ text }: { text: string }) {
   );
 }
 
+/** 'enrichment failed' and the action that runs it again. */
+function EnrichmentFailed({ link, onQueued }: { link: Link; onQueued?: (link: Link) => void }) {
+  const [status, setStatus] = useState<string | null>(null);
+  async function rerun() {
+    try {
+      await links.enrich(link.id);
+      setStatus('queued for enrichment');
+      onQueued?.(link);
+    } catch (err) {
+      setStatus(err instanceof ApiError ? err.message : 'could not re-run, try again');
+    }
+  }
+  return (
+    <div className="enrichment-failed">
+      <span className="notice">enrichment failed</span>
+      {status ? (
+        <span className="muted" role="status">
+          {status}
+        </span>
+      ) : (
+        <button type="button" className="link-button" onClick={() => void rerun()}>
+          re-run enrichment
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** What a card's actions do; the stream page supplies them. */
 export interface CardActions {
   onPin: (link: Link) => void;
@@ -110,6 +138,9 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         ))}
       </div>
       {link.summary && <Summary text={link.summary} />}
+      {link.enrichment_status === 'failed' && (
+        <EnrichmentFailed link={link} onQueued={actions.onRefreshing} />
+      )}
       {(link.tags.length > 0 || link.topic) && (
         <div className="card-labels">
           {link.topic && <span className="topic">{link.topic}</span>}

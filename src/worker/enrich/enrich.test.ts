@@ -16,6 +16,7 @@ import {
 import { blogArticle, longArticle } from '../fetcher/fixtures/pages';
 import { scannedPdf } from '../fetcher/fixtures/pdfs';
 import { normalizeResult } from './enrich';
+import { setProviderTimeout } from './providers';
 
 const ARTICLE = 'https://news.example/enrich-me';
 
@@ -436,6 +437,118 @@ describe('enriching all unenriched links', () => {
     const r = await api('POST', '/api/v1/links/enrich-unenriched', { as: user.session });
     expect(r.status).toBe(409);
     expect(r.json).toEqual({ error: 'no_ai_key', message: 'add an AI key in settings' });
+    expect(sent).toEqual([]);
+  });
+});
+
+describe('a failed enrichment', () => {
+  /** A fetched, queued link and its first enrichment message, with a verified key. */
+  async function queuedLink(ai: FakeAi) {
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    const user = await signIn();
+    await saveKey(user);
+    const enrich = recordEnrichQueue();
+    const { id } = await addAndFetch(user, ARTICLE);
+    void ai;
+    return { user, id, message: enrich[0]!.body };
+  }
+
+  it.each([
+    {
+      label: 'a server error',
+      make: (ai: FakeAi) => ai.status(500, 'internal error', { testsToo: false }),
+    },
+    {
+      label: 'a rate limit',
+      make: (ai: FakeAi) =>
+        ai.status(429, 'rate limited', { testsToo: false, headers: { 'retry-after': '30' } }),
+    },
+    { label: 'a refusal', make: (ai: FakeAi) => ai.refusal() },
+    { label: 'no answer in time', make: (ai: FakeAi) => ai.stall() },
+    {
+      label: 'a result with 2 tags',
+      make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['a', 'b'], topic: 'T' }),
+    },
+  ])(
+    'after $label keeps the link usable, marks it failed and retries once in 10 minutes',
+    async ({ make }) => {
+      const ai = new FakeAi();
+      const { user, id, message } = await queuedLink(ai);
+      make(ai);
+      setProviderTimeout(200);
+      try {
+        const sent = recordEnrichQueue();
+        await deliverEnrichments([message]);
+        const l = await link(user, id);
+        expect(l).toMatchObject({
+          state: 'active',
+          title: 'Why We Keep Links Forever',
+          enrichment_status: 'failed',
+          summary: null,
+          tags: [],
+        });
+        expect(l.enrichment_reason).toEqual(expect.any(String));
+        expect(sent).toEqual([{ body: { ...message, attempt: 2 }, delaySeconds: 600 }]);
+
+        const again = recordEnrichQueue();
+        await deliverEnrichments([sent[0]!.body]);
+        expect((await link(user, id)).enrichment_status).toBe('failed');
+        expect(again).toEqual([]);
+      } finally {
+        setProviderTimeout(null);
+      }
+    },
+  );
+});
+
+describe('re-running an enrichment', () => {
+  it('sends one message at once, outside the throttle, and enriches the link', async () => {
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    const ai = new FakeAi();
+    const user = await signIn();
+    await saveKey(user);
+    const { id } = await addAndFetch(user, ARTICLE);
+    await env.DB.prepare(
+      "UPDATE links SET enrichment_status = 'failed', enrichment_reason = 'internal error' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+    const sent = recordEnrichQueue();
+    const r = await api('POST', `/api/v1/links/${id}/enrich`, { as: user.session });
+    expect(r.status).toBe(202);
+    expect(r.json).toEqual({ status: 'queued' });
+    expect(sent).toEqual([
+      { body: { user_id: user.id, link_id: id, manual: true }, delaySeconds: undefined },
+    ]);
+    await deliverEnrichments([sent[0]!.body]);
+    expect((await link(user, id)).enrichment_status).toBe('enriched');
+    expect(ai.enrichments.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    { label: 'no key', setup: 'nokey', error: 'no_ai_key' },
+    { label: 'a pending link', setup: 'pending', error: 'nothing_to_enrich' },
+    { label: 'an unreachable link', setup: 'unreachable', error: 'nothing_to_enrich' },
+    { label: 'a skipped PDF', setup: 'skipped', error: 'nothing_to_enrich' },
+  ])('is refused for $label', async ({ setup, error }) => {
+    new FakeAi();
+    const user = await signIn();
+    if (setup !== 'nokey') await saveKey(user);
+    const [id] = await seedLinks(user, [
+      {
+        url: 'https://refused.example/',
+        state: setup === 'unreachable' ? 'unreachable' : setup === 'pending' ? 'pending' : 'active',
+      },
+    ]);
+    if (setup === 'skipped')
+      await env.DB.prepare("UPDATE links SET enrichment_status = 'skipped' WHERE id = ?")
+        .bind(id)
+        .run();
+    const sent = recordEnrichQueue();
+    const r = await api('POST', `/api/v1/links/${id}/enrich`, { as: user.session });
+    expect(r.status).toBe(409);
+    expect(r.json.error).toBe(error);
+    expect(typeof r.json.message).toBe('string');
     expect(sent).toEqual([]);
   });
 });
