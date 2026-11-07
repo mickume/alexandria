@@ -12,6 +12,7 @@ import {
   signIn,
   type TestUser,
 } from '../test/helpers';
+import { indexReaderText } from '../search/search';
 
 /** A signed-in user with a personal access token. */
 async function agent(email = 'owner@example.test'): Promise<TestUser & { secret: string }> {
@@ -334,4 +335,87 @@ describe('add_link', () => {
       expect(await linkCount(a)).toBe(299);
     },
   );
+});
+
+/** The use counts and last-used times of the user's links, by id. */
+async function uses(user: TestUser) {
+  const rows = await env.DB.prepare(
+    'SELECT id, use_count, last_used_at FROM links WHERE user_id = ? ORDER BY id',
+  )
+    .bind(user.id)
+    .all();
+  return rows.results;
+}
+
+/** Stores reader-view text for a link, as the fetch worker does, and indexes it. */
+async function readerText(user: TestUser, id: string, text: string) {
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)',
+  )
+    .bind(id, user.id, text)
+    .run();
+  await indexReaderText(env, id, text);
+}
+
+describe('search_links and list_recent', () => {
+  it.each([
+    ['cloudflare queues', undefined, 3],
+    ['cloudflare queues', 2, 2],
+    ['tag:infra queues', undefined, 1],
+    ['zzz-nothing', undefined, 0],
+  ] as const)('search_links %j with limit %s', async (query, limit, expected) => {
+    const a = await agent();
+    const ids = await seedLinks(
+      a,
+      Array.from({ length: 8 }, (_, i) => ({ url: `https://s${i}.example` })),
+    );
+    for (const id of ids.slice(0, 3)) {
+      await readerText(a, id, 'How Cloudflare Queues deliver messages between Workers.');
+    }
+    for (const id of ids.slice(3)) await readerText(a, id, 'A recipe for bread and butter.');
+    await api('PATCH', `/api/v1/links/${ids[0]}`, { as: a.session, body: { tags: ['infra'] } });
+    const before = await uses(a);
+    const r = await mcpTool(a.secret, 'search_links', { query, ...(limit ? { limit } : {}) });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent.items).toHaveLength(expected);
+    const direct = await api(
+      'GET',
+      `/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit ?? 10}`,
+      { as: a.session },
+    );
+    expect(r.structuredContent).toEqual(direct.json);
+    expect(await uses(a)).toEqual(before);
+  });
+
+  it('list_recent returns the first page of the stream', async () => {
+    const a = await agent();
+    const ids = await seedLinks(
+      a,
+      Array.from({ length: 30 }, (_, i) => ({ url: `https://r${i}.example` })),
+    );
+    await api('POST', `/api/v1/links/${ids[5]}/pin`, { as: a.session });
+    const before = await uses(a);
+    const r = await mcpTool(a.secret, 'list_recent', {});
+    const direct = await api('GET', '/api/v1/links?limit=20', { as: a.session });
+    expect(r.structuredContent).toEqual(direct.json);
+    expect(r.structuredContent.items[0].id).toBe(ids[5]);
+    expect(
+      (await mcpTool(a.secret, 'list_recent', { limit: 5 })).structuredContent.items,
+    ).toHaveLength(5);
+    expect(await uses(a)).toEqual(before);
+  });
+
+  it.each([
+    ['search_links', { query: 'x', limit: 0 }, 'limit'],
+    ['search_links', { query: 'x', limit: 101 }, 'limit'],
+    ['list_recent', { limit: 2.5 }, 'limit'],
+    ['search_links', {}, 'query'],
+    ['search_links', { query: '' }, 'query'],
+  ])('%s refuses %j', async (tool, args, field) => {
+    const a = await agent();
+    const r = await mcpTool(a.secret, tool, args);
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent).toMatchObject({ error: 'invalid_arguments', field });
+    expect(r.response.json.error).toBeUndefined();
+  });
 });

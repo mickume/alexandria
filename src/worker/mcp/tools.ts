@@ -193,11 +193,16 @@ export const TOOLS: Tool[] = [
     }),
     run: addLink,
   },
-  pending(
-    'search_links',
-    'Search the library by keywords, with the prefix filters tag:, topic:, host:, state:, in: and is:. Returns the matching links with a snippet each.',
-    z.object({ query: z.string().min(1).describe('The search query'), limit: limit(10) }),
-  ),
+  {
+    name: 'search_links',
+    description:
+      'Search the library by keywords, with the prefix filters tag:, topic:, host:, state:, in: and is:. Returns the matching links with a snippet each.',
+    input: z.object({ query: z.string().min(1).describe('The search query'), limit: limit(10) }),
+    async run(ctx, args: { query: string; limit?: number }) {
+      const q = encodeURIComponent(args.query);
+      return outcomeOf(await ctx.call('GET', `/search?q=${q}&limit=${args.limit ?? 10}`));
+    },
+  },
   pending(
     'get_link',
     'A link’s metadata: its addresses, title, state, summary, tags, topic and dates.',

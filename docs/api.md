@@ -741,6 +741,7 @@ unexpected failure is
 | Tool | Arguments | Does |
 |---|---|---|
 | `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
+| `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included; no use |
 | `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
 
 A `workspace` argument is a workspace's id or its name, compared ignoring
