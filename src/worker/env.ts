@@ -20,6 +20,8 @@ export interface Env {
   FETCH_QUEUE: Queue<FetchMessage>;
   /** The queue of enrichment messages, one per link to summarise, tag and file. */
   ENRICH_QUEUE: Queue<EnrichMessage>;
+  /** The queue of weekly liveness checks, one per link due. */
+  LIVENESS_QUEUE: Queue<LivenessMessage>;
   /** The per-host rate limit: one Durable Object per host. */
   HOST_GATE: DurableObjectNamespace<import('./fetcher/hostgate').HostGate>;
   /** Snapshots and reader views. */
@@ -32,6 +34,12 @@ export interface Env {
   ANTHROPIC_BASE_URL: string;
   /** OpenRouter's API base URL; configurable so tests can run a local fake. */
   OPENROUTER_BASE_URL: string;
+}
+
+/** A request to check that one link's address still answers. */
+export interface LivenessMessage {
+  user_id: string;
+  link_id: string;
 }
 
 /** A request to enrich one link. */

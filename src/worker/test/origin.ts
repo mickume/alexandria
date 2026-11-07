@@ -38,6 +38,14 @@ export class FakeOrigin {
     return this;
   }
 
+  /** Answers `url` with a behaviour per method; a method without one gets 405. */
+  byMethod(url: string, behaviours: Partial<Record<string, Behaviour>>): this {
+    return this.serve(url, (request) => {
+      const behaviour = behaviours[request.method];
+      return behaviour ? behaviour(request) : new Response(null, { status: 405 });
+    });
+  }
+
   /** Serves `body` at `url`. */
   page(
     url: string,

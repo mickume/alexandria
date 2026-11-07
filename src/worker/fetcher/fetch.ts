@@ -105,8 +105,13 @@ function startsWithPdfMagic(bytes: Uint8Array): boolean {
   return new TextDecoder().decode(bytes.subarray(0, 5)) === '%PDF-';
 }
 
-/** Sends one GET for `target`, through ORIGIN_PROXY_URL when that is set. */
-function send(env: Env, target: URL, signal: AbortSignal): Promise<Response> {
+/** Sends one request for `target`, through ORIGIN_PROXY_URL when that is set. */
+function send(
+  env: Env,
+  target: URL,
+  signal: AbortSignal,
+  method: 'GET' | 'HEAD' = 'GET',
+): Promise<Response> {
   const headers = new Headers({
     Accept: 'text/html, application/pdf',
     'User-Agent': `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`,
@@ -116,7 +121,7 @@ function send(env: Env, target: URL, signal: AbortSignal): Promise<Response> {
     headers.set('X-Alexandria-Target', target.href);
     url = env.ORIGIN_PROXY_URL;
   }
-  return fetch(url, { method: 'GET', headers, redirect: 'manual', signal });
+  return fetch(url, { method, headers, redirect: 'manual', signal });
 }
 
 /** Reads a 2xx response's body as its kind requires. */
@@ -151,17 +156,18 @@ async function readBody(response: Response, finalUrl: URL, signal: AbortSignal):
 }
 
 /**
- * Fetches the page at `url` as the fetcher does: GET with Alexandria's Accept
- * and User-Agent headers, through the host gate, following at most 5
- * redirects by hand and refusing any target that is not a public http(s)
- * address, each request and its body within `timeoutMs`. A web page is read up
- * to 5 MB and a PDF up to 50 MB; any other kind is not read.
+ * Sends `method` to `url` as the fetcher does: through the host gate before
+ * every request, following at most 5 redirects by hand and refusing any target
+ * that is not a public http(s) address, each request within `timeoutMs`; the
+ * last response is handed to `onFinal` inside the same time limit. A failure of
+ * Alexandria's own (the host gate) is thrown, not turned into a reason.
  */
-export async function fetchPage(
+export async function requestFollowing<T>(
   env: Env,
   url: string,
-  { timeoutMs = FETCH_TIMEOUT_MS } = {},
-): Promise<FetchResult> {
+  { method, timeoutMs }: { method: 'GET' | 'HEAD'; timeoutMs: number },
+  onFinal: (response: Response, finalUrl: URL, signal: AbortSignal) => Promise<T>,
+): Promise<T | FetchFailed> {
   let target: URL;
   try {
     target = new URL(url);
@@ -174,7 +180,10 @@ export async function fetchPage(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await beforeAbort(send(env, target, controller.signal), controller.signal);
+      const response = await beforeAbort(
+        send(env, target, controller.signal, method),
+        controller.signal,
+      );
       const location = response.headers.get('Location');
       if (response.status >= 300 && response.status < 400 && location) {
         await response.body?.cancel();
@@ -186,15 +195,36 @@ export async function fetchPage(
         }
         continue;
       }
-      if (response.status >= 400) {
-        await response.body?.cancel();
-        return { ok: false, reason: `HTTP ${response.status}`, status: response.status };
-      }
-      return await readBody(response, target, controller.signal);
+      return await onFinal(response, target, controller.signal);
     } catch (err) {
       return { ok: false, reason: err instanceof TimedOut ? 'timed out' : reasonFor(err) };
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+/**
+ * Fetches the page at `url` as the fetcher does: GET with Alexandria's Accept
+ * and User-Agent headers through requestFollowing. A web page is read up to
+ * 5 MB and a PDF up to 50 MB; any other kind is not read; a 4xx or 5xx is a
+ * failure.
+ */
+export async function fetchPage(
+  env: Env,
+  url: string,
+  { timeoutMs = FETCH_TIMEOUT_MS } = {},
+): Promise<FetchResult> {
+  return requestFollowing(
+    env,
+    url,
+    { method: 'GET', timeoutMs },
+    async (response, finalUrl, signal) => {
+      if (response.status >= 400) {
+        await response.body?.cancel();
+        return { ok: false, reason: `HTTP ${response.status}`, status: response.status } as const;
+      }
+      return readBody(response, finalUrl, signal);
+    },
+  );
 }
