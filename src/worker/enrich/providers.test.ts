@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FakeAi } from '../test/ai';
 import { env } from '../test/helpers';
-import { enrichWith } from './providers';
+import { enrichWith, RESULT_SCHEMA } from './providers';
 
 const RESULT = { summary: 'About links.', tags: ['links', 'web', 'reading'], topic: 'reading' };
 
@@ -16,7 +16,12 @@ describe('asking a provider for an enrichment', () => {
     const [request] = ai.requests;
     expect(request!.body.model).toBe(model);
     if (provider === 'anthropic') {
-      expect(request!.body.tool_choice).toEqual({ type: 'tool', name: 'record_enrichment' });
+      // Current models refuse a forced tool call: the schema goes through structured outputs.
+      expect(request!.body.output_config).toEqual({
+        format: { type: 'json_schema', schema: RESULT_SCHEMA },
+      });
+      expect(request!.body.tool_choice).toBeUndefined();
+      expect(request!.body.tools).toBeUndefined();
     } else {
       expect((request!.body.response_format as { type: string }).type).toBe('json_schema');
     }

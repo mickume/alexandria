@@ -72,7 +72,7 @@ const server = createServer(async (req, res) => {
   const parsed = JSON.parse(body || '{}') as Record<string, unknown>;
   const key = keyOf(req);
   if (url.pathname === '/v1/messages') {
-    const enrichment = 'tools' in parsed;
+    const enrichment = 'output_config' in parsed || 'tools' in parsed;
     log.push({ at: Date.now(), provider: 'anthropic', auth: key, body, enrichment });
     if (key !== 'sk-ant-test-1234') {
       return send(401, {
@@ -80,22 +80,25 @@ const server = createServer(async (req, res) => {
         error: { type: 'authentication_error', message: 'invalid x-api-key' },
       });
     }
+    // As the real API answers for current models: no forced tool call.
+    const forced = (parsed.tool_choice as { type?: string } | undefined)?.type;
+    if (forced === 'tool' || forced === 'any') {
+      return send(400, {
+        type: 'error',
+        error: {
+          type: 'invalid_request_error',
+          message: 'tool_choice: type "tool" and "any" are not supported for this model.',
+        },
+      });
+    }
     return send(200, {
       id: 'msg_fake',
       type: 'message',
       role: 'assistant',
       model: parsed.model,
-      content: enrichment
-        ? [
-            {
-              type: 'tool_use',
-              id: 'toolu_fake',
-              name: 'record_enrichment',
-              input: answerFor(body),
-            },
-          ]
-        : [{ type: 'text', text: 'ok' }],
-      stop_reason: enrichment ? 'tool_use' : 'end_turn',
+      // Structured outputs answer with the JSON as text.
+      content: [{ type: 'text', text: enrichment ? JSON.stringify(answerFor(body)) : 'ok' }],
+      stop_reason: 'end_turn',
       stop_sequence: null,
       usage: { input_tokens: 1, output_tokens: 1 },
     });

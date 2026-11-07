@@ -49,8 +49,6 @@ export const RESULT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const TOOL_NAME = 'record_enrichment';
-
 /** The provider's own message in an error body, if it carries one. */
 function messageOf(body: unknown, fallback: string): string {
   if (typeof body === 'string') {
@@ -185,9 +183,10 @@ export async function testKey(env: Env, call: ProviderCall): Promise<ProviderOut
 }
 
 /**
- * Asks the user's provider for a structured {summary, tags, topic}: a forced
- * tool call through Anthropic's Messages API, a JSON-schema response format
- * through OpenRouter's chat completions. The value is the model's raw object.
+ * Asks the user's provider for a structured {summary, tags, topic}: a JSON
+ * schema through structured outputs (output_config.format) of Anthropic's
+ * Messages API, and through the response format of OpenRouter's chat
+ * completions. The value is the model's raw object.
  */
 export async function enrichWith(
   env: Env,
@@ -197,18 +196,13 @@ export async function enrichWith(
   try {
     return await withTimeout(async (signal) => {
       if (call.provider === 'anthropic') {
+        // Structured outputs: current models refuse a forced tool call, and the
+        // schema constrains the answer to the JSON object itself.
         const message = await anthropic(env, call.apiKey).messages.create(
           {
             model: call.model,
-            max_tokens: 1024,
-            tools: [
-              {
-                name: TOOL_NAME,
-                description: 'Record the summary, tags and topic of the page.',
-                input_schema: RESULT_SCHEMA as unknown as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: TOOL_NAME },
+            max_tokens: 4096,
+            output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
             messages: [{ role: 'user', content: prompt }],
           },
           { signal },
@@ -216,11 +210,15 @@ export async function enrichWith(
         if (message.stop_reason === 'refusal') {
           return { ok: false, kind: 'failed', message: 'the model declined' } as const;
         }
-        const block = message.content.find((b) => b.type === 'tool_use');
-        if (!block || block.type !== 'tool_use') {
+        const text = message.content.find((b) => b.type === 'text');
+        if (!text || text.type !== 'text' || message.stop_reason === 'max_tokens') {
           return { ok: false, kind: 'failed', message: 'no structured result' } as const;
         }
-        return { ok: true, value: block.input } as const;
+        try {
+          return { ok: true, value: JSON.parse(text.text) as unknown } as const;
+        } catch {
+          return { ok: false, kind: 'failed', message: 'the answer is not JSON' } as const;
+        }
       }
       const content = await openRouterChat(
         env,
