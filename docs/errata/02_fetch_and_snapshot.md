@@ -25,7 +25,17 @@ the spec says, and why.
    changed_since`): a change in the very millisecond of a `server_time` comes
    again rather than being missed. A failed refresh also moves `updated_at`,
    so the website's polling of a refreshing card ends.
-9. **Failure reasons of a thrown request are read from the error message**
-   (DNS → "host not found", TLS/certificate → "TLS error", anything else →
-   "could not connect"). The tests fake those messages; the messages the
-   Workers runtime really produces were not observed in this run.
+9. **Failure reasons of a thrown request: what the runtime really says.**
+   Recorded with `wrangler dev` (workerd): a refused or reset connection
+   throws "Network connection lost."; an unknown host and a bad certificate
+   (expired, self-signed, wrong host, untrusted root) all throw an opaque
+   "internal error; reference = …" that names no cause. For that error the
+   fetcher looks the host up over DNS-over-HTTPS (`cloudflare-dns.com`, JSON):
+   no record is "host not found", a record over https is "TLS error", and a
+   failed lookup is "could not connect". Messages that name their cause are
+   still read as they say. On Cloudflare, an origin Cloudflare itself cannot
+   reach may answer with its own 52x status (`Server: cloudflare`): 521 and 523
+   are "could not connect", 522 and 524 "timed out", 525 and 526 "TLS error",
+   and a 530 with error 1016 "host not found"; other statuses stay
+   "HTTP <status>". The same reasons are given by the weekly liveness check.
+   What a deployed Worker throws has not been observed yet.

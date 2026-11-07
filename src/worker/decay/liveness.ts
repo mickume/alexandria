@@ -3,7 +3,7 @@ import { limitReached, notFound } from '../api/errors';
 import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import type { AppEnv, Env, LivenessMessage } from '../env';
-import { requestFollowing } from '../fetcher/fetch';
+import { requestFollowing, statusReason } from '../fetcher/fetch';
 import { getLink, toFullView, type LinkRow } from '../links/store';
 
 /** How long one liveness request may take. */
@@ -31,15 +31,13 @@ async function probe(
   timeoutMs: number,
 ): Promise<CheckOutcome> {
   const outcome = await requestFollowing(env, url, { method, timeoutMs }, async (response) => {
-    // Only the headers matter: the body is never read.
-    await response.body?.cancel();
-    return { status: response.status };
+    const passed = response.status >= 200 && response.status < 300;
+    // Only the headers matter: the body is read only for a Cloudflare 530's error code.
+    if (passed) await response.body?.cancel();
+    return { passed, result: passed ? `HTTP ${response.status}` : await statusReason(response) };
   });
   if ('ok' in outcome) return { passed: false, result: outcome.reason };
-  return {
-    passed: outcome.status >= 200 && outcome.status < 300,
-    result: `HTTP ${outcome.status}`,
-  };
+  return outcome;
 }
 
 /**

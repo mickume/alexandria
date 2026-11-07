@@ -108,7 +108,12 @@ allow-list) in R2 under `u/{user_id}/l/{link_id}/` (`snapshot`,
 unpdf); for anything else, a note and no snapshot. Objects are written first,
 then the row in one D1 batch; a link deleted meanwhile leaves nothing, and a
 failed write removes what the attempt wrote and hands the message back. A
-failed first fetch is retried after 10 minutes and 2 hours, then the link is
+fetch's failure is stated as a reason (`fetcher/fetch.ts`): "host not found",
+"could not connect", "TLS error", "timed out", or "HTTP <status>". The runtime
+hides an unknown host and a bad certificate behind one opaque error, so for
+that error a DNS-over-HTTPS lookup of the host (`cloudflare-dns.com`) tells the
+two apart; Cloudflare's own 52x answers are named as the failures they stand
+for. A failed first fetch is retried after 10 minutes and 2 hours, then the link is
 `unreachable`; a failed refresh changes nothing but the history. Every
 attempt is a `link_events` row.
 

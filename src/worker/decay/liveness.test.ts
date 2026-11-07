@@ -5,7 +5,7 @@ import {
 } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import worker from '../index';
-import { FakeOrigin } from '../test/origin';
+import { fakeDns, FakeOrigin, INTERNAL_ERROR, NETWORK_LOST } from '../test/origin';
 import {
   api,
   deliverFetches,
@@ -219,10 +219,31 @@ describe('a liveness check', () => {
     },
     {
       label: 'a refused connection',
-      make: (o: FakeOrigin) => o.fail(url, 'connect ECONNREFUSED'),
+      make: (o: FakeOrigin) => o.fail(url, NETWORK_LOST),
       requests: ['HEAD', 'GET'],
       passed: false,
       result: 'could not connect',
+    },
+    {
+      label: 'an unknown host',
+      make: (o: FakeOrigin) => {
+        o.fail(url, INTERNAL_ERROR);
+        fakeDns({ [new URL(url).hostname]: 'missing' });
+      },
+      requests: ['HEAD', 'GET'],
+      passed: false,
+      result: 'host not found',
+    },
+    {
+      label: "Cloudflare's invalid certificate",
+      make: (o: FakeOrigin) =>
+        o.serve(
+          url,
+          () => new Response('error 526', { status: 526, headers: { Server: 'cloudflare' } }),
+        ),
+      requests: ['HEAD', 'GET'],
+      passed: false,
+      result: 'TLS error',
     },
   ])(
     'reads $label as $result',
@@ -283,7 +304,7 @@ describe('a link’s weekly checks', () => {
     setNow(T);
     const user = await signIn();
     const id = await seedChecked(user, { checkedDaysAgo: 7, url: 'https://down.example/' });
-    const origin = new FakeOrigin().fail('https://down.example/', 'connect ECONNREFUSED');
+    const origin = new FakeOrigin().fail('https://down.example/', NETWORK_LOST);
     const before = await liveness(id);
     const deadAt = new Date(T + 14 * DAY).toISOString();
     const expected = [
@@ -304,7 +325,7 @@ describe('a link’s weekly checks', () => {
     origin.byMethod('https://down.example/', { HEAD: () => new Response(null, { status: 200 }) });
     setNow(T + 28 * DAY);
     await deliverLiveness([{ user_id: user.id, link_id: id }]);
-    origin.fail('https://down.example/', 'connect ECONNREFUSED');
+    origin.fail('https://down.example/', NETWORK_LOST);
     setNow(T + 35 * DAY);
     await deliverLiveness([{ user_id: user.id, link_id: id }]);
     expect(await liveness(id)).toMatchObject({ liveness_failures: 1, dead_since: null });
@@ -317,7 +338,7 @@ describe('a link’s weekly checks', () => {
       const user = await signIn();
       const id = await seedChecked(user, { checkedDaysAgo: 10, url: 'https://own-error.example/' });
       await env.DB.prepare('UPDATE links SET liveness_failures = 2 WHERE id = ?').bind(id).run();
-      new FakeOrigin().fail('https://own-error.example/', 'connect ECONNREFUSED');
+      new FakeOrigin().fail('https://own-error.example/', NETWORK_LOST);
       const sent = recordLivenessQueue();
       await runScheduled();
       expect(sent).toHaveLength(1);

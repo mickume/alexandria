@@ -42,14 +42,75 @@ export type FetchResult = FetchOk | FetchFailed;
 
 const HTML_TYPES = new Set(['text/html', 'application/xhtml+xml']);
 
-/** The reason shown for a request that threw. */
-function reasonFor(err: unknown): string {
+/** The DNS-over-HTTPS endpoint (JSON) that tells an unknown host from a bad certificate. */
+export const DNS_QUERY_URL = 'https://cloudflare-dns.com/dns-query';
+const DNS_TIMEOUT_MS = 3_000;
+
+/** Whether `host` has a DNS record: true, false for NXDOMAIN, null when the lookup failed. */
+async function resolves(host: string): Promise<boolean | null> {
+  // An address needs no lookup.
+  if (/^[\d.]+$/.test(host) || host.includes(':')) return true;
+  try {
+    const answer = await fetch(`${DNS_QUERY_URL}?name=${encodeURIComponent(host)}&type=A`, {
+      headers: { Accept: 'application/dns-json' },
+      signal: AbortSignal.timeout(DNS_TIMEOUT_MS),
+    });
+    if (!answer.ok) return null;
+    const { Status } = await answer.json<{ Status?: number }>();
+    return Status === 3 ? false : Status === 0 ? true : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The reason shown for a request to `target` that threw. The Workers runtime
+ * says "Network connection lost." for a refused or reset connection, and
+ * hides both an unknown host and a bad certificate behind an opaque "internal
+ * error; reference = …": for that one, a DNS lookup of the host tells them
+ * apart (no record: host not found; a record over https: TLS error). Messages
+ * that name their cause, as other runtimes give them, are read as they say.
+ */
+async function reasonFor(err: unknown, target: URL): Promise<string> {
   const message = String(err instanceof Error ? err.message : err).toLowerCase();
+  if (message.startsWith('internal error')) {
+    const found = await resolves(target.hostname);
+    if (found === false) return 'host not found';
+    if (found && target.protocol === 'https:') return 'TLS error';
+    return 'could not connect';
+  }
   if (/dns|enotfound|getaddrinfo|could not resolve|name not resolved|no such host/.test(message)) {
     return 'host not found';
   }
   if (/tls|ssl|certificate|handshake/.test(message)) return 'TLS error';
   return 'could not connect';
+}
+
+/** Cloudflare's own error statuses, by the failure each stands for. */
+const CLOUDFLARE_REASONS: Record<number, string> = {
+  521: 'could not connect',
+  522: 'timed out',
+  523: 'could not connect',
+  524: 'timed out',
+  525: 'TLS error',
+  526: 'TLS error',
+};
+
+/**
+ * The reason for a final answer that is not a success, consuming its body:
+ * an error status Cloudflare itself answers for an origin it could not reach
+ * (Server: cloudflare) is named as that failure, a 530 with error 1016 as
+ * 'host not found'; any other status is 'HTTP <status>'.
+ */
+export async function statusReason(response: Response): Promise<string> {
+  const fromCloudflare = response.headers.get('Server')?.toLowerCase() === 'cloudflare';
+  const named = fromCloudflare ? CLOUDFLARE_REASONS[response.status] : undefined;
+  if (fromCloudflare && response.status === 530) {
+    const text = await response.text().catch(() => '');
+    return /\b1016\b/.test(text) ? 'host not found' : `HTTP ${response.status}`;
+  }
+  await response.body?.cancel();
+  return named ?? `HTTP ${response.status}`;
 }
 
 class TimedOut extends Error {}
@@ -197,7 +258,10 @@ export async function requestFollowing<T>(
       }
       return await onFinal(response, target, controller.signal);
     } catch (err) {
-      return { ok: false, reason: err instanceof TimedOut ? 'timed out' : reasonFor(err) };
+      return {
+        ok: false,
+        reason: err instanceof TimedOut ? 'timed out' : await reasonFor(err, target),
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -221,8 +285,8 @@ export async function fetchPage(
     { method: 'GET', timeoutMs },
     async (response, finalUrl, signal) => {
       if (response.status >= 400) {
-        await response.body?.cancel();
-        return { ok: false, reason: `HTTP ${response.status}`, status: response.status } as const;
+        const reason = await statusReason(response);
+        return { ok: false, reason, status: response.status } as const;
       }
       return readBody(response, finalUrl, signal);
     },

@@ -18,6 +18,33 @@ type Behaviour = (request: Request) => Response | Promise<Response>;
 
 const CHUNK = 64 * 1024;
 
+/**
+ * The errors the Workers runtime (workerd) really throws for a failed
+ * request, recorded with wrangler dev: a refused or reset connection is
+ * "Network connection lost."; an unknown host and a bad certificate are both
+ * an opaque internal error with a reference.
+ */
+export const NETWORK_LOST = 'Network connection lost.';
+export const INTERNAL_ERROR = 'internal error; reference = skufkfscskgdr8hf6ff1jf0r';
+
+/**
+ * Answers DNS-over-HTTPS lookups (cloudflare-dns.com, JSON) for the given
+ * hosts: 'found' with an address, 'missing' as NXDOMAIN, 'fail' with a 503.
+ */
+export function fakeDns(hosts: Record<string, 'found' | 'missing' | 'fail'>): void {
+  onOutbound('https://cloudflare-dns.com', (request) => {
+    const name = new URL(request.url).searchParams.get('name') ?? '';
+    const answer = hosts[name] ?? 'missing';
+    if (answer === 'fail') return new Response('unavailable', { status: 503 });
+    return Response.json(
+      answer === 'found'
+        ? { Status: 0, Answer: [{ name, type: 1, TTL: 300, data: '203.0.113.7' }] }
+        : { Status: 3 },
+      { headers: { 'Content-Type': 'application/dns-json' } },
+    );
+  });
+}
+
 export class FakeOrigin {
   /** Every request the fake origins received, in order. */
   readonly log: OriginRequest[] = [];
@@ -94,7 +121,7 @@ export class FakeOrigin {
       const body = new ReadableStream<Uint8Array>({
         pull(controller) {
           if (sent) {
-            controller.error(new Error('read ECONNRESET'));
+            controller.error(new Error(NETWORK_LOST));
             return;
           }
           sent = true;

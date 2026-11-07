@@ -1,7 +1,7 @@
 import { SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { outboundRequests } from '../test/outbound';
-import { FakeOrigin } from '../test/origin';
+import { fakeDns, FakeOrigin, INTERNAL_ERROR, NETWORK_LOST } from '../test/origin';
 import {
   addAndFetch,
   api,
@@ -365,7 +365,7 @@ describe('a failed first fetch', () => {
       { body: { user_id: user.id, link_id: id }, delaySeconds: 7200 },
     ]);
 
-    origin.fail('https://down.example/', 'connect ECONNREFUSED');
+    origin.fail('https://down.example/', NETWORK_LOST);
     await deliverFetches([sent[2]!.body]);
     expect(await get()).toMatchObject({
       state: 'unreachable',
@@ -378,12 +378,15 @@ describe('a failed first fetch', () => {
   it.each([
     {
       label: 'an unknown host',
-      make: (o: FakeOrigin, u: string) => o.fail(u, 'getaddrinfo ENOTFOUND'),
+      make: (o: FakeOrigin, u: string) => {
+        o.fail(u, INTERNAL_ERROR);
+        fakeDns({ [new URL(u).hostname]: 'missing' });
+      },
       reason: 'host not found',
     },
     {
       label: 'a refused connection',
-      make: (o: FakeOrigin, u: string) => o.fail(u, 'connect ECONNREFUSED'),
+      make: (o: FakeOrigin, u: string) => o.fail(u, NETWORK_LOST),
       reason: 'could not connect',
     },
     {
@@ -393,9 +396,19 @@ describe('a failed first fetch', () => {
     },
     {
       label: 'a bad certificate',
-      make: (o: FakeOrigin, u: string) =>
-        o.fail(u, 'TLS handshake failed: certificate has expired'),
+      make: (o: FakeOrigin, u: string) => {
+        o.fail(u, INTERNAL_ERROR);
+        fakeDns({ [new URL(u).hostname]: 'found' });
+      },
       reason: 'TLS error',
+    },
+    {
+      label: 'an opaque error the DNS lookup cannot explain',
+      make: (o: FakeOrigin, u: string) => {
+        o.fail(u, INTERNAL_ERROR);
+        fakeDns({ [new URL(u).hostname]: 'fail' });
+      },
+      reason: 'could not connect',
     },
     {
       label: 'a stall past the timeout',
@@ -404,12 +417,41 @@ describe('a failed first fetch', () => {
     },
     { label: 'a 403', make: (o: FakeOrigin, u: string) => o.status(u, 403), reason: 'HTTP 403' },
     { label: 'a 500', make: (o: FakeOrigin, u: string) => o.status(u, 500), reason: 'HTTP 500' },
-  ])('states the reason of $label', async ({ make, reason }) => {
-    const url = `https://${reason.replace(/\W+/g, '-')}.example/`;
+  ])('states the reason of $label', async ({ make, reason, label }) => {
+    const url = `https://${label.replace(/\W+/g, '-')}.example/`;
     make(new FakeOrigin(), url);
     const r = await fetchPage(env, url, { timeoutMs: 300 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe(reason);
+  });
+
+  it.each([
+    [521, '', 'could not connect'],
+    [522, '', 'timed out'],
+    [523, '', 'could not connect'],
+    [524, '', 'timed out'],
+    [525, '', 'TLS error'],
+    [526, '', 'TLS error'],
+    [530, 'error code: 1016', 'host not found'],
+    [530, 'error code: 1033', 'HTTP 530'],
+    [520, '', 'HTTP 520'],
+  ])("states the reason of Cloudflare's %i %s", async (status, body, reason) => {
+    const url = `https://cf-${status}-${body.replace(/\W+/g, '')}.example/`;
+    new FakeOrigin().serve(
+      url,
+      () => new Response(body || `error ${status}`, { status, headers: { Server: 'cloudflare' } }),
+    );
+    const r = await fetchPage(env, url, { timeoutMs: 300 });
+    expect(r).toMatchObject({ ok: false, reason, status });
+  });
+
+  it('keeps the status of a 52x that does not come from Cloudflare', async () => {
+    const url = 'https://not-cloudflare.example/';
+    new FakeOrigin().status(url, 522);
+    expect(await fetchPage(env, url, { timeoutMs: 300 })).toMatchObject({
+      ok: false,
+      reason: 'HTTP 522',
+    });
   });
 });
 
@@ -533,7 +575,7 @@ describe('refreshing a link', () => {
 describe('an unreachable link', () => {
   it('stays in the stream and can be opened, pinned, unpinned, refreshed and deleted', async () => {
     const url = 'https://gone-away.example/';
-    new FakeOrigin().fail(url, 'connect ECONNREFUSED');
+    new FakeOrigin().fail(url, NETWORK_LOST);
     const user = await signIn();
     const { id, sent } = await addAndFetch(user, url);
     await deliverFetches([sent[1]!.body]);
