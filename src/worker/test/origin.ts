@@ -79,6 +79,24 @@ export class FakeOrigin {
     });
   }
 
+  /** Sends the headers and a first chunk of `url`, then breaks the connection. */
+  reset(url: string): this {
+    return this.serve(url, () => {
+      let sent = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent) {
+            controller.error(new Error('read ECONNRESET'));
+            return;
+          }
+          sent = true;
+          controller.enqueue(new TextEncoder().encode('<!doctype html><p>'));
+        },
+      });
+      return new Response(body, { headers: { 'Content-Type': 'text/html' } });
+    });
+  }
+
   /** Streams `size` bytes of `fill` at `url` in 64 KB chunks, counting what was sent. */
   stream(
     url: string,

@@ -177,7 +177,10 @@ open links, so that every use is counted. Concurrent opens are each counted.
 
 #### `GET /api/v1/links/{id}/history`
 
-The link's events, newest first: `200 {"items": [{"kind": "use", "at": "…"}], "next_cursor"}`.
+The link's uses and fetch attempts, newest first:
+`200 {"items": [<event>], "next_cursor"}`, where an event is
+`{"kind": "use", "at"}` or
+`{"kind": "fetch", "at", "outcome": "ok" | "failed", "http_status": <number or null>, "reason": <string or null>}`.
 Query: `limit` (1 to 100, default 100), `cursor`.
 
 #### `POST /api/v1/links/{id}/pin`

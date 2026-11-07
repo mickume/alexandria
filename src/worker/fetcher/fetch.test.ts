@@ -10,6 +10,7 @@ import {
   ORIGIN,
   recordFetchQueue,
   seedLinks,
+  setNow,
   signIn,
   type TestUser,
 } from '../test/helpers';
@@ -345,3 +346,110 @@ function failingDatabase(db: D1Database): D1Database {
     },
   });
 }
+
+describe('a failed first fetch', () => {
+  async function pendingLink(url: string) {
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
+    return { user, sent, id: r.json.link.id as string };
+  }
+
+  it('keeps the link pending and retries after 10 minutes, then after 2 hours, then gives up', async () => {
+    const origin = new FakeOrigin().status('https://down.example/', 503);
+    const { user, sent, id } = await pendingLink('https://down.example/');
+    const get = async () => (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    const attempts = async () =>
+      (
+        await env.DB.prepare('SELECT fetch_attempts FROM links WHERE id = ?')
+          .bind(id)
+          .first<{ fetch_attempts: number }>()
+      )?.fetch_attempts;
+
+    await deliverFetches([sent[0]!.body]);
+    expect(await get()).toMatchObject({ state: 'pending', state_reason: 'HTTP 503' });
+    expect(await attempts()).toBe(1);
+    expect(sent.slice(1)).toEqual([{ body: { user_id: user.id, link_id: id }, delaySeconds: 600 }]);
+
+    await deliverFetches([sent[1]!.body]);
+    expect(await attempts()).toBe(2);
+    expect(sent.slice(2)).toEqual([
+      { body: { user_id: user.id, link_id: id }, delaySeconds: 7200 },
+    ]);
+
+    origin.fail('https://down.example/', 'connect ECONNREFUSED');
+    await deliverFetches([sent[2]!.body]);
+    expect(await get()).toMatchObject({
+      state: 'unreachable',
+      state_reason: 'could not connect',
+      title: 'down.example',
+    });
+    expect(sent).toHaveLength(3);
+  }, 15_000);
+
+  it.each([
+    {
+      label: 'an unknown host',
+      make: (o: FakeOrigin, u: string) => o.fail(u, 'getaddrinfo ENOTFOUND'),
+      reason: 'host not found',
+    },
+    {
+      label: 'a refused connection',
+      make: (o: FakeOrigin, u: string) => o.fail(u, 'connect ECONNREFUSED'),
+      reason: 'could not connect',
+    },
+    {
+      label: 'a connection reset mid-response',
+      make: (o: FakeOrigin, u: string) => o.reset(u),
+      reason: 'could not connect',
+    },
+    {
+      label: 'a bad certificate',
+      make: (o: FakeOrigin, u: string) =>
+        o.fail(u, 'TLS handshake failed: certificate has expired'),
+      reason: 'TLS error',
+    },
+    {
+      label: 'a stall past the timeout',
+      make: (o: FakeOrigin, u: string) => o.stall(u),
+      reason: 'timed out',
+    },
+    { label: 'a 403', make: (o: FakeOrigin, u: string) => o.status(u, 403), reason: 'HTTP 403' },
+    { label: 'a 500', make: (o: FakeOrigin, u: string) => o.status(u, 500), reason: 'HTTP 500' },
+  ])('states the reason of $label', async ({ make, reason }) => {
+    const url = `https://${reason.replace(/\W+/g, '-')}.example/`;
+    make(new FakeOrigin(), url);
+    const r = await fetchPage(env, url, { timeoutMs: 300 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe(reason);
+  });
+});
+
+describe('a link’s fetch history', () => {
+  it('lists every fetch attempt among the uses, newest first', async () => {
+    const origin = new FakeOrigin().status('https://later.example/', 503);
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    const t1 = '2026-09-01T10:00:00.000Z';
+    const t2 = '2026-09-01T10:10:00.000Z';
+    const t3 = '2026-09-01T11:00:00.000Z';
+    setNow(t1);
+    const r = await api('POST', '/api/v1/links', {
+      as: user.session,
+      body: { url: 'https://later.example/' },
+    });
+    const id = r.json.link.id;
+    await deliverFetches([sent[0]!.body]);
+    origin.page('https://later.example/', blogArticle);
+    setNow(t2);
+    await deliverFetches([sent[1]!.body]);
+    setNow(t3);
+    await api('GET', `/api/v1/links/${id}/open`, { as: user.session });
+    const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
+    expect(history.json.items).toEqual([
+      { kind: 'use', at: t3 },
+      { kind: 'fetch', at: t2, outcome: 'ok', http_status: 200, reason: null },
+      { kind: 'fetch', at: t1, outcome: 'failed', http_status: 503, reason: 'HTTP 503' },
+    ]);
+  });
+});

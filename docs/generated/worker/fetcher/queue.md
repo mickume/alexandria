@@ -1,5 +1,13 @@
 # worker/fetcher/queue
 
+## Variables
+
+### MAX\_ATTEMPTS
+
+> `const` **MAX\_ATTEMPTS**: `3` = `3`
+
+Failed attempts of a link's first fetch before it is given up as unreachable.
+
 ## Functions
 
 ### handleFetchBatch()

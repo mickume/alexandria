@@ -1,11 +1,63 @@
 import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
 import { getLink, type LinkRow } from '../links/store';
-import { fetchPage, type FetchOk } from './fetch';
+import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { extractMetadata } from './html';
 import { readPdf } from './pdf';
 import { capText, extractReader } from './reader';
 import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
+
+/** Failed attempts of a link's first fetch before it is given up as unreachable. */
+export const MAX_ATTEMPTS = 3;
+/** The delays before the second and the third attempt. */
+const RETRY_DELAYS_SECONDS = [600, 7200];
+
+/** The statement that records one fetch attempt in the link's history. */
+function eventStatement(
+  env: Env,
+  link: LinkRow,
+  at: string,
+  outcome: 'ok' | 'failed',
+  httpStatus: number | null,
+  reason: string | null,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO link_events (link_id, user_id, kind, at, outcome, http_status, reason)
+     SELECT id, user_id, 'fetch', ?1, ?2, ?3, ?4 FROM links WHERE id = ?5 AND user_id = ?6`,
+  ).bind(at, outcome, httpStatus, reason, link.id, link.user_id);
+}
+
+/**
+ * Records a failed attempt. A link still waiting for its first fetch counts
+ * the attempt and is fetched again after 10 minutes, then 2 hours; after the
+ * third failure it is unreachable. Any other link (a refresh) only gets the
+ * event: what it had stays.
+ */
+async function recordFailure(
+  env: Env,
+  link: LinkRow,
+  message: FetchMessage,
+  failure: FetchFailed,
+): Promise<void> {
+  const at = now().toISOString();
+  const event = eventStatement(env, link, at, 'failed', failure.status ?? null, failure.reason);
+  if (message.refresh || link.state !== 'pending') {
+    await env.DB.batch([event]);
+    return;
+  }
+  const attempts = link.fetch_attempts + 1;
+  const state = attempts >= MAX_ATTEMPTS ? 'unreachable' : 'pending';
+  await env.DB.batch([
+    env.DB.prepare(
+      'UPDATE links SET state = ?, state_reason = ?, fetch_attempts = ? WHERE id = ? AND user_id = ?',
+    ).bind(state, failure.reason, attempts, link.id, link.user_id),
+    event,
+  ]);
+  const delaySeconds = RETRY_DELAYS_SECONDS[attempts - 1];
+  if (state === 'pending' && delaySeconds !== undefined) {
+    await env.FETCH_QUEUE.send({ user_id: link.user_id, link_id: link.id }, { delaySeconds });
+  }
+}
 
 /** An object a fetch writes to SNAPSHOTS. */
 interface StoredObject {
@@ -89,6 +141,7 @@ async function writeFetched(
         `INSERT INTO link_texts (link_id, user_id, text)
          SELECT id, user_id, ?1 FROM links WHERE id = ?2 AND user_id = ?3 AND ?1 IS NOT NULL`,
       ).bind(fetched.text, link.id, link.user_id),
+      eventStatement(env, link, at, 'ok', result.status, null),
     ]);
     if (!update?.meta.changes) {
       await deleteLinkObjects(env, link.user_id, link.id);
@@ -227,12 +280,9 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     return;
   }
   const result = await fetchPage(env, link.url);
-  if (!result.ok) {
-    message.ack();
-    return;
-  }
   try {
-    await storeResult(env, link, result);
+    if (result.ok) await storeResult(env, link, result);
+    else await recordFailure(env, link, message.body, result);
     message.ack();
   } catch (err) {
     console.error('storing a fetch failed', err);

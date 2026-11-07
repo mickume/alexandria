@@ -242,7 +242,7 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/links/{id}/history',
     operationId: 'getLinkHistory',
-    summary: 'The link’s events, newest first',
+    summary: 'The link’s uses and fetch attempts, newest first',
     query: {
       limit: { description: 'Events per page, 1 to 100 (default 100)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
@@ -251,7 +251,18 @@ export const operations: Operation[] = [
       200: {
         description: 'One page of events',
         schema: z.strictObject({
-          items: z.array(z.strictObject({ kind: z.string(), at: z.string() })),
+          items: z.array(
+            z.union([
+              z.strictObject({ kind: z.literal('use'), at: z.string() }),
+              z.strictObject({
+                kind: z.literal('fetch'),
+                at: z.string(),
+                outcome: z.enum(['ok', 'failed']),
+                http_status: z.number().int().nullable(),
+                reason: z.string().nullable(),
+              }),
+            ]),
+          ),
           next_cursor: z.string().nullable(),
         }),
       },

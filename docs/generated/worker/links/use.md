@@ -4,7 +4,7 @@
 
 ### HistoryCursor
 
-Where a page of a link's history ends.
+Where a page of a link's history ends: the last event's time, source and id.
 
 #### Properties
 
@@ -16,21 +16,19 @@ Where a page of a link's history ends.
 
 > **id**: `number`
 
-***
+##### s
+
+> **s**: `number`
+
+0 for a use, 1 for a fetch event: the two tables number their rows apart.
+
+## Type Aliases
 
 ### LinkEvent
 
-One event in a link's history.
+> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
 
-#### Properties
-
-##### at
-
-> **at**: `string`
-
-##### kind
-
-> **kind**: `"use"`
+One event in a link's history: a use, or a fetch attempt with its outcome.
 
 ## Functions
 
@@ -56,7 +54,7 @@ Whether a decoded cursor payload has the shape of a history cursor.
 
 > **listHistory**(`db`, `linkId`, `limit`, `after`): `Promise`\<\{ `items`: [`LinkEvent`](#linkevent)[]; `next`: [`HistoryCursor`](#historycursor) \| `null`; \}\>
 
-One page of a link's events, newest first, and the cursor of the next page, if any.
+One page of a link's uses and fetch events, newest first, and the cursor of the next page.
 
 #### Parameters
 
