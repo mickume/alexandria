@@ -200,3 +200,17 @@ export async function unpinLink(
   const after = await getLink(db, userId, id);
   return after ? toView(after) : null;
 }
+
+/**
+ * Deletes one of the user's links and its use events at once and for good,
+ * closing the gap in the pinned section if it was pinned. Returns false when
+ * the user has no such link.
+ */
+export async function deleteLink(db: D1Database, userId: string, id: string): Promise<boolean> {
+  const results = await db.batch([
+    ...unpinStatements(db, userId, id),
+    db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
+  ]);
+  return (results.at(-1)?.meta.changes ?? 0) > 0;
+}

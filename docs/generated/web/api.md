@@ -424,6 +424,28 @@ A personal access token as listed.
 
 `Promise`\<[`Link`](#link)\>
 
+##### remove
+
+> **remove**: (`id`, `__namedParameters`) => `Promise`\<`void`\>
+
+Deletes a link for good; a link already gone counts as deleted.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### \_\_namedParameters?
+
+###### keepalive?
+
+`boolean` = `false`
+
+###### Returns
+
+`Promise`\<`void`\>
+
 ##### unpin
 
 > **unpin**: (`id`) => `Promise`\<[`Link`](#link)\>

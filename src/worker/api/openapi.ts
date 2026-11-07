@@ -206,6 +206,13 @@ export const operations: Operation[] = [
     responses: { 200: { description: 'The link', schema: Link } },
   },
   {
+    method: 'delete',
+    path: '/links/{id}',
+    operationId: 'deleteLink',
+    summary: 'Delete the link and its history, at once and for good',
+    responses: { 204: { description: 'Deleted' } },
+  },
+  {
     method: 'get',
     path: '/links/{id}/open',
     operationId: 'openLink',

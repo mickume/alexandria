@@ -107,4 +107,12 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
+  /** Deletes a link for good; a link already gone counts as deleted. */
+  remove: async (id: string, { keepalive = false } = {}) => {
+    try {
+      await request<void>('DELETE', `/links/${encodeURIComponent(id)}`, undefined, { keepalive });
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) throw err;
+    }
+  },
 };

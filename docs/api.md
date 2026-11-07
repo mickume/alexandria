@@ -197,3 +197,10 @@ already pinned link stays where it is. At most 30 links are pinned.
 
 Unpins the link: `200 <link>` with `pinned: false` and `pin_position: null`.
 It returns to its place by last use, and the remaining positions close up.
+
+#### `DELETE /api/v1/links/{id}`
+
+Deletes the link and its history at once and for good: `204`. A pinned
+link's place in the pinned section closes up. Adding the same URL again
+creates a new link. (The website holds a delete for 10 seconds so that it can
+be undone; the API does not.)

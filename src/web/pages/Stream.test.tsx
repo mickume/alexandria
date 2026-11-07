@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
 import { FakeApi, fakeIntersectionObserver, renderPage } from '../test/helpers';
 
@@ -143,5 +143,68 @@ describe('pinning on the stream page', () => {
     await act(async () => within(card).getByRole('button', { name: 'Pin' }).click());
     expect(await screen.findByText('unpin something first')).toBeTruthy();
     expect(titles()).toEqual(before);
+  });
+});
+
+describe('deleting on the stream page', () => {
+  async function ready(answer: Parameters<FakeApi['on']>[2] = { status: 204 }) {
+    const all = makeLinks(3);
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links', { status: 200, body: { items: all, next_cursor: null } })
+      .on('DELETE', '/api/v1/links/:id', answer);
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 1' });
+    vi.useFakeTimers();
+    return api;
+  }
+
+  async function clickDelete(title: string) {
+    const card = screen.getByRole('article', { name: title });
+    await act(async () => within(card).getByRole('button', { name: 'Delete' }).click());
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('hides the card and sends the delete only after 10 seconds without Undo', async () => {
+    const api = await ready();
+    await clickDelete('Title 1');
+    expect(screen.queryByRole('article', { name: 'Title 1' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(9_900));
+    expect(api.sent('DELETE')).toHaveLength(0);
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(api.sent('DELETE', '/api/v1/links/l1')).toHaveLength(1);
+
+    await clickDelete('Title 2');
+    await act(async () => screen.getByRole('button', { name: 'Undo' }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(api.sent('DELETE', '/api/v1/links/l2')).toHaveLength(0);
+    expect(titles()).toEqual(['Title 0', 'Title 2']);
+  });
+
+  it('sends a pending delete at once with keepalive when the page is left', async () => {
+    const api = await ready();
+    await clickDelete('Title 1');
+    await act(async () => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    const sent = api.sent('DELETE', '/api/v1/links/l1');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.keepalive).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(api.sent('DELETE')).toHaveLength(1);
+  });
+
+  it.each([
+    { label: 'a network error', answer: 'network-error' as const },
+    { label: 'a server error', answer: { status: 500, body: { error: 'internal' } } },
+  ])('puts the card back after $label', async ({ answer }) => {
+    await ready(answer);
+    await clickDelete('Title 1');
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(titles()).toEqual(['Title 0', 'Title 1', 'Title 2']);
+    expect(screen.getByText('could not delete, try again')).toBeTruthy();
   });
 });

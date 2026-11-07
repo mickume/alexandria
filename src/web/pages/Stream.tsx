@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, links as linksApi, type Link, type Page } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { LinkCard, type CardActions } from '../components/LinkCard';
+import { Toast } from '../components/Toast';
+
+/** How long a deleted card can be brought back before the delete is sent. */
+const UNDO_MS = 10_000;
+
+interface PendingDelete {
+  link: Link;
+  index: number;
+  timer: ReturnType<typeof setTimeout>;
+}
 
 /** Puts `fresh` links on top, newest use first, removing their earlier places. */
 function withOnTop(current: Link[], fresh: Link[]): Link[] {
@@ -39,6 +49,66 @@ export function Stream() {
   const [notice, setNotice] = useState<string | null>(null);
   const loading = useRef(false);
   const dragged = useRef<Link | null>(null);
+  const pendingDeletes = useRef(new Map<string, PendingDelete>());
+  const [undoable, setUndoable] = useState<Link[]>([]);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  /** Puts a card back where it was. */
+  const restore = useCallback((link: Link, index: number) => {
+    setItems((current) => {
+      if (current.some((l) => l.id === link.id)) return current;
+      const next = [...current];
+      next.splice(Math.min(index, next.length), 0, link);
+      return next;
+    });
+  }, []);
+
+  /** Sends a pending delete now; on failure the card comes back. */
+  const sendDelete = useCallback(
+    (id: string, keepalive: boolean) => {
+      const entry = pendingDeletes.current.get(id);
+      if (!entry) return;
+      clearTimeout(entry.timer);
+      pendingDeletes.current.delete(id);
+      setUndoable((u) => u.filter((l) => l.id !== id));
+      linksApi.remove(id, { keepalive }).catch(() => {
+        restore(entry.link, entry.index);
+        setFailure('could not delete, try again');
+      });
+    },
+    [restore],
+  );
+
+  // Leaving or hiding the page must not lose a deletion still in its undo window.
+  useEffect(() => {
+    const pending = pendingDeletes.current;
+    const flush = () => {
+      for (const id of [...pending.keys()]) sendDelete(id, true);
+    };
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, [sendDelete]);
+
+  function deleteWithUndo(link: Link) {
+    setFailure(null);
+    const index = items.findIndex((l) => l.id === link.id);
+    setItems((current) => current.filter((l) => l.id !== link.id));
+    const timer = setTimeout(() => sendDelete(link.id, false), UNDO_MS);
+    pendingDeletes.current.set(link.id, { link, index, timer });
+    setUndoable((u) => [...u, link]);
+  }
+
+  function undo(id: string) {
+    const entry = pendingDeletes.current.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    pendingDeletes.current.delete(id);
+    setUndoable((u) => u.filter((l) => l.id !== id));
+    restore(entry.link, entry.index);
+  }
 
   function showFirstPage(page: Page<Link>) {
     setItems(page.items);
@@ -96,7 +166,7 @@ export function Stream() {
   const actions: CardActions = {
     onPin: (link) => void change(() => linksApi.pin(link.id)),
     onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
-    onDelete: () => undefined,
+    onDelete: deleteWithUndo,
     onDragStart: (link) => {
       dragged.current = link;
     },
@@ -125,6 +195,16 @@ export function Stream() {
         <p className="muted empty">Nothing here yet. Paste a link above to start.</p>
       )}
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
+      <div className="toasts">
+        {undoable.map((link) => (
+          <Toast
+            key={link.id}
+            message={`Deleted ${link.title}`}
+            action={{ label: 'Undo', onClick: () => undo(link.id) }}
+          />
+        ))}
+        {failure && <Toast message={failure} />}
+      </div>
     </section>
   );
 }

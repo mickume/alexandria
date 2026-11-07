@@ -6,6 +6,7 @@ import { normalizeUrl } from './normalize';
 import {
   addLink,
   addLinks,
+  deleteLink,
   getLink,
   pinLink,
   toView,
@@ -176,4 +177,9 @@ linkRoutes.post('/:id/pin', async (c) => {
 linkRoutes.delete('/:id/pin', async (c) => {
   const link = await unpinLink(c.env.DB, c.get('user').id, c.req.param('id'));
   return link ? c.json(link) : notFound(c);
+});
+
+linkRoutes.delete('/:id', async (c) => {
+  const deleted = await deleteLink(c.env.DB, c.get('user').id, c.req.param('id'));
+  return deleted ? c.body(null, 204) : notFound(c);
 });

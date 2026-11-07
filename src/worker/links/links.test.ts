@@ -224,3 +224,34 @@ describe('reading a link', () => {
     });
   });
 });
+
+describe('deleting a link', () => {
+  it('removes it and its uses at once, closes the pin gap, and lets the URL be added again', async () => {
+    const user = await signIn();
+    const add = (url: string) => api('POST', '/api/v1/links', { as: user.session, body: { url } });
+    const first = (await add('https://first.example')).json.link.id;
+    const id = (await add('https://gone.example')).json.link.id;
+    const last = (await add('https://last.example')).json.link.id;
+    for (const l of [first, id, last]) {
+      await api('POST', `/api/v1/links/${l}/pin`, { as: user.session });
+    }
+    await api('GET', `/api/v1/links/${id}/open`, { as: user.session });
+    await api('GET', `/api/v1/links/${id}/open`, { as: user.session });
+
+    const r = await api('DELETE', `/api/v1/links/${id}`, { as: user.session });
+    expect(r.status).toBe(204);
+    expect((await api('GET', `/api/v1/links/${id}`, { as: user.session })).status).toBe(404);
+    expect(await count('link_uses', 'link_id = ?', id)).toBe(0);
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    expect(
+      stream.json.items.map((l: { id: string; pin_position: number }) => [l.id, l.pin_position]),
+    ).toEqual([
+      [first, 1],
+      [last, 2],
+    ]);
+    const again = await add('https://gone.example');
+    expect(again.status).toBe(201);
+    expect(again.json.status).toBe('added');
+    expect(again.json.link.id).not.toBe(id);
+  });
+});

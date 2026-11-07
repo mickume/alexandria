@@ -6,6 +6,7 @@
 - [web/App](web/App.md)
 - [web/components/AddLinks](web/components/AddLinks.md)
 - [web/components/LinkCard](web/components/LinkCard.md)
+- [web/components/Toast](web/components/Toast.md)
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/LinkDetail](web/pages/LinkDetail.md)

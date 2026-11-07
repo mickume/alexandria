@@ -208,6 +208,34 @@ the first of the batch ends highest in the stream.
 
 ***
 
+### deleteLink()
+
+> **deleteLink**(`db`, `userId`, `id`): `Promise`\<`boolean`\>
+
+Deletes one of the user's links and its use events at once and for good,
+closing the gap in the pinned section if it was pinned. Returns false when
+the user has no such link.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<`boolean`\>
+
+***
+
 ### getLink()
 
 > **getLink**(`db`, `userId`, `id`): `Promise`\<[`LinkRow`](#linkrow) \| `null`\>
