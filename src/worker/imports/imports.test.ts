@@ -35,7 +35,7 @@ function upload(user: TestUser, file: string | Uint8Array, type: string | null =
 /** Uploads `file` as the part 'file' of a multipart form. */
 function uploadForm(user: TestUser, file: string | Uint8Array | null, type = 'text/plain') {
   const form = new FormData();
-  if (file !== null) form.append('file', new File([file], 'links.txt', { type }));
+  if (file !== null) form.append('file', new File([file as BlobPart], 'links.txt', { type }));
   return api('POST', '/api/v1/imports', { as: user.session, body: form });
 }
 
@@ -89,7 +89,7 @@ describe('POST /api/v1/imports refuses', () => {
     message: 'only plain-text files with one URL per line are accepted',
   };
 
-  it.each([
+  const unsupported: [string, () => string | Uint8Array, string, boolean][] = [
     ['an HTML file', () => '<!doctype html><a href="https://a.example">a</a>', 'text/html', false],
     ['HTML declared as text', () => '<html><body>', 'text/plain', false],
     ['XML declared as text', () => '<?xml version="1.0"?>', 'text/plain', false],
@@ -98,7 +98,9 @@ describe('POST /api/v1/imports refuses', () => {
     ['a part of type image/png', () => 'https://a.example', 'image/png', true],
     ['bytes that are not UTF-8', () => new Uint8Array([0xc3, 0x28]), 'text/plain', false],
     ['a NUL byte', () => 'https://a.example\u0000', 'text/plain', false],
-  ] as const)('%s', async (_case, file, type, multipart) => {
+  ];
+
+  it.each(unsupported)('%s', async (_case, file, type, multipart) => {
     const user = await signIn();
     const before = await counts(user);
     const r = multipart ? await uploadForm(user, file(), type) : await upload(user, file(), type);
@@ -265,6 +267,23 @@ describe('POST /api/v1/imports adds', () => {
       'older.example',
     ]);
     expect(stream.json.items.at(-1).id).toBe(older);
+  });
+
+  it('stays above a link used a moment before the import', async () => {
+    const user = await signIn();
+    const t = Date.parse('2026-11-07T10:00:00.000Z');
+    await seedLinks(user, [
+      { url: 'https://recent.example', lastUsedAt: new Date(t - 1).toISOString() },
+    ]);
+    setNow(t);
+    await upload(user, 'https://z.example\nhttps://a.example\nhttps://m.example');
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    expect(stream.json.items.map((l: { host: string }) => l.host)).toEqual([
+      'z.example',
+      'a.example',
+      'm.example',
+      'recent.example',
+    ]);
   });
 
   it('stops at the library limit and says on which line', { timeout: 120_000 }, async () => {

@@ -650,7 +650,8 @@ note` imports the URL alone).
 Each URL line is normalised as `POST /api/v1/links` does. A new URL is added
 as a pending link (its host as provisional title), last used at the import
 time minus one millisecond per line, so that the stream lists the file in
-order, the first line highest. A URL already in the library, or on an earlier
+order, the first line highest, above every link used before the import (when
+a link was used within that span, the import's times start that much later). A URL already in the library, or on an earlier
 line, is a duplicate: reported, neither added nor boosted. A line the
 normaliser rejects is invalid. When the library (20,000 links) is full, the
 import stops at the first new URL with no room: that line and every later

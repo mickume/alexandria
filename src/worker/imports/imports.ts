@@ -114,6 +114,20 @@ function insertStatement(
 }
 
 /**
+ * The last-used time of an import's first line, in milliseconds: the import
+ * time, or later when a link was used so shortly before it that the import's
+ * last line, a millisecond per line below the first, would fall under it.
+ */
+async function lastUsedBase(db: D1Database, userId: string, t: number, lastLine: number) {
+  const row = await db
+    .prepare('SELECT MAX(last_used_at) AS latest FROM links WHERE user_id = ?')
+    .bind(userId)
+    .first<{ latest: string | null }>();
+  const latest = row?.latest ? Date.parse(row.latest) : 0;
+  return Math.max(t, latest + 1 + (lastLine - 1));
+}
+
+/**
  * Adds an import's lines to the user's library and records the import:
  * every new URL as a pending link, last used from the import time downwards
  * one millisecond per line, so that the stream lists them in file order;
@@ -129,6 +143,7 @@ export async function importLines(
   const p = await plan(db, userId, lines);
   const t = now();
   const createdAt = t.toISOString();
+  const base = await lastUsedBase(db, userId, t.getTime(), p.additions.at(-1)?.line ?? 1);
   const id = crypto.randomUUID();
   const added: { line: number; id: string }[] = [];
   for (let i = 0; i < p.additions.length; i += 500) {
@@ -142,7 +157,7 @@ export async function importLines(
           a,
           ids[k]!,
           createdAt,
-          new Date(t.getTime() - (a.line - 1)).toISOString(),
+          new Date(base - (a.line - 1)).toISOString(),
         ),
       ),
     );
