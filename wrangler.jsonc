@@ -5,7 +5,13 @@
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
+  // A plain `wrangler deploy` (as Workers Builds runs it) builds first: the
+  // website into dist/client, and inside Workers Builds the account's D1
+  // database, queues, bucket and migrations (scripts/build.sh). Vite ignores
+  // this field; `npm run deploy` builds with Vite and deploys its bundle.
+  "build": { "command": "scripts/build.sh" },
   "assets": {
+    "directory": "./dist/client",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     // Page routes go through the Worker first, so that a visitor without a
@@ -15,8 +21,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      // No database_id: `wrangler deploy` finds the account's database named
-      // alexandria, or creates it on the first deploy.
+      // No database_id: `wrangler deploy` finds the account's database by its
+      // name (scripts/provision.sh creates it when it does not exist).
       "database_name": "alexandria",
       "migrations_dir": "migrations",
     },

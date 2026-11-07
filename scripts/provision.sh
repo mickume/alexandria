@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Gets the Cloudflare account ready for a deploy of Alexandria: checks that the
+# API token can manage what the Worker binds, creates the D1 database, the
+# queues and the R2 bucket when they do not exist yet, and applies the D1
+# migrations. Every step is a no-op when there is nothing to do. Needs
+# CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID when the token cannot list
+# its accounts).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+QUEUES=(alexandria-fetch alexandria-enrich alexandria-liveness alexandria-account)
+BUCKET=alexandria-snapshots
+DATABASE=alexandria
+
+wrangler() { npx --no-install wrangler "$@"; }
+
+# Without these the deploy would stop halfway with a bare "Authentication error".
+missing=()
+wrangler d1 list >/dev/null 2>&1 || missing+=("Account > D1 > Edit")
+wrangler queues list >/dev/null 2>&1 || missing+=("Account > Queues > Edit")
+wrangler r2 bucket list >/dev/null 2>&1 || missing+=("Account > Workers R2 Storage > Edit")
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "The Cloudflare API token cannot manage what Alexandria needs. Add these permissions:" >&2
+  printf '  - %s\n' "${missing[@]}" >&2
+  echo "(with Account > Workers Scripts > Edit, and CLOUDFLARE_ACCOUNT_ID set)" >&2
+  exit 1
+fi
+
+if ! wrangler d1 info "$DATABASE" >/dev/null 2>&1; then
+  echo "Creating the D1 database $DATABASE"
+  wrangler d1 create "$DATABASE"
+fi
+
+for queue in "${QUEUES[@]}"; do
+  if ! wrangler queues info "$queue" >/dev/null 2>&1; then
+    echo "Creating the queue $queue"
+    wrangler queues create "$queue"
+  fi
+done
+
+if ! wrangler r2 bucket info "$BUCKET" >/dev/null 2>&1; then
+  echo "Creating the R2 bucket $BUCKET"
+  wrangler r2 bucket create "$BUCKET"
+fi
+
+# Before the deploy, so that new code never meets an old schema.
+wrangler d1 migrations apply "$DATABASE" --remote
