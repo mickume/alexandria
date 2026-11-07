@@ -107,6 +107,25 @@ owner alone, and record a use. The stream keeps cards current by polling
 `GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or
 refreshing; every write to a link sets its `updated_at`.
 
+## Enrichment
+
+When a fetch (first or refresh) makes a link `active`, the fetch worker hands
+it to enrichment (`enrich/queue.ts`, `afterFetch`): a link whose notes say it
+has nothing to read is `skipped`; without an AI key it is `no_key`; while the
+key is rejected it is `waiting_for_key`; otherwise it is `queued` and one
+`ENRICH_QUEUE` message is sent. The enrichment worker (the Worker's `queue`
+handler for `alexandria-enrich`) decrypts the user's own key
+(`enrich/keys.ts`: AES-GCM under `KEY_ENCRYPTION_KEY`, the user id as
+additional data), builds the request (`enrich/enrich.ts`: instructions, title,
+host, the user's 100 most used topics and 300 most used tags, and the first
+20,000 characters of the reader text, or the title and description), asks
+the user's provider for a structured result (`enrich/providers.ts`: a forced
+tool call through `@anthropic-ai/sdk`, or a JSON-schema response format
+through OpenRouter's HTTP API), normalises it, resolves the names against the
+user's vocabulary (`enrich/vocabulary.ts`), and stores summary, topic and
+tags (`topics`, `tags`, `link_tags`). Links are read through the
+`link_views` view, which adds the topic's name and the tags in order.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

@@ -21,8 +21,14 @@
     },
   ],
   "queues": {
-    "producers": [{ "binding": "FETCH_QUEUE", "queue": "alexandria-fetch" }],
-    "consumers": [{ "queue": "alexandria-fetch", "max_batch_size": 10, "max_retries": 5 }],
+    "producers": [
+      { "binding": "FETCH_QUEUE", "queue": "alexandria-fetch" },
+      { "binding": "ENRICH_QUEUE", "queue": "alexandria-enrich" },
+    ],
+    "consumers": [
+      { "queue": "alexandria-fetch", "max_batch_size": 10, "max_retries": 5 },
+      { "queue": "alexandria-enrich", "max_batch_size": 5, "max_retries": 5 },
+    ],
   },
   // One Durable Object per host spaces Alexandria's requests to it a second apart.
   "durable_objects": { "bindings": [{ "name": "HOST_GATE", "class_name": "HostGate" }] },

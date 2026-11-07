@@ -50,6 +50,40 @@ The user a request is authenticated as.
 
 ***
 
+### EnrichMessage
+
+A request to enrich one link.
+
+#### Properties
+
+##### attempt?
+
+> `optional` **attempt?**: `number`
+
+1 for the first automatic attempt, 2 for its retry.
+
+##### link\_id
+
+> **link\_id**: `string`
+
+##### manual?
+
+> `optional` **manual?**: `boolean`
+
+Set when the owner asked for it: a failure is not retried.
+
+##### slot?
+
+> `optional` **slot?**: `number`
+
+Milliseconds since the epoch before which a throttled job must not run.
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
 ### Env
 
 The bindings and variables of the Worker, as wrangler.jsonc declares them.
@@ -115,6 +149,12 @@ The website's built static files.
 > **DB**: `D1Database`
 
 The D1 database holding every user's data.
+
+##### ENRICH\_QUEUE
+
+> **ENRICH\_QUEUE**: `Queue`\<[`EnrichMessage`](#enrichmessage)\>
+
+The queue of enrichment messages, one per link to summarise, tag and file.
 
 ##### FETCH\_QUEUE
 

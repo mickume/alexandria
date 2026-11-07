@@ -1,6 +1,7 @@
 import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
-import { getLink, type LinkRow } from '../links/store';
+import { afterFetch } from '../enrich/queue';
+import { getLink, parseNotes, type LinkRow } from '../links/store';
 import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { extractMetadata } from './html';
 import { readPdf } from './pdf';
@@ -270,7 +271,7 @@ async function storePdf(env: Env, link: LinkRow, result: FetchOk) {
   );
 }
 
-/** Stores what a successful fetch returned. */
+/** Stores what a successful fetch returned; false when the link was deleted meanwhile. */
 async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<boolean> {
   if (result.kind === 'html' && result.body) {
     return storeHtml(env, link, { ...result, body: result.body });
@@ -290,8 +291,14 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
   }
   const result = await fetchPage(env, link.url);
   try {
-    if (result.ok) await storeResult(env, link, result);
-    else await recordFailure(env, link, message.body, result);
+    if (result.ok) {
+      if (await storeResult(env, link, result)) {
+        const stored = await getLink(env.DB, link.user_id, link.id);
+        if (stored) await afterFetch(env, stored, parseNotes(stored.notes));
+      }
+    } else {
+      await recordFailure(env, link, message.body, result);
+    }
     message.ack();
   } catch (err) {
     console.error('storing a fetch failed', err);

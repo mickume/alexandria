@@ -5,11 +5,12 @@ import { applyD1Migrations, env } from 'cloudflare:test';
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'vitest';
 import { findOperation, responseMismatch } from '../api/openapi';
 import { setNow } from '../clock';
-import { recordedResponses, recordFetchQueue, savedKeys } from './helpers';
+import { recordedResponses, recordEnrichQueue, recordFetchQueue, savedKeys } from './helpers';
 import { installOutbound, resetOutbound } from './outbound';
 
 let tables: string[] = [];
 const fetchQueue = env.FETCH_QUEUE;
+const enrichQueue = env.ENRICH_QUEUE;
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
@@ -22,8 +23,9 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Fetch messages are recorded, never delivered on their own; tests deliver them.
+  // Queue messages are recorded, never delivered on their own; tests deliver them.
   recordFetchQueue();
+  recordEnrichQueue();
   await env.DB.batch([
     env.DB.prepare('PRAGMA defer_foreign_keys = on'),
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
@@ -32,6 +34,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   env.FETCH_QUEUE = fetchQueue;
+  env.ENRICH_QUEUE = enrichQueue;
   setNow(null);
   resetOutbound();
 });
