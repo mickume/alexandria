@@ -21,8 +21,12 @@ test('the owner signs in, adds a link and opens it', async ({ page }) => {
   await expect(first.getByText('pending')).toBeVisible({ timeout: 1000 });
   expect(Date.now() - entered).toBeLessThanOrEqual(1000);
 
-  await first.getByRole('link', { name: 'example.com' }).click();
-  await expect(page).toHaveURL('https://example.com/article');
+  const [site] = await Promise.all([
+    page.context().waitForEvent('page'),
+    first.locator('.card-title').click(),
+  ]);
+  await expect(site).toHaveURL('https://example.com/article');
+  await site.close();
 
   await page.goto('/');
   const card = page.getByRole('article').first();

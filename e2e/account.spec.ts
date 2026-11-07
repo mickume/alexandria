@@ -17,7 +17,7 @@ async function addFetched(page: Page, urls: string[]): Promise<string[]> {
   const ids = await addLinkIds(page, urls);
   await page.goto('/');
   for (const id of ids) {
-    await expect(cardOf(page, id).getByRole('link', { name: 'Snapshot' })).toBeVisible({
+    await expect(cardOf(page, id).getByRole('link', { name: 'Read' })).toBeVisible({
       timeout: 30_000,
     });
   }

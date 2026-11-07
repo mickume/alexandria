@@ -65,6 +65,13 @@ account and checks the PKCE verifier as Google does.
   the page, link cards in a responsive grid, pill controls and one warm
   accent; light and dark from `prefers-color-scheme`. `components/Icon.tsx`
   draws the navigation's line icons and Alexandria's mark.
+  `components/LinkCard` shows one link: its title, its site address and
+  Open open the site in a new tab, through `/api/v1/links/{id}/open` so the
+  visit counts as a use. Open, Read (when a copy is stored) and Pin stay on
+  the card; Snapshot, Details, Refresh, Add to workspace, Remove from
+  workspace, Archive and Delete are behind its ⋯ More actions button, a
+  disclosure that closes on Escape, on a click elsewhere and once an action
+  is chosen.
 
 ## Data
 

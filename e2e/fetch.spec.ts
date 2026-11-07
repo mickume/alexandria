@@ -58,6 +58,7 @@ test.describe('fetching links', () => {
     await fakeOrigin.goOffline();
     const offlineSince = Date.now();
     const card = page.getByRole('article', { name: 'An Article' }).first();
+    await card.getByRole('button', { name: 'More actions' }).click();
     await card.getByRole('link', { name: 'Snapshot' }).click();
     const frame = page.frameLocator('iframe[sandbox]');
     await expect(frame.getByRole('heading', { name: 'An Article' })).toBeVisible();
@@ -80,6 +81,7 @@ test.describe('fetching links', () => {
     const card = page.getByRole('article', { name: 'On Links' });
     await expect(card).toBeVisible({ timeout: 60_000 });
 
+    await card.getByRole('button', { name: 'More actions' }).click();
     await card.getByRole('link', { name: 'Snapshot' }).click();
     const viewer = page.locator('object[type="application/pdf"]');
     const src = (await viewer.getAttribute('data'))!;
