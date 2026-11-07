@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { notFound } from '../api/errors';
 import { now } from '../clock';
-import type { AppEnv } from '../env';
+import type { AppEnv, Env } from '../env';
 import { getLink, type LinkRow } from '../links/store';
 import { recordUse } from '../links/use';
 import {
@@ -62,13 +62,11 @@ async function storedLink(c: Context<AppEnv>): Promise<LinkRow | Response> {
 
 const NO_SNAPSHOT = { error: 'no_snapshot', message: 'no snapshot stored for this link' };
 
-snapshotRoutes.get('/:id/reader', async (c) => {
-  const link = await storedLink(c);
-  if (link instanceof Response) return link;
-  const text = await storedText(c.env, link.user_id, link.id);
-  let body: ReaderResponse;
+/** The reader view of a link with a stored snapshot, as GET /api/v1/links/{id}/reader serves it. */
+export async function readerBody(env: Env, link: LinkRow): Promise<ReaderResponse> {
+  const text = await storedText(env, link.user_id, link.id);
   if (link.content_kind === 'pdf') {
-    body = {
+    return {
       content_kind: 'pdf',
       title: link.title,
       byline: null,
@@ -76,29 +74,51 @@ snapshotRoutes.get('/:id/reader', async (c) => {
       text,
       empty: text === '',
     };
-  } else {
-    const object = link.reader_empty
-      ? null
-      : await c.env.SNAPSHOTS.get(readerKey(link.user_id, link.id));
-    const reader = object ? await object.json<StoredReader>() : null;
-    body = reader?.html
-      ? {
-          content_kind: 'html',
-          title: reader.title,
-          byline: reader.byline,
-          html: reader.html,
-          text,
-          empty: false,
-        }
-      : {
-          content_kind: 'html',
-          title: link.title,
-          byline: null,
-          html: null,
-          text: '',
-          empty: true,
-        };
   }
+  const object = link.reader_empty
+    ? null
+    : await env.SNAPSHOTS.get(readerKey(link.user_id, link.id));
+  const reader = object ? await object.json<StoredReader>() : null;
+  return reader?.html
+    ? {
+        content_kind: 'html',
+        title: reader.title,
+        byline: reader.byline,
+        html: reader.html,
+        text,
+        empty: false,
+      }
+    : { content_kind: 'html', title: link.title, byline: null, html: null, text: '', empty: true };
+}
+
+/**
+ * The stored snapshot of a link as GET /api/v1/links/{id}/snapshot serves it:
+ * the HTML sandboxed, or the PDF inline (or as an attachment); null when no
+ * object is stored.
+ */
+export async function snapshotResponse(
+  env: Env,
+  link: LinkRow,
+  download: boolean,
+): Promise<Response | null> {
+  const object = await env.SNAPSHOTS.get(snapshotKey(link.user_id, link.id));
+  if (!object) return null;
+  if (link.content_kind === 'pdf') {
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename="${pdfFileName(link.title)}"`,
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  }
+  return new Response(object.body, { headers: SNAPSHOT_HEADERS });
+}
+
+snapshotRoutes.get('/:id/reader', async (c) => {
+  const link = await storedLink(c);
+  if (link instanceof Response) return link;
+  const body = await readerBody(c.env, link);
   await recordUse(c.env.DB, link.user_id, link.id);
   return c.json(body);
 });
@@ -106,20 +126,10 @@ snapshotRoutes.get('/:id/reader', async (c) => {
 snapshotRoutes.get('/:id/snapshot', async (c) => {
   const link = await storedLink(c);
   if (link instanceof Response) return link;
-  const object = await c.env.SNAPSHOTS.get(snapshotKey(link.user_id, link.id));
-  if (!object) return c.json(NO_SNAPSHOT, 404);
+  const response = await snapshotResponse(c.env, link, c.req.query('download') === '1');
+  if (!response) return c.json(NO_SNAPSHOT, 404);
   await recordUse(c.env.DB, link.user_id, link.id);
-  if (link.content_kind === 'pdf') {
-    const disposition = c.req.query('download') === '1' ? 'attachment' : 'inline';
-    return new Response(object.body, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `${disposition}; filename="${pdfFileName(link.title)}"`,
-        'X-Content-Type-Options': 'nosniff',
-      },
-    });
-  }
-  return new Response(object.body, { headers: SNAPSHOT_HEADERS });
+  return response;
 });
 
 /** The least time between two refreshes of one link. */

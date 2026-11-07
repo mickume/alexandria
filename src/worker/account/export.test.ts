@@ -342,3 +342,89 @@ describe('the export of 20,000 links', () => {
     expect(elapsed).toBeLessThan(60_000);
   });
 });
+
+async function usesOf(id: string) {
+  const link = await env.DB.prepare('SELECT use_count, last_used_at FROM links WHERE id = ?')
+    .bind(id)
+    .first();
+  const events = await env.DB.prepare('SELECT COUNT(*) AS n FROM link_uses WHERE link_id = ?')
+    .bind(id)
+    .first<{ n: number }>();
+  return { link, events: events?.n };
+}
+
+describe('the export’s content URLs', () => {
+  it.each([
+    ['snapshot', 'an HTML link', 'html', false],
+    ['snapshot', 'a PDF link', 'pdf', false],
+    ['snapshot', 'an archived HTML link', 'html', true],
+    ['reader', 'an HTML link', 'html', false],
+    ['reader', 'a PDF link', 'pdf', false],
+    ['reader', 'an archived link', 'html', true],
+  ] as const)(
+    'serve the %s of %s as the link routes do, recording no use',
+    async (kind, _case, type, archived) => {
+      const user = await signIn();
+      const token = await createToken(user);
+      const [id] = await seedLinks(user, [{ url: 'https://stored.example' }]);
+      await storeCopies(user, id!, type);
+      if (archived) {
+        await env.DB.prepare(
+          "UPDATE links SET state = 'archived', archived_at = '2026-01-01T00:00:00.000Z' WHERE id = ?",
+        )
+          .bind(id)
+          .run();
+      }
+      const before = await usesOf(id!);
+      const exported = await api('GET', `/api/v1/export/links/${id}/${kind}`, {
+        bearer: token.secret,
+      });
+      expect(exported.status).toBe(200);
+      const exportedBody = await exported.response.arrayBuffer();
+      expect(await usesOf(id!)).toEqual(before);
+      const direct = await api('GET', `/api/v1/links/${id}/${kind}`, { bearer: token.secret });
+      expect(exported.headers.get('Content-Type')).toBe(direct.headers.get('Content-Type'));
+      expect(exported.headers.get('Content-Security-Policy')).toBe(
+        direct.headers.get('Content-Security-Policy'),
+      );
+      expect(new Uint8Array(exportedBody)).toEqual(
+        new Uint8Array(await direct.response.arrayBuffer()),
+      );
+    },
+  );
+
+  it.each([
+    ['snapshot', 'own pending link', 'no_content'],
+    ['snapshot', "own 'not a web page' link", 'no_content'],
+    ['snapshot', "another user's link", 'not_found'],
+    ['snapshot', 'an unknown id', 'not_found'],
+    ['reader', 'own pending link', 'no_content'],
+    ['reader', "own 'not a web page' link", 'no_content'],
+    ['reader', "another user's link", 'not_found'],
+    ['reader', 'an unknown id', 'not_found'],
+  ] as const)('answer 404 for the %s of %s', async (kind, target, error) => {
+    const user = await signIn();
+    const other = await signIn('other@example.test');
+    const [pending, notPage] = await seedLinks(user, [
+      { url: 'https://pending.example' },
+      { url: 'https://image.example' },
+    ]);
+    await env.DB.prepare(
+      `UPDATE links SET state = 'active', content_kind = 'other', notes = '["not a web page (image/png)"]' WHERE id = ?`,
+    )
+      .bind(notPage)
+      .run();
+    const [theirs] = await seedLinks(other, [{ url: 'https://theirs.example' }]);
+    await storeCopies(other, theirs!, 'html');
+    const id = {
+      'own pending link': pending,
+      "own 'not a web page' link": notPage,
+      "another user's link": theirs,
+      'an unknown id': 'no-such-link',
+    }[target];
+    const r = await api('GET', `/api/v1/export/links/${id}/${kind}`, { as: user.session });
+    expect(r.status).toBe(404);
+    expect(r.json).toEqual({ error });
+    expect((await usesOf(theirs!)).link).toMatchObject({ use_count: 0 });
+  });
+});

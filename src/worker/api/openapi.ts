@@ -139,6 +139,16 @@ const FILTER_PARAMETERS: Operation['query'] = {
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
+/** A link's stored reader view; for a PDF, its text. */
+const ReaderView = z.strictObject({
+  content_kind: z.enum(['html', 'pdf']),
+  title: z.string().nullable(),
+  byline: z.string().nullable(),
+  html: z.string().nullable(),
+  text: z.string(),
+  empty: z.boolean(),
+});
+
 /** A topic or tag in the export. */
 const ExportedLabel = z.strictObject({
   id: z.string(),
@@ -403,6 +413,26 @@ export const operations: Operation[] = [
           complete: z.literal(true),
         }),
       },
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/snapshot',
+    operationId: 'exportSnapshot',
+    summary: 'A link’s stored snapshot as the snapshot route serves it, recording no use',
+    responses: {
+      200: { description: 'The stored HTML (sandboxed) or PDF', mediaType: 'text/html' },
+      404: error('not_found, or no_content: nothing of this kind is stored for the link'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/reader',
+    operationId: 'exportReader',
+    summary: 'A link’s reader view as the reader route serves it, recording no use',
+    responses: {
+      200: { description: 'The reader view', schema: ReaderView },
+      404: error('not_found, or no_content: nothing of this kind is stored for the link'),
     },
   },
   {
@@ -743,14 +773,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description: 'The reader view; for a PDF, its text',
-        schema: z.strictObject({
-          content_kind: z.enum(['html', 'pdf']),
-          title: z.string().nullable(),
-          byline: z.string().nullable(),
-          html: z.string().nullable(),
-          text: z.string(),
-          empty: z.boolean(),
-        }),
+        schema: ReaderView,
       },
       404: NO_SNAPSHOT,
     },

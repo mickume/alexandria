@@ -744,6 +744,16 @@ part-way the download breaks off, so a file that does not end with
 nothing else: no settings, no part of the AI key, no tokens, sessions or import
 reports.
 
+#### `GET /api/v1/export/links/{id}/snapshot` and `GET /api/v1/export/links/{id}/reader`
+
+The `snapshot_url` and `reader_url` of an export entry: the link's stored
+snapshot and reader view exactly as `GET /api/v1/links/{id}/snapshot` and
+`GET /api/v1/links/{id}/reader` serve them (same status, headers and body),
+archived links included, with the same credentials, but **recording no use**,
+so that fetching a backup does not reset the library's decay. A link of the
+user with nothing of that kind stored answers `404 {"error": "no_content"}`;
+another user's link and an unknown id answer `404 {"error": "not_found"}`.
+
 ## MCP server
 
 `POST /mcp` is a Model Context Protocol server over the Streamable HTTP
