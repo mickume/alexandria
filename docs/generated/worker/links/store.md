@@ -12,17 +12,59 @@ A link as stored.
 
 > **added\_at**: `string`
 
+##### content\_kind
+
+> **content\_kind**: `string` \| `null`
+
+##### description
+
+> **description**: `string` \| `null`
+
+##### favicon\_url
+
+> **favicon\_url**: `string` \| `null`
+
+##### fetch\_attempts
+
+> **fetch\_attempts**: `number`
+
+##### fetched\_at
+
+> **fetched\_at**: `string` \| `null`
+
+##### final\_url
+
+> **final\_url**: `string` \| `null`
+
+##### has\_snapshot
+
+> **has\_snapshot**: `number`
+
 ##### host
 
 > **host**: `string`
+
+##### http\_status
+
+> **http\_status**: `number` \| `null`
 
 ##### id
 
 > **id**: `string`
 
+##### language
+
+> **language**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+##### notes
+
+> **notes**: `string`
+
+A JSON array of notes.
 
 ##### original\_url
 
@@ -32,13 +74,29 @@ A link as stored.
 
 > **pin\_position**: `number` \| `null`
 
+##### reader\_empty
+
+> **reader\_empty**: `number`
+
+##### refresh\_requested\_at
+
+> **refresh\_requested\_at**: `string` \| `null`
+
 ##### state
 
 > **state**: `string`
 
+##### state\_reason
+
+> **state\_reason**: `string` \| `null`
+
 ##### title
 
 > **title**: `string`
+
+##### updated\_at
+
+> **updated\_at**: `string`
 
 ##### url
 
@@ -64,17 +122,61 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### content\_kind
+
+> **content\_kind**: `string` \| `null`
+
+What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fetch.
+
+##### description
+
+> **description**: `string` \| `null`
+
+##### favicon\_url
+
+> **favicon\_url**: `string` \| `null`
+
+##### fetched\_at
+
+> **fetched\_at**: `string` \| `null`
+
+##### final\_url
+
+> **final\_url**: `string` \| `null`
+
+The URL of the last response of the latest successful fetch.
+
+##### has\_snapshot
+
+> **has\_snapshot**: `boolean`
+
+Whether a snapshot is stored, so that Read and Snapshot can be offered.
+
 ##### host
 
 > **host**: `string`
+
+##### http\_status
+
+> **http\_status**: `number` \| `null`
 
 ##### id
 
 > **id**: `string`
 
+##### language
+
+> **language**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+##### notes
+
+> **notes**: `string`[]
+
+Short notes such as "truncated" or "not a web page (image/png)".
 
 ##### original\_url
 
@@ -91,6 +193,12 @@ A link as the API shows it.
 ##### state
 
 > **state**: `string`
+
+##### state\_reason
+
+> **state\_reason**: `string` \| `null`
+
+Why the link is in its state, such as "HTTP 503" for a pending or unreachable link.
 
 ##### title
 
@@ -259,6 +367,24 @@ One of the user's links, or null when the user has no link with this id.
 #### Returns
 
 `Promise`\<[`LinkRow`](#linkrow) \| `null`\>
+
+***
+
+### parseNotes()
+
+> **parseNotes**(`notes`): `string`[]
+
+A link's notes, parsed from their stored JSON.
+
+#### Parameters
+
+##### notes
+
+`string` \| `null` \| `undefined`
+
+#### Returns
+
+`string`[]
 
 ***
 

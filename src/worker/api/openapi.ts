@@ -62,6 +62,16 @@ export const Link = z.strictObject({
   use_count: z.number().int(),
   pinned: z.boolean(),
   pin_position: z.number().int().nullable(),
+  final_url: z.string().nullable().describe('The URL of the last response of the latest fetch'),
+  http_status: z.number().int().nullable(),
+  description: z.string().nullable(),
+  favicon_url: z.string().nullable(),
+  language: z.string().nullable(),
+  fetched_at: z.string().nullable(),
+  state_reason: z.string().nullable().describe('Why the link is pending or unreachable'),
+  notes: z.array(z.string()).describe('Such as "truncated" or "not a web page (image/png)"'),
+  content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
+  has_snapshot: z.boolean(),
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });

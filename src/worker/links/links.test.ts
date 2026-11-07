@@ -23,6 +23,16 @@ describe('adding a link', () => {
         use_count: 0,
         pinned: false,
         pin_position: null,
+        final_url: null,
+        http_status: null,
+        description: null,
+        favicon_url: null,
+        language: null,
+        fetched_at: null,
+        state_reason: null,
+        notes: [],
+        content_kind: null,
+        has_snapshot: false,
       },
     });
   });
@@ -221,6 +231,16 @@ describe('reading a link', () => {
       use_count: 0,
       pinned: false,
       pin_position: null,
+      final_url: null,
+      http_status: null,
+      description: null,
+      favicon_url: null,
+      language: null,
+      fetched_at: null,
+      state_reason: null,
+      notes: [],
+      content_kind: null,
+      has_snapshot: false,
     });
   });
 });

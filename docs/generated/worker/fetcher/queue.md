@@ -26,3 +26,21 @@ concurrently, so that a wait at one host's gate does not hold up the others.
 #### Returns
 
 `Promise`\<`void`\>
+
+***
+
+### lastSegmentOrHost()
+
+> **lastSegmentOrHost**(`url`): `string`
+
+The last path segment of `url`, decoded, or its host when the path has none.
+
+#### Parameters
+
+##### url
+
+`string`
+
+#### Returns
+
+`string`

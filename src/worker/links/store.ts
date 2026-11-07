@@ -16,6 +16,21 @@ export interface LinkRow {
   last_used_at: string;
   use_count: number;
   pin_position: number | null;
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  fetch_attempts: number;
+  state_reason: string | null;
+  /** A JSON array of notes. */
+  notes: string;
+  content_kind: string | null;
+  has_snapshot: number;
+  reader_empty: number;
+  refresh_requested_at: string | null;
+  updated_at: string;
 }
 
 /** A link as the API shows it. */
@@ -31,6 +46,31 @@ export interface LinkView {
   use_count: number;
   pinned: boolean;
   pin_position: number | null;
+  /** The URL of the last response of the latest successful fetch. */
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  /** Why the link is in its state, such as "HTTP 503" for a pending or unreachable link. */
+  state_reason: string | null;
+  /** Short notes such as "truncated" or "not a web page (image/png)". */
+  notes: string[];
+  /** What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fetch. */
+  content_kind: string | null;
+  /** Whether a snapshot is stored, so that Read and Snapshot can be offered. */
+  has_snapshot: boolean;
+}
+
+/** A link's notes, parsed from their stored JSON. */
+export function parseNotes(notes: string | null | undefined): string[] {
+  try {
+    const parsed: unknown = JSON.parse(notes ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The API's view of a stored link. */
@@ -47,6 +87,16 @@ export function toView(row: LinkRow): LinkView {
     use_count: row.use_count,
     pinned: row.pin_position !== null,
     pin_position: row.pin_position,
+    final_url: row.final_url,
+    http_status: row.http_status,
+    description: row.description,
+    favicon_url: row.favicon_url,
+    language: row.language,
+    fetched_at: row.fetched_at,
+    state_reason: row.state_reason,
+    notes: parseNotes(row.notes),
+    content_kind: row.content_kind,
+    has_snapshot: row.has_snapshot === 1,
   };
 }
 
