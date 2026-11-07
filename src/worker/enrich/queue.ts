@@ -1,6 +1,6 @@
 import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
-import { getLink, type LinkRow } from '../links/store';
+import { getLink, parseStrings, type LinkRow } from '../links/store';
 import { buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
@@ -50,21 +50,36 @@ export async function afterFetch(
 
 /** Stores an enrichment on the link: summary, topic, tags, time and status. */
 async function storeEnrichment(env: Env, link: LinkRow, result: Enrichment): Promise<void> {
-  const topicId = await resolveTopic(env.DB, link.user_id, result.topic);
-  const tagIds = await resolveTags(env.DB, link.user_id, result.tags);
+  // The owner's edits win: an edited field keeps the owner's value.
+  const edited = new Set(parseStrings(link.edited_fields));
+  const topicId = edited.has('topic')
+    ? link.topic_id
+    : await resolveTopic(env.DB, link.user_id, result.topic);
+  const tagIds = edited.has('tags') ? null : await resolveTags(env.DB, link.user_id, result.tags);
   const at = now().toISOString();
   await env.DB.batch([
     env.DB.prepare(
       `UPDATE links SET summary = ?, topic_id = ?, enriched_at = ?, enrichment_status = 'enriched',
          enrichment_reason = NULL, updated_at = ?
        WHERE id = ? AND user_id = ?`,
-    ).bind(result.summary, topicId, at, at, link.id, link.user_id),
-    env.DB.prepare('DELETE FROM link_tags WHERE link_id = ?').bind(link.id),
-    ...tagIds.map((tagId, i) =>
-      env.DB.prepare(
-        'INSERT INTO link_tags (link_id, tag_id, position) SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?',
-      ).bind(tagId, i, link.id, link.user_id),
+    ).bind(
+      edited.has('summary') ? link.summary : result.summary,
+      topicId,
+      at,
+      at,
+      link.id,
+      link.user_id,
     ),
+    ...(tagIds
+      ? [
+          env.DB.prepare('DELETE FROM link_tags WHERE link_id = ?').bind(link.id),
+          ...tagIds.map((tagId, i) =>
+            env.DB.prepare(
+              'INSERT INTO link_tags (link_id, tag_id, position) SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?',
+            ).bind(tagId, i, link.id, link.user_id),
+          ),
+        ]
+      : []),
   ]);
 }
 

@@ -373,6 +373,23 @@ export const operations: Operation[] = [
     },
   },
   {
+    method: 'patch',
+    path: '/links/{id}',
+    operationId: 'editLink',
+    summary:
+      'Edit title, summary, tags or topic; edited fields are never overwritten automatically',
+    body: z.object({
+      title: z.string().min(1).max(500).optional(),
+      summary: z.string().max(2000).optional(),
+      tags: z.array(z.string()).max(20).optional(),
+      topic: z.string().min(1).max(100).optional(),
+    }),
+    responses: {
+      200: { description: 'The link, with edited_fields', schema: Link },
+      400: error('invalid_json, invalid_title, invalid_summary, invalid_tags or invalid_topic'),
+    },
+  },
+  {
     method: 'delete',
     path: '/links/{id}',
     operationId: 'deleteLink',

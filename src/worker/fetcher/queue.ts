@@ -124,7 +124,10 @@ async function writeFetched(
     const at = now().toISOString();
     const [update] = await env.DB.batch([
       env.DB.prepare(
-        `UPDATE links SET state = 'active', state_reason = NULL, fetch_attempts = 0, title = ?1, final_url = ?2,
+        `UPDATE links SET state = 'active', state_reason = NULL, fetch_attempts = 0,
+           title = CASE WHEN EXISTS (SELECT 1 FROM json_each(edited_fields) WHERE value = 'title')
+                   THEN title ELSE ?1 END,
+           final_url = ?2,
            http_status = ?3, description = ?4, favicon_url = ?5, language = ?6, fetched_at = ?7,
            content_kind = ?8, has_snapshot = ?9, reader_empty = ?10, notes = ?11, updated_at = ?7
          WHERE id = ?12 AND user_id = ?13`,

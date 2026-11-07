@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { links, openUrl, type Link, type LinkEvent } from '../api';
+import { EditableField } from '../components/EditableField';
 import { RefreshButton } from '../components/LinkCard';
 import { formatDate } from '../format';
 
@@ -38,6 +39,12 @@ export function LinkDetail({ id }: { id: string }) {
       <h1>
         <a href={openUrl(link.id)}>{link.title}</a>
       </h1>
+      <section className="editable">
+        <EditableField link={link} field="title" onSaved={setLink} />
+        <EditableField link={link} field="summary" onSaved={setLink} />
+        <EditableField link={link} field="tags" onSaved={setLink} />
+        <EditableField link={link} field="topic" onSaved={setLink} />
+      </section>
       <dl className="facts">
         <dt>Original URL</dt>
         <dd>{link.original_url}</dd>

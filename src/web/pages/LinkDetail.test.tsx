@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeApi, makeLink, renderPage } from '../test/helpers';
 
@@ -92,5 +92,64 @@ describe('the detail page of a fetched link', () => {
       expect.stringMatching(/^Fetched/),
       expect.stringMatching(/^Fetch failed: HTTP 503/),
     ]);
+  });
+});
+
+describe('editing a link on its detail page', () => {
+  function detailApi(): FakeApi {
+    let current = makeLink({
+      id: 'abc',
+      title: 'An Article',
+      state: 'active',
+      summary: 'Auto summary.',
+      tags: ['auto'],
+      topic: 'Auto',
+    });
+    return new FakeApi()
+      .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('PATCH', '/api/v1/links/abc', (req) => {
+        const body = req.body as Record<string, unknown>;
+        current = {
+          ...current,
+          ...body,
+          edited_fields: [...current.edited_fields, ...Object.keys(body)],
+        } as typeof current;
+        return { status: 200, body: current };
+      });
+  }
+
+  it('sends only the changed field and marks it as edited', async () => {
+    const api = detailApi();
+    renderPage('/links/abc', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'Rust' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    });
+    const patches = api.sent('PATCH', '/api/v1/links/abc');
+    expect(patches).toHaveLength(1);
+    expect(patches[0]?.body).toEqual({ topic: 'Rust' });
+    const topic = await screen.findByTestId('field-topic');
+    expect(topic.textContent).toContain('Rust');
+    expect(within(topic).getByText('edited')).toBeTruthy();
+  });
+
+  it('shows a refusal beside the field', async () => {
+    const api = detailApi().on('PATCH', '/api/v1/links/abc', {
+      status: 400,
+      body: { error: 'invalid_topic', field: 'topic', message: 'a topic of 1 to 100 characters' },
+    });
+    renderPage('/links/abc', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: '' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    });
+    const topic = screen.getByTestId('field-topic');
+    expect(within(topic).getByText('a topic of 1 to 100 characters')).toBeTruthy();
   });
 });

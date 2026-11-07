@@ -351,3 +351,16 @@ answer within 60 seconds, or an unusable result) leaves the link `active`
 with its fetched title and description, marks it `failed` with
 `enrichment_reason`, and is tried once more 10 minutes later; a re-run asked
 for here is not retried.
+
+#### `PATCH /api/v1/links/{id}`
+
+Edits any of `title` (1 to 500 characters), `summary` (at most 2,000),
+`tags` (a list of at most 20 names, each non-empty once normalised as
+enrichment's tags are) and `topic` (1 to 100 characters). Tag and topic
+names reuse the user's existing ones (case ignored, spaces read as hyphens).
+Each given field is recorded in `edited_fields` for good: later enrichment,
+re-runs and refreshes never overwrite it.
+
+- `200 <link>`
+- `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
+  nothing is changed when any field is invalid.

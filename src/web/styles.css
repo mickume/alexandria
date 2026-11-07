@@ -452,3 +452,40 @@ select {
   background: var(--surface);
   color: var(--fg);
 }
+
+.editable {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: var(--space) 0;
+}
+
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.field-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.badge {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
