@@ -16,6 +16,21 @@ export interface LinkRow {
   last_used_at: string;
   use_count: number;
   pin_position: number | null;
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  fetch_attempts: number;
+  state_reason: string | null;
+  /** A JSON array of notes. */
+  notes: string;
+  content_kind: string | null;
+  has_snapshot: number;
+  reader_empty: number;
+  refresh_requested_at: string | null;
+  updated_at: string;
 }
 
 /** A link as the API shows it. */
@@ -31,6 +46,33 @@ export interface LinkView {
   use_count: number;
   pinned: boolean;
   pin_position: number | null;
+  /** The URL of the last response of the latest successful fetch. */
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  /** Why the link is in its state, such as "HTTP 503" for a pending or unreachable link. */
+  state_reason: string | null;
+  /** Short notes such as "truncated" or "not a web page (image/png)". */
+  notes: string[];
+  /** What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fetch. */
+  content_kind: string | null;
+  /** Whether a snapshot is stored, so that Read and Snapshot can be offered. */
+  has_snapshot: boolean;
+  /** When the link last changed in any way. */
+  updated_at: string;
+}
+
+/** A link's notes, parsed from their stored JSON. */
+export function parseNotes(notes: string | null | undefined): string[] {
+  try {
+    const parsed: unknown = JSON.parse(notes ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((n): n is string => typeof n === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The API's view of a stored link. */
@@ -47,6 +89,17 @@ export function toView(row: LinkRow): LinkView {
     use_count: row.use_count,
     pinned: row.pin_position !== null,
     pin_position: row.pin_position,
+    final_url: row.final_url,
+    http_status: row.http_status,
+    description: row.description,
+    favicon_url: row.favicon_url,
+    language: row.language,
+    fetched_at: row.fetched_at,
+    state_reason: row.state_reason,
+    notes: parseNotes(row.notes),
+    content_kind: row.content_kind,
+    has_snapshot: row.has_snapshot === 1,
+    updated_at: row.updated_at,
   };
 }
 
@@ -73,11 +126,13 @@ function addStatement(db: D1Database, userId: string, link: NewLink, at: string,
   const host = new URL(link.url).host;
   return db
     .prepare(
-      `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6
+      `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at,
+         updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6, ?6
        WHERE (SELECT COUNT(*) FROM links WHERE user_id = ?2) < ?7
           OR EXISTS (SELECT 1 FROM links WHERE user_id = ?2 AND url = ?3)
-       ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at
+       ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at,
+         updated_at = excluded.updated_at
        RETURNING *`,
     )
     .bind(id, userId, link.url, link.original, host, at, LIBRARY_LIMIT);
@@ -129,17 +184,18 @@ export const PIN_LIMIT = 30;
 
 /** Statements that take a pinned link out of the pinned section and close the gap it leaves. */
 function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
+  const at = now().toISOString();
   return [
     db
       .prepare(
-        `UPDATE links SET pin_position = pin_position - 1
+        `UPDATE links SET pin_position = pin_position - 1, updated_at = ?3
          WHERE user_id = ?1 AND pin_position > (
            SELECT pin_position FROM links WHERE id = ?2 AND user_id = ?1)`,
       )
-      .bind(userId, id),
+      .bind(userId, id, at),
     db
-      .prepare('UPDATE links SET pin_position = NULL WHERE id = ? AND user_id = ?')
-      .bind(id, userId),
+      .prepare('UPDATE links SET pin_position = NULL, updated_at = ? WHERE id = ? AND user_id = ?')
+      .bind(at, id, userId),
   ];
 }
 
@@ -172,16 +228,16 @@ export async function pinLink(
     ...unpinStatements(db, userId, id),
     db
       .prepare(
-        `UPDATE links SET pin_position = pin_position + 1
+        `UPDATE links SET pin_position = pin_position + 1, updated_at = ?5
          WHERE user_id = ?1 AND pin_position >= ${target} AND ${others} < ?4`,
       )
-      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
     db
       .prepare(
-        `UPDATE links SET pin_position = ${target}
+        `UPDATE links SET pin_position = ${target}, updated_at = ?5
          WHERE id = ?2 AND user_id = ?1 AND ${others} < ?4`,
       )
-      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
   ]);
   const after = await getLink(db, userId, id);
   if (!after) return { status: 'not_found' };
@@ -202,7 +258,7 @@ export async function unpinLink(
 }
 
 /**
- * Deletes one of the user's links and its use events at once and for good,
+ * Deletes one of the user's links, its use and fetch events and its text at once and for good,
  * closing the gap in the pinned section if it was pinned. Returns false when
  * the user has no such link.
  */
@@ -210,6 +266,8 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
   const results = await db.batch([
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
   return (results.at(-1)?.meta.changes ?? 0) > 0;

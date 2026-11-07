@@ -16,6 +16,22 @@ export interface Env {
   GOOGLE_TOKEN_URL: string;
   /** The site's own origin, such as https://alexandria.example.com. */
   PUBLIC_ORIGIN: string;
+  /** The queue of fetch messages, one per link to fetch. */
+  FETCH_QUEUE: Queue<FetchMessage>;
+  /** The per-host rate limit: one Durable Object per host. */
+  HOST_GATE: DurableObjectNamespace<import('./fetcher/hostgate').HostGate>;
+  /** Snapshots and reader views. */
+  SNAPSHOTS: R2Bucket;
+  /** End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target. */
+  ORIGIN_PROXY_URL?: string;
+}
+
+/** A request to fetch one link's page. */
+export interface FetchMessage {
+  user_id: string;
+  link_id: string;
+  /** Set for a refresh the owner asked for; a failed refresh is not retried. */
+  refresh?: boolean;
 }
 
 /** The user a request is authenticated as. */

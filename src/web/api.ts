@@ -67,6 +67,17 @@ export interface Link {
   use_count: number;
   pinned: boolean;
   pin_position: number | null;
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  state_reason: string | null;
+  notes: string[];
+  content_kind: 'html' | 'pdf' | 'other' | null;
+  has_snapshot: boolean;
+  updated_at: string;
 }
 
 /** One page of a list. */
@@ -82,18 +93,47 @@ export interface BatchResult {
   invalid: { url: string; error: 'invalid_url' | 'library_full' }[];
 }
 
-/** One event of a link's history. */
-export interface LinkEvent {
-  kind: string;
-  at: string;
-}
+/** One event of a link's history: a use, or a fetch attempt. */
+export type LinkEvent =
+  | { kind: 'use'; at: string }
+  | {
+      kind: 'fetch';
+      at: string;
+      outcome: 'ok' | 'failed';
+      http_status: number | null;
+      reason: string | null;
+    };
 
 /** The address that opens a link through the API, recording the use. */
 export function openUrl(id: string): string {
   return `/api/v1/links/${encodeURIComponent(id)}/open`;
 }
 
+/** The links changed since a server time, and the server time to ask from next. */
+export interface Changes {
+  items: Link[];
+  server_time: string;
+}
+
+/** A link's stored reader view. */
+export interface ReaderView {
+  content_kind: 'html' | 'pdf';
+  title: string | null;
+  byline: string | null;
+  html: string | null;
+  text: string;
+  empty: boolean;
+}
+
+/** The address of a link's stored snapshot; `download` asks for a PDF as an attachment. */
+export function snapshotUrl(id: string, { download = false } = {}): string {
+  return `/api/v1/links/${encodeURIComponent(id)}/snapshot${download ? '?download=1' : ''}`;
+}
+
 export const links = {
+  reader: (id: string) => request<ReaderView>('GET', `/links/${encodeURIComponent(id)}/reader`),
+  changedSince: (since: string) =>
+    request<Changes>('GET', `/links?changed_since=${encodeURIComponent(since)}`),
   get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),
   history: (id: string) =>
     request<Page<LinkEvent>>('GET', `/links/${encodeURIComponent(id)}/history`),
@@ -107,6 +147,8 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
+  refresh: (id: string) =>
+    request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/refresh`),
   /** Deletes a link for good; a link already gone counts as deleted. */
   remove: async (id: string, { keepalive = false } = {}) => {
     try {

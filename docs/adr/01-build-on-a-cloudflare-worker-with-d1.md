@@ -31,7 +31,7 @@ later package names files in.
   token endpoint, later origins and AI providers) are answered by the router in
   `src/worker/test/outbound.ts`, which replaces the test isolate's `fetch` (the
   main Worker shares that isolate); a request no route claims fails the test.
-  Website tests run in happy-dom against a fake API. End-to-end tests run
+  Website tests run in jsdom against a fake API (see ADR 02). End-to-end tests run
   Playwright against `wrangler dev` with a production build and a local fake of
   Google's OAuth endpoints.
 - **The rate limit is counted in D1.** The per-user limit of 600 requests a

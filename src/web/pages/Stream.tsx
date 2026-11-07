@@ -174,10 +174,59 @@ function useUndoableDelete(items: Link[], setItems: SetItems) {
   return { remove, undo, undoable, failure };
 }
 
+/** How often the stream asks for changes while a link is being fetched. */
+const POLL_MS = 5_000;
+
+/**
+ * While any card is pending or being refreshed, asks every 5 seconds for the
+ * links changed since the last server time and replaces those cards in place.
+ */
+function useChangeFeed(items: Link[], setItems: SetItems) {
+  const [refreshing, setRefreshing] = useState<Set<string>>(new Set());
+  const since = useRef<string | null>(null);
+  const watching = items.some((l) => l.state === 'pending') || refreshing.size > 0;
+  const latest = useRef(items);
+  useEffect(() => {
+    latest.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    if (!watching) {
+      since.current = null;
+      return;
+    }
+    const timer = setInterval(() => {
+      // The first poll asks from the newest change the page has already seen.
+      since.current ??= latest.current.reduce(
+        (max, l) => (l.updated_at > max ? l.updated_at : max),
+        '1970-01-01T00:00:00.000Z',
+      );
+      linksApi
+        .changedSince(since.current)
+        .then((changes) => {
+          since.current = changes.server_time;
+          const changed = new Map(changes.items.map((l) => [l.id, l]));
+          setItems((current) => current.map((l) => changed.get(l.id) ?? l));
+          setRefreshing((ids) => {
+            const left = new Set([...ids].filter((id) => !changed.has(id)));
+            return left.size === ids.size ? ids : left;
+          });
+        })
+        .catch(() => undefined);
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [watching, setItems]);
+
+  return {
+    markRefreshing: (link: Link) => setRefreshing((ids) => new Set(ids).add(link.id)),
+  };
+}
+
 /** The stream: the home page. Pinned links first, then the rest by last use. */
 export function Stream() {
   const { items, setItems, loaded, refresh, loadMore } = useStreamPages();
   const deletes = useUndoableDelete(items, setItems);
+  const feed = useChangeFeed(items, setItems);
   const [notice, setNotice] = useState<string | null>(null);
   const dragged = useRef<Link | null>(null);
   const sentinel = useSentinel(loadMore);
@@ -197,6 +246,7 @@ export function Stream() {
     onPin: (link) => void change(() => linksApi.pin(link.id)),
     onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
     onDelete: deletes.remove,
+    onRefreshing: feed.markRefreshing,
     onDragStart: (link) => {
       dragged.current = link;
     },

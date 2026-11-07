@@ -230,6 +230,22 @@ What a batch add did to each URL.
 
 ***
 
+### Changes
+
+The links changed since a server time, and the server time to ask from next.
+
+#### Properties
+
+##### items
+
+> **items**: [`Link`](#link)[]
+
+##### server\_time
+
+> **server\_time**: `string`
+
+***
+
 ### Link
 
 A link as the API shows it.
@@ -240,17 +256,53 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### content\_kind
+
+> **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
+
+##### description
+
+> **description**: `string` \| `null`
+
+##### favicon\_url
+
+> **favicon\_url**: `string` \| `null`
+
+##### fetched\_at
+
+> **fetched\_at**: `string` \| `null`
+
+##### final\_url
+
+> **final\_url**: `string` \| `null`
+
+##### has\_snapshot
+
+> **has\_snapshot**: `boolean`
+
 ##### host
 
 > **host**: `string`
+
+##### http\_status
+
+> **http\_status**: `number` \| `null`
 
 ##### id
 
 > **id**: `string`
 
+##### language
+
+> **language**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+##### notes
+
+> **notes**: `string`[]
 
 ##### original\_url
 
@@ -268,9 +320,17 @@ A link as the API shows it.
 
 > **state**: `string`
 
+##### state\_reason
+
+> **state\_reason**: `string` \| `null`
+
 ##### title
 
 > **title**: `string`
+
+##### updated\_at
+
+> **updated\_at**: `string`
 
 ##### url
 
@@ -279,22 +339,6 @@ A link as the API shows it.
 ##### use\_count
 
 > **use\_count**: `number`
-
-***
-
-### LinkEvent
-
-One event of a link's history.
-
-#### Properties
-
-##### at
-
-> **at**: `string`
-
-##### kind
-
-> **kind**: `string`
 
 ***
 
@@ -320,6 +364,38 @@ One page of a list.
 
 ***
 
+### ReaderView
+
+A link's stored reader view.
+
+#### Properties
+
+##### byline
+
+> **byline**: `string` \| `null`
+
+##### content\_kind
+
+> **content\_kind**: `"html"` \| `"pdf"`
+
+##### empty
+
+> **empty**: `boolean`
+
+##### html
+
+> **html**: `string` \| `null`
+
+##### text
+
+> **text**: `string`
+
+##### title
+
+> **title**: `string` \| `null`
+
+***
+
 ### Token
 
 A personal access token as listed.
@@ -342,6 +418,14 @@ A personal access token as listed.
 
 > **name**: `string`
 
+## Type Aliases
+
+### LinkEvent
+
+> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
+
+One event of a link's history: a use, or a fetch attempt.
+
 ## Variables
 
 ### links
@@ -363,6 +447,20 @@ A personal access token as listed.
 ###### Returns
 
 `Promise`\<[`BatchResult`](#batchresult)\>
+
+##### changedSince
+
+> **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
+
+###### Parameters
+
+###### since
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Changes`](#changes)\>
 
 ##### get
 
@@ -423,6 +521,34 @@ A personal access token as listed.
 ###### Returns
 
 `Promise`\<[`Link`](#link)\>
+
+##### reader
+
+> **reader**: (`id`) => `Promise`\<[`ReaderView`](#readerview)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`ReaderView`](#readerview)\>
+
+##### refresh
+
+> **refresh**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"queued"`; \}\>
 
 ##### remove
 
@@ -557,3 +683,27 @@ Sends a request to the API and returns its parsed JSON body (undefined for 204).
 #### Returns
 
 `Promise`\<`T`\>
+
+***
+
+### snapshotUrl()
+
+> **snapshotUrl**(`id`, `__namedParameters?`): `string`
+
+The address of a link's stored snapshot; `download` asks for a PDF as an attachment.
+
+#### Parameters
+
+##### id
+
+`string`
+
+##### \_\_namedParameters?
+
+###### download?
+
+`boolean` = `false`
+
+#### Returns
+
+`string`

@@ -1,22 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
-import { FakeApi, fakeIntersectionObserver, renderPage } from '../test/helpers';
+import { FakeApi, fakeIntersectionObserver, makeLink, renderPage } from '../test/helpers';
 
 function makeLinks(n: number): Link[] {
-  return Array.from({ length: n }, (_, i) => ({
-    id: `l${i}`,
-    url: `https://site${i}.example/page`,
-    original_url: `https://site${i}.example/page`,
-    host: `site${i}.example`,
-    title: `Title ${i}`,
-    state: 'pending',
-    added_at: '2026-03-04T10:00:00.000Z',
-    last_used_at: '2026-03-05T10:00:00.000Z',
-    use_count: 0,
-    pinned: false,
-    pin_position: null,
-  }));
+  return Array.from({ length: n }, (_, i) =>
+    makeLink({ id: `l${i}`, host: `site${i}.example`, title: `Title ${i}` }),
+  );
 }
 
 describe('the stream page', () => {
@@ -206,5 +196,62 @@ describe('deleting on the stream page', () => {
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(titles()).toEqual(['Title 0', 'Title 1', 'Title 2']);
     expect(screen.getByText('could not delete, try again')).toBeTruthy();
+  });
+});
+
+describe('the stream while links are being fetched', () => {
+  it('asks for changes every 5 seconds and replaces a fetched card in place, then stops', async () => {
+    const links = [
+      makeLink({
+        id: 'a',
+        title: 'Alpha',
+        state: 'active',
+        updated_at: '2026-03-05T10:00:00.000Z',
+      }),
+      makeLink({
+        id: 'p',
+        title: 'p.example',
+        state: 'pending',
+        updated_at: '2026-03-05T10:00:01.000Z',
+      }),
+      makeLink({
+        id: 'c',
+        title: 'Gamma',
+        state: 'active',
+        updated_at: '2026-03-05T09:00:00.000Z',
+      }),
+    ];
+    const api = new FakeApi().on('GET', '/api/v1/links', (req) =>
+      req.path.includes('changed_since=')
+        ? {
+            status: 200,
+            body: {
+              items: [
+                {
+                  ...links[1]!,
+                  state: 'active',
+                  title: 'An Article',
+                  updated_at: '2026-03-05T10:00:04.000Z',
+                },
+              ],
+              server_time: '2026-03-05T10:00:05.000Z',
+            },
+          }
+        : { status: 200, body: { items: links, next_cursor: null } },
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPage('/', api);
+      await screen.findByRole('article', { name: 'p.example' });
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      const polls = api.sent('GET', '/api/v1/links?changed_since=');
+      expect(polls).toHaveLength(1);
+      expect(polls[0]?.path).toBe('/api/v1/links?changed_since=2026-03-05T10%3A00%3A01.000Z');
+      expect(titles()).toEqual(['Alpha', 'An Article', 'Gamma']);
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+      expect(api.sent('GET', '/api/v1/links?changed_since=')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

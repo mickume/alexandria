@@ -12,8 +12,10 @@ type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 /** One documented response of an operation. */
 export interface ResponseSpec {
   description: string;
-  /** The body's schema; absent for a response without a body. */
+  /** The body's schema; absent for a response without a JSON body. */
   schema?: z.ZodType;
+  /** The media type of a body that is not JSON, such as text/html. */
+  mediaType?: string;
   headers?: Record<string, { description: string; schema: { type: string } }>;
 }
 
@@ -62,9 +64,22 @@ export const Link = z.strictObject({
   use_count: z.number().int(),
   pinned: z.boolean(),
   pin_position: z.number().int().nullable(),
+  final_url: z.string().nullable().describe('The URL of the last response of the latest fetch'),
+  http_status: z.number().int().nullable(),
+  description: z.string().nullable(),
+  favicon_url: z.string().nullable(),
+  language: z.string().nullable(),
+  fetched_at: z.string().nullable(),
+  state_reason: z.string().nullable().describe('Why the link is pending or unreachable'),
+  notes: z.array(z.string()).describe('Such as "truncated" or "not a web page (image/png)"'),
+  content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
+  has_snapshot: z.boolean(),
+  updated_at: z.string().describe('When the link last changed in any way'),
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
+
+const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
 
 /** The answers any authenticated operation may give, added to each. */
 function commonResponses(op: Operation): Record<number, ResponseSpec> {
@@ -191,13 +206,22 @@ export const operations: Operation[] = [
     query: {
       limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+      changed_since: {
+        description:
+          'Instead of a page: the links changed since this time (a server_time), oldest change first',
+        schema: z.string(),
+      },
     },
     responses: {
       200: {
-        description: 'One page of the stream; archived links are left out',
-        schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+        description:
+          'One page of the stream (archived links left out); with changed_since, the changed links and the server time to ask from next',
+        schema: z.union([
+          z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+          z.strictObject({ items: z.array(Link), server_time: z.string() }),
+        ]),
       },
-      400: error('invalid_limit or invalid_cursor'),
+      400: error('invalid_limit, invalid_cursor or invalid_changed_since'),
     },
   },
   {
@@ -208,10 +232,65 @@ export const operations: Operation[] = [
     responses: { 200: { description: 'The link', schema: Link } },
   },
   {
+    method: 'get',
+    path: '/links/{id}/reader',
+    operationId: 'readLink',
+    summary: 'Record a use and return the stored reader view',
+    responses: {
+      200: {
+        description: 'The reader view; for a PDF, its text',
+        schema: z.strictObject({
+          content_kind: z.enum(['html', 'pdf']),
+          title: z.string().nullable(),
+          byline: z.string().nullable(),
+          html: z.string().nullable(),
+          text: z.string(),
+          empty: z.boolean(),
+        }),
+      },
+      404: NO_SNAPSHOT,
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}/snapshot',
+    operationId: 'getSnapshot',
+    summary: 'Record a use and return the stored snapshot: HTML under a sandbox policy, or the PDF',
+    query: {
+      download: { description: '1 to download a PDF as an attachment', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description:
+          'text/html with Content-Security-Policy sandbox, or application/pdf inline (attachment with download=1)',
+        mediaType: 'text/html',
+      },
+      404: NO_SNAPSHOT,
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/refresh',
+    operationId: 'refreshLink',
+    summary: 'Fetch the link again, replacing its stored copy; at most once per 10 minutes',
+    responses: {
+      202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
+      429: {
+        ...error('refreshed_recently: "already refreshed recently", or rate_limited'),
+        headers: {
+          'Retry-After': {
+            description: 'Seconds until a refresh is allowed',
+            schema: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+  {
     method: 'delete',
     path: '/links/{id}',
     operationId: 'deleteLink',
-    summary: 'Delete the link and its history, at once and for good',
+    summary: 'Delete the link, its history and its stored copies, at once and for good',
     responses: { 204: { description: 'Deleted' } },
   },
   {
@@ -232,7 +311,7 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/links/{id}/history',
     operationId: 'getLinkHistory',
-    summary: 'The link’s events, newest first',
+    summary: 'The link’s uses and fetch attempts, newest first',
     query: {
       limit: { description: 'Events per page, 1 to 100 (default 100)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
@@ -241,7 +320,18 @@ export const operations: Operation[] = [
       200: {
         description: 'One page of events',
         schema: z.strictObject({
-          items: z.array(z.strictObject({ kind: z.string(), at: z.string() })),
+          items: z.array(
+            z.union([
+              z.strictObject({ kind: z.literal('use'), at: z.string() }),
+              z.strictObject({
+                kind: z.literal('fetch'),
+                at: z.string(),
+                outcome: z.enum(['ok', 'failed']),
+                http_status: z.number().int().nullable(),
+                reason: z.string().nullable(),
+              }),
+            ]),
+          ),
           next_cursor: z.string().nullable(),
         }),
       },

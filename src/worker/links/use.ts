@@ -1,10 +1,15 @@
 import { now } from '../clock';
 
-/** One event in a link's history. */
-export interface LinkEvent {
-  kind: 'use';
-  at: string;
-}
+/** One event in a link's history: a use, or a fetch attempt with its outcome. */
+export type LinkEvent =
+  | { kind: 'use'; at: string }
+  | {
+      kind: 'fetch';
+      at: string;
+      outcome: 'ok' | 'failed';
+      http_status: number | null;
+      reason: string | null;
+    };
 
 /**
  * Records one use of a user's link: increments its use count, sets its last
@@ -21,7 +26,7 @@ export async function recordUse(
   const [updated] = await db.batch<{ url: string }>([
     db
       .prepare(
-        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1
+        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1, updated_at = ?1
          WHERE id = ?2 AND user_id = ?3 RETURNING url`,
       )
       .bind(at, linkId, userId),
@@ -35,9 +40,11 @@ export async function recordUse(
   return updated?.results[0]?.url ?? null;
 }
 
-/** Where a page of a link's history ends. */
+/** Where a page of a link's history ends: the last event's time, source and id. */
 export interface HistoryCursor {
   at: string;
+  /** 0 for a use, 1 for a fetch event: the two tables number their rows apart. */
+  s: number;
   id: number;
 }
 
@@ -45,30 +52,57 @@ export interface HistoryCursor {
 export function isHistoryCursor(value: unknown): value is HistoryCursor {
   if (typeof value !== 'object' || value === null) return false;
   const c = value as Record<string, unknown>;
-  return typeof c.at === 'string' && Number.isInteger(c.id);
+  return typeof c.at === 'string' && (c.s === 0 || c.s === 1) && Number.isInteger(c.id);
 }
 
-/** One page of a link's events, newest first, and the cursor of the next page, if any. */
+interface HistoryRow {
+  src: number;
+  id: number;
+  kind: string;
+  at: string;
+  outcome: string | null;
+  http_status: number | null;
+  reason: string | null;
+}
+
+function toEvent(row: HistoryRow): LinkEvent {
+  if (row.src === 0) return { kind: 'use', at: row.at };
+  return {
+    kind: 'fetch',
+    at: row.at,
+    outcome: row.outcome === 'ok' ? 'ok' : 'failed',
+    http_status: row.http_status,
+    reason: row.reason,
+  };
+}
+
+/** One page of a link's uses and fetch events, newest first, and the cursor of the next page. */
 export async function listHistory(
   db: D1Database,
   linkId: string,
   limit: number,
   after: HistoryCursor | null,
 ): Promise<{ items: LinkEvent[]; next: HistoryCursor | null }> {
-  const keyset = after ? 'AND (at < ?3 OR (at = ?3 AND id < ?4))' : '';
+  const keyset = after ? 'WHERE at < ?3 OR (at = ?3 AND (src < ?4 OR (src = ?4 AND id < ?5)))' : '';
   const statement = db.prepare(
-    `SELECT id, at FROM link_uses WHERE link_id = ?1 ${keyset}
-     ORDER BY at DESC, id DESC LIMIT ?2`,
+    `SELECT * FROM (
+       SELECT 0 AS src, id, 'use' AS kind, at, NULL AS outcome, NULL AS http_status, NULL AS reason
+         FROM link_uses WHERE link_id = ?1
+       UNION ALL
+       SELECT 1 AS src, id, kind, at, outcome, http_status, reason
+         FROM link_events WHERE link_id = ?1
+     ) ${keyset}
+     ORDER BY at DESC, src DESC, id DESC LIMIT ?2`,
   );
   const rows = await (
     after
-      ? statement.bind(linkId, limit + 1, after.at, after.id)
+      ? statement.bind(linkId, limit + 1, after.at, after.s, after.id)
       : statement.bind(linkId, limit + 1)
-  ).all<{ id: number; at: string }>();
+  ).all<HistoryRow>();
   const page = rows.results.slice(0, limit);
   const last = page.at(-1);
   return {
-    items: page.map((r) => ({ kind: 'use', at: r.at })),
-    next: rows.results.length > limit && last ? { at: last.at, id: last.id } : null,
+    items: page.map(toEvent),
+    next: rows.results.length > limit && last ? { at: last.at, s: last.src, id: last.id } : null,
   };
 }

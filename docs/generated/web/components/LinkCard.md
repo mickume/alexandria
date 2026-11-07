@@ -68,6 +68,22 @@ A dragged card was dropped on this pinned card.
 
 `void`
 
+##### onRefreshing?
+
+> `optional` **onRefreshing?**: (`link`) => `void`
+
+A refresh of the card's link was accepted.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
 ##### onUnpin
 
 > **onUnpin**: (`link`) => `void`
@@ -100,7 +116,32 @@ One link in the stream: favicon, title, host, dates, state and actions.
 
 ###### link
 
-[`Link`](../api.md#link) & `object`
+[`Link`](../api.md#link)
+
+#### Returns
+
+`Element`
+
+***
+
+### RefreshButton()
+
+> **RefreshButton**(`__namedParameters`): `Element`
+
+Refresh: asks the API to fetch the link again and shows that it is
+refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### onRefreshing?
+
+(`link`) => `void`
 
 #### Returns
 

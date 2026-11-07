@@ -9,10 +9,12 @@ the layout are in [ADR 01](adr/01-build-on-a-cloudflare-worker-with-d1.md).
 browser ──► Worker (src/worker/index.ts)
               ├── /api/v1/*   the JSON API (Hono)
               ├── /auth/*     sign-in with Google, sign-out
+              ├── /about/*    public pages (the fetcher)
               └── pages       website's static assets (dist/client), after the session check
                      │
-                     ▼
-                 D1 (DB)      users, sessions, tokens, links, link_uses, rate_limits
+                     ├──► D1 (DB)          users, sessions, tokens, links, link_uses, rate_limits, …
+                     ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites
+                     └──► R2 (SNAPSHOTS)   snapshots and reader views
 ```
 
 - **The Worker** (`src/worker/`): `index.ts` is the entry point and hands every
@@ -64,19 +66,53 @@ account and checks the PKCE verifier as Google does.
 | `sessions` | the SHA-256 hash of each session id, its user and expiry |
 | `tokens` | the SHA-256 hash of each token secret, its name, dates and revocation |
 | `links` | per user: normalised and original URL, host, title, state, dates, use count, pin position |
-| `link_uses` | one row per use of a link, the source of its history |
+| `link_uses` | one row per use of a link |
+| `link_events` | one row per fetch attempt: time, outcome, HTTP status, reason |
+| `link_texts` | the reader-view text of a link, for search and enrichment |
 | `rate_limits` | requests per user per minute |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
 - **The database** (`migrations/`): plain SQL migrations applied in order.
 
+## Fetching
+
+Adding a link sends one message `{user_id, link_id}` on `FETCH_QUEUE`
+(`links/routes.ts`). The queue consumer (`fetcher/queue.ts`, the Worker's
+`queue` handler) processes a batch's messages concurrently. Each fetch
+(`fetcher/fetch.ts`) sends a GET with `Accept: text/html, application/pdf` and
+`User-Agent: Alexandria/1.0 (+PUBLIC_ORIGIN/about/fetcher)`, follows at most 5
+redirects by hand and refuses any target that is not a public http(s) address
+(the normaliser's address rules), and gives each request and its body 15
+seconds. Before every request it waits for the host gate
+(`fetcher/hostgate.ts`): one Durable Object per host name hands out slots at
+least one second apart, across all users and jobs. `robots.txt` is not read.
+`GET /about/fetcher` is the public page that explains the fetcher.
+
+What a fetch stores (`fetcher/queue.ts`): for a web page, its metadata
+(`fetcher/html.ts`), the raw HTML as the snapshot and the reader view
+(`fetcher/reader.ts`: Readability over a linkedom DOM, sanitised by an
+allow-list) in R2 under `u/{user_id}/l/{link_id}/` (`snapshot`,
+`reader.json`), and the reader text (at most 500,000 characters) in
+`link_texts`; for a PDF, the whole file and its text (`fetcher/pdf.ts`,
+unpdf); for anything else, a note and no snapshot. Objects are written first,
+then the row in one D1 batch; a link deleted meanwhile leaves nothing, and a
+failed write removes what the attempt wrote and hands the message back. A
+failed first fetch is retried after 10 minutes and 2 hours, then the link is
+`unreachable`; a failed refresh changes nothing but the history. Every
+attempt is a `link_events` row.
+
+Read and Snapshot (`fetcher/routes.ts`) serve only what is stored, to the
+owner alone, and record a use. The stream keeps cards current by polling
+`GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or
+refreshing; every write to a link sets its `updated_at`.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |
 | --------------------------- | ------------------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
 | Worker unit and integration | `src/worker/**/*.test.ts` | workerd via `@cloudflare/vitest-plugin`, local D1 | Routes, middleware, SQL and pure functions, through the real Worker |
-| Website                     | `src/web/**/*.test.tsx`   | happy-dom, fake API                               | Pages and components                                                |
+| Website                     | `src/web/**/*.test.tsx`   | jsdom, fake API                                   | Pages and components                                                |
 | End to end                  | `e2e/*.spec.ts`           | Playwright (Chromium) against `wrangler dev`      | The whole flows, with only Google faked                             |
 
 Shared helpers: `src/worker/test/helpers.ts` (requests through the Worker,

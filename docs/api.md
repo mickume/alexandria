@@ -112,9 +112,28 @@ A link is shown as:
   "last_used_at": "2026-06-01T08:00:00.000Z",
   "use_count": 0,
   "pinned": false,
-  "pin_position": null
+  "pin_position": null,
+  "final_url": null,
+  "http_status": null,
+  "description": null,
+  "favicon_url": null,
+  "language": null,
+  "fetched_at": null,
+  "state_reason": null,
+  "notes": [],
+  "content_kind": null,
+  "has_snapshot": false,
+  "updated_at": "2026-06-01T08:00:00.000Z"
 }
 ```
+
+`state` is `pending` until the link's first fetch, then `active`, or
+`unreachable` after three failed attempts (`state_reason` says why: "timed
+out", "HTTP 503", …). A fetch fills `final_url`, `http_status`, `title`,
+`description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
+(`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
+web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
+limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
@@ -164,6 +183,16 @@ breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
 While the library is unchanged, following the cursors returns every link
 once.
 
+With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
+every link that is not archived and changed at or after that time (every
+write to a link sets its `updated_at`), oldest change first, with the
+server's time to ask from next:
+`200 {"items": [<link>], "server_time": "…"}`. A link changed in the very
+millisecond asked from may come again. A value that is not an ISO 8601
+timestamp is `400 {"error": "invalid_changed_since", "field": "changed_since", "message"}`.
+The website polls this every 5 seconds while a card is pending or
+refreshing.
+
 #### `GET /api/v1/links/{id}`
 
 One link: `200 <link>`, or `404 {"error": "not_found"}`.
@@ -177,7 +206,10 @@ open links, so that every use is counted. Concurrent opens are each counted.
 
 #### `GET /api/v1/links/{id}/history`
 
-The link's events, newest first: `200 {"items": [{"kind": "use", "at": "…"}], "next_cursor"}`.
+The link's uses and fetch attempts, newest first:
+`200 {"items": [<event>], "next_cursor"}`, where an event is
+`{"kind": "use", "at"}` or
+`{"kind": "fetch", "at", "outcome": "ok" | "failed", "http_status": <number or null>, "reason": <string or null>}`.
 Query: `limit` (1 to 100, default 100), `cursor`.
 
 #### `POST /api/v1/links/{id}/pin`
@@ -204,3 +236,45 @@ Deletes the link and its history at once and for good: `204`. A pinned
 link's place in the pinned section closes up. Adding the same URL again
 creates a new link. (The website holds a delete for 10 seconds so that it can
 be undone; the API does not.)
+
+### Stored copies: Read and Snapshot
+
+Every fetched web page keeps a snapshot (its raw HTML) and a reader view (its
+article alone, sanitised); a fetched PDF keeps the whole file and its text.
+Both are served from storage alone, never from the origin, so they work when
+the site is down or gone, and only to the link's owner. Reading either
+records a use of the link. A link with nothing stored (pending, unreachable,
+not a web page, a PDF over 50 MB) answers
+`404 {"error": "no_snapshot", "message": "no snapshot stored for this link"}`
+and records no use.
+
+#### `GET /api/v1/links/{id}/reader`
+
+`200 {"content_kind": "html" | "pdf", "title", "byline", "html": <string or null>, "text", "empty": <boolean>}`.
+For a web page, `html` is the sanitised article; when fewer than 200
+characters of text were extracted the view is `empty` (`html` null, `text`
+''), and the snapshot is still there. For a PDF, `html` is null and `text` is
+its text.
+
+#### `GET /api/v1/links/{id}/snapshot`
+
+For a web page: the stored HTML, `Content-Type: text/html; charset=utf-8`,
+with `Content-Security-Policy: sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, so that
+its scripts never run. For a PDF: the stored file, `application/pdf`,
+`Content-Disposition: inline; filename="<title>.pdf"`, or `attachment` with
+`?download=1`.
+
+Deleting a link (`DELETE /api/v1/links/{id}`) also deletes its stored copies,
+its text and its fetch events.
+
+#### `POST /api/v1/links/{id}/refresh`
+
+Fetches the link again in the background: `202 {"status": "queued"}`. When
+the fetch succeeds it replaces the snapshot, reader view and fetched
+metadata, sets the link `active` and clears its reason and notes; when it
+fails, the link keeps everything it had and its history gains a failed fetch
+event (a refresh is not retried). At most one refresh per link per 10
+minutes: a second one is
+`429 {"error": "refreshed_recently", "message": "already refreshed recently"}`
+with `Retry-After` in seconds.

@@ -60,11 +60,17 @@ One documented response of an operation.
 
 > `optional` **headers?**: `Record`\<`string`, \{ `description`: `string`; `schema`: \{ `type`: `string`; \}; \}\>
 
+##### mediaType?
+
+> `optional` **mediaType?**: `string`
+
+The media type of a body that is not JSON, such as text/html.
+
 ##### schema?
 
 > `optional` **schema?**: `ZodType`\<`unknown`, `unknown`, `$ZodTypeInternals`\<`unknown`, `unknown`\>\>
 
-The body's schema; absent for a response without a body.
+The body's schema; absent for a response without a JSON body.
 
 ## Variables
 
@@ -78,7 +84,7 @@ The body of every error answer.
 
 ### Link
 
-> `const` **Link**: `ZodObject`\<\{ `added_at`: `ZodString`; `host`: `ZodString`; `id`: `ZodString`; `last_used_at`: `ZodString`; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `title`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; \}, `$strict`\>
+> `const` **Link**: `ZodObject`\<\{ `added_at`: `ZodString`; `content_kind`: `ZodNullable`\<`ZodEnum`\<\{ `html`: `"html"`; `other`: `"other"`; `pdf`: `"pdf"`; \}\>\>; `description`: `ZodNullable`\<`ZodString`\>; `favicon_url`: `ZodNullable`\<`ZodString`\>; `fetched_at`: `ZodNullable`\<`ZodString`\>; `final_url`: `ZodNullable`\<`ZodString`\>; `has_snapshot`: `ZodBoolean`; `host`: `ZodString`; `http_status`: `ZodNullable`\<`ZodNumber`\>; `id`: `ZodString`; `language`: `ZodNullable`\<`ZodString`\>; `last_used_at`: `ZodString`; `notes`: `ZodArray`\<`ZodString`\>; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `state_reason`: `ZodNullable`\<`ZodString`\>; `title`: `ZodString`; `updated_at`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; \}, `$strict`\>
 
 A link in the user's library.
 

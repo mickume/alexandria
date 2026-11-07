@@ -2,7 +2,15 @@
  * Shared helpers of the Worker tests: requests through the real Worker,
  * signed-in users, tokens, seeded links and the clock.
  */
-import { env, SELF } from 'cloudflare:test';
+import {
+  createExecutionContext,
+  createMessageBatch,
+  env,
+  getQueueResult,
+  SELF,
+} from 'cloudflare:test';
+import type { FetchMessage } from '../env';
+import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
 
@@ -77,16 +85,16 @@ export async function api(
     body,
     redirect: 'manual',
   });
-  const text = await response.clone().text();
   let json: unknown = null;
-  if (text && response.headers.get('Content-Type')?.includes('application/json')) {
-    json = JSON.parse(text);
+  if (response.headers.get('Content-Type')?.includes('application/json')) {
+    const text = await response.clone().text();
+    if (text) json = JSON.parse(text);
   }
   recordedResponses.push({
     method,
     path: new URL(path, ORIGIN).pathname,
     status: response.status,
-    body: text ? json : null,
+    body: json,
   });
   return { status: response.status, headers: response.headers, json, response };
 }
@@ -179,8 +187,8 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
     statements.push(
       env.DB.prepare(
         `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at,
-           last_used_at, use_count, pin_position)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_used_at, use_count, pin_position, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         id,
         user.id,
@@ -193,6 +201,7 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
         at,
         l.useCount ?? 0,
         l.pinPosition ?? null,
+        at,
       ),
     );
   });
@@ -200,4 +209,66 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
     await env.DB.batch(statements.slice(i, i + 500));
   }
   return ids;
+}
+
+/** One message the Worker sent on a queue. */
+export interface SentMessage<T = unknown> {
+  body: T;
+  delaySeconds?: number;
+}
+
+/** Replaces FETCH_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordFetchQueue(): SentMessage<FetchMessage>[] {
+  const sent: SentMessage<FetchMessage>[] = [];
+  env.FETCH_QUEUE = {
+    async send(body: FetchMessage, options?: QueueSendOptions) {
+      sent.push({ body, delaySeconds: options?.delaySeconds });
+    },
+    async sendBatch(messages: Iterable<MessageSendRequest<FetchMessage>>) {
+      for (const m of messages) sent.push({ body: m.body, delaySeconds: m.delaySeconds });
+    },
+  } as unknown as Queue<FetchMessage>;
+  return sent;
+}
+
+/**
+ * Delivers fetch messages to the Worker's queue consumer in one batch, with
+ * `bindings` replacing some of env (to make a write fail), and returns which
+ * messages were acknowledged and which handed back for retry.
+ */
+export async function deliverFetches(
+  bodies: FetchMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  const batch = createMessageBatch<FetchMessage>(
+    'alexandria-fetch',
+    bodies.map((body, i) => ({ id: `m${i}`, timestamp: new Date(), attempts: 1, body })),
+  );
+  const ctx = createExecutionContext();
+  await worker.queue?.(batch as MessageBatch<FetchMessage>, { ...env, ...bindings }, ctx);
+  const result = await getQueueResult(batch, ctx);
+  return {
+    acked: result.explicitAcks,
+    retried: result.retryMessages.map((m) => m.msgId),
+  };
+}
+
+/**
+ * Adds `url` for `user` through the API and delivers its fetch message to the
+ * consumer; returns the link's id, the delivery, the messages sent and the
+ * link's R2 prefix.
+ */
+export async function addAndFetch(
+  user: TestUser,
+  url: string,
+  bindings: Partial<Cloudflare.Env> = {},
+) {
+  const sent = recordFetchQueue();
+  const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
+  const id: string = r.json.link.id;
+  const delivery = await deliverFetches(
+    sent.map((m) => m.body),
+    bindings,
+  );
+  return { id, delivery, sent, prefix: `u/${user.id}/l/${id}/` };
 }

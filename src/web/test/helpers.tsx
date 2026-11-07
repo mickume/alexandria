@@ -4,6 +4,7 @@
  */
 import { render, type RenderResult } from '@testing-library/react';
 import { App } from '../App';
+import type { Link } from '../api';
 
 /** One request the website sent to the fake API. */
 export interface RecordedRequest {
@@ -85,13 +86,19 @@ export class FakeApi {
   };
 }
 
+/** Makes the website's requests reach `api`. */
+export function installFakeApi(api: FakeApi): FakeApi {
+  globalThis.fetch = api.fetch as typeof fetch;
+  return api;
+}
+
 /** Renders the website at `path` (with its query string) against `api`. */
 export function renderPage(
   path: string,
   api: FakeApi = new FakeApi(),
 ): RenderResult & { api: FakeApi } {
   window.history.replaceState(null, '', path);
-  globalThis.fetch = api.fetch as typeof fetch;
+  installFakeApi(api);
   return { ...render(<App />), api };
 }
 
@@ -131,5 +138,34 @@ export function fakeIntersectionObserver(): { reveal: () => void } {
         if (entries.length) cb(entries, {} as IntersectionObserver);
       }
     },
+  };
+}
+
+/** A link as the API shows it, pending and never used, with `overrides`. */
+export function makeLink(overrides: Partial<Link> & { id: string }): Link {
+  const host = overrides.host ?? `${overrides.id}.example`;
+  return {
+    url: `https://${host}/`,
+    original_url: `https://${host}/`,
+    host,
+    title: host,
+    state: 'pending',
+    added_at: '2026-03-04T10:00:00.000Z',
+    last_used_at: '2026-03-05T10:00:00.000Z',
+    use_count: 0,
+    pinned: false,
+    pin_position: null,
+    final_url: null,
+    http_status: null,
+    description: null,
+    favicon_url: null,
+    language: null,
+    fetched_at: null,
+    state_reason: null,
+    notes: [],
+    content_kind: null,
+    has_snapshot: false,
+    updated_at: '2026-03-05T10:00:00.000Z',
+    ...overrides,
   };
 }

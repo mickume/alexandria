@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
-import type { AppEnv } from '../env';
+import type { AppEnv, Env } from '../env';
+import { now } from '../clock';
+import { deleteLinkObjects } from '../fetcher/snapshots';
 import { normalizeUrl } from './normalize';
 import {
   addLink,
@@ -14,7 +16,7 @@ import {
   type LinkView,
   type NewLink,
 } from './store';
-import { isStreamCursor, listStream } from './stream';
+import { isStreamCursor, listChanged, listStream, parseTimestamp } from './stream';
 import { isHistoryCursor, listHistory, recordUse } from './use';
 
 /** The most URLs one batch may carry. */
@@ -22,6 +24,12 @@ export const BATCH_LIMIT = 100;
 
 const INVALID_URL_MESSAGE = 'not a valid web address';
 const LIBRARY_FULL_MESSAGE = 'library full (20,000 links)';
+
+/** Asks the fetcher to fetch each newly added link. */
+async function queueFetches(env: Env, userId: string, links: LinkView[]): Promise<void> {
+  if (links.length === 0) return;
+  await env.FETCH_QUEUE.sendBatch(links.map((l) => ({ body: { user_id: userId, link_id: l.id } })));
+}
 
 /** The user's links, under /api/v1/links. */
 export const linkRoutes = new Hono<AppEnv>();
@@ -40,6 +48,7 @@ linkRoutes.post('/', async (c) => {
   });
   if (result.status === 'library_full')
     return limitReached(c, 'library_full', LIBRARY_FULL_MESSAGE);
+  if (result.status === 'added') await queueFetches(c.env, c.get('user').id, [result.link]);
   return c.json(result, result.status === 'added' ? 201 : 200);
 });
 
@@ -76,10 +85,26 @@ linkRoutes.post('/batch', async (c) => {
     else if (o.status === 'boosted') boosted.push(o.link);
     else invalid.push({ url: unique[i]?.original, error: 'library_full' });
   });
+  await queueFetches(c.env, c.get('user').id, added);
   return c.json({ added, boosted, invalid });
 });
 
 linkRoutes.get('/', async (c) => {
+  const changedSince = c.req.query('changed_since');
+  if (changedSince !== undefined) {
+    const since = parseTimestamp(changedSince);
+    if (!since) {
+      return validationError(
+        c,
+        'invalid_changed_since',
+        'changed_since',
+        'changed_since must be an ISO 8601 timestamp, such as a server_time',
+      );
+    }
+    const serverTime = now().toISOString();
+    const rows = await listChanged(c.env.DB, c.get('user').id, since);
+    return c.json({ items: rows.map(toView), server_time: serverTime });
+  }
   const limit = parseLimit(c.req.query('limit'));
   if (limit === null) {
     return validationError(
@@ -180,6 +205,9 @@ linkRoutes.delete('/:id/pin', async (c) => {
 });
 
 linkRoutes.delete('/:id', async (c) => {
-  const deleted = await deleteLink(c.env.DB, c.get('user').id, c.req.param('id'));
-  return deleted ? c.body(null, 204) : notFound(c);
+  const userId = c.get('user').id;
+  const deleted = await deleteLink(c.env.DB, userId, c.req.param('id'));
+  if (!deleted) return notFound(c);
+  await deleteLinkObjects(c.env, userId, c.req.param('id'));
+  return c.body(null, 204);
 });
