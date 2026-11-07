@@ -67,8 +67,9 @@ The delay to send a message for `slot` with: the time left, at most 12 hours.
 > **scheduleThrottled**(`db`, `userId`, `count`): `Promise`\<`number`[]\>
 
 Reserves `count` background slots for a user: the first at the user's next
-free slot, or now when that has passed, and each later one 3 seconds after
-the one before. One statement moves the user's next free slot, so
+free slot, or now when that has passed, but never within the minute the
+user's last import dispatch holds, and each later one 3 seconds after the
+one before. One statement moves the user's next free slot, so
 concurrent calls never share a slot. Returns the slots, in milliseconds
 since the epoch.
 

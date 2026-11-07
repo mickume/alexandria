@@ -54,11 +54,11 @@
 
 ##### scheduled()
 
-> **scheduled**(`_controller`, `env`, `ctx`): `void`
+> **scheduled**(`controller`, `env`, `ctx`): `void`
 
 ###### Parameters
 
-###### \_controller
+###### controller
 
 `ScheduledController`
 
