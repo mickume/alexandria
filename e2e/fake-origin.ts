@@ -5,7 +5,9 @@
  * https://news.example/article and a PDF titled 'On Links' at
  * https://papers.example/on-links.pdf, a page about Cloudflare Queues at
  * https://docs.example/queues and one about Apache Kafka at
- * https://blog.example/kafka, and at https://code.example/<slug> a page whose
+ * https://blog.example/kafka, two more about queues and one about gardening at
+ * https://guides.example/, a paper at https://example.net/paper, and at
+ * https://code.example/<slug> a page whose
  * text holds 'marker-<slug>'. It logs every request, and can be taken
  * offline, after which it refuses every connection.
  *
@@ -61,6 +63,28 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
       'Cloudflare Queues explained',
       'Cloudflare Queues deliver messages between Workers with guaranteed delivery and batching.',
     ),
+  },
+  'https://guides.example/queues-intro': {
+    type: HTML,
+    body: articlePage(
+      'Getting started with queues',
+      'Cloudflare Queues let one Worker hand messages to another, retried until they are consumed.',
+    ),
+  },
+  'https://guides.example/queues-batching': {
+    type: HTML,
+    body: articlePage(
+      'Batching messages',
+      'Cloudflare Queues deliver messages to a consumer in batches, which keeps each run efficient.',
+    ),
+  },
+  'https://guides.example/gardening': {
+    type: HTML,
+    body: articlePage('Tomatoes in pots', 'Tomatoes grow well in pots on a sunny balcony.'),
+  },
+  'https://example.net/paper': {
+    type: HTML,
+    body: articlePage('A paper', 'An abstract and a long argument about something worth reading.'),
   },
   'https://blog.example/kafka': {
     type: HTML,
