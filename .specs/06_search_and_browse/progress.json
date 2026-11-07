@@ -3,11 +3,11 @@
   "spec_id": "06",
   "spec_name": "search_and_browse",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T18:16:36Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,
