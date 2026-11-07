@@ -6,7 +6,8 @@
  * https://papers.example/on-links.pdf, a page about Cloudflare Queues at
  * https://docs.example/queues and one about Apache Kafka at
  * https://blog.example/kafka, two more about queues and one about gardening at
- * https://guides.example/, a paper at https://example.net/paper, and at
+ * https://guides.example/, a paper at https://example.net/paper, two pages each
+ * at https://leaving.example/ and https://backup.example/, and at
  * https://code.example/<slug> a page whose
  * text holds 'marker-<slug>'. It logs every request, and can be taken
  * offline, after which it refuses every connection.
@@ -85,6 +86,22 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
   'https://example.net/paper': {
     type: HTML,
     body: articlePage('A paper', 'An abstract and a long argument about something worth reading.'),
+  },
+  'https://leaving.example/one': {
+    type: HTML,
+    body: articlePage('Leaving one', 'A page the owner kept before leaving the library.'),
+  },
+  'https://leaving.example/two': {
+    type: HTML,
+    body: articlePage('Leaving two', 'Another page the owner kept before leaving the library.'),
+  },
+  'https://backup.example/one': {
+    type: HTML,
+    body: articlePage('Backup one', 'The first page of the library that the owner backs up.'),
+  },
+  'https://backup.example/two': {
+    type: HTML,
+    body: articlePage('Backup two', 'The second page of the library that the owner backs up.'),
   },
   'https://blog.example/kafka': {
     type: HTML,
