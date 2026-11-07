@@ -29,12 +29,17 @@ Do not implement anything before completing these steps.
      top-level directory (and any notable subdirectory), with what it holds. -->
 
 ```
-src/                    # <the production code>
-tests/                  # <tests, if they do not live next to the code>
-cmd/                    # <entry points / commands, if any>
+src/worker/             # The Cloudflare Worker: Hono app, API, auth, links
+src/worker/test/        # Shared Worker test helpers (requests, users, outbound router)
+src/web/                # The React website (Vite)
+src/web/test/           # Shared website test helpers (renderPage, FakeApi)
+migrations/             # D1 schema migrations, applied in order
+e2e/                    # Playwright end-to-end tests and the fake Google provider
+index.html              # The website's HTML entry (Vite)
 docs/                   # Documentation
 docs/adr/               # Architecture Decision Records
 docs/errata/            # Divergences between a spec and its implementation
+docs/generated/         # Generated module reference (make doc)
 docs/prd/               # Product Requirements Documents
 .specs/                 # Specs to be implemented
 .specs/archive/         # Old specs
@@ -66,17 +71,18 @@ libraries — API signatures in specs may be unverified assumptions.
      targets the project's build file really has. Keep `make check` (or its
      equivalent) as the single command that must pass before every commit. -->
 
-The <language> version is **<version>**.
+The TypeScript version is **6.0** (Node.js 22 or later).
 
 | Command | What it does |
 |---------|-------------|
 | `make help` | List all targets |
-| `make build` | Build the project |
-| `make test` | Run all tests |
+| `make build` | Build the website and the Worker bundle into `dist/` |
+| `make test` | Run the unit and integration tests (Vitest: Worker in workerd, website in happy-dom) |
+| `make e2e` | Run the end-to-end tests (Playwright in Chromium against `wrangler dev`) |
 | `make coverage` | Run all tests with a coverage report |
 | `make fmt` | Format all source files in place |
-| `make vet` | Static analysis |
-| `make lint` | Run the linter |
+| `make vet` | Type-check (`tsc --noEmit`) |
+| `make lint` | Run ESLint and check Prettier formatting |
 | `make check` | `fmt`, `vet`, `lint` and `test` — use before committing |
 | `make doc` | Regenerate the API docs in `docs/generated/` (committed) |
 | `make clean` | Remove build output |

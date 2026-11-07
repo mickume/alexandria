@@ -1,0 +1,32 @@
+{
+  // One Worker serves the website's static assets and the API.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alexandria",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    // Page routes go through the Worker first, so that a visitor without a
+    // session is sent to the sign-in page; built files are served directly.
+    "run_worker_first": ["/*", "!/assets/*", "!/favicon.svg"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "alexandria",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "ALLOWED_EMAILS": "",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_AUTH_URL": "https://accounts.google.com/o/oauth2/v2/auth",
+    "GOOGLE_TOKEN_URL": "https://oauth2.googleapis.com/token",
+    "PUBLIC_ORIGIN": "http://localhost:8787",
+  },
+  // GOOGLE_CLIENT_SECRET is a secret: `wrangler secret put GOOGLE_CLIENT_SECRET`,
+  // or a line in .dev.vars for local development.
+  "observability": { "enabled": true },
+}
