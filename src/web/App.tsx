@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Archive } from './pages/Archive';
 import { LinkDetail } from './pages/LinkDetail';
 import { Read, Snapshot } from './pages/Read';
 import { Settings } from './pages/Settings';
@@ -59,6 +60,7 @@ function Layout({ children }: { children: ReactNode }) {
         </Link>
         <nav>
           <Link to="/workspaces">Workspaces</Link>
+          <Link to="/archive">Archive</Link>
           <Link to="/settings">Settings</Link>
           <form method="post" action="/auth/signout">
             <button type="submit" className="link-button">
@@ -80,6 +82,7 @@ export function App() {
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
   else if (path === '/workspaces') page = <Workspaces />;
+  else if (path === '/archive') page = <Archive />;
   else if (path.startsWith('/workspaces/')) {
     const id = decodeURIComponent(path.slice('/workspaces/'.length));
     page = <WorkspacePage key={id} id={id} />;

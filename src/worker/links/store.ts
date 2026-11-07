@@ -286,7 +286,7 @@ export async function getLink(db: D1Database, userId: string, id: string): Promi
 export const PIN_LIMIT = 30;
 
 /** Statements that take a pinned link out of the pinned section and close the gap it leaves. */
-function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
+export function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
   const at = now().toISOString();
   return [
     db

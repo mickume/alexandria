@@ -14,6 +14,7 @@
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/AiKeySection](web/pages/AiKeySection.md)
+- [web/pages/Archive](web/pages/Archive.md)
 - [web/pages/DecaySection](web/pages/DecaySection.md)
 - [web/pages/LinkDetail](web/pages/LinkDetail.md)
 - [web/pages/Read](web/pages/Read.md)

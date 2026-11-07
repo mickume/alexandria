@@ -473,3 +473,23 @@ Body with all three, each a whole number of days from 7 to 3650, and
 `dormant_days` below `archive_days`: `200` with the stored values.
 `400 {"error": "invalid_threshold", "field": <name>, "message"}`, or
 `400 {"error": "invalid_thresholds", "field": "dormant_days", "message": "the dormant threshold must be below the archive threshold"}`.
+
+### The archive
+
+#### `POST /api/v1/links/{id}/archive`
+
+Archives the link by hand, whatever would keep it from decay (stickiness, a
+pin, a workspace): `archived_at` is now, the link is unpinned (the pinned
+positions close up) and keeps its workspaces. `200 <link>`; an archived link
+answers `200` unchanged.
+
+#### `GET /api/v1/archive`
+
+The archived links, most recently archived first, each with `archived_at` and
+`removal_at`, at most 100 per page: `200 {"items": [...], "next_cursor"}`.
+
+#### `POST /api/v1/links/{id}/restore`
+
+Brings an archived link back: `active`, `last_used_at` now (a boost, not a
+use: the use count stays), no archive date. `200 <link>`, or
+`409 {"error": "not_archived", "message": "this link is not archived"}`.

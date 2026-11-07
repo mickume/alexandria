@@ -543,6 +543,24 @@ export const operations: Operation[] = [
   },
   {
     method: 'post',
+    path: '/links/{id}/archive',
+    operationId: 'archiveLink',
+    summary:
+      'Archive the link by hand, whatever keeps it from decay; it is unpinned, its workspaces stay',
+    responses: { 200: { description: 'The archived link', schema: LinkWithNote } },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/restore',
+    operationId: 'restoreLink',
+    summary: 'Bring an archived link back: active, last used now, use count unchanged',
+    responses: {
+      200: { description: 'The restored link', schema: LinkWithNote },
+      409: error('not_archived: "this link is not archived"'),
+    },
+  },
+  {
+    method: 'post',
     path: '/links/{id}/enrich',
     operationId: 'enrichLink',
     summary: 'Run the enrichment of the link again, at once',

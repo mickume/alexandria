@@ -692,6 +692,28 @@ A workspace on its own, with its note.
 
 `Promise`\<[`BatchResult`](#batchresult)\>
 
+##### archive
+
+> **archive**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
+##### archived
+
+> **archived**: () => `Promise`\<[`Link`](#link)[]\>
+
+###### Returns
+
+`Promise`\<[`Link`](#link)[]\>
+
 ##### changedSince
 
 > **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
@@ -847,6 +869,20 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<`void`\>
+
+##### restore
+
+> **restore**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
 
 ##### unpin
 

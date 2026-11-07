@@ -699,3 +699,29 @@ Unpins one of the user's links, closing the gap in the pinned section. Null when
 #### Returns
 
 `Promise`\<[`LinkView`](#linkview) \| `null`\>
+
+***
+
+### unpinStatements()
+
+> **unpinStatements**(`db`, `userId`, `id`): `D1PreparedStatement`[]
+
+Statements that take a pinned link out of the pinned section and close the gap it leaves.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`D1PreparedStatement`[]

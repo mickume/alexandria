@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
-import { validationError } from '../api/errors';
+import { limitReached, notFound, validationError } from '../api/errors';
+import { now } from '../clock';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
-import { toView, type LinkRow } from '../links/store';
+import { getLink, toFullView, toView, unpinStatements, type LinkRow } from '../links/store';
 
 /** Where a page of the archive list ends. */
 interface ArchiveCursor {
@@ -60,4 +61,43 @@ archiveRoutes.get('/', async (c) => {
         ? await encodeCursor(c.env, { a: last.archived_at, i: last.id })
         : null,
   });
+});
+
+/** Archiving and restoring one link by hand, under /api/v1/links. */
+export const archiveLinkRoutes = new Hono<AppEnv>();
+
+archiveLinkRoutes.post('/:id/archive', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const link = await getLink(c.env.DB, userId, id);
+  if (!link) return notFound(c);
+  if (link.state !== 'archived') {
+    const at = now().toISOString();
+    // A pinned link leaves the pinned section with the stream; its workspaces stay.
+    await c.env.DB.batch([
+      ...unpinStatements(c.env.DB, userId, id),
+      c.env.DB.prepare(
+        "UPDATE links SET state = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND state <> 'archived'",
+      ).bind(at, at, id, userId),
+    ]);
+  }
+  return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
+});
+
+archiveLinkRoutes.post('/:id/restore', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const at = now().toISOString();
+  // Restoring is a boost, not a use: last used is now, the use count stays.
+  const restored = await c.env.DB.prepare(
+    `UPDATE links SET state = 'active', archived_at = NULL, last_used_at = ?1, updated_at = ?1
+     WHERE id = ?2 AND user_id = ?3 AND state = 'archived' RETURNING id`,
+  )
+    .bind(at, id, userId)
+    .first();
+  if (!restored) {
+    if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
+    return limitReached(c, 'not_archived', 'this link is not archived');
+  }
+  return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
 });

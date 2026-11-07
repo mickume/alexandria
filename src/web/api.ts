@@ -169,6 +169,9 @@ export const links = {
     id: string,
     fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>> & { note?: string },
   ) => request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
+  restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
+  archived: () => request<Page<Link>>('GET', '/archive').then((p) => p.items),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>

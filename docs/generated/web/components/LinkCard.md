@@ -8,6 +8,22 @@ What a card's actions do; the stream page supplies them.
 
 #### Properties
 
+##### onArchive?
+
+> `optional` **onArchive?**: (`link`) => `void`
+
+Archive the link by hand.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
 ##### onDelete
 
 > **onDelete**: (`link`) => `void`
