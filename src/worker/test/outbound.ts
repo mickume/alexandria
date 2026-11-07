@@ -12,7 +12,6 @@ interface Route {
   handler: Handler;
 }
 
-const realFetch = globalThis.fetch;
 let routes: Route[] = [];
 
 /** The requests the Worker sent, in order. */
@@ -42,9 +41,4 @@ export function installOutbound(): void {
     outboundRequests.push(request.clone() as Request);
     return route.handler(request);
   };
-}
-
-/** Restores the isolate's own fetch. */
-export function uninstallOutbound(): void {
-  globalThis.fetch = realFetch;
 }
