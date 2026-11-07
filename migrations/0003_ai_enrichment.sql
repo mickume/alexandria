@@ -12,6 +12,8 @@ ALTER TABLE users ADD COLUMN ai_key_status TEXT;
 ALTER TABLE users ADD COLUMN ai_key_rejected_message TEXT;
 -- Milliseconds since the epoch of the user's next free background slot.
 ALTER TABLE users ADD COLUMN throttle_next_at INTEGER;
+-- When the user's last background job actually started, so that starts stay 3 seconds apart.
+ALTER TABLE users ADD COLUMN throttle_last_start INTEGER;
 
 ALTER TABLE links ADD COLUMN summary TEXT;
 ALTER TABLE links ADD COLUMN topic_id TEXT;

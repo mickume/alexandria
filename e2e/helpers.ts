@@ -89,3 +89,23 @@ export const fakeOrigin = {
     return log.filter((r) => r.at >= t).length;
   },
 };
+
+/** One request the fake AI provider of e2e/fake-ai.ts received. */
+export interface FakeAiRequest {
+  at: number;
+  provider: string;
+  auth: string;
+  body: string;
+  enrichment: boolean;
+}
+
+/** The fake AI provider of e2e/fake-ai.ts. */
+export const fakeAi = {
+  url: 'http://localhost:8792',
+  async requests(): Promise<FakeAiRequest[]> {
+    return (await (await fetch(`${this.url}/__log`)).json()) as FakeAiRequest[];
+  },
+  async answer(result: { summary: string; tags: string[]; topic: string }): Promise<void> {
+    await fetch(`${this.url}/__answer`, { method: 'POST', body: JSON.stringify(result) });
+  },
+};
