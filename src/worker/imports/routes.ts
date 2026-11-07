@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { notFound, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
 import { dispatchImports } from './dispatch';
-import { getImport, importLines } from './imports';
+import { getImport, importLines, importProgress, reportText } from './imports';
 import { MAX_IMPORT_BYTES, parseImportFile } from './parse';
 
 /** The import routes, under /api/v1/imports. */
@@ -54,5 +54,16 @@ importRoutes.post('/', async (c) => {
 
 importRoutes.get('/:id', async (c) => {
   const report = await getImport(c.env.DB, c.get('user').id, c.req.param('id'));
-  return report ? c.json(report) : notFound(c);
+  if (!report) return notFound(c);
+  return c.json({ ...report, progress: await importProgress(c.env.DB, report.id) });
+});
+
+importRoutes.get('/:id/report', async (c) => {
+  const report = await getImport(c.env.DB, c.get('user').id, c.req.param('id'));
+  if (!report) return notFound(c);
+  const name = `alexandria-import-${report.created_at.slice(0, 10)}.txt`;
+  return c.body(reportText(report), 200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${name}"`,
+  });
 });

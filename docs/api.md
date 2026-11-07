@@ -679,5 +679,28 @@ stopped the import. Refusals, after which nothing is imported:
 
 #### `GET /api/v1/imports/{id}`
 
-The import's report, as `POST` answered it.
+The import's report, as `POST` answered it, with the progress of its added
+links that are still in the library:
+`"progress": {"waiting", "in_progress", "done", "enriched"}`: not yet sent to
+the fetch worker; sent and still pending; no longer pending; and of those,
+enriched. The website polls this every 5 seconds until nothing is waiting or
+in progress.
+
+Imported links are fetched, then enriched, in the background: at most 20 of a
+user's imported links are sent to the fetch worker in any minute, in file
+order, earlier imports first, sharing that budget with "enrich all"
+(`POST /api/v1/links/enrich-unenriched`). A link pasted or added through the
+API meanwhile is fetched at once.
+
+#### `GET /api/v1/imports/{id}/report`
+
+The report as a downloadable file: `text/plain; charset=utf-8`,
+`Content-Disposition: attachment; filename="alexandria-import-<YYYY-MM-DD>.txt"`,
+with the import date, the counts (`added: 397`, …), the library-limit stop
+(`library full (20,000 links): stopped at line N, M lines not imported`), every
+invalid line (`line 57: not-a-url`) and every duplicate
+(`line 5: duplicate of https://a.example`).
+
+Both answer `404 {"error": "not_found"}` for an id that is not one of the
+user's imports.
 

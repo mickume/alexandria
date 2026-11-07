@@ -253,3 +253,63 @@ export async function getImport(
     stopped_at_limit: row.stopped_line === null ? null : { line: row.stopped_line },
   };
 }
+
+/** Where an import's added links stand. */
+export interface ImportProgress {
+  /** Not yet sent to the fetch worker. */
+  waiting: number;
+  /** Sent, and still pending. */
+  in_progress: number;
+  /** Fetched (or given up on): no longer pending. */
+  done: number;
+  /** Done and enriched. */
+  enriched: number;
+}
+
+/** The progress of one import's links still in the library. */
+export async function importProgress(db: D1Database, importId: string): Promise<ImportProgress> {
+  const row = await db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(il.dispatched_at IS NULL), 0) AS waiting,
+         COALESCE(SUM(il.dispatched_at IS NOT NULL AND l.state = 'pending'), 0) AS in_progress,
+         COALESCE(SUM(l.state <> 'pending'), 0) AS done,
+         COALESCE(SUM(l.state <> 'pending' AND l.enrichment_status = 'enriched'), 0) AS enriched
+       FROM import_links il JOIN links l ON l.id = il.link_id
+       WHERE il.import_id = ?`,
+    )
+    .bind(importId)
+    .first<ImportProgress>();
+  return row ?? { waiting: 0, in_progress: 0, done: 0, enriched: 0 };
+}
+
+/** The report as the downloadable text file says it. */
+export function reportText(report: ImportReport): string {
+  const c = report.counts;
+  const out = [
+    `Alexandria import of ${report.created_at.slice(0, 10)}`,
+    '',
+    `url lines: ${c.url_lines}`,
+    `added: ${c.added}`,
+    `duplicates: ${c.duplicates}`,
+    `invalid: ${c.invalid}`,
+    `not imported: ${c.not_imported}`,
+  ];
+  if (report.stopped_at_limit) {
+    out.push(
+      '',
+      `library full (20,000 links): stopped at line ${report.stopped_at_limit.line}, ${c.not_imported} lines not imported`,
+    );
+  }
+  if (report.invalid.length > 0) {
+    out.push('', 'Invalid lines:', ...report.invalid.map((l) => `line ${l.line}: ${l.text}`));
+  }
+  if (report.duplicates.length > 0) {
+    out.push(
+      '',
+      'Duplicates:',
+      ...report.duplicates.map((d) => `line ${d.line}: duplicate of ${d.url}`),
+    );
+  }
+  return `${out.join('\n')}\n`;
+}

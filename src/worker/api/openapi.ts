@@ -332,8 +332,34 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/imports/{id}',
     operationId: 'getImport',
-    summary: 'An import’s report',
-    responses: { 200: { description: 'The report', schema: ImportReport } },
+    summary: 'An import’s report and the progress of its links',
+    responses: {
+      200: {
+        description:
+          'The report, and how many added links wait for their turn, are being fetched, are done and are enriched',
+        schema: ImportReport.extend({
+          progress: z.strictObject({
+            waiting: z.number().int(),
+            in_progress: z.number().int(),
+            done: z.number().int(),
+            enriched: z.number().int(),
+          }),
+        }),
+      },
+    },
+  },
+  {
+    method: 'get',
+    path: '/imports/{id}/report',
+    operationId: 'getImportReport',
+    summary: 'An import’s report as a downloadable text file',
+    responses: {
+      200: {
+        description:
+          'text/plain attachment alexandria-import-<YYYY-MM-DD>.txt: the counts, invalid lines, duplicates and the limit stop',
+        mediaType: 'text/plain',
+      },
+    },
   },
   {
     method: 'get',

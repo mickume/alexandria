@@ -3,6 +3,9 @@ import {
   api,
   count,
   env,
+  deliverEnrichments,
+  deliverFetches,
+  recordEnrichQueue,
   recordFetchQueue,
   seedLinks,
   setNow,
@@ -11,6 +14,9 @@ import {
   type TestUser,
 } from '../test/helpers';
 import type { FetchMessage } from '../env';
+import { FakeAi } from '../test/ai';
+import { FakeOrigin } from '../test/origin';
+import { blogArticle } from '../fetcher/fixtures/pages';
 import { sendThrottled } from '../enrich/throttle';
 import { dispatchImports } from './dispatch';
 import { parseImportFile } from './parse';
@@ -509,4 +515,95 @@ describe('dispatching imported links', () => {
     await waitOnExecutionContext(ctx);
     expect(sent).toHaveLength(60);
   });
+});
+
+describe('an import’s progress and report', () => {
+  it('counts the links waiting, in progress, done and enriched', async () => {
+    const user = await signIn();
+    new FakeAi();
+    const key = await api('PUT', '/api/v1/settings/ai', {
+      as: user.session,
+      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+    });
+    expect(key.status).toBe(200);
+    const origin = new FakeOrigin();
+    for (let i = 1; i <= 30; i++) origin.page(`https://pr${i}.example/`, blogArticle);
+    const fetches = recordFetchQueue();
+    const r = await upload(user, urls('pr', 30));
+    expect(fetches).toHaveLength(20);
+    const enrichments = recordEnrichQueue();
+    await deliverFetches(fetches.slice(0, 5).map((m) => m.body));
+    expect(enrichments).toHaveLength(5);
+    await deliverEnrichments(enrichments.slice(0, 3).map((m) => m.body));
+    const progress = await api('GET', `/api/v1/imports/${r.json.id}`, { as: user.session });
+    expect(progress.status).toBe(200);
+    expect(progress.json.counts.added).toBe(30);
+    expect(progress.json.progress).toEqual({ waiting: 10, in_progress: 15, done: 5, enriched: 3 });
+  });
+
+  it('serves the report as a plain-text file', async () => {
+    const user = await signIn();
+    await seedLinks(user, [{ url: 'https://a.example' }]);
+    setNow('2026-11-07T10:00:00.000Z');
+    const file = [
+      'https://n1.example',
+      'https://n2.example',
+      'not-a-url',
+      'https://n3.example',
+      'https://a.example',
+      'https://n4.example',
+      'ftp://nope.example',
+      'https://n5.example',
+      'https://n6.example',
+      'https://n7.example',
+    ].join('\n');
+    const r = await upload(user, file);
+    const report = await api('GET', `/api/v1/imports/${r.json.id}/report`, { as: user.session });
+    expect(report.status).toBe(200);
+    expect(report.headers.get('Content-Type')).toMatch(/^text\/plain/);
+    expect(report.headers.get('Content-Disposition')).toBe(
+      'attachment; filename="alexandria-import-2026-11-07.txt"',
+    );
+    const text = await report.response.text();
+    for (const expected of [
+      'added: 7',
+      'duplicates: 1',
+      'invalid: 2',
+      'line 3: not-a-url',
+      'line 7: ftp://nope.example',
+      'line 5: duplicate of https://a.example',
+    ]) {
+      expect(text).toContain(expected);
+    }
+    expect(text).not.toContain('library full');
+  });
+
+  it('says in the report where the library limit stopped the import', async () => {
+    const user = await signIn();
+    await seedLinks(
+      user,
+      Array.from({ length: 19_999 }, (_, i) => ({ url: `https://seed${i}.example` })),
+    );
+    const r = await upload(user, 'https://x1.example\nhttps://x2.example\nhttps://x3.example');
+    const report = await api('GET', `/api/v1/imports/${r.json.id}/report`, { as: user.session });
+    expect(await report.response.text()).toContain(
+      'library full (20,000 links): stopped at line 2, 2 lines not imported',
+    );
+  });
+
+  it.each(['/', '/report'])(
+    'answers 404 for an import that is not the user’s: %s',
+    async (suffix) => {
+      const a = await signIn();
+      const b = await signIn('other@example.test');
+      const theirs = await upload(b, 'https://b.example');
+      for (const id of [theirs.json.id, 'no-such-import']) {
+        const r = await api('GET', `/api/v1/imports/${id}${suffix === '/' ? '' : suffix}`, {
+          as: a.session,
+        });
+        expect(r.status).toBe(404);
+        expect(r.json).toEqual({ error: 'not_found' });
+      }
+    },
+  );
 });
