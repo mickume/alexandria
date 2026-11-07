@@ -18,8 +18,9 @@ function isTrackingParam(name: string): boolean {
  * tracking parameters are dropped, the remaining parameters are sorted by name,
  * and a lone `/` path is dropped when no query follows it.
  *
- * Inputs that are not http or https URLs, or that name localhost, a loopback,
- * private or link-local address, are rejected.
+ * Inputs that are not http or https URLs, that name a bare word rather than a
+ * dotted host, or that name localhost, a loopback, private or link-local
+ * address, are rejected.
  */
 export function normalizeUrl(input: string): NormalizeResult {
   const trimmed = input.trim();
@@ -37,7 +38,7 @@ export function normalizeUrl(input: string): NormalizeResult {
     return INVALID;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return INVALID;
-  if (!url.hostname || isPrivateHost(url.hostname)) return INVALID;
+  if (!isWebHost(url.hostname) || isPrivateHost(url.hostname)) return INVALID;
 
   const query = normalizeQuery(url.search);
   const path = url.pathname === '/' && !query ? '' : url.pathname;
@@ -65,6 +66,13 @@ function decodeName(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+/** Whether a hostname can name a site on the web: a dotted name or an IP literal, not a bare word. */
+function isWebHost(hostname: string): boolean {
+  if (hostname.startsWith('[')) return true;
+  const labels = hostname.replace(/\.$/, '').split('.');
+  return labels.length >= 2 && labels.every((l) => l.length > 0);
 }
 
 /** Whether a URL's hostname is localhost or a loopback, private, link-local or unspecified address. */

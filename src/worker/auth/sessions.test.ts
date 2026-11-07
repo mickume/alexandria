@@ -123,6 +123,12 @@ describe('the origin of a cookie-authenticated change', () => {
     expect(r.status).toBe(403);
     expect(r.json.error).toBe('forbidden_origin');
     expect(await count('links')).toBe(0);
+    const token = await createToken(user);
+    const withToken = await api('POST', '/api/v1/links', {
+      bearer: token.secret,
+      body: { url: 'https://a.example' },
+    });
+    expect(withToken.status).toBe(201);
   });
 });
 

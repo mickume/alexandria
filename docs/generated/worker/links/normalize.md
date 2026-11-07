@@ -21,8 +21,9 @@ scheme, scheme and host are lower-cased, the fragment, a default port and the
 tracking parameters are dropped, the remaining parameters are sorted by name,
 and a lone `/` path is dropped when no query follows it.
 
-Inputs that are not http or https URLs, or that name localhost, a loopback,
-private or link-local address, are rejected.
+Inputs that are not http or https URLs, that name a bare word rather than a
+dotted host, or that name localhost, a loopback, private or link-local
+address, are rejected.
 
 #### Parameters
 

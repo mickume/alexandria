@@ -202,6 +202,108 @@ https://v8.dev/docs/stack-trace-api#customizing-stack-traces
 
 ## Interfaces
 
+### BatchResult
+
+What a batch add did to each URL.
+
+#### Properties
+
+##### added
+
+> **added**: [`Link`](#link)[]
+
+##### boosted
+
+> **boosted**: [`Link`](#link)[]
+
+##### invalid
+
+> **invalid**: `object`[]
+
+###### error
+
+> **error**: `"invalid_url"` \| `"library_full"`
+
+###### url
+
+> **url**: `string`
+
+***
+
+### Link
+
+A link as the API shows it.
+
+#### Properties
+
+##### added\_at
+
+> **added\_at**: `string`
+
+##### host
+
+> **host**: `string`
+
+##### id
+
+> **id**: `string`
+
+##### last\_used\_at
+
+> **last\_used\_at**: `string`
+
+##### original\_url
+
+> **original\_url**: `string`
+
+##### pin\_position
+
+> **pin\_position**: `number` \| `null`
+
+##### pinned
+
+> **pinned**: `boolean`
+
+##### state
+
+> **state**: `string`
+
+##### title
+
+> **title**: `string`
+
+##### url
+
+> **url**: `string`
+
+##### use\_count
+
+> **use\_count**: `number`
+
+***
+
+### Page
+
+One page of a list.
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+#### Properties
+
+##### items
+
+> **items**: `T`[]
+
+##### next\_cursor
+
+> **next\_cursor**: `string` \| `null`
+
+***
+
 ### Token
 
 A personal access token as listed.
@@ -225,6 +327,42 @@ A personal access token as listed.
 > **name**: `string`
 
 ## Variables
+
+### links
+
+> `const` **links**: `object`
+
+#### Type Declaration
+
+##### addBatch
+
+> **addBatch**: (`urls`) => `Promise`\<[`BatchResult`](#batchresult)\>
+
+###### Parameters
+
+###### urls
+
+`string`[]
+
+###### Returns
+
+`Promise`\<[`BatchResult`](#batchresult)\>
+
+##### list
+
+> **list**: (`cursor?`) => `Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
+
+###### Parameters
+
+###### cursor?
+
+`string` \| `null`
+
+###### Returns
+
+`Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
+
+***
 
 ### tokens
 

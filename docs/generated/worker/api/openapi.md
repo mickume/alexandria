@@ -70,6 +70,14 @@ The body of every error answer.
 
 ***
 
+### Link
+
+> `const` **Link**: `ZodObject`\<\{ `added_at`: `ZodString`; `host`: `ZodString`; `id`: `ZodString`; `last_used_at`: `ZodString`; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `title`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; \}, `$strict`\>
+
+A link in the user's library.
+
+***
+
 ### Me
 
 > `const` **Me**: `ZodObject`\<\{ `email`: `ZodString`; `name`: `ZodString`; \}, `$strict`\>

@@ -47,6 +47,21 @@ export const Token = z.strictObject({
   last_used_at: z.string().nullable(),
 });
 
+/** A link in the user's library. */
+export const Link = z.strictObject({
+  id: z.string(),
+  url: z.string().describe('The normalised URL'),
+  original_url: z.string().describe('The URL as it was given'),
+  host: z.string(),
+  title: z.string(),
+  state: z.string().describe('pending until the link is fetched'),
+  added_at: z.string(),
+  last_used_at: z.string(),
+  use_count: z.number().int(),
+  pinned: z.boolean(),
+  pin_position: z.number().int().nullable(),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 /** The answers any authenticated operation may give, added to each. */
@@ -123,6 +138,48 @@ export const operations: Operation[] = [
     operationId: 'revokeToken',
     summary: 'Revoke a token; it authenticates nothing from the next request on',
     responses: { 204: { description: 'Revoked' } },
+  },
+  {
+    method: 'post',
+    path: '/links',
+    operationId: 'addLink',
+    summary: 'Add a link, or boost the existing link with the same normalised URL',
+    body: z.object({ url: z.string() }),
+    responses: {
+      200: {
+        description: 'Already in the library: its last use is now',
+        schema: z.strictObject({ status: z.literal('boosted'), link: Link }),
+      },
+      201: {
+        description: 'Added, pending',
+        schema: z.strictObject({ status: z.literal('added'), link: Link }),
+      },
+      400: error('invalid_json, or invalid_url with the input as url: "not a valid web address"'),
+      409: error('library_full: "library full (20,000 links)"'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/batch',
+    operationId: 'addLinks',
+    summary: 'Add or boost 1 to 100 links; the first ends highest in the stream',
+    body: z.object({ urls: z.array(z.string()).min(1).max(100) }),
+    responses: {
+      200: {
+        description: 'What happened to each URL; repeats of the batch are collapsed',
+        schema: z.strictObject({
+          added: z.array(Link),
+          boosted: z.array(Link),
+          invalid: z.array(
+            z.strictObject({
+              url: z.unknown(),
+              error: z.enum(['invalid_url', 'library_full']),
+            }),
+          ),
+        }),
+      },
+      400: error('invalid_json, no_urls or too_many_urls'),
+    },
   },
 ];
 

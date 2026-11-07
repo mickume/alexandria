@@ -95,3 +95,58 @@ The unrevoked tokens, newest first, never with their secrets:
 #### `DELETE /api/v1/tokens/{id}`
 
 Revokes the token: `204`. From the next request on it is refused with `401`.
+
+### Links
+
+A link is shown as:
+
+```json
+{
+  "id": "…",
+  "url": "https://example.com/article",
+  "original_url": "https://example.com/article?utm_source=x",
+  "host": "example.com",
+  "title": "example.com",
+  "state": "pending",
+  "added_at": "2026-06-01T08:00:00.000Z",
+  "last_used_at": "2026-06-01T08:00:00.000Z",
+  "use_count": 0,
+  "pinned": false,
+  "pin_position": null
+}
+```
+
+Every URL that enters the library is normalised the same way: whitespace is
+trimmed; `https://` is added when there is no scheme; only `http` and `https`
+are accepted; scheme and host are lower-cased; the fragment and a default port
+are dropped; the query parameters `utm_*`, `fbclid`, `gclid`, `mc_cid` and
+`mc_eid` are dropped and the others sorted by name; a lone `/` path is dropped
+when no query follows. A bare word (no dot), `localhost`, and loopback,
+private and link-local addresses are refused. Duplicates are found on the
+normalised URL; the input is kept as `original_url`. A new link's title is its
+host until it is fetched. A library holds at most 20,000 links.
+
+#### `POST /api/v1/links`
+
+Body `{"url": "<url>"}`.
+
+- `201 {"status": "added", "link": <link>}`: a new link, `pending`, with
+  `added_at` and `last_used_at` now.
+- `200 {"status": "boosted", "link": <link>}`: the user already has this
+  normalised URL; its `last_used_at` is now, its `use_count` unchanged.
+- `400 {"error": "invalid_url", "field": "url", "url": <the input or null>, "message": "not a valid web address"}`
+- `409 {"error": "library_full", "message": "library full (20,000 links)"}`
+
+Concurrent adds of one URL store one link: one is answered `added`, the
+others `boosted`.
+
+#### `POST /api/v1/links/batch`
+
+Body `{"urls": ["<url>", …]}` with 1 to 100 entries. Each valid URL is added
+or boosted as above; repeats (after normalisation) collapse to their first
+occurrence; the first URL gets the latest `last_used_at`, so the batch appears
+in the stream in the order given.
+
+- `200 {"added": [<link>], "boosted": [<link>], "invalid": [{"url": <input>, "error": "invalid_url" | "library_full"}]}`
+- `400 {"error": "no_urls" | "too_many_urls", "field": "urls", "message"}`;
+  nothing is stored.

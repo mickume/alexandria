@@ -5,6 +5,7 @@ import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes, tokenRoutes } from './auth/routes';
 import type { AppEnv } from './env';
+import { linkRoutes } from './links/routes';
 
 /** The JSON API under /api/v1/; every route needs an authenticated user. */
 function createApi(): Hono<AppEnv> {
@@ -16,6 +17,7 @@ function createApi(): Hono<AppEnv> {
   });
   api.get('/openapi.json', (c) => c.json(openApiDocument()));
   api.route('/tokens', tokenRoutes);
+  api.route('/links', linkRoutes);
   api.all('*', notFound);
   return api;
 }

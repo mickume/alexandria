@@ -26,6 +26,8 @@ describe('normalizeUrl', () => {
     '',
     '   ',
     'not a url',
+    'nope',
+    'https://intranet/',
     'javascript:alert(1)',
     'file:///etc/passwd',
     'data:text/html,x',

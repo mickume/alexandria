@@ -4,10 +4,12 @@
 
 - [web/api](web/api.md)
 - [web/App](web/App.md)
+- [web/components/AddLinks](web/components/AddLinks.md)
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/Settings](web/pages/Settings.md)
 - [web/pages/SignIn](web/pages/SignIn.md)
+- [web/pages/Stream](web/pages/Stream.md)
 - [worker](worker.md)
 - [worker/api/errors](worker/api/errors.md)
 - [worker/api/openapi](worker/api/openapi.md)
@@ -24,3 +26,5 @@
 - [worker/clock](worker/clock.md)
 - [worker/env](worker/env.md)
 - [worker/links/normalize](worker/links/normalize.md)
+- [worker/links/routes](worker/links/routes.md)
+- [worker/links/store](worker/links/store.md)

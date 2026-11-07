@@ -53,3 +53,37 @@ export const tokens = {
   create: (name: string) => request<Token & { secret: string }>('POST', '/tokens', { name }),
   revoke: (id: string) => request<void>('DELETE', `/tokens/${id}`),
 };
+
+/** A link as the API shows it. */
+export interface Link {
+  id: string;
+  url: string;
+  original_url: string;
+  host: string;
+  title: string;
+  state: string;
+  added_at: string;
+  last_used_at: string;
+  use_count: number;
+  pinned: boolean;
+  pin_position: number | null;
+}
+
+/** One page of a list. */
+export interface Page<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+/** What a batch add did to each URL. */
+export interface BatchResult {
+  added: Link[];
+  boosted: Link[];
+  invalid: { url: string; error: 'invalid_url' | 'library_full' }[];
+}
+
+export const links = {
+  list: (cursor?: string | null) =>
+    request<Page<Link>>('GET', `/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  addBatch: (urls: string[]) => request<BatchResult>('POST', '/links/batch', { urls }),
+};

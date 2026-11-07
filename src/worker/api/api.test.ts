@@ -53,6 +53,14 @@ describe('the rate limit', () => {
 
 describe('a request body', () => {
   it.each([
+    { path: '/api/v1/links', body: 'not json', error: 'invalid_json', field: null, table: 'links' },
+    {
+      path: '/api/v1/links/batch',
+      body: { urls: 'x' },
+      error: 'no_urls',
+      field: 'urls',
+      table: 'links',
+    },
     {
       path: '/api/v1/tokens',
       body: 'not json',

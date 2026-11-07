@@ -3,7 +3,7 @@
   "spec_id": "01",
   "spec_name": "accounts_links_and_stream",
   "schema_version": 3,
-  "updated_at": "2026-11-07T15:44:19Z",
+  "updated_at": "2026-11-07T15:47:14Z",
   "tasks": [
     {
       "id": 1,
@@ -27,7 +27,7 @@
     },
     {
       "id": 6,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 7,

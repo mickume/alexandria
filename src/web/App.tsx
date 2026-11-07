@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
+import { Stream } from './pages/Stream';
 
 /** The current path of the page, following history navigation. */
 export function usePath(): string {
@@ -71,6 +72,7 @@ export function App() {
   const path = usePath();
   if (path === '/signin') return <SignIn />;
   let page: ReactNode = <p>{path}</p>;
-  if (path === '/settings') page = <Settings />;
+  if (path === '/') page = <Stream />;
+  else if (path === '/settings') page = <Settings />;
   return <Layout>{page}</Layout>;
 }
