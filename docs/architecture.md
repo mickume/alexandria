@@ -66,7 +66,9 @@ account and checks the PKCE verifier as Google does.
 | `sessions` | the SHA-256 hash of each session id, its user and expiry |
 | `tokens` | the SHA-256 hash of each token secret, its name, dates and revocation |
 | `links` | per user: normalised and original URL, host, title, state, dates, use count, pin position |
-| `link_uses` | one row per use of a link, the source of its history |
+| `link_uses` | one row per use of a link |
+| `link_events` | one row per fetch attempt: time, outcome, HTTP status, reason |
+| `link_texts` | the reader-view text of a link, for search and enrichment |
 | `rate_limits` | requests per user per minute |
 
 Every query of a user's resources is filtered by the authenticated user, so
@@ -86,6 +88,24 @@ seconds. Before every request it waits for the host gate
 (`fetcher/hostgate.ts`): one Durable Object per host name hands out slots at
 least one second apart, across all users and jobs. `robots.txt` is not read.
 `GET /about/fetcher` is the public page that explains the fetcher.
+
+What a fetch stores (`fetcher/queue.ts`): for a web page, its metadata
+(`fetcher/html.ts`), the raw HTML as the snapshot and the reader view
+(`fetcher/reader.ts`: Readability over a linkedom DOM, sanitised by an
+allow-list) in R2 under `u/{user_id}/l/{link_id}/` (`snapshot`,
+`reader.json`), and the reader text (at most 500,000 characters) in
+`link_texts`; for a PDF, the whole file and its text (`fetcher/pdf.ts`,
+unpdf); for anything else, a note and no snapshot. Objects are written first,
+then the row in one D1 batch; a link deleted meanwhile leaves nothing, and a
+failed write removes what the attempt wrote and hands the message back. A
+failed first fetch is retried after 10 minutes and 2 hours, then the link is
+`unreachable`; a failed refresh changes nothing but the history. Every
+attempt is a `link_events` row.
+
+Read and Snapshot (`fetcher/routes.ts`) serve only what is stored, to the
+owner alone, and record a use. The stream keeps cards current by polling
+`GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or
+refreshing; every write to a link sets its `updated_at`.
 
 ## Test layers
 
