@@ -442,6 +442,26 @@ A link's stored reader view.
 
 ***
 
+### Thresholds
+
+The decay thresholds, in days.
+
+#### Properties
+
+##### archive\_days
+
+> **archive\_days**: `number`
+
+##### dormant\_days
+
+> **dormant\_days**: `number`
+
+##### remove\_days
+
+> **remove\_days**: `number`
+
+***
+
 ### Token
 
 A personal access token as listed.
@@ -591,6 +611,36 @@ A workspace on its own, with its note.
 ###### Returns
 
 `Promise`\<[`AiSettings`](#aisettings)\>
+
+***
+
+### decay
+
+> `const` **decay**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: () => `Promise`\<[`Thresholds`](#thresholds)\>
+
+###### Returns
+
+`Promise`\<[`Thresholds`](#thresholds)\>
+
+##### save
+
+> **save**: (`t`) => `Promise`\<[`Thresholds`](#thresholds)\>
+
+###### Parameters
+
+###### t
+
+[`Thresholds`](#thresholds)
+
+###### Returns
+
+`Promise`\<[`Thresholds`](#thresholds)\>
 
 ***
 

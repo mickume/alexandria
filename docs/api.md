@@ -445,3 +445,22 @@ list markers and raw HTML, cut to 200 characters, or null) and `workspaces`
 `PATCH /api/v1/links/{id}` carry the whole `note`. The website renders notes
 as Markdown and removes raw HTML, scripts, event handlers and every URL that
 is not http, https or mailto.
+
+### Decay settings
+
+Links the owner does not use decay: after `dormant_days` without use an
+active link becomes `dormant` (dimmed, still in the stream); after
+`archive_days` it is archived (out of the stream, kept with its snapshot);
+`remove_days` after archiving it is removed for good.
+
+#### `GET /api/v1/settings/decay`
+
+`200 {"dormant_days": 60, "archive_days": 120, "remove_days": 180}` (the
+defaults).
+
+#### `PUT /api/v1/settings/decay`
+
+Body with all three, each a whole number of days from 7 to 3650, and
+`dormant_days` below `archive_days`: `200` with the stored values.
+`400 {"error": "invalid_threshold", "field": <name>, "message"}`, or
+`400 {"error": "invalid_thresholds", "field": "dormant_days", "message": "the dormant threshold must be below the archive threshold"}`.

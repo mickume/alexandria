@@ -3,11 +3,11 @@
   "spec_id": "05",
   "spec_name": "decay_and_liveness",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T17:43:21Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

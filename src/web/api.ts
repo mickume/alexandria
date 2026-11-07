@@ -230,3 +230,15 @@ export const workspaces = {
   removeLink: (id: string, linkId: string) =>
     request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
 };
+
+/** The decay thresholds, in days. */
+export interface Thresholds {
+  dormant_days: number;
+  archive_days: number;
+  remove_days: number;
+}
+
+export const decay = {
+  get: () => request<Thresholds>('GET', '/settings/decay'),
+  save: (t: Thresholds) => request<Thresholds>('PUT', '/settings/decay', t),
+};

@@ -231,3 +231,59 @@ describe('a rejected AI key on the settings page', () => {
     expect(screen.queryByText(/your AI key was rejected/)).toBeNull();
   });
 });
+
+describe('the decay section of the settings page', () => {
+  function decayApi(): FakeApi {
+    let stored = { dormant_days: 60, archive_days: 120, remove_days: 180 };
+    return fakeApi()
+      .on('GET', '/api/v1/settings/decay', () => ({ status: 200, body: stored }))
+      .on('PUT', '/api/v1/settings/decay', (req) => {
+        stored = req.body as typeof stored;
+        return { status: 200, body: stored };
+      });
+  }
+
+  it('shows the thresholds and saves new ones', async () => {
+    const api = decayApi();
+    renderPage('/settings', api);
+    const dormant = (await screen.findByLabelText('Dormant after (days)')) as HTMLInputElement;
+    const archive = screen.getByLabelText('Archive after (days)') as HTMLInputElement;
+    const remove = screen.getByLabelText('Remove after archiving (days)') as HTMLInputElement;
+    await waitFor(() => expect(dormant.value).toBe('60'));
+    expect([archive.value, remove.value]).toEqual(['120', '180']);
+    fireEvent.change(dormant, { target: { value: '30' } });
+    fireEvent.change(archive, { target: { value: '90' } });
+    fireEvent.change(remove, { target: { value: '30' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save thresholds' }));
+    });
+    expect(api.sent('PUT', '/api/v1/settings/decay')[0]?.body).toEqual({
+      dormant_days: 30,
+      archive_days: 90,
+      remove_days: 30,
+    });
+  });
+
+  it('shows a refusal beside the field it names and keeps the typed values', async () => {
+    const api = decayApi().on('PUT', '/api/v1/settings/decay', {
+      status: 400,
+      body: {
+        error: 'invalid_thresholds',
+        field: 'dormant_days',
+        message: 'the dormant threshold must be below the archive threshold',
+      },
+    });
+    renderPage('/settings', api);
+    const dormant = (await screen.findByLabelText('Dormant after (days)')) as HTMLInputElement;
+    await waitFor(() => expect(dormant.value).toBe('60'));
+    fireEvent.change(dormant, { target: { value: '200' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save thresholds' }));
+    });
+    const message = await screen.findByText(
+      'the dormant threshold must be below the archive threshold',
+    );
+    expect(message.closest('[data-field="dormant_days"]')).not.toBeNull();
+    expect(dormant.value).toBe('200');
+  });
+});

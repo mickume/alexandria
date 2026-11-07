@@ -205,6 +205,44 @@ export const operations: Operation[] = [
     responses: { 204: { description: 'Removed' } },
   },
   {
+    method: 'get',
+    path: '/settings/decay',
+    operationId: 'getDecaySettings',
+    summary: 'The decay thresholds, in days',
+    responses: {
+      200: {
+        description: 'The thresholds',
+        schema: z.strictObject({
+          dormant_days: z.number().int(),
+          archive_days: z.number().int(),
+          remove_days: z.number().int(),
+        }),
+      },
+    },
+  },
+  {
+    method: 'put',
+    path: '/settings/decay',
+    operationId: 'saveDecaySettings',
+    summary: 'Set the decay thresholds: whole days from 7 to 3650, dormant below archive',
+    body: z.object({
+      dormant_days: z.number().int().min(7).max(3650),
+      archive_days: z.number().int().min(7).max(3650),
+      remove_days: z.number().int().min(7).max(3650),
+    }),
+    responses: {
+      200: {
+        description: 'The stored thresholds',
+        schema: z.strictObject({
+          dormant_days: z.number().int(),
+          archive_days: z.number().int(),
+          remove_days: z.number().int(),
+        }),
+      },
+      400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
+    },
+  },
+  {
     method: 'post',
     path: '/workspaces',
     operationId: 'createWorkspace',

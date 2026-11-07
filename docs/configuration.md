@@ -38,3 +38,11 @@ its telemetry off (`WRANGLER_SEND_METRICS=false`).
 
 `e2e/fake-google.ts` signs in `FAKE_GOOGLE_EMAIL` (default `owner@example.test`)
 named `FAKE_GOOGLE_NAME` (default `Ada Owner`).
+
+## Per-user settings
+
+Each user sets on the settings page (or with `PUT /api/v1/settings/decay`)
+how fast their unused links decay: `dormant_days` (default 60),
+`archive_days` (default 120) and `remove_days` after archiving (default
+180), each from 7 to 3650 days. They are stored on the user, not in the
+deployment's configuration.

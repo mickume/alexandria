@@ -4,6 +4,7 @@ import { openApiDocument } from './api/openapi';
 import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes, tokenRoutes } from './auth/routes';
+import { decaySettingsRoutes } from './decay/routes';
 import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
 import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
@@ -21,6 +22,7 @@ function createApi(): Hono<AppEnv> {
   api.get('/openapi.json', (c) => c.json(openApiDocument()));
   api.route('/tokens', tokenRoutes);
   api.route('/settings', settingsRoutes);
+  api.route('/settings', decaySettingsRoutes);
   api.route('/links', enrichLinkRoutes);
   api.route('/links', snapshotRoutes);
   api.route('/links', linkRoutes);

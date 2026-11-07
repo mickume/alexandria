@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
 import { AiKeySection } from './AiKeySection';
+import { DecaySection } from './DecaySection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
 function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
@@ -114,6 +115,7 @@ export function Settings() {
       </ul>
       {list?.length === 0 && <p className="muted">No tokens yet.</p>}
       <AiKeySection />
+      <DecaySection />
     </section>
   );
 }
