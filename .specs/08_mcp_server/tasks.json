@@ -1,0 +1,161 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "08",
+  "spec_name": "mcp_server",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/mcp"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "uses its personal access tokens, authentication middleware, rate limit, error envelope, add-or-boost link store, pinning and stream"
+    },
+    {
+      "spec": "02",
+      "reason": "get_link_content returns its stored reader view and snapshot and records the use its reader and snapshot endpoints record"
+    },
+    {
+      "spec": "03",
+      "reason": "add_link applies tags through its manual tag edit, and get_link returns its summary, tags and topic"
+    },
+    {
+      "spec": "04",
+      "reason": "list_workspaces, add_to_workspace and add_link's workspace argument use its workspaces and membership"
+    },
+    {
+      "spec": "05",
+      "reason": "archive_link performs its manual archive"
+    },
+    {
+      "spec": "06",
+      "reason": "search_links runs its search with its prefix filters"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Serve an authenticated, stateless MCP endpoint at /mcp",
+      "criteria": [
+        "REQ-1",
+        "REQ-7.3"
+      ],
+      "steps": [
+        "Add the endpoint behaviours to src/worker/mcp/mcp.test.ts, with an mcp(bearer, method, params) and an mcpTool(bearer, name, args) helper added to src/worker/test/helpers.ts, and confirm they fail",
+        "Mount POST /mcp in src/worker/app.ts behind token-only authentication: a missing, unknown or revoked bearer token, or a session cookie alone, answers 401 {error: 'unauthorized'} with 'WWW-Authenticate: Bearer' before any message is read; GET and DELETE answer 405 with 'Allow: POST'",
+        "Count each /mcp request once against the user's 600-per-minute rate limit shared with the API, answering 429 with Retry-After before any tool runs",
+        "In src/worker/mcp/server.ts build, per request, an McpServer named 'alexandria' with the instructions text (Alexandria is the owner's private library of web links; try search_links before add_link to avoid duplicates; the server de-duplicates anyway) and a WebStandardStreamableHTTPServerTransport without a session id generator and with JSON responses enabled, and answer through handleRequest",
+        "In src/worker/mcp/tools.ts register the nine tools with registerTool, each with a description and a zod input schema, behind one wrapper that dispatches the equivalent /api/v1/ request inside the Worker with the agent's token, turns a 2xx body into structuredContent plus one text item and a 4xx error envelope into an isError result, turns an input-schema failure into {error: 'invalid_arguments', field, message}, and turns any unexpected failure into {error: 'internal_error', message: 'something went wrong, try again'}",
+        "Document /mcp, its authentication, its tools and its instructions in docs/api.md and the MCP server in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/mcp/server.ts",
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "src/worker/app.ts",
+        "src/worker/auth/middleware.ts",
+        "src/worker/api/ratelimit.ts",
+        "src/worker/test/helpers.ts",
+        "package.json",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Add links from an agent with add_link",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the add_link behaviours to src/worker/mcp/mcp.test.ts and confirm they fail",
+        "Before storing anything, resolve the workspace argument by id or by name compared case-insensitively among the user's workspaces (not_found otherwise) and require every tag, trimmed and lower-cased, to be a single word or a hyphenated phrase (invalid_arguments, field 'tags', otherwise)",
+        "Add or boost the link through POST /api/v1/links, passing its invalid_url and library_full errors through as tool errors",
+        "Apply given tags through PATCH /api/v1/links/{id} as a manual tag edit, and add the link to the resolved workspace through POST /api/v1/workspaces/{id}/links unless it is already a member",
+        "Return {status, link} with the link as it stands after the tags and the workspace were applied"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Search and list recent links with search_links and list_recent",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the search_links and list_recent behaviours to src/worker/mcp/mcp.test.ts and confirm they fail",
+        "Implement search_links over GET /api/v1/search with the query unchanged (prefix filters included) and limit defaulting to 10, recording no use",
+        "Implement list_recent over GET /api/v1/links with limit defaulting to 20, recording no use",
+        "Refuse a limit outside the integers 1 to 100 and a missing or empty query as invalid_arguments naming the field"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Read links with get_link and get_link_content",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the get_link and get_link_content behaviours to src/worker/mcp/mcp.test.ts and confirm they fail",
+        "Implement get_link over GET /api/v1/links/{id}, recording no use",
+        "Implement get_link_content: format 'text' returns the reader-view text served by GET /api/v1/links/{id}/reader (a PDF's extracted text) and format 'html' the stored snapshot HTML served by GET /api/v1/links/{id}/snapshot, each recording the one use that endpoint records, as {id, format, content}",
+        "Answer not_html ('this link is a PDF; use format text') for 'html' of a PDF link and no_content for a link with no stored snapshot or reader view, recording no use in either case",
+        "Refuse a missing id and a format other than 'text' or 'html' as invalid_arguments"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Organise links with list_workspaces, add_to_workspace, pin_link and archive_link",
+      "criteria": [
+        "REQ-5",
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the workspace, pin and archive behaviours to src/worker/mcp/mcp.test.ts and confirm they fail",
+        "Implement list_workspaces by reading every page of GET /api/v1/workspaces and returning {items}",
+        "Implement add_to_workspace: resolve the workspace by id or by name compared case-insensitively, then POST /api/v1/workspaces/{id}/links with {link_id}; an unknown or foreign link or workspace is not_found and changes nothing",
+        "Implement pin_link over POST /api/v1/links/{id}/pin without a position, passing pin_limit through as a tool error",
+        "Implement archive_link over POST /api/v1/links/{id}/archive"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Prove per-user isolation and one contract across MCP and the API",
+      "criteria": [
+        "REQ-7.1",
+        "REQ-7.2"
+      ],
+      "steps": [
+        "Add the isolation table (every tool that names an id, called with one user's token on another user's link or workspace) to src/worker/mcp/mcp.test.ts and make it pass, fixing any tool that answers differently for a foreign id than for an unknown one",
+        "Add the equivalence table pairing every tool call with its API request on twin seeded libraries, success and refusal cases both, and make it pass, fixing any tool whose structuredContent or isError differs from the API's body and status",
+        "Confirm no tool's JSON-RPC response carries an error member for an outcome the API answers with a status code"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "src/worker/test/helpers.ts"
+      ]
+    }
+  ]
+}

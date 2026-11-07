@@ -1,0 +1,170 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "09",
+  "spec_name": "export_and_account_deletion",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/account src/web/pages/Settings.test.tsx src/web/pages/SignIn.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "exports and deletes its users, sessions, tokens, links and use events, extends its sign-in flow and settings page, and uses its error envelope"
+    },
+    {
+      "spec": "02",
+      "reason": "serves and deletes its snapshots and reader views in R2, and stops its fetch consumer writing for a deleted account"
+    },
+    {
+      "spec": "03",
+      "reason": "exports its summaries, topics and tags, deletes the AI key, and stops its enrichment consumer for a deleted account"
+    },
+    {
+      "spec": "04",
+      "reason": "exports and deletes its workspaces, membership and notes"
+    },
+    {
+      "spec": "05",
+      "reason": "exports its archive and liveness fields and stops its daily decay and liveness work for a deleted account"
+    },
+    {
+      "spec": "06",
+      "reason": "deletes its search index rows and exports the topic and tag lists it maintains"
+    },
+    {
+      "spec": "07",
+      "reason": "deletes its imports and stops import processing for a deleted account"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Stream the whole library as one export document",
+      "criteria": [
+        "REQ-1",
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the export behaviours to src/worker/account/export.test.ts and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Implement GET /api/v1/export in src/worker/account/export.ts as a streamed response: the header members, then the links read page by page in id order, then workspaces with their link ids in manual order, topics and tags with their link counts, and the closing member \"complete\": true, with Content-Disposition naming alexandria-export-<date>.json",
+        "Build each link entry from the same serialiser GET /api/v1/links/{id} uses, so that every field a package adds to the link is exported, and add snapshot_url and reader_url on PUBLIC_ORIGIN, or null when nothing is stored",
+        "Leave out the AI key in every form, token secrets and hashes, session identifiers, import reports and settings, and read only the requesting user's rows",
+        "On a read failure part-way, error the stream so the download fails and never ends with \"complete\": true",
+        "Read in pages and batch the per-page lookups (tags, topics, workspace membership) so that 20,000 links export in under 60 seconds",
+        "Add the 'Export library' download link to the settings page",
+        "Document the export route and the document's shape in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/account/export.ts",
+        "src/worker/account/routes.ts",
+        "src/worker/account/export.test.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Serve stored content from the export's URLs without recording a use",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the export snapshot and reader behaviours to src/worker/account/export.test.ts and confirm they fail",
+        "Implement GET /api/v1/export/links/{id}/snapshot and GET /api/v1/export/links/{id}/reader by calling the same content functions as the reader and snapshot endpoints of src/worker/fetcher/routes.ts, with the same headers, but without recordUse",
+        "Serve archived links too, answer 404 no_content when nothing of that kind is stored and 404 not_found for another user's link or an unknown id",
+        "Document both routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/account/export.ts",
+        "src/worker/account/routes.ts",
+        "src/worker/account/export.test.ts",
+        "src/worker/fetcher/routes.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Accept the account deletion request and sign the owner out at once",
+      "criteria": [
+        "REQ-4",
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the deletion-request behaviours to src/worker/account/deletion.test.ts, src/web/pages/Settings.test.tsx and src/web/pages/SignIn.test.tsx and confirm they fail",
+        "Add a migration in migrations/ with users.deletion_requested_at, and the ACCOUNT_QUEUE producer and consumer bindings to wrangler.jsonc",
+        "Implement DELETE /api/v1/me in src/worker/account/deletion.ts: session authentication only (403 session_required for a token), confirm_email compared case-insensitively with whitespace trimmed (400 confirmation_mismatch otherwise), then in one batch delete every session and token of the user, clear the AI key and set deletion_requested_at; queue the deletion job; answer 202 {status: 'deleting'} with the session cookie expired",
+        "In the sign-in callback refuse an email whose account is marked for deletion with a redirect to /signin?error=deleting, creating no session",
+        "Add the delete-account section to the settings page: the warning that every link, snapshot, workspace, token and the AI key go and there is no undo, the email field enabling 'Delete account' only on a match, the request, and the error messages",
+        "Show 'Your account and all its data are being deleted.' for deleted=1 and 'Your account is being deleted, try again in a few minutes' for error=deleting on the sign-in page",
+        "Document the route in the OpenAPI document and docs/api.md, and ACCOUNT_QUEUE in docs/configuration.md"
+      ],
+      "touches": [
+        "migrations/",
+        "wrangler.jsonc",
+        "src/worker/env.ts",
+        "src/worker/account/deletion.ts",
+        "src/worker/account/routes.ts",
+        "src/worker/account/deletion.test.ts",
+        "src/worker/auth/routes.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/pages/SignIn.tsx",
+        "src/web/pages/SignIn.test.tsx",
+        "docs/api.md",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Remove every trace of a deleted account in batches",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the deletion-job behaviours to src/worker/account/deletion.test.ts and confirm they fail",
+        "Write the ACCOUNT_QUEUE consumer in src/worker/account/deletion.ts: list the account's R2 objects under u/{user_id}/ and delete them at most 1,000 per call, then delete the account's rows from every table that has a link_id or user_id column, found from sqlite_master, link-referencing tables before links, at most 1,000 rows per statement, the users row last",
+        "Re-queue the job after each batch until nothing remains, and make every run idempotent: a failed run is retried and continues with what remains, a run for an account already gone acknowledges and does nothing",
+        "Add a Cron Trigger '*/5 * * * *' and a sweep in src/worker/account/sweep.ts, dispatched from the scheduled handler by its cron expression, that runs the job for every account marked more than 5 minutes ago",
+        "Describe the deletion job, ACCOUNT_QUEUE and the sweep in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/account/deletion.ts",
+        "src/worker/account/sweep.ts",
+        "src/worker/account/deletion.test.ts",
+        "src/worker/index.ts",
+        "wrangler.jsonc",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Stop background work from writing for a deleted account",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the background-work table to src/worker/account/deletion.test.ts and confirm it fails",
+        "Add one guard, accountActive(userId) in src/worker/account/deletion.ts, that is false for an account marked for deletion or removed",
+        "Call it at the start of the fetch consumer, the enrichment consumer, each import step and the daily decay and liveness pass, and before every write those make, acknowledging the message without fetching, calling an AI provider or writing when it is false",
+        "Make the fetch and enrichment consumers acknowledge a message for a link that no longer exists without writing anything"
+      ],
+      "touches": [
+        "src/worker/account/deletion.ts",
+        "src/worker/account/deletion.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/imports/imports.ts",
+        "src/worker/decay/cron.ts"
+      ]
+    }
+  ]
+}

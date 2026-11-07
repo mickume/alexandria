@@ -1,0 +1,602 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "06",
+  "spec_name": "search_and_browse",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "The query language",
+      "rationale": "One short line has to carry both the words to find and the filters that narrow them, without ever failing on what the owner typed.",
+      "system": "query parser",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "ubiquitous",
+          "action": "for any query, split it into free words and prefix filters, where a filter is a term 'tag:', 'topic:', 'host:', 'state:', 'in:' or 'is:' followed by a value that is either one word or a double-quoted phrase, prefix names are case-insensitive, and every other term, including another 'word:value', is a free word",
+          "contract": "parseQuery(q) returns {words: string[], filters: {tag?, topic?, host?, state?, in?, is?: string[]}}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/query.test.ts, a table of (query, words, filters): ('queues tag:cloudflare', ['queues'], {tag: ['cloudflare']}); ('TOPIC:\"web development\" css', ['css'], {topic: ['web development']}); ('tag:a tag:b', [], {tag: ['a', 'b']}); ('host:example.com is:pinned is:dead', [], {host: ['example.com'], is: ['pinned', 'dead']}); ('in:\"Reading list\" state:any', [], {in: ['Reading list'], state: ['any']}); ('c++: http://x.example foo:bar', ['c++:', 'http://x.example', 'foo:bar'], {}); ('   ', [], {}); ('tag:\"unclosed', ['tag:\"unclosed'], {}): assert parseQuery(query) == {words, filters}"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "unwanted",
+          "condition": "a query is longer than 200 characters",
+          "action": "refuse the query without searching",
+          "contract": "HTTP 400 with body {\"error\": \"query_too_long\", \"field\": \"q\", \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/query.test.ts and through the route in src/worker/search/search.test.ts: assert parseQuery('x' * 201) == {ok: false, error: 'query_too_long'}; r = api('GET', '/api/v1/search?q=' + 'x' * 201); assert r.status == 400 and r.json.error == 'query_too_long' and r.json.field == 'q'; and a query of exactly 200 characters answers 200"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "a query has a 'state:' filter whose value is not one of pending, active, unreachable, dormant, archived or any, or an 'is:' filter whose value is not pinned or dead",
+          "action": "refuse the query without searching, naming the filter in the message",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_filter\", \"field\": \"q\", \"message\": <text naming the filter>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over {'state:gone', 'is:starred', 'state:', 'is:'}: r = api('GET', '/api/v1/search?q=' + q); assert r.status == 400 and r.json.error == 'invalid_filter' and r.json.field == 'q' and r.json.message contains the filter text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Full-text search",
+      "rationale": "A link that cannot be found again is as good as lost.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/search with a query that has at least one free word",
+          "action": "return the user's links that are not archived and whose title, summary, tags, topic, host, original URL, note or reader-view text contains every free word as the prefix of a word, case- and accent-insensitively, cursor-paged 50 per page by default and at most 100",
+          "contract": "HTTP 200 with body {items: [{link: <link as in GET /api/v1/links>, snippet: [{text, match: boolean}]}], workspaces: [{id, name, snippet}], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over the field holding the text {title 'Cloudflare Queues explained', summary, tag 'cloudflare', topic 'Infrastructure', host 'queues.example', original URL with '?ref=queues', note 'read before the migration', reader text containing 'Queues'} with one other link holding none of the words: seed the link through the store and the field's writer; r = api('GET', '/api/v1/search?q=queu'); assert r.status == 200 and the result ids == [the link]; and 'QUEUES cloud' finds a link with 'cloudflare queues' while 'queues kafka' does not; and 'cafe' finds 'Café'"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "ubiquitous",
+          "action": "for any search with free words, order the matching links by relevance, computed with title weighted 10, tags and topic 5, summary 3, host, original URL and note 2 and reader-view text 1, and among equally relevant links put pinned links first and then the more recently used",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts: seed A with 'queues' in the reader text only, B with 'queues' in the title, C with 'queues' in a tag, and D and E identical to A but D used later and E pinned; r = search 'queues'; assert the ids are [B, C, E, D, A]"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "event_driven",
+          "condition": "a search returns a matching link",
+          "action": "attach to each result a snippet of at most 32 words taken from the text column that matched best, split into segments with the matched words marked, and produce no HTML from the indexed text",
+          "contract": "each item's snippet is an array of {text: string, match: boolean} whose concatenation is a passage of the matched column",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts: seed a link whose reader text is 500 words with 'durable objects' at word 300 and '<b>x</b>' near it; r = search 'durable'; s = r.items[0].snippet; assert count of words in s <= 32; assert some segment {text: 'durable', match: true} (case kept from the source); assert the segment text contains '<b>x</b>' verbatim as text"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "for any query and filters, return only links and workspaces of the authenticated user, even when another user's links hold identical text",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts: users A and B each add 'https://same.example' with the note 'shared words'; for each of {'shared', 'shared host:same.example', 'tag:x', 'state:any'} as A: assert every result belongs to A and B's link and workspaces never appear; and an index row of B is never matched by a query of A, checked by seeding B with 1,000 links containing 'shared' and asserting A's result count is 1"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "ubiquitous",
+          "action": "answer GET /api/v1/search within 500 ms at the 95th percentile for a user with 10,000 links",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the Workers test pool with local D1"
+            ],
+            "pseudocode": "in src/worker/search/search.test.ts, in its own describe block: seed 10,000 links through the store with titles, summaries, 3 tags each from a 300-word vocabulary, 40 topics, notes on 1,000 and reader texts of 2,000 to 20,000 characters; run 100 queries drawn from {one common word, two words, a rare word, a word with tag:, state:any, is:pinned, host:} and measure each request's duration; assert the 95th percentile <= 500 ms"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/search with a query that is empty or only whitespace",
+          "action": "return the stream exactly as GET /api/v1/links returns it",
+          "contract": "HTTP 200 with body {items: [{link, snippet: []}], workspaces: [], next_cursor} in stream order",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over q {absent, '', '   '}: r = api('GET', '/api/v1/search?q=' + q); assert r.json.items.map(link.id) == api('GET', '/api/v1/links').json.items.map(id) and every snippet is []"
+          }
+        },
+        {
+          "id": "REQ-2.7",
+          "pattern": "ubiquitous",
+          "action": "for any query text, treat the full-text engine's operators and punctuation (AND, OR, NOT, NEAR, *, \", (, ), :, -, ^) as literal text and answer with 200 or a documented 400, never with a server error",
+          "contract": "HTTP 200 with the search body, or HTTP 400 with body {\"error\": \"invalid_filter\" or \"query_too_long\", \"field\": \"q\", \"message\": <text>}; never a 5xx",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/search/search.test.ts: for 500 generated strings of up to 200 characters drawn from letters, digits, spaces and the characters '\"*():-^' and the words AND, OR, NOT, NEAR: r = api('GET', '/api/v1/search?q=' + encode(s)); assert r.status in {200, 400} and a 400 has error 'invalid_filter'; and 'NOT queues' finds a link titled 'not queues'"
+          }
+        },
+        {
+          "id": "REQ-2.8",
+          "pattern": "event_driven",
+          "condition": "a search with free words is made and its cursor is absent",
+          "action": "list on the first page of results the user's workspaces whose name, description or note contains every free word as a word prefix, each with its id, name and a snippet",
+          "contract": "body.workspaces is [{id, name, snippet}] on the first page and [] on every later page",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts: create workspace 'Kitchen remodel' with the note 'tiles and grout'; r = search 'grout'; assert r.json.workspaces == [{id, name: 'Kitchen remodel', snippet with {text: 'grout', match: true}}]; assert the second page's workspaces == []; and a workspace of another user with the same note is absent"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Filters on search and on the link list",
+      "rationale": "The owner narrows by what Alexandria already knows about a link, and a script narrows the same way.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "a search query carries one or more filters",
+          "action": "return only links that satisfy every filter: a tag with that name, the topic with that name, a host equal to the value or a subdomain of it, membership of the workspace with that name, pinned, or dead, names compared case-insensitively",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table of (query, expected links) over seeded links {a: tags [cloudflare, queues], host 'developers.cloudflare.com', topic 'Infrastructure', in workspace 'Work', pinned; b: tag [cloudflare], host 'cloudflare.com', dead_since set; c: no tags, host 'notcloudflare.com'}: ('tag:Cloudflare', [a, b]); ('tag:cloudflare tag:queues', [a]); ('topic:infrastructure', [a]); ('host:cloudflare.com', [a, b]); ('in:work', [a]); ('in:\"no such workspace\"', []); ('is:pinned', [a]); ('is:dead', [b]); ('queues is:dead', []): assert the result ids equal the expected set"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "state_driven",
+          "condition": "a search or a filtered link list is answered",
+          "action": "include archived links only when the query has 'state:archived', which returns only archived links, or 'state:any', which returns links in every state, and for any other state value return only links in that state",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over seeded links {p pending, a active, d dormant, x archived, all with the word 'kiwi'}: ('kiwi', [p, a, d]); ('kiwi state:archived', [x]); ('kiwi state:any', [p, a, d, x]); ('kiwi state:dormant', [d]): assert the result ids"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "a search query has filters and no free words",
+          "action": "list the links that satisfy the filters in stream order, pinned first in pin position order and then by last used descending",
+          "contract": "HTTP 200 with body {items: [{link, snippet: []}], workspaces: [], next_cursor} in stream order",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts: seed tagged links t1 < t2 < t3 by last used and pin t1; r = search 'tag:x'; assert ids == [t1, t3, t2] and every snippet == []"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links with one or more of the query parameters tag, topic, host, state, in and is",
+          "action": "apply the query parameters tag, topic, host, state, in and is with the meaning of the prefix filters, repeated parameters all applying, and return the matching links in stream order with the shared cursor",
+          "contract": "HTTP 200 with body {items: [link], next_cursor} as GET /api/v1/links without filters",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts beside the stream tests of package 01, a table over the queries of the filter table above: params = the filters as query parameters; assert api('GET', '/api/v1/links?' + params).json.items ids == the ids of api('GET', '/api/v1/search?q=' + filters).json.items; and paging with limit 2 over 'tag=cloudflare' yields every match once"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/links carries a state parameter that is not one of pending, active, unreachable, dormant, archived or any, or an is parameter that is not pinned or dead",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_filter\", \"field\": <the parameter name>, \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, a table over {state=gone: field 'state'; is=starred: field 'is'}: r = api('GET', '/api/v1/links?' + p); assert r.status == 400 and r.json.error == 'invalid_filter' and r.json.field == the parameter"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "An index that is always current",
+      "rationale": "A search that finds yesterday's title or misses today's note is worse than none.",
+      "system": "search index",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "ubiquitous",
+          "action": "for any write that adds a link, changes its title, summary, tags, topic, host, original URL or note, renames or merges a topic or tag, or deletes the link, make the next search reflect the write: the new text matches, the replaced text no longer matches, and a deleted link is never returned",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over writes through the API {POST /api/v1/links with a new URL; PATCH /api/v1/links/{id} title 'alpha' -> 'bravo'; PATCH summary; PATCH tags ['alpha'] -> ['bravo']; PATCH topic; PATCH note; PATCH /api/v1/tags/{id} rename 'alpha' -> 'bravo'; POST /api/v1/topics/{id}/merge; DELETE /api/v1/links/{id}}: assert search 'alpha' before the write returns the link (where the link held 'alpha') and after it does not, and search 'bravo' after it returns the link, except after DELETE where neither returns it"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "the fetch worker stores or replaces the reader-view text of a link",
+          "action": "index the stored reader-view text of the link, at most its first 500,000 characters, replacing any text indexed for the link before",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts with the fetch worker run against a local origin double: serve a page whose article contains 'zeppelin'; process the link's fetch message; assert search 'zeppelin' returns the link; serve the page again with 'dirigible' instead and refresh; assert 'zeppelin' no longer returns it and 'dirigible' does; and for a reader text of 600,000 characters with 'tailword' at character 550,000, assert 'tailword' does not return it"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "ubiquitous",
+          "action": "for any change to a link's pin, state, archive date, dead date or workspace membership, make the filters of the next search and link list reflect it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/search.test.ts, a table over {pin then 'is:pinned'; unpin; add to workspace 'Work' then 'in:work'; remove from it; archive (POST /api/v1/links/{id}/archive) then 'state:archived'; restore}: assert membership of the filtered result changes with each write"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Topics and tags pages",
+      "rationale": "Browsing by what a link is about is how the library feels like a directory rather than a pile.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/topics or GET /api/v1/tags",
+          "action": "return each of the user's topics, or tags, that has at least one link, with its id, name, number of links in any state and the added date of its newest link, ordered by that date newest first",
+          "contract": "HTTP 200 with body {items: [{id, name, count, newest_added_at}], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a table over the routes {/api/v1/topics, /api/v1/tags}: seed 'infra' on 3 links (one archived) added t1, t2, t3 and 'cooking' on 1 link added t4 > t3; r = api('GET', route); assert r.json.items == [{name: 'cooking', count: 1, newest_added_at: t4}, {name: 'infra', count: 3, newest_added_at: t3}] with ids; and another user's topics and tags are absent"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "for any topic or tag whose last link loses it, by an edit, a merge, a removal by decay or a deletion, delete the topic or tag, so that it is neither listed nor offered to enrichment as existing vocabulary",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a table over {PATCH the only link's tags from ['solo'] to []; DELETE the only link tagged 'solo'; PATCH the only link's topic away from 'Solo'}: after the write assert GET /api/v1/tags (or topics) has no 'solo' item and the vocabulary that src/worker/enrich/vocabulary.ts gives enrichment for the user does not contain it"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Topics page or the Tags page",
+          "system": "website",
+          "action": "show every topic, or tag, with its link count in the API's order, each opening the search results for that topic or tag filter",
+          "contract": "each row links to /search?q=topic:\"<name>\" (or tag:<name>), quoting a name that contains a space",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Topics.test.tsx and src/web/pages/Tags.test.tsx with a fake API: renderPage('/topics'); assert rows 'web development 3' and 'cooking 1' in order; click 'web development'; assert the location is /search?q=topic%3A%22web%20development%22 and the search request carries that query; the same for /tags with 'tag:cloudflare'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Renaming topics and tags",
+      "rationale": "Automatic vocabulary needs a human's last word.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "a user requests PATCH /api/v1/topics/{id} or PATCH /api/v1/tags/{id} with a valid name that no other topic or tag of the user has",
+          "action": "rename the topic or tag, so that every link carrying it shows the new name, and keep the old name as an alias of it",
+          "contract": "HTTP 200 with body {id, name, count}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a table over {PATCH /api/v1/topics/{id} 'Infra' -> 'Infrastructure'; PATCH /api/v1/tags/{id} 'js' -> 'javascript'}: r = api('PATCH', route, {body: {name}}); assert r.status == 200 and r.json == {id, name, count}; assert GET /api/v1/links/{id} of a tagged link shows the new name; assert the alias table holds the old name for the id"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "the new name equals, case-insensitively, the name of another topic (for a topic) or another tag (for a tag) of the user",
+          "action": "refuse the rename and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"name_taken\", \"message\": <text suggesting a merge>}; no name changes",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts: with tags 'js' and 'javascript', r = rename 'js' to 'JavaScript' (tag names are lower-cased first) and topics 'A' and 'B', rename 'A' to 'b'; assert r.status == 409 and r.json.error == 'name_taken' and both items are unchanged; and renaming a tag to its own name answers 200"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "unwanted",
+          "condition": "the new name is missing or, for a tag, after lower-casing is not 1 to 50 characters of letters and digits in hyphen-joined words, or, for a topic, is empty after trimming or longer than 100 characters",
+          "action": "refuse the rename and change nothing",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_name\", \"field\": \"name\", \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a table over {tag: absent, '', 'two words', 'Under_score', 'x' * 51, '-lead'; topic: absent, '   ', 'x' * 101}: r = rename; assert r.status == 400 and r.json.error == 'invalid_name' and r.json.field == 'name'; and tag 'Web-Dev' is stored as 'web-dev', topic of 100 characters answers 200"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Merging topics and tags",
+      "rationale": "Two names for one thing split the library; merging joins them back.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/tags/{id}/merge with {into: <the id of another of the user's tags>}",
+          "action": "move every link of the source tag to the target tag, never giving a link the same tag twice, delete the source and keep its name as an alias of the target",
+          "contract": "HTTP 200 with body {id, name, count} of the surviving tag",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts: links L1 [js], L2 [js, javascript], L3 [javascript]; r = api('POST', '/api/v1/tags/' + js + '/merge', {body: {into: javascript}}); assert r.status == 200 and r.json == {id: javascript, name: 'javascript', count: 3}; assert each of L1, L2, L3 has tags exactly ['javascript']; assert GET /api/v1/tags has no 'js'; assert 'js' is an alias of javascript"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/topics/{id}/merge with {into: <the id of another of the user's topics>}",
+          "action": "give every link of the source topic the target topic, delete the source and keep its name as an alias of the target",
+          "contract": "HTTP 200 with body {id, name, count} of the surviving topic",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts: links with topics 'Infra' (2) and 'Infrastructure' (1); merge Infra into Infrastructure; assert 200 {id, name: 'Infrastructure', count: 3}; assert the three links show 'Infrastructure' and 'Infra' is an alias"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "the merge request has no into, an into equal to the source, or a source or into that names no tag or topic of the user",
+          "action": "refuse the merge and change nothing",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_merge\", \"field\": \"into\", \"message\": <text>} for a missing or equal into; HTTP 404 with body {\"error\": \"not_found\"} for a source or into that is not the user's; nothing changes",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a table over the routes {tags, topics} crossed with {into absent: 400 invalid_merge field 'into'; into == id: 400 invalid_merge; into an id of another user's tag: 404 not_found; into an id that exists nowhere: 404 not_found; source of another user: 404 not_found}: assert status and error; assert every link's tags and topic are unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Enrichment uses the renamed vocabulary",
+      "rationale": "A rename that the next enrichment undoes was never a rename.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "ubiquitous",
+          "action": "for any enrichment run after a rename or merge, offer the provider the user's current topic and tag names only, never a renamed or merged-away name",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts beside package 03's vocabulary tests: rename tag 'js' to 'javascript' and merge topic 'Infra' into 'Infrastructure'; capture the request the provider double receives for the next enrichment; assert its vocabulary contains 'javascript' and 'Infrastructure' and contains neither 'js' nor 'Infra'"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "event_driven",
+          "condition": "an enrichment result names a tag or topic, compared case-insensitively, that is an alias of the user's",
+          "action": "store the surviving topic or tag that the alias belongs to instead of creating a topic or tag with the old name",
+          "contract": "the link carries the survivor; no topic or tag row with the alias name is created",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: after merging 'js' into 'javascript', make the provider double answer tags ['js', 'react'] and topic 'Infra' (an alias of 'Infrastructure'); run enrichment; assert the link's tags == ['javascript', 'react'] and topic == 'Infrastructure'; assert no tag 'js' and no topic 'Infra' exist"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "Searching on the website",
+      "rationale": "The search box is the second way in to every link, after the stream.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "event_driven",
+          "condition": "the owner types in the search box on any page",
+          "action": "show the results of the typed query at /search?q=<query> 200 ms after the last keystroke, each result as the stream's link card with its snippet below, the matched segments marked, and the matching workspaces above the links",
+          "contract": "one request per pause in typing; the snippet's matched segments are rendered as <mark> elements and no snippet text is rendered as HTML",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Search.test.tsx with fake timers and a fake API: type 'queues' into the search box; advance 199 ms and assert no request; advance 1 ms and assert one GET /api/v1/search?q=queues and the location /search?q=queues; assert each result renders a LinkCard and its snippet with the match segments inside <mark> and a segment '<b>x</b>' shown as text; assert the workspace results are listed above the cards; assert the input's maxLength == 200"
+          }
+        },
+        {
+          "id": "REQ-9.2",
+          "pattern": "event_driven",
+          "condition": "a search answers with no links and no workspaces",
+          "action": "show 'nothing found for <query>' and list the query's active filters",
+          "contract": "the message and one chip per filter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Search.test.tsx with the fake API answering no items and no workspaces: renderPage('/search?q=zebra%20tag%3Aanimals%20is%3Apinned'); assert the text 'nothing found for zebra tag:animals is:pinned' and the filter chips 'tag:animals' and 'is:pinned'"
+          }
+        },
+        {
+          "id": "REQ-9.3",
+          "pattern": "event_driven",
+          "condition": "the owner empties the search box",
+          "action": "return to the stream",
+          "contract": "the location becomes '/' and the stream is rendered",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Search.test.tsx: renderPage('/search?q=x'); clear the search box; advance 200 ms; assert the location is '/' and the stream is shown"
+          }
+        },
+        {
+          "id": "REQ-9.4",
+          "pattern": "state_driven",
+          "condition": "the search box is used on the Archive page",
+          "action": "search only archived links, by adding 'state:archived' to the query it sends, and show the results on the Archive page",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx beside package 05's Archive page tests, with a fake API: renderPage('/archive'); type 'kiwi'; advance 200 ms; assert the request is GET /api/v1/search?q=kiwi%20state%3Aarchived and the results replace the archive list on the Archive page"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-10",
+      "title": "The two keyboard shortcuts",
+      "rationale": "Search is one key away, and nothing else is.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-10.1",
+          "pattern": "event_driven",
+          "condition": "the owner presses '/' while the focus is not in a text field",
+          "action": "move the focus to the search box without typing the slash",
+          "contract": "document.activeElement is the search box; its value is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/SearchBox.test.tsx, a table over the pages {/, /settings, /topics, /tags, /links/{id}, /archive}: renderPage(page); press '/' on the document body; assert document.activeElement is the search box and its value is ''; and with the focus in another text field (the add input, a note editor) pressing '/' types '/' into that field and leaves the focus there"
+          }
+        },
+        {
+          "id": "REQ-10.2",
+          "pattern": "event_driven",
+          "condition": "the owner presses Escape while the focus is in the search box",
+          "action": "clear the search box, return to the page the search started from (the stream when it started from the results page) and move the focus to the page's main region",
+          "contract": "search box value '', focus on the main region",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/SearchBox.test.tsx: renderPage('/'); press '/', type 'queues', advance 200 ms; press 'Escape'; assert the search box value is '', the location is '/', and document.activeElement is the main region"
+          }
+        },
+        {
+          "id": "REQ-10.3",
+          "pattern": "ubiquitous",
+          "action": "respond to no other key as a shortcut: any key other than '/' and Escape pressed outside a text field changes neither the focus nor the location nor any data",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/SearchBox.test.tsx, a table over keys {'j', 'k', 'n', 'g', '?', 's', 'Enter', 'Delete', 'ArrowDown', 'Ctrl+K'} on the stream page with the fake API: press the key on the document body; assert the focus, the location and the requests sent are unchanged"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner searches with a filter and clears the search",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds 'https://docs.example/queues' and 'https://blog.example/kafka' to the library"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches both pages from the origin, stores their reader-view text and indexes it"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "enriches both links, tagging the first 'cloudflare'"
+        },
+        {
+          "actor": "owner",
+          "action": "presses '/' on the stream and types 'queues tag:cloudflare'"
+        },
+        {
+          "actor": "website",
+          "action": "sends GET /api/v1/search?q=queues%20tag%3Acloudflare 200 ms after the last keystroke"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "parses the query, matches the index restricted to the owner and the tag filter, ranks the matches and builds their snippets"
+        },
+        {
+          "actor": "website",
+          "action": "shows the queues link's card with 'Queues' highlighted in its snippet, and not the kafka link"
+        },
+        {
+          "actor": "owner",
+          "action": "presses Escape and is back on the stream with an empty search box"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database with the FTS5 index",
+          "fetch worker",
+          "enrichment worker",
+          "Queues"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2 and Queues, the owner signed in through e2e/fake-google.ts",
+          "e2e/fake-origin.ts serves a page about Cloudflare Queues at https://docs.example/queues and one about Kafka at https://blog.example/kafka",
+          "the owner's AI key points at e2e/fake-ai.ts, which tags the queues page 'cloudflare' and 'queues' and the kafka page 'kafka' (the external parties are the only stubs)"
+        ],
+        "end_state": [
+          "the results page lists exactly the queues link, its snippet with a <mark> around 'Queues'",
+          "after Escape the location is '/', the search box is empty and focused away from it",
+          "the FTS index holds one row per link, both carrying the owner's id"
+        ],
+        "pseudocode": "in e2e/search.spec.ts: sign in; add both URLs; poll until both cards show tags; page.keyboard.press('/'); type 'queues tag:cloudflare'; expect the results to contain the queues card only and a mark element with text 'Queues'; press Escape; expect url '/' and the search box value ''"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "The owner merges two tags and later enrichment uses the survivor",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the Tags page and sees 'js' with 2 links and 'javascript' with 1"
+        },
+        {
+          "actor": "owner",
+          "action": "merges 'js' into 'javascript'"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "moves the two links to 'javascript', deletes 'js' and records it as an alias"
+        },
+        {
+          "actor": "website",
+          "action": "shows 'javascript' with 3 links and no 'js'"
+        },
+        {
+          "actor": "owner",
+          "action": "adds a new link whose page the provider will tag 'js'"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "sends the provider the page text with the current vocabulary, which has 'javascript' and no 'js'"
+        },
+        {
+          "actor": "AI provider",
+          "action": "answers the enrichment request with the tags 'js' and 'frontend'"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "maps the alias 'js' to 'javascript' and stores 'javascript' and 'frontend' for the link"
+        },
+        {
+          "actor": "owner",
+          "action": "searches 'tag:javascript' and finds all four links"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "enrichment worker",
+          "fetch worker",
+          "Queues"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2 and Queues, the owner signed in through e2e/fake-google.ts",
+          "three links already enriched through e2e/fake-ai.ts, two tagged 'js' and one 'javascript'",
+          "e2e/fake-ai.ts answers the next enrichment with tags ['js', 'frontend']; e2e/fake-origin.ts serves the new page"
+        ],
+        "end_state": [
+          "the tags table has 'javascript' and 'frontend' and no 'js'",
+          "the new link's tags are 'javascript' and 'frontend'",
+          "the Tags page shows 'javascript 4'",
+          "search 'tag:javascript' lists four links"
+        ],
+        "pseudocode": "in e2e/tags.spec.ts: sign in; seed the links through the API and wait for enrichment; open /tags; merge js into javascript; expect 'javascript 3'; add the new URL; poll until its card shows tags; expect its tags 'javascript' and 'frontend'; open /tags and expect 'javascript 4' and no 'js'"
+      }
+    }
+  ]
+}

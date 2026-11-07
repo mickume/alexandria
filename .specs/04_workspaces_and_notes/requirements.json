@@ -1,0 +1,427 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "04",
+  "spec_name": "workspaces_and_notes",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Create, list, rename and delete workspaces",
+      "rationale": "A project needs a named place for its links that the owner can make, rename and throw away without losing a link.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/workspaces with a name of 1 to 100 characters after trimming that no other workspace of theirs carries, and an optional description",
+          "action": "create the workspace with the trimmed name, the description, an empty note and no members",
+          "contract": "HTTP 201 with body {id, name, description, note: '', link_count: 0, created_at}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: r = api('POST', '/api/v1/workspaces', {body: {name: '  Trip to Lisbon ', description: 'Places and bookings'}}); assert r.status == 201 and r.json.name == 'Trip to Lisbon' and r.json.description == 'Places and bookings' and r.json.note == '' and r.json.link_count == 0"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "unwanted",
+          "condition": "a create or rename carries no name, a name that is empty or only whitespace, or a name longer than 100 characters after trimming, or a description longer than 1,000 characters or containing a line break",
+          "action": "refuse the request and change nothing",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_name\" or \"invalid_description\", \"field\": \"name\" or \"description\", \"message\": <text>}; the workspace count and the workspace's stored fields are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts, a table over (request, expected error, field) for both POST /api/v1/workspaces and PATCH /api/v1/workspaces/{id}: ({name absent}, invalid_name, name) only for POST; ({name: '   '}, invalid_name, name); ({name: 'x' * 101}, invalid_name, name); ({name: 'ok', description: 'd' * 1001}, invalid_description, description); ({name: 'ok', description: 'one\\ntwo'}, invalid_description, description): assert status 400, error and field; assert nothing changed; and a name of exactly 100 characters is accepted"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "a create or rename carries a name that, compared ignoring case and surrounding whitespace, equals the name of another workspace of the same user",
+          "action": "refuse the request and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"name_taken\", \"message\": \"a workspace with this name already exists\"}; the workspaces are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: create 'Lisbon' and 'Porto'; assert POST {name: ' lisbon '} answers 409 name_taken; assert PATCH Porto {name: 'LISBON'} answers 409 name_taken and Porto keeps its name; assert renaming Lisbon to 'lisbon' (itself) answers 200; assert another user may create 'Lisbon' (201)"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "a user who holds 200 workspaces requests POST /api/v1/workspaces",
+          "action": "refuse to create the workspace",
+          "contract": "HTTP 409 with body {\"error\": \"workspace_limit\", \"message\": \"workspace limit reached (200)\"}; the user still holds 200 workspaces",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: create 200 workspaces through the store; r = create a 201st; assert r.status == 409 and r.json == {error: 'workspace_limit', message: 'workspace limit reached (200)'}; delete one; assert the next create answers 201"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "event_driven",
+          "condition": "a user requests PATCH /api/v1/workspaces/{id} for one of their workspaces with a valid name, description or both",
+          "action": "store the new values and leave the members, their order and the note unchanged",
+          "contract": "HTTP 200 with body {id, name, description, note, link_count, created_at} carrying the new values",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: create a workspace with two members; r = PATCH {name: 'Lisbon 2027', description: ''}; assert r.status == 200 and the name and empty description are stored; assert the members and positions are unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "event_driven",
+          "condition": "a user requests DELETE /api/v1/workspaces/{id} for one of their workspaces",
+          "action": "delete the workspace, its note and its memberships, and keep every link that was a member",
+          "contract": "HTTP 204; GET /api/v1/workspaces/{id} then answers 404; every former member link still answers GET /api/v1/links/{id} with 200 and is still in the stream",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: create a workspace with links a and b, b also in a second workspace; r = DELETE; assert 204; assert GET workspace 404; assert a and b answer 200 and are in GET /api/v1/links; assert b is still a member of the second workspace"
+          }
+        },
+        {
+          "id": "REQ-1.7",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/workspaces",
+          "action": "list the user's workspaces ordered by name ignoring case, each with its member count, at most 100 per page with the shared cursor",
+          "contract": "HTTP 200 with body {items: [{id, name, description, link_count, created_at}], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: create 'b', 'A', 'c' with 2, 0 and 1 members and another user's 'aa'; r = GET; assert names == ['A', 'b', 'c'] and link_counts == [0, 2, 1]; create 120 workspaces and assert pages of 100 and 23 through the cursor"
+          }
+        },
+        {
+          "id": "REQ-1.8",
+          "pattern": "ubiquitous",
+          "action": "for any request that names a workspace by id, act only on the authenticated user's workspaces, answering a request for another user's workspace exactly as for one that does not exist",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the other user's workspace, its note and its members are unchanged",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "two users A and B; B has workspace W with member link L"
+            ],
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts, a table over {GET /api/v1/workspaces/W, PATCH W {name: 'x'}, DELETE W, GET W/links, POST W/links {link_id: A's link}, DELETE W/links/L} as A: assert status 404 and body {error: 'not_found'}; assert the same requests for an id that exists nowhere give the identical answer; assert W and its member L are unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Workspace membership and manual order",
+      "rationale": "The order of a project's links is the owner's, and a link serves as many projects as it is useful to.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/workspaces/{id}/links with the id of one of their links that is not a member, and no position",
+          "action": "add the link at the bottom of the workspace",
+          "contract": "HTTP 201 with body {workspace_id, link_id, position} where position equals the new member count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: add a, then b; assert the second answer is 201 with position 2; assert GET /api/v1/workspaces/{id}/links lists [a, b]"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/workspaces/{id}/links with one of their links and a position P, an integer of at least 1",
+          "action": "place the link at position P, or at the end when P exceeds the member count, adding it when it is not a member and moving it when it is, and shift the other members to keep their order",
+          "contract": "HTTP 201 for a new member or 200 for a moved one, with body {workspace_id, link_id, position}; the members' positions are 1..n in the requested order",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts, a table over (members before, call, members after, status): ([a, b, c], c at 1, [c, a, b], 200); ([a, b, c], a at 3, [b, c, a], 200); ([a, b], new d at 2, [a, d, b], 201); ([a, b], new d at 9, [a, b, d], 201); ([a, b], b without position, [a, b], 200): assert the listed order and positions"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/workspaces/{id}/links carries no link_id, a link_id that names no link of the user, or a position that is not an integer of at least 1",
+          "action": "refuse the request and change no membership",
+          "contract": "HTTP 404 {\"error\": \"not_found\"} for a link that is not the user's; HTTP 400 {\"error\": \"invalid_link_id\" or \"invalid_position\", \"field\": \"link_id\" or \"position\", \"message\": <text>} otherwise; the members are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts, a table over bodies {{}: 400 invalid_link_id; {link_id: another user's link}: 404 not_found; {link_id: 'nope'}: 404 not_found; {link_id: a, position: 0}, {position: 1.5}, {position: 'top'}: 400 invalid_position}: assert status and body; assert the member list is unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "event_driven",
+          "condition": "a user requests DELETE /api/v1/workspaces/{id}/links/{link_id} for a member of one of their workspaces",
+          "action": "remove the link from the workspace only, close the gap in the remaining positions and keep the link",
+          "contract": "HTTP 204; the remaining members' positions are 1..n-1 in their previous order; GET /api/v1/links/{link_id} still answers 200",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: members [a, b, c]; DELETE b; assert 204; assert members [a, c] with positions 1, 2; assert GET /api/v1/links/b answers 200; and DELETE of a link that is not a member answers 404 not_found"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "event_driven",
+          "condition": "a user deletes a link through DELETE /api/v1/links/{id} that is a member of one or more workspaces",
+          "action": "remove the link from every workspace it was in and close the gap in each workspace's positions",
+          "contract": "HTTP 204 from the delete; each former workspace lists its remaining members with positions 1..n",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: link b is a member of W1 [a, b, c] and W2 [b, d]; DELETE /api/v1/links/b; assert W1 members [a, c] positions 1, 2 and W2 members [d] position 1"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "ubiquitous",
+          "action": "for any sequence of add, move, remove and link-delete requests on a user's workspaces, keep every workspace's member positions exactly 1 to n with no gap and no repeat, and let one link be a member of any number of workspaces",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: for random sequences of up to 80 operations drawn from {add x to w, add x to w at p, remove x from w, delete link x} over 3 workspaces and 20 links (p from 1 to 25): apply each through the API; after every step assert, for each workspace, sorted(positions) == [1..member count], and that the set of workspaces of each surviving link matches a model of the operations"
+          }
+        },
+        {
+          "id": "REQ-2.7",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/workspaces/{id} or GET /api/v1/workspaces/{id}/links for one of their workspaces",
+          "action": "return the workspace with its note, and its member links in position order whatever their state, each in the stream's link shape, at most 100 per page with the shared cursor",
+          "contract": "HTTP 200 with body {id, name, description, note, link_count, created_at} for the workspace, and {items: [link with position], next_cursor: string | null} for its links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/workspaces.test.ts: a workspace with note '# Plan' and members [a, b] where b's state is set to 'archived' through the store; r = GET the workspace; assert r.json.note == '# Plan' and link_count == 2; l = GET its links; assert l.json.items ids == [a, b] with positions 1, 2 and b's state 'archived'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Workspace and link notes",
+      "rationale": "The owner's thinking about a project or a page belongs next to it, in a format that is easy to write and safe to show.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "a user requests PATCH /api/v1/workspaces/{id} or PATCH /api/v1/links/{id} for one of their workspaces or links with a note of at most 20,000 Unicode code points",
+          "action": "store the note exactly as given, an empty note clearing it, and leave every other field of the workspace or link unchanged",
+          "contract": "HTTP 200 with the workspace or the link, whose note equals the request's note",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/notes.test.ts, a table over targets {workspace, link} crossed with notes {'# Plan\\n\\n- book flights', '', 'é' * 20000, '😀' * 20000}: r = PATCH {note}; assert r.status == 200 and r.json.note == note; assert GET returns the same note and the other fields (name, title, last_used_at, use_count) are unchanged"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "unwanted",
+          "condition": "a PATCH of a workspace or a link carries a note longer than 20,000 Unicode code points, or a note that is not a string",
+          "action": "refuse the request and keep the stored note",
+          "contract": "HTTP 400 with body {\"error\": \"note_too_long\", \"field\": \"note\", \"message\": \"note too long (20,000 characters)\"} for a long note, or {\"error\": \"invalid_note\", \"field\": \"note\", \"message\": <text>} for a value that is not a string; the stored note is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/notes.test.ts, a table over targets {workspace, link} crossed with notes {'x' * 20001: note_too_long; '😀' * 20001: note_too_long; 42: invalid_note; null: invalid_note}: set the note to 'keep' first; r = PATCH {note}; assert r.status == 400 and r.json.error, field and message; assert the note is still 'keep'"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "ubiquitous",
+          "action": "for any link in a list response (the stream and a workspace's links), carry note_preview, the note's first non-empty line without leading Markdown heading or list markers and without raw HTML elements (a script element's content included), trimmed and cut to 200 characters, or null when the note is empty, and workspaces, the id and name of every workspace the link is in ordered by name; and carry the whole note only on GET /api/v1/links/{id}",
+          "contract": "each list item has note_preview: string | null and workspaces: [{id, name}]; GET /api/v1/links/{id} additionally has note: string",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/workspaces/notes.test.ts, a table of (note, note_preview): ('', null); ('\\n\\n# Hotels\\nmore', 'Hotels'); ('- book flights', 'book flights'); ('Check prices <script>alert(1)</script>', 'Check prices'); ('y' * 300, 'y' * 200): set the note; assert GET /api/v1/links items[0].note_preview; and with the link in workspaces 'b' and 'A' assert items[0].workspaces names == ['A', 'b'] and items[0] has no key 'note'; assert GET /api/v1/links/{id}.note == the note"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "for any note, render it as Markdown into HTML that contains no raw HTML element or attribute from the note, no script element, no event-handler attribute and no link or image whose URL scheme is not http, https or mailto",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/Markdown.test.tsx, a table over notes {'**bold** and [x](https://a.example)': renders <strong> and an https anchor; '<script>alert(1)</script>after': no script element, 'after' kept; '<img src=x onerror=alert(1)>': no img and no onerror; '[x](javascript:alert(1))': no anchor with a javascript: href; '<div style=\"color:red\">raw</div>': no div from the note; '![i](data:image/png;base64,AA)': no data: image}: render <Markdown source={note} />; assert the listed outcome by querying the rendered DOM"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Workspace pages on the website",
+      "rationale": "Project work happens on the workspace page: its note above, its links in the owner's order.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Workspaces page",
+          "action": "list the workspaces by name with their member counts, and let the owner create, rename and delete a workspace, asking before a delete with a confirmation that says its links are kept",
+          "contract": "creating sends POST /api/v1/workspaces and the new workspace appears in the list; a 409 shows the API's message ('a workspace with this name already exists' or 'workspace limit reached (200)'); a delete is sent only after the owner confirms the dialog reading 'Delete this workspace? Its links stay in your library.'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Workspaces.test.tsx with a fake API: renderPage('/workspaces'); assert rows 'A (0)', 'b (2)'; create 'Lisbon' and assert the POST and the new row; with the fake answering 409 name_taken assert its message is shown; rename b and assert PATCH {name}; click Delete, assert the dialog text, cancel and assert no DELETE, confirm and assert one DELETE and the row is gone"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "the owner opens a workspace's page",
+          "action": "show the workspace's rendered note above its member links in position order, each as a stream card with a Remove from workspace action, and let the owner edit the note in place and reorder the links by drag",
+          "contract": "dropping the second card above the first sends POST /api/v1/workspaces/{id}/links with {link_id, position: 1}; Remove sends DELETE /api/v1/workspaces/{id}/links/{link_id}; saving the note sends PATCH /api/v1/workspaces/{id} with {note} and shows it rendered; a note_too_long answer shows 'note too long (20,000 characters)' and keeps the editor open with the text",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Workspace.test.tsx with a fake API: renderPage('/workspaces/' + id); assert the rendered note precedes cards [a, b]; drag b onto a and assert POST {link_id: b, position: 1} and order [b, a]; click Remove on a and assert the DELETE and the card is gone; click Edit note, type, Save and assert PATCH {note} and the rendered result; with the fake answering 400 note_too_long assert the message and that the editor still holds the text"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Add to workspace on a card",
+          "action": "offer the owner's workspaces by name, marking the ones the link is already in, and add the link to the chosen workspace at its bottom",
+          "contract": "choosing a workspace sends POST /api/v1/workspaces/{id}/links with {link_id} and the card's workspace chips gain its name; workspaces the link is already in are marked and choosing one sends nothing",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx with a fake API listing workspaces 'A' and 'b' and a link already in 'A': click 'Add to workspace'; assert 'A' is marked as already containing it; choose 'b'; assert one POST /api/v1/workspaces/b/links {link_id} and chips ['A', 'b']; choose 'A' and assert no request"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Notes and workspaces on cards and the detail view",
+      "rationale": "The owner sees at a glance which projects a link serves and what they noted about it.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a card is shown for a link that is in one or more workspaces or has a note",
+          "action": "show the note preview as the card's first line and one chip per workspace, each chip linking to that workspace's page",
+          "contract": "the card shows note_preview above its title line and a chip with each workspace name linking to /workspaces/{id}; a link without note and workspaces shows neither",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, a table over links {note_preview 'Hotels', workspaces [{A}, {b}]: first line 'Hotels', chips A and b linking to their pages; note_preview null, workspaces []: no note line, no chips}: render <LinkCard link /> and assert"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "the owner opens a link's detail page",
+          "action": "show the link's note rendered as Markdown with an in-place editor, and the workspaces the link is in",
+          "contract": "saving sends PATCH /api/v1/links/{id} with {note} and shows the rendered result; a note_too_long answer shows 'note too long (20,000 characters)' and keeps the editor open with the text",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/LinkDetail.test.tsx with a fake API serving a link with note '**read** first' in workspace 'A': renderPage('/links/' + id); assert a strong 'read' and a chip 'A'; click Edit note, replace the text, Save; assert PATCH {note} and the rendered new text; with the fake answering 400 note_too_long assert the message and the editor still open"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner gathers two links into a workspace, orders them and writes its note",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "creates the workspace 'Trip to Lisbon' on the Workspaces page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the workspace for the owner and answers 201"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Add to workspace on two cards in the stream and picks 'Trip to Lisbon' for each"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "adds each link at the bottom of the workspace"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the workspace page and drags the second card above the first"
+        },
+        {
+          "actor": "website",
+          "action": "sends the new position of the dragged link"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "moves the link to position 1 and shifts the other"
+        },
+        {
+          "actor": "owner",
+          "action": "writes the note '# Plan' with a list of bookings and saves it"
+        },
+        {
+          "actor": "website",
+          "action": "shows the note rendered above the links, and both cards in the stream show the chip 'Trip to Lisbon'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "Markdown rendering"
+        ],
+        "setup": [
+          "wrangler dev with local D1, the owner signed in through e2e/fake-google.ts, two links added through the stream"
+        ],
+        "end_state": [
+          "workspace 'Trip to Lisbon' exists with members in the dragged order at positions 1 and 2",
+          "the workspace page shows an h1 'Plan' above the two cards in that order after a reload",
+          "both cards in the stream show the chip 'Trip to Lisbon'"
+        ],
+        "pseudocode": "in e2e/workspaces.spec.ts: sign in; add two links; on /workspaces create 'Trip to Lisbon'; add both from their cards; open the workspace; drag the second card above the first; edit and save the note; reload and assert the heading and the card order; go to / and assert the chips"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "A script files a link with a note; the owner reads it safely and deletes the workspace",
+      "steps": [
+        {
+          "actor": "script",
+          "action": "creates a workspace with POST /api/v1/workspaces using a personal access token"
+        },
+        {
+          "actor": "script",
+          "action": "adds a link of the owner's library at position 1 with POST /api/v1/workspaces/{id}/links"
+        },
+        {
+          "actor": "script",
+          "action": "sets the link's note with PATCH /api/v1/links/{id} to 'Check prices <script>alert(1)</script>' followed by a Markdown list"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the workspace, the membership and the note for the token's user"
+        },
+        {
+          "actor": "owner",
+          "action": "sees the note's first line and the workspace chip on the link's card, and opens the link's detail view"
+        },
+        {
+          "actor": "website",
+          "action": "renders the note as Markdown with no script element"
+        },
+        {
+          "actor": "owner",
+          "action": "deletes the workspace on the Workspaces page and confirms"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "deletes the workspace and its membership and keeps the link"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "token authentication",
+          "Markdown rendering"
+        ],
+        "setup": [
+          "wrangler dev with local D1, the owner signed in through e2e/fake-google.ts with one link and a personal access token"
+        ],
+        "end_state": [
+          "no dialog opened and no script element exists in the detail page",
+          "the workspace no longer exists",
+          "the link is still in the owner's stream, without the chip"
+        ],
+        "pseudocode": "in e2e/workspaces.spec.ts: create the token on /settings; call the three routes with request and the bearer secret; on / assert the card's first line 'Check prices' and its chip; open /links/{id}; assert page.on('dialog') never fired and locator('script', inside the note) count == 0; delete the workspace with confirmation; assert the card is in / without the chip"
+      }
+    }
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "07",
+  "spec_name": "bulk_import",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Reading the import file",
+      "rationale": "The owner's list is whatever a text editor saved; it must be read the way a person reads it, and anything else refused before a single link is touched.",
+      "system": "import parser",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "ubiquitous",
+          "action": "for any accepted file, drop a leading UTF-8 byte-order mark, split it into lines at '\\n' or '\\r\\n', ignore blank lines and lines whose first non-whitespace character is '#', and take from every other line its first whitespace-separated word as the URL, numbering lines from 1 as they appear in the file",
+          "contract": "parseImportFile(bytes) returns {ok: true, lines: [{line: number, url: string}]}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table of (file text, expected [(line, url)]): ('https://a.example\\nhttps://b.example', [(1, 'https://a.example'), (2, 'https://b.example')]); ('\\uFEFFhttps://a.example\\r\\n\\r\\n# notes\\r\\n   # indented comment\\r\\nhttps://b.example some note here', [(1, 'https://a.example'), (5, 'https://b.example')]); ('  https://c.example\\tx', [(1, 'https://c.example')]); ('https://d.example\\n', [(1, 'https://d.example')]): assert parseImportFile(bytes) == {ok: true, lines: expected}"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "unwanted",
+          "condition": "the uploaded file's declared type is neither text/plain nor absent, or its bytes are not valid UTF-8, contain a NUL byte, begin (after whitespace) with '<', or parse as a JSON object or array",
+          "action": "refuse the upload, adding no link and recording no import",
+          "contract": "HTTP 400 with body {\"error\": \"unsupported_file\", \"field\": \"file\", \"message\": \"only plain-text files with one URL per line are accepted\"}; no link and no import is stored",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over uploads {Content-Type text/html with '<!doctype html><a href=...>'; text/plain with '<html><body>'; text/plain with '<?xml version=\"1.0\"?>'; application/json with '[\"https://a.example\"]'; text/plain with '{\"urls\": []}'; multipart part of type image/png; text/plain with bytes 0xC3 0x28 (invalid UTF-8); text/plain with a NUL byte}: r = api('POST', '/api/v1/imports', upload); assert r.status == 400 and r.json == {error: 'unsupported_file', field: 'file', message: 'only plain-text files with one URL per line are accepted'}; assert the link and import counts are unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "the uploaded file is larger than 2 MB (2,097,152 bytes) or holds more than 5,000 URL lines",
+          "action": "refuse the upload, adding no link and recording no import",
+          "contract": "HTTP 409 with body {\"error\": \"import_too_large\", \"message\": \"too large: at most 5,000 URLs / 2 MB per import\"}; no link and no import is stored",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over files {2,097,153 bytes of comment lines and one URL; 5,001 distinct URL lines; 5,000 URL lines plus 300 comment lines and blank lines (accepted); exactly 2,097,152 bytes with fewer than 5,000 URLs (accepted)}: r = upload; for the refused rows assert r.status == 409 and r.json == {error: 'import_too_large', message: 'too large: at most 5,000 URLs / 2 MB per import'} and the link and import counts are unchanged; for the accepted rows assert r.status == 201"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "the uploaded file holds no URL line, or the request carries no file",
+          "action": "refuse the upload, adding no link and recording no import",
+          "contract": "HTTP 400 with body {\"error\": \"no_urls\", \"field\": \"file\", \"message\": <text>}; no link and no import is stored",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over files {'', '\\n\\n', '# only a comment\\n'} and a multipart request without a 'file' part: r = upload; assert r.status == 400 and r.json.error == 'no_urls' and r.json.field == 'file'; assert counts unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Adding the imported lines",
+      "rationale": "An import is the owner's list moved into the library as-is: every new URL added, nothing already there disturbed, every problem reported.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/imports with a file the import parser accepts",
+          "action": "normalise every URL line with the URL normaliser and store each new URL as a pending link with the URL word as its original URL and its host as provisional title, record the import with its report, and answer with the report",
+          "contract": "HTTP 201 with body {id, created_at, counts: {url_lines, added, duplicates, invalid, not_imported}, invalid: [{line, text}], duplicates: [{line, url}], stopped_at_limit: null | {line}}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over the request forms {Content-Type text/plain with the file as body; multipart/form-data with the file in the part 'file'}: setNow(t); r = upload 'https://a.example/x?utm_source=y\\nhttps://b.example'; assert r.status == 201 and r.json.counts == {url_lines: 2, added: 2, duplicates: 0, invalid: 0, not_imported: 0} and r.json.stopped_at_limit == null; assert the links have url 'https://a.example/x' (original_url with utm_source) and 'https://b.example', state 'pending', title the host; assert GET /api/v1/imports/{r.json.id} returns the same report"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "unwanted",
+          "condition": "a URL line normalises to a URL already in the importing user's library or to the URL of an earlier line of the same file",
+          "action": "report the line as a duplicate and neither add it nor boost the existing link",
+          "contract": "the line is listed in duplicates with its line number and normalised URL and counted in counts.duplicates; the existing link's last_used_at and use_count are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: the user has 'https://c.example' with last_used_at t0 and use_count 2; another user has 'https://d.example'; upload 'https://c.example/\\nhttps://d.example\\nhttps://D.example#x\\nhttps://c.example?utm_medium=m'; assert counts.added == 1 (d.example for this user) and counts.duplicates == 3 and duplicates == [{line: 1, url: 'https://c.example'}, {line: 3, url: 'https://d.example'}, {line: 4, url: 'https://c.example'}]; assert c.example's last_used_at == t0 and use_count == 2"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "the URL normaliser rejects the URL of a line",
+          "action": "report the line as invalid with its line number and text, and add nothing for it",
+          "contract": "the line is listed in invalid as {line, text} and counted in counts.invalid; no link is stored for it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: upload 'https://a.example\\nnot-a-url\\njavascript:alert(1)\\nhttp://localhost/x\\nhttps://b.example'; assert counts.invalid == 3 and invalid == [{line: 2, text: 'not-a-url'}, {line: 3, text: 'javascript:alert(1)'}, {line: 4, text: 'http://localhost/x'}] and counts.added == 2"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "event_driven",
+          "condition": "an import adds links",
+          "action": "give the added links last-used times from the import time downwards in file order, one millisecond apart, so that the stream lists them in file order with the first line highest, above every link last used before the import",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: seed an older link used at t - 1 day; setNow(t); upload 'https://z.example\\nhttps://a.example\\nhttps://m.example'; assert the added links' last_used_at == [t, t - 1 ms, t - 2 ms] and added_at == t; assert GET /api/v1/links lists z, a, m, then the older link"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "adding the next new URL of an import would take the user's library past 20,000 links",
+          "action": "stop adding at the limit, leave every later line unprocessed, and say in the report on which line the import stopped",
+          "contract": "HTTP 201 with the report; stopped_at_limit is {line: <the first line not imported>}; counts.not_imported counts that line and every later URL line; the library holds 20,000 links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: seed the user with 19,998 links; upload 5 new URL lines with a duplicate on line 2; assert r.status == 201, counts == {url_lines: 5, added: 2, duplicates: 1, invalid: 0, not_imported: 2} and stopped_at_limit == {line: 4}; assert the library holds 20,000 links; and with 20,000 links already, an upload adds none and stops at its first new URL line"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "ubiquitous",
+          "action": "for any accepted file, account for every URL line exactly once: counts.added + counts.duplicates + counts.invalid + counts.not_imported equals counts.url_lines, and the user's link count grows by counts.added",
+          "contract": "the report's counts satisfy added + duplicates + invalid + not_imported == url_lines",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/imports/imports.test.ts: for 50 generated files of 1 to 300 lines mixing new URLs, URLs already in the library, repeated URLs with different case, fragments and tracking parameters, invalid inputs, comments and blank lines, against libraries seeded near and far from the limit: r = upload; assert the sum of the four counts == counts.url_lines and links after == links before + counts.added"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Throttled background processing",
+      "rationale": "An import is a flood; fetching and enriching it slowly keeps the provider calls, the owner's AI bill and the origins' load low.",
+      "system": "import dispatcher",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "ubiquitous",
+          "action": "for any import, send its added links to the fetch worker in file order, at most 20 links per minute per user through the shared background throttle, so that each is fetched and then enriched as any added link is",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts with the clock set through setNow and the fetch queue captured: upload 45 new URLs at t; run the dispatcher at t, t + 30 s, t + 60 s, t + 120 s; assert the captured fetch messages are the links of lines 1-20 by t + 59 s, 21-40 by t + 119 s and 41-45 by t + 120 s, in line order, and never more than 20 in any 60-second window"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "ubiquitous",
+          "action": "for any user with several imports, and with 'enrich all unenriched links' running, share one budget of 20 links per minute between them, dispatching earlier imports' links first, while another user's imports keep a budget of their own",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over {user A imports 15 and then 15 more; user A imports 15 while 'enrich all' has 15 waiting; users A and B import 20 each}: run the dispatcher for one minute of clock time; assert A receives at most 20 dispatches in that minute, the first import's links before the second's, and B receives its 20 regardless of A"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "an imported link waiting for its turn has been deleted, or has already been sent to the fetch worker by another action such as a refresh",
+          "action": "skip the link without sending it to the fetch worker and without using the budget, so that the next link takes its slot",
+          "contract": "no fetch message for that link; the minute's 20 slots go to the next waiting links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: upload 21 new URLs; delete the link of line 3 and refresh the link of line 4 through POST /api/v1/links/{id}/refresh before the dispatcher runs; run it once; assert the dispatched links are exactly those of lines 1, 2 and 5-21 in that order, with no fetch message for line 3 and only the refresh's message for line 4; then upload 25 more and delete their line 1 before the next minute's run, and assert that run dispatches their lines 2-21 (20 links)"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "ubiquitous",
+          "action": "for any link added by a paste or by POST /api/v1/links while an import is waiting, send it to the fetch worker at once, outside the import's budget",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: upload 100 new URLs; immediately POST /api/v1/links 'https://pasted.example'; assert a fetch message for the pasted link is sent before the dispatcher's next run and the import's dispatches in that minute are still 20"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Import progress and report",
+      "rationale": "An import that runs for half an hour needs a way to see where it is and what it refused.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/imports/{id} for one of their imports",
+          "action": "return the import's report and its progress: how many added links are still waiting for their turn, how many have been sent and are still pending, and how many have left pending, of which how many are enriched",
+          "contract": "HTTP 200 with body {<the report of POST /api/v1/imports>, progress: {waiting, in_progress, done, enriched}}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: upload 30 new URLs; dispatch 20; complete the fetch of 5 with the fetch worker against a local origin double and enrich 3 of them with the provider double; r = api('GET', '/api/v1/imports/' + id); assert r.json.counts.added == 30 and r.json.progress == {waiting: 10, in_progress: 15, done: 5, enriched: 3}"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/imports/{id}/report for one of their imports",
+          "action": "return the report as a downloadable plain-text file listing the import date, the counts, every invalid line with its number and text, every duplicate with its line number and URL, and the line where the library limit stopped the import, when it did",
+          "contract": "HTTP 200, Content-Type text/plain; charset=utf-8, Content-Disposition attachment with filename alexandria-import-<YYYY-MM-DD>.txt",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts: upload a file with 2 invalid lines and 1 duplicate at t = 2026-11-07; r = api('GET', '/api/v1/imports/' + id + '/report'); assert r.status == 200, Content-Type starts with 'text/plain', Content-Disposition == 'attachment; filename=\"alexandria-import-2026-11-07.txt\"'; assert the body contains 'added: 7', 'duplicates: 1', 'invalid: 2', 'line 3: not-a-url' and 'line 5: duplicate of https://a.example'"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "the import id names no import of the authenticated user",
+          "action": "answer as for a resource that does not exist",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/imports/imports.test.ts, a table over {GET /api/v1/imports/{B's id}, GET /api/v1/imports/{B's id}/report, an id that exists nowhere} as user A: assert status 404 and body {error: 'not_found'}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Importing from the settings page",
+      "rationale": "The owner moves the pile in from the place every other setting lives.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "the owner chooses a file in the Import section of the settings page and starts the import",
+          "action": "upload the file, then show the progress view with the counts of added, duplicate and invalid lines, each invalid line with its number and text, the progress counts, and a 'Download report' link, refreshing the progress every 5 seconds until no added link is waiting or in progress",
+          "contract": "one upload request; the progress view's counts are the report's; polling stops once waiting and in_progress are both 0",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with fake timers and a fake API answering the upload with {added: 397, duplicates: 0, invalid: 3} and then the progress {waiting: 377, in_progress: 20, done: 0} and finally {waiting: 0, in_progress: 0, done: 397}: choose a file and press 'Import'; assert one POST /api/v1/imports carrying the file; assert 'added 397', 'duplicates 0', 'invalid 3' and the three 'line N: text' rows; advance 5 s and assert one GET /api/v1/imports/{id}; after the final progress advance 10 s and assert no further request; assert the 'Download report' link targets /api/v1/imports/{id}/report"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "unwanted",
+          "condition": "the upload is refused",
+          "action": "show the refusal's message and no progress view",
+          "contract": "the refusal's message text is shown verbatim; no counts are shown",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx, a table over the fake API's answers {400 unsupported_file: 'only plain-text files with one URL per line are accepted'; 409 import_too_large: 'too large: at most 5,000 URLs / 2 MB per import'; 400 no_urls: its message}: start an import; assert the message is shown and no progress view or report link is rendered"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "the report says the library limit stopped the import",
+          "action": "show the import's stopping line when the library limit stopped it",
+          "contract": "the text 'library full (20,000 links): stopped at line <N>, <M> lines not imported'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with the fake API answering stopped_at_limit {line: 4} and not_imported 2: start an import; assert the text 'library full (20,000 links): stopped at line 4, 2 lines not imported'"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner imports a 400-line file and the stream fills in",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "chooses a 400-line text file with 397 URLs and 3 malformed lines in the settings page's Import section and starts the import"
+        },
+        {
+          "actor": "website",
+          "action": "uploads the file with POST /api/v1/imports"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "parses the file, adds 397 pending links with last-used times in file order, records the import and answers with the report"
+        },
+        {
+          "actor": "website",
+          "action": "shows the progress view: added 397, duplicates 0, invalid 3, the three malformed lines with their numbers"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "dispatches the imported links to the fetch queue, 20 in the first minute, in file order"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches and snapshots the dispatched pages and moves each link out of pending"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "enriches each fetched link with the owner's AI key"
+        },
+        {
+          "actor": "AI provider",
+          "action": "answers each enrichment request with a summary, tags and a topic"
+        },
+        {
+          "actor": "owner",
+          "action": "sees the stream list the imported links in file order, the first ones titled and summarised, and downloads the report listing the 3 malformed lines"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "Queues",
+          "fetch worker",
+          "enrichment worker",
+          "the shared background throttle"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2 and Queues, the owner signed in through e2e/fake-google.ts with an AI key pointing at e2e/fake-ai.ts",
+          "e2e/fake-origin.ts serves the 397 imported URLs as distinct pages (the external parties are the only stubs)",
+          "a 400-line UTF-8 file with 397 URLs on hosts of e2e/fake-origin.ts and 3 malformed lines at 57, 211 and 399"
+        ],
+        "end_state": [
+          "the import report has counts {url_lines: 400, added: 397, duplicates: 0, invalid: 3, not_imported: 0} and invalid lines 57, 211 and 399",
+          "the stream's first 397 links follow the file's order",
+          "after 70 seconds between 1 and 20 imported links have left pending, and at no moment have more than 20 been dispatched in a 60-second window",
+          "the downloaded report lists the three malformed lines with their numbers"
+        ],
+        "pseudocode": "in e2e/import.spec.ts: sign in; on /settings set the file input and click 'Import'; expect 'added 397', 'invalid 3' and the three line rows; read the stream through GET /api/v1/links and expect its hosts in file order; wait 70 s; expect 1 <= links not pending <= 20 and the first stream card titled from its page; download the report and expect 'line 57', 'line 211', 'line 399'"
+      }
+    }
+  ]
+}

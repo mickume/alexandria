@@ -1,0 +1,120 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "07",
+  "spec_name": "bulk_import",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/imports src/worker/enrich/throttle.test.ts src/web/pages/Settings.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "reuses normalizeUrl, the link store, the 20,000-link limit, the stream order, the error envelope, the OpenAPI document and the Settings page"
+    },
+    {
+      "spec": "02",
+      "reason": "imported links are fetched and snapshotted by the fetch worker through FETCH_QUEUE"
+    },
+    {
+      "spec": "03",
+      "reason": "imported links are enriched after fetch and dispatched through the shared 20-per-minute background throttle"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Accept an import file and add its lines to the library",
+      "criteria": [
+        "REQ-1",
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the parsing, refusal and adding behaviours to src/worker/imports/imports.test.ts and confirm they fail",
+        "Write parseImportFile in src/worker/imports/parse.ts: refuse a declared type other than text/plain, bytes that are not valid UTF-8 (TextDecoder with fatal), a NUL byte, a first non-blank '<', and a body that parses as a JSON object or array; drop a byte-order mark; split on '\\n' and '\\r\\n'; ignore blank and '#' lines; take each remaining line's first whitespace-separated word with its 1-based line number",
+        "Implement POST /api/v1/imports in src/worker/imports/routes.ts for a text/plain body and for multipart/form-data with the part 'file': 400 unsupported_file, 409 import_too_large over 2,097,152 bytes or 5,000 URL lines, 400 no_urls, each with its exact message and nothing stored",
+        "Add a migration with the imports table (id, user, created time, counts, invalid and duplicate lines, stopped line) and the import_links table (import, link, line, dispatched time)",
+        "Write importLines in src/worker/imports/imports.ts: normalise each line with normalizeUrl; list invalid lines; treat a URL already in the library or seen on an earlier line as a duplicate, without boosting; insert the new links pending, last used from the import time downwards one millisecond per line, in D1 batches, without sending them to the fetch queue; stop at the 20,000-link limit and record the stopping line",
+        "Answer 201 with the report {id, created_at, counts, invalid, duplicates, stopped_at_limit}",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/imports/parse.ts",
+        "src/worker/imports/imports.ts",
+        "src/worker/imports/routes.ts",
+        "src/worker/imports/imports.test.ts",
+        "migrations/0007_imports.sql",
+        "src/worker/links/store.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Dispatch imported links to the fetch worker through the shared throttle",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the dispatch behaviours to src/worker/imports/imports.test.ts and confirm they fail",
+        "Hand each import's links, in line order, to the shared background throttle in src/worker/enrich/throttle.ts, which releases at most 20 links per minute per user across imports and 'enrich all', earlier work first, and sends each released link to the fetch queue",
+        "When a waiting link has been deleted or has already been sent to the fetch worker by another action, skip it without using a slot, and record each dispatched link's time in import_links",
+        "Keep links added by paste or POST /api/v1/links going straight to the fetch queue, outside the throttle",
+        "Describe the import's background processing in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/imports/imports.ts",
+        "src/worker/imports/imports.test.ts",
+        "src/worker/enrich/throttle.ts",
+        "src/worker/enrich/throttle.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Report an import's progress and serve its report",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the progress and report behaviours to src/worker/imports/imports.test.ts and confirm they fail",
+        "Implement GET /api/v1/imports/{id}: the stored report plus progress {waiting (not yet dispatched), in_progress (dispatched and still pending), done (left pending), enriched (done and enriched)}, computed from import_links and the links",
+        "Implement GET /api/v1/imports/{id}/report as a text/plain attachment named alexandria-import-<YYYY-MM-DD>.txt with the date, the counts, the invalid lines, the duplicates and the stopping line",
+        "Answer 404 not_found for an id that is not the user's",
+        "Document both routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/imports/imports.ts",
+        "src/worker/imports/routes.ts",
+        "src/worker/imports/imports.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Import from the settings page with a progress view",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the import behaviours to src/web/pages/Settings.test.tsx and confirm they fail",
+        "Add an Import section to the Settings page: a file input accepting .txt and text/plain and an 'Import' button that uploads the file to POST /api/v1/imports",
+        "Show the progress view from the report: added, duplicates and invalid counts, each invalid line as 'line N: text', the library-limit stop as 'library full (20,000 links): stopped at line N, M lines not imported', the progress counts and a 'Download report' link",
+        "Poll GET /api/v1/imports/{id} every 5 seconds while links are waiting or in progress, and stop when both are 0 or the page is left",
+        "Show a refusal's message verbatim with no progress view",
+        "Describe importing in README.md"
+      ],
+      "touches": [
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/components/ImportProgress.tsx",
+        "src/web/api.ts",
+        "README.md"
+      ]
+    }
+  ]
+}

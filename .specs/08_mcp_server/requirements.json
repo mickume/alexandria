@@ -1,0 +1,542 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "08",
+  "spec_name": "mcp_server",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "The MCP endpoint and its authentication",
+      "rationale": "An agent must reach the library through one well-known endpoint with the owner's token, and with nothing else.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "an agent sends an MCP initialize request in POST /mcp with 'Authorization: Bearer <secret>' for a token that is not revoked",
+          "action": "answer the initialize request as the token's user with the server name, the tools capability and the instructions text, which says that Alexandria is the owner's private library of web links and that search_links should be tried before add_link to avoid duplicates, and record the token's last used date",
+          "contract": "HTTP 200, Content-Type application/json, a JSON-RPC result with serverInfo.name 'alexandria', capabilities.tools present and instructions containing 'search_links' and 'add_link'; GET /api/v1/tokens shows the token's last_used_at equal to the request time",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a signed-in user with a token created through createToken"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: setNow(t); r = SELF.fetch('/mcp', POST, bearer secret, Accept 'application/json, text/event-stream', body initialize); assert r.status == 200; assert r.json.result.serverInfo.name == 'alexandria' and r.json.result.capabilities.tools; assert instructions mentions the private library of links and that search_links comes before add_link; assert the token's last_used_at == t"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "an authenticated agent sends a tools/list request to POST /mcp",
+          "action": "list exactly the nine tools add_link, search_links, get_link, get_link_content, list_workspaces, add_to_workspace, pin_link, archive_link and list_recent, each with a description and an input schema naming its arguments",
+          "contract": "a JSON-RPC result whose tools names are exactly that set; add_link requires url and allows tags and workspace; get_link_content requires id and format with the enum ['text', 'html']",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: r = mcp(bearer, 'tools/list'); assert sorted(names) == the nine names; assert add_link.inputSchema.required == ['url'] with optional tags and workspace; assert get_link_content.inputSchema.properties.format.enum == ['text', 'html']; assert search_links and list_recent have an optional integer limit"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "a request to /mcp carries no Authorization header, a bearer secret that names no token, the secret of a revoked token, or only a session cookie",
+          "action": "refuse the request before reading any MCP message, running no tool",
+          "contract": "HTTP 401 with body {\"error\": \"unauthorized\"} and header 'WWW-Authenticate: Bearer'; no row is created, changed or deleted",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {no header, 'Bearer alx_unknown', a revoked token's secret, the session cookie of signIn() with Origin PUBLIC_ORIGIN} with a tools/call of add_link: r = SELF.fetch('/mcp', ...); assert r.status == 401 and r.json == {error: 'unauthorized'} and r.headers['WWW-Authenticate'] starts with 'Bearer'; assert the links count is unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "an authenticated agent sends GET or DELETE to /mcp",
+          "action": "refuse the method, since the server keeps no session and opens no server-to-client stream",
+          "contract": "HTTP 405 with header 'Allow: POST'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over methods {GET, DELETE}: r = SELF.fetch('/mcp', {method, bearer}); assert r.status == 405 and r.headers.Allow == 'POST'"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "unwanted",
+          "condition": "a user has made 600 requests within the current minute, counted across the API and /mcp and across all of the user's sessions and tokens, and makes another request to /mcp",
+          "action": "refuse the request without running any tool, counting each /mcp request once however many API operations its tool performs",
+          "contract": "HTTP 429 with body {\"error\": \"rate_limited\"} and a Retry-After header of whole seconds from 1 to 60; no row is created, changed or deleted",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: with the clock fixed, send 300 GET /api/v1/me and 300 tools/call add_link (each of which also applies tags and a workspace) for user A; assert all succeed; r = one more tools/call add_link; assert r.status == 429 and r.json == {error: 'rate_limited'} and Retry-After in 1..60; assert the link count equals 300 added links"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "add_link",
+      "rationale": "An agent that finds something worth keeping must be able to file it exactly as the owner would paste it.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls add_link with a url whose normalised form is not in the user's library",
+          "action": "add the link as POST /api/v1/links adds it, in state 'pending' with the host as provisional title and last used set to the call's time",
+          "contract": "a tool result without isError whose structuredContent is {status: 'added', link} as POST /api/v1/links answers 201, and whose text content is the same JSON",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: r = mcpTool(bearer, 'add_link', {url: 'https://example.net/paper?utm_source=x'}); assert !r.isError; assert r.structuredContent.status == 'added' and link.url == 'https://example.net/paper' and link.state == 'pending' and link.title == 'example.net'; assert JSON.parse(r.content[0].text) == r.structuredContent; assert the link is first in GET /api/v1/links"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "an agent calls add_link with a url whose normalised form is already in the user's library",
+          "action": "boost the existing link as POST /api/v1/links does, leaving its use count unchanged and creating no new link",
+          "contract": "a tool result without isError whose structuredContent is {status: 'boosted', link}; the user's link count is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: seed 'https://example.net/paper' with use_count 2; r = mcpTool(bearer, 'add_link', {url: 'https://EXAMPLE.net/paper#x'}); assert r.structuredContent.status == 'boosted'; assert count unchanged, use_count == 2 and last_used_at == now"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "event_driven",
+          "condition": "an agent calls add_link with tags, a workspace, or both, for a link that is added or boosted",
+          "action": "apply the tags, trimmed and lower-cased, as a manual tag edit that later enrichment keeps, and add the link to the bottom of the workspace named by its id or by its name compared case-insensitively, unless it is already a member",
+          "contract": "structuredContent.link carries exactly the given tags; GET /api/v1/links/{id} lists tags as manually edited; the workspace's links end with the link, once",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the user has a workspace 'Research' holding one link"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {new url with {tags: [' Reading ', 'ml'], workspace: 'research'}; the same url again with {workspace: <Research's id>}}: r = mcpTool(bearer, 'add_link', args); assert link tags == ['reading', 'ml'] and tags are marked edited; assert GET /api/v1/workspaces/{Research}'s links == [the old link, this link] after both rows (no repeat)"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "unwanted",
+          "condition": "add_link is called with a url that the URL normaliser rejects",
+          "action": "store nothing and answer with the API's invalid_url error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'invalid_url', field: 'url', url: <the input>, message: 'not a valid web address'}; the link count is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over urls {'javascript:alert(1)', 'http://localhost', 'not a url'}: r = mcpTool(bearer, 'add_link', {url}); assert r.isError and r.structuredContent == {error: 'invalid_url', field: 'url', url, message: 'not a valid web address'}; assert the JSON-RPC response has no error member; assert count unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "add_link names a workspace that is not one of the user's workspaces, or a tag that after trimming and lower-casing is not a single word or a hyphenated phrase, or a url that is new while the library holds 20,000 links",
+          "action": "store nothing, neither the link, its tags nor its membership, and answer with the error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'not_found', message} for the workspace, {error: 'invalid_arguments', field: 'tags', message} for a tag, or {error: 'library_full', message: 'library full (20,000 links)'}; the link count and every workspace's links are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {workspace 'Nowhere': not_found; workspace = another user's workspace id: not_found; tags ['two words']: invalid_arguments field tags; tags ['ok', '']: invalid_arguments; a user seeded with 20,000 links and a new url: library_full}: r = mcpTool(bearer, 'add_link', args); assert r.isError and the structuredContent; assert link count and workspace memberships unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "search_links and list_recent",
+      "rationale": "An agent should look before it adds, and see what the owner has been using lately.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls search_links with a query and an optional limit",
+          "action": "run the user's search as GET /api/v1/search does for that query, prefix filters included, returning at most limit results with a default of 10, and record no use",
+          "contract": "a tool result without isError whose structuredContent equals the body GET /api/v1/search?q=<query>&limit=<limit> returns for the same user; no link's use_count or last_used_at changes",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a user with three links whose reader text mentions Cloudflare Queues, one of them tagged 'infra', and five unrelated links"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {('cloudflare queues', none): 3 results; ('cloudflare queues', 2): 2; ('tag:infra queues', none): 1; ('zzz-nothing', none): 0}: r = mcpTool(bearer, 'search_links', {query, limit}); assert r.structuredContent == api('GET', '/api/v1/search?q=...&limit=' + (limit ?? 10)).json; assert no use_count changed"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "event_driven",
+          "condition": "an agent calls list_recent with an optional limit",
+          "action": "return the first page of the user's stream as GET /api/v1/links returns it, pinned links first and then by last used, with at most limit links and a default of 20, recording no use",
+          "contract": "a tool result without isError whose structuredContent equals the body of GET /api/v1/links?limit=<limit> for the same user",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: seed 30 links and pin one; r = mcpTool(bearer, 'list_recent', {}); assert r.structuredContent == api('GET', '/api/v1/links?limit=20').json and items[0] is the pinned link; r5 = list_recent {limit: 5}; assert 5 items; assert no use_count changed"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "search_links or list_recent is called with a limit that is not an integer from 1 to 100, or search_links with a missing or empty query",
+          "action": "run nothing and answer with an argument error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'invalid_arguments', field: 'limit' or 'query', message}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {search_links {query: 'x', limit: 0}; search_links {query: 'x', limit: 101}; list_recent {limit: 2.5}; search_links {}; search_links {query: ''}}: r = mcpTool(...); assert r.isError and r.structuredContent.error == 'invalid_arguments' and field as expected"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "get_link and get_link_content",
+      "rationale": "An agent reads what the library kept, even when the original site is gone, and reading is a use like any other.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls get_link with the id of one of the user's links",
+          "action": "return the link's metadata and summary as GET /api/v1/links/{id} returns them, recording no use",
+          "contract": "a tool result without isError whose structuredContent equals the body of GET /api/v1/links/{id}; use_count and last_used_at are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: seed an active, enriched link; r = mcpTool(bearer, 'get_link', {id}); assert r.structuredContent == api('GET', '/api/v1/links/' + id).json and it carries the summary, tags and topic; assert use_count unchanged"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "an agent calls get_link_content with the id of one of the user's links that has a reader view and format 'text'",
+          "action": "return the stored reader-view text, a PDF's extracted text for a PDF link, and record a use as reading the reader view through the API does",
+          "contract": "a tool result without isError whose structuredContent is {id, format: 'text', content: <the reader-view text served by GET /api/v1/links/{id}/reader>}; use_count is one higher, last_used_at equals the call's time and one more use event exists",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "an HTML link and a PDF link with stored reader text, written through the snapshot store of package 02"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {HTML link, PDF link}: setNow(t); r = mcpTool(bearer, 'get_link_content', {id, format: 'text'}); assert r.structuredContent.content == the stored reader text; assert use_count + 1, last_used_at == t and the history's newest item is {kind: 'use', at: t}"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "event_driven",
+          "condition": "an agent calls get_link_content with the id of one of the user's HTML links that has a snapshot and format 'html'",
+          "action": "return the stored snapshot HTML and record a use as viewing the snapshot through the API does",
+          "contract": "a tool result without isError whose structuredContent is {id, format: 'html', content: <the stored snapshot HTML>}; use_count is one higher",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: store snapshot '<html><title>T</title>...' for an HTML link; r = mcpTool(bearer, 'get_link_content', {id, format: 'html'}); assert r.structuredContent.content == the stored HTML; assert use_count + 1"
+          }
+        },
+        {
+          "id": "REQ-4.4",
+          "pattern": "unwanted",
+          "condition": "get_link_content asks for format 'html' of a PDF link, or for any format of a link with no stored snapshot or reader view (pending, unreachable, or not a web page)",
+          "action": "return no content and record no use",
+          "contract": "a tool result with isError true and structuredContent {error: 'not_html', message: 'this link is a PDF; use format text'} for the PDF, or {error: 'no_content', message} otherwise; use_count and last_used_at are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {PDF link with 'html': not_html; pending link with 'text': no_content; link noted 'not a web page (image/png)' with 'html': no_content}: r = mcpTool(...); assert r.isError and error code; assert use_count unchanged"
+          }
+        },
+        {
+          "id": "REQ-4.5",
+          "pattern": "unwanted",
+          "condition": "get_link or get_link_content is called without an id, or get_link_content with a format other than 'text' or 'html'",
+          "action": "read nothing and answer with an argument error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'invalid_arguments', field: 'id' or 'format', message}; no use is recorded",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {get_link {}; get_link_content {id, format: 'pdf'}; get_link_content {id}}: assert r.isError and structuredContent.error == 'invalid_arguments' with the field; assert use_count unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "list_workspaces and add_to_workspace",
+      "rationale": "An agent working on a project files what it finds into the owner's workspace for that project.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls list_workspaces",
+          "action": "return every workspace of the user, up to the limit of 200, with the fields GET /api/v1/workspaces gives each one, in its order, reading every page",
+          "contract": "a tool result without isError whose structuredContent is {items: [workspace]} with items equal to the concatenated pages of GET /api/v1/workspaces",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {0 workspaces; 3; 150 (more than one API page)}: r = mcpTool(bearer, 'list_workspaces', {}); assert r.structuredContent.items == all pages of api('GET', '/api/v1/workspaces') concatenated"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "an agent calls add_to_workspace with the id of one of the user's links and a workspace given by its id or by its name compared case-insensitively",
+          "action": "add the link to the bottom of that workspace as POST /api/v1/workspaces/{id}/links does",
+          "contract": "a tool result without isError whose structuredContent equals the body POST /api/v1/workspaces/{id}/links returns for {link_id}; the workspace's links end with the link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over workspace arguments {<id>, 'Research', 'RESEARCH'}: r = mcpTool(bearer, 'add_to_workspace', {link_id, workspace}); assert !r.isError; assert the workspace's last link is link_id; and for a link already in it the result equals what the API answers for a repeated add"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "unwanted",
+          "condition": "add_to_workspace names a link or a workspace that is not the user's",
+          "action": "change no workspace and answer with the not-found error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'not_found', message}; every workspace's links are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {unknown link id; another user's link id; workspace 'Nowhere'; another user's workspace id}: r = mcpTool(bearer, 'add_to_workspace', args); assert r.isError and r.structuredContent.error == 'not_found'; assert memberships unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "pin_link and archive_link",
+      "rationale": "An agent can put what matters on top and put away what is done, with the same limits the owner has.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls pin_link with the id of one of the user's links",
+          "action": "pin the link at the bottom of the pinned section as POST /api/v1/links/{id}/pin without a position does",
+          "contract": "a tool result without isError whose structuredContent is the link with pinned true and pin_position equal to the number of pinned links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: pin a through the API; r = mcpTool(bearer, 'pin_link', {link_id: b}); assert r.structuredContent.pinned and pin_position == 2; assert GET /api/v1/links starts [a, b]"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "pin_link is called for a link that is not pinned while the user has 30 pinned links",
+          "action": "pin nothing and answer with the pin-limit error as a tool error",
+          "contract": "a tool result with isError true and structuredContent {error: 'pin_limit', message: 'unpin something first'}; the 30 pinned links and their positions are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: pin 30 links; r = mcpTool(bearer, 'pin_link', {link_id: other}); assert r.isError and r.structuredContent == {error: 'pin_limit', message: 'unpin something first'}; assert positions unchanged"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "an agent calls archive_link with the id of one of the user's links",
+          "action": "archive the link as POST /api/v1/links/{id}/archive does, so that it leaves the stream and is listed on the Archive page",
+          "contract": "a tool result whose structuredContent and isError equal the body and the success or failure of POST /api/v1/links/{id}/archive for the same link state; after success the link has state 'archived', is absent from GET /api/v1/links and present in GET /api/v1/archive",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over {an active link; a pinned link; an already archived link}: r = mcpTool(bearer, 'archive_link', {link_id}); compare with the API's answer for a twin link in the same state; for the active link assert state 'archived', absent from the stream and present in the archive"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "One user, one contract",
+      "rationale": "An agent holding a token must not be able to see or change anything the owner could not, and must meet the same contract as a script.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "ubiquitous",
+          "action": "for any tool call that names a link or a workspace by id, act only on resources of the token's user, answering for another user's resource exactly as for one that does not exist and recording no use on it",
+          "contract": "a tool result with isError true and structuredContent {error: 'not_found', message} identical for another user's id and for an id that exists nowhere; the other user's link, its use_count and its workspaces are unchanged",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "users A and B; B has link L and workspace W"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table over tools {get_link {id: L}, get_link_content {id: L, format: 'text'}, add_to_workspace {link_id: L, workspace: <A's workspace>}, add_to_workspace {link_id: <A's link>, workspace: W}, pin_link {link_id: L}, archive_link {link_id: L}} called with A's token: assert r.isError and r.structuredContent equals the result for a random id; assert L's state, pin, use_count and W's links are unchanged; and search_links and list_recent with A's token never return L"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "ubiquitous",
+          "action": "for any tool call, return the outcome of the equivalent API request: its JSON body as structuredContent and as one text content item on success, and its error envelope with isError true on failure, never as a JSON-RPC error",
+          "contract": "on success a result without isError whose structuredContent equals the API's response body and whose one text content item is that JSON; on refusal a result with isError true whose structuredContent equals the API's error body {error, message, field where given}; the JSON-RPC response never has an error member",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "two users with identical seeded libraries, so that a tool call for one and the equivalent API request for the other start from the same state"
+            ],
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a table pairing each tool call with its API request (add_link new and duplicate ~ POST /api/v1/links; get_link ~ GET /api/v1/links/{id}; get_link_content text ~ GET /api/v1/links/{id}/reader; pin_link ~ POST /api/v1/links/{id}/pin; archive_link ~ POST /api/v1/links/{id}/archive; add_to_workspace ~ POST /api/v1/workspaces/{id}/links; list_workspaces ~ GET /api/v1/workspaces; search_links ~ GET /api/v1/search; list_recent ~ GET /api/v1/links), each also with an argument the API refuses: assert the tool's structuredContent equals the API body with ids and timestamps normalised; assert isError is set exactly when the API status is 4xx; assert the JSON-RPC response never has an error member"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "a tool's operation fails with an unexpected error, such as a D1 or R2 failure",
+          "action": "answer the call with an internal error as a tool error instead of failing the request, and keep answering later calls",
+          "contract": "HTTP 200 with a JSON-RPC result that has isError true and structuredContent {error: 'internal_error', message: 'something went wrong, try again'}; the next tool call on a new request answers normally",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts: make the link store throw once (a stubbed D1 prepare); r = mcpTool(bearer, 'list_recent', {}); assert HTTP 200, r.isError and r.structuredContent.error == 'internal_error' and the message names no internal detail; restore; assert the next list_recent succeeds"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "An agent searches the library and reads a link's stored text",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "creates a personal access token on the settings page and gives its secret to the agent"
+        },
+        {
+          "actor": "agent",
+          "action": "connects to /mcp with 'Authorization: Bearer <secret>' and initializes"
+        },
+        {
+          "actor": "MCP server",
+          "action": "authenticates the token as the owner and answers with its instructions and the nine tools"
+        },
+        {
+          "actor": "agent",
+          "action": "calls search_links with the query 'cloudflare queues'"
+        },
+        {
+          "actor": "MCP server",
+          "action": "runs the owner's search and returns the two matching links"
+        },
+        {
+          "actor": "agent",
+          "action": "calls get_link_content with the first link's id and format 'text'"
+        },
+        {
+          "actor": "MCP server",
+          "action": "returns the stored reader-view text and records a use of the link"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "lists the link at the top of the unpinned part of GET /api/v1/links with last used at the time of the call"
+        },
+        {
+          "actor": "owner",
+          "action": "reloads the stream and sees the link's card first with last used 'just now'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "MCP server",
+          "Alexandria API",
+          "D1 database",
+          "R2 snapshot store",
+          "the search index",
+          "the fetch worker",
+          "token authentication",
+          "the @modelcontextprotocol/sdk client and Streamable HTTP transport"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2 and Queues and the migrations applied; the owner signed in through e2e/fake-google.ts",
+          "e2e/fake-origin.ts serves two articles about Cloudflare Queues and one unrelated page; the owner has added the three URLs on the website and the fetch worker has fetched them",
+          "the owner has created a token on the settings page"
+        ],
+        "end_state": [
+          "search_links returned exactly the two Cloudflare Queues links, without isError",
+          "get_link_content returned text containing the first article's body, without isError",
+          "the first article's use_count is 1 and its history's newest item is a use at the time of the call",
+          "the owner's stream shows that article as the first unpinned card with last used 'just now'"
+        ],
+        "pseudocode": "in e2e/mcp.spec.ts: sign in, add the three fake-origin URLs, wait until their cards are no longer pending; create a token on /settings; client = new Client({name: 'e2e'}); await client.connect(new StreamableHTTPClientTransport(new URL(base + '/mcp'), {requestInit: {headers: {Authorization: 'Bearer ' + secret}}})); s = await client.callTool({name: 'search_links', arguments: {query: 'cloudflare queues'}}); expect 2 items; c = await client.callTool({name: 'get_link_content', arguments: {id: s.items[0].id, format: 'text'}}); expect c.structuredContent.content to contain the article body; page.reload(); expect the first unpinned card to be that link with 'just now'"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "An agent files a new link into the owner's workspace and pins it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "creates a workspace named 'Research' on the website and a personal access token for the agent"
+        },
+        {
+          "actor": "agent",
+          "action": "calls search_links with 'host:example.net' and gets no results"
+        },
+        {
+          "actor": "agent",
+          "action": "calls add_link with 'https://example.net/paper?utm_source=x', tags ['reading'] and workspace 'research'"
+        },
+        {
+          "actor": "MCP server",
+          "action": "normalises the URL, stores a pending link, applies the tag as a manual edit and adds the link to the bottom of 'Research'"
+        },
+        {
+          "actor": "agent",
+          "action": "calls add_link with the same URL again and gets status 'boosted'"
+        },
+        {
+          "actor": "agent",
+          "action": "calls pin_link with the link's id"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "lists the link in the pinned section of GET /api/v1/links"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the 'Research' workspace page and sees the link at the bottom, tagged 'reading'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "MCP server",
+          "Alexandria API",
+          "D1 database",
+          "token authentication",
+          "the @modelcontextprotocol/sdk client and Streamable HTTP transport"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2 and Queues; the owner signed in through e2e/fake-google.ts; e2e/fake-origin.ts answers example.net requests"
+        ],
+        "end_state": [
+          "exactly one link with url 'https://example.net/paper' exists for the owner, with tags ['reading'] marked as manually edited",
+          "the second add_link answered status 'boosted'",
+          "the link is pinned at the end of the pinned section",
+          "the 'Research' workspace page lists the link last, tagged 'reading'"
+        ],
+        "pseudocode": "in e2e/mcp.spec.ts beside the test above: create 'Research' and a token on the website; connect the SDK client; callTool search_links {query: 'host:example.net'} expects 0 items; callTool add_link {url, tags: ['reading'], workspace: 'research'} expects status 'added'; again expects 'boosted'; callTool pin_link; page.goto the Research workspace; expect its last card to be example.net with tag 'reading'; expect request.get('/api/v1/links') pinned section to contain it"
+      }
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "@modelcontextprotocol/sdk",
+      "version": "1.32.2",
+      "verified": true,
+      "symbols": [
+        {
+          "name": "McpServer",
+          "import_path": "@modelcontextprotocol/sdk/server/mcp.js",
+          "signature": "constructor(serverInfo: Implementation, options?: McpServerOptions) // options.instructions?: string"
+        },
+        {
+          "name": "McpServer.registerTool",
+          "import_path": "@modelcontextprotocol/sdk/server/mcp.js",
+          "signature": "registerTool(name: string, config: { title?: string; description?: string; inputSchema?: InputArgs; outputSchema?: OutputArgs; annotations?: ToolAnnotations; _meta?: Record<string, unknown> }, cb: ToolCallback<InputArgs>): RegisteredTool"
+        },
+        {
+          "name": "WebStandardStreamableHTTPServerTransport",
+          "import_path": "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js",
+          "signature": "constructor(options?: WebStandardStreamableHTTPServerTransportOptions) // sessionIdGenerator?: () => string; enableJsonResponse?: boolean"
+        },
+        {
+          "name": "WebStandardStreamableHTTPServerTransport.handleRequest",
+          "import_path": "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js",
+          "signature": "handleRequest(req: Request, options?: HandleRequestOptions): Promise<Response>"
+        },
+        {
+          "name": "Client",
+          "import_path": "@modelcontextprotocol/sdk/client/index.js",
+          "signature": "constructor(_clientInfo: Implementation, options?: ClientOptions); connect(transport: Transport, options?: RequestOptions): Promise<void>; callTool(params: CallToolRequest['params'], resultSchema?, options?: RequestOptions)"
+        },
+        {
+          "name": "StreamableHTTPClientTransport",
+          "import_path": "@modelcontextprotocol/sdk/client/streamableHttp.js",
+          "signature": "constructor(url: URL, opts?: StreamableHTTPClientTransportOptions) // opts.requestInit?: RequestInit"
+        }
+      ]
+    }
+  ]
+}

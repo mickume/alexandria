@@ -1,0 +1,247 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "02",
+  "spec_name": "fetch_and_snapshot",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/fetcher src/worker/links src/web"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "fetches the links package 01 adds, records uses with its recordUse, extends its history endpoint, delete route, stream card and detail page, and uses its API conventions, OpenAPI document, test helpers and tooling"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Send fetch messages and fetch pages courteously",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the fetch-request behaviours to src/worker/fetcher/fetch.test.ts and confirm they fail",
+        "Add the bindings FETCH_QUEUE (producer and consumer, the consumer wired in src/worker/index.ts), HOST_GATE (Durable Object) and SNAPSHOTS (R2) to wrangler.jsonc and the Env type, and the variable ORIGIN_PROXY_URL (unset in production)",
+        "Add migrations/0002_fetch_and_snapshot.sql: the link columns final_url, http_status, description, favicon_url, language, fetched_at, fetch_attempts, state_reason, notes, content_kind, reader_empty, refresh_requested_at and updated_at, and the tables link_texts (link_id, user_id, text) and link_events (id, link_id, user_id, kind, at, outcome, http_status, reason)",
+        "Extend the test helpers: a fake origin for the Worker tests (src/worker/test/origin.ts, registered on package 01's outbound router src/worker/test/outbound.ts) whose routes answer, redirect, stall, refuse or stream and which logs every request with its arrival time, and a recorder of FETCH_QUEUE messages",
+        "Send one FETCH_QUEUE message {user_id, link_id} for every link POST /api/v1/links and POST /api/v1/links/batch add, and none for boosted or refused URLs",
+        "Write fetchPage in src/worker/fetcher/fetch.ts: GET with the Accept and User-Agent headers, redirects followed by hand up to 5 with every target checked by the same blocked-address rules as normalizeUrl, a 15-second timeout, and the target sent through ORIGIN_PROXY_URL with X-Alexandria-Target when that variable is set",
+        "Write the host gate in src/worker/fetcher/hostgate.ts: one Durable Object per host that hands out request slots at least 1 second apart, awaited by every request fetchPage makes; package 05's liveness check will call it too",
+        "Serve the public page GET /about/fetcher explaining the fetcher, exempt from the sign-in redirect"
+      ],
+      "touches": [
+        "wrangler.jsonc",
+        "src/worker/env.ts",
+        "src/worker/index.ts",
+        "src/worker/app.ts",
+        "migrations/0002_fetch_and_snapshot.sql",
+        "src/worker/fetcher/fetch.ts",
+        "src/worker/fetcher/hostgate.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/routes.ts",
+        "src/worker/fetcher/fetch.test.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/auth/middleware.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/test/origin.ts",
+        "vitest.config.ts",
+        "docs/configuration.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Extract the reader view",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the extraction behaviours to src/worker/fetcher/reader.test.ts with fixture pages under src/worker/fetcher/fixtures/ and confirm they fail",
+        "Write extractReader(html, finalUrl) in src/worker/fetcher/reader.ts: parse with linkedom's parseHTML, run Readability, keep title, byline and the article body with headings, paragraphs, lists, code blocks, links and images, and make every href and src absolute against the final URL",
+        "Sanitise the reader HTML by an allow-list of elements and attributes: drop every element and attribute outside it, every on* attribute, and every URL whose scheme is not http, https or data:image",
+        "Mark the reader view empty when its text is under 200 characters, and cap the stored plain text at 500,000 characters in link_texts"
+      ],
+      "touches": [
+        "src/worker/fetcher/reader.ts",
+        "src/worker/fetcher/reader.test.ts",
+        "src/worker/fetcher/fixtures/",
+        "package.json"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Store fetched web pages and their snapshots",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the storing behaviours to src/worker/fetcher/fetch.test.ts and src/worker/fetcher/html.test.ts and confirm they fail",
+        "Write extractMetadata(html, finalUrl) in src/worker/fetcher/html.ts with the title, description, favicon and language fallbacks and whitespace collapsing",
+        "In the queue consumer, for a 2xx HTML response read at most 5 MB (noting 'truncated' when cut), write the snapshot and the reader HTML to R2 under u/{user_id}/l/{link_id}/, the reader text to link_texts, and the metadata, fetched_at, content_kind 'html', state 'active' and updated_at to the link",
+        "For a 2xx response of any other non-PDF type, cancel the body, set the link 'active' with the last path segment or host as title and the note 'not a web page (<type>)', storing no object",
+        "Re-read the link before writing and drop the message (removing objects written by the attempt) when the link no longer exists",
+        "When an R2 or D1 write fails, remove what the attempt wrote, leave the row as it was and call message.retry() without counting a fetch attempt"
+      ],
+      "touches": [
+        "src/worker/fetcher/html.ts",
+        "src/worker/fetcher/html.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/snapshots.ts",
+        "src/worker/fetcher/fetch.test.ts",
+        "src/worker/links/store.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Store PDFs whole with their text",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the PDF behaviours to src/worker/fetcher/pdf.test.ts with fixture PDFs (with title, without title, scanned, truncated) and confirm they fail",
+        "Recognise a PDF by content type application/pdf, or by a path ending in '.pdf' and a body starting with '%PDF-'",
+        "Read at most 50 MB, refusing early on a larger Content-Length; past the limit store nothing and set the link 'active' with the note 'PDF too large to store (50 MB limit)'",
+        "Write the whole PDF as the snapshot; take the title from unpdf's getMeta Title, else the decoded last path segment; extract the text with extractText(mergePages: true) into link_texts, capped at 500,000 characters",
+        "When the PDF has no text or cannot be parsed, keep it, set the link 'active' with the note 'no text in this PDF' and an empty reader view"
+      ],
+      "touches": [
+        "src/worker/fetcher/pdf.ts",
+        "src/worker/fetcher/pdf.test.ts",
+        "src/worker/fetcher/fixtures/",
+        "src/worker/fetcher/queue.ts",
+        "package.json"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Retry failed fetches and record fetch events",
+      "criteria": [
+        "REQ-4.1",
+        "REQ-4.2",
+        "REQ-4.3",
+        "REQ-9.1"
+      ],
+      "steps": [
+        "Add the failure, retry and history behaviours to src/worker/fetcher/fetch.test.ts and confirm they fail",
+        "Map every fetch failure to its reason: 'host not found', 'could not connect', 'TLS error', 'timed out', 'too many redirects', 'blocked address', 'HTTP <status>'",
+        "On the first and second failure of a pending link keep it 'pending' with the reason, increment fetch_attempts and send the message again with delaySeconds 600, then 7200; on the third set it 'unreachable', keeping the host as title",
+        "Record a link_events row for every fetch attempt with its outcome, HTTP status and reason",
+        "Merge fetch events with use events in GET /api/v1/links/{id}/history, newest first, and document the new item shape in the OpenAPI document"
+      ],
+      "touches": [
+        "src/worker/fetcher/fetch.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/fetch.test.ts",
+        "src/worker/links/use.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Serve Read and Snapshot to the owner alone",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the serving behaviours to src/worker/fetcher/snapshots.test.ts and confirm they fail",
+        "Implement GET /api/v1/links/{id}/reader: recordUse, then the stored reader view {content_kind, title, byline, html, text, empty}",
+        "Implement GET /api/v1/links/{id}/snapshot: recordUse, then the stored HTML with the sandbox Content-Security-Policy, nosniff and no-referrer headers, or the stored PDF inline, as an attachment with download=1",
+        "Answer 404 no_snapshot, recording no use, for a link without a stored snapshot, and 404 not_found for another user's link",
+        "Serve both from R2 and D1 only, never contacting the origin",
+        "Delete the link's R2 prefix, link_texts and link_events rows in DELETE /api/v1/links/{id}",
+        "Document the two routes and the delete change in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/fetcher/routes.ts",
+        "src/worker/fetcher/snapshots.ts",
+        "src/worker/fetcher/snapshots.test.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/store.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Refresh a link at most once per 10 minutes",
+      "criteria": [
+        "REQ-7",
+        "REQ-4.4"
+      ],
+      "steps": [
+        "Add the refresh behaviours to src/worker/fetcher/fetch.test.ts and src/web/components/LinkCard.test.tsx and confirm they fail",
+        "Implement POST /api/v1/links/{id}/refresh: 429 refreshed_recently with Retry-After within 10 minutes of the previous request, else store refresh_requested_at, send a fetch message marked as a refresh and answer 202 {status: 'queued'}",
+        "In the consumer, a successful refresh replaces snapshot, reader view and metadata, sets 'active' and clears reason and notes; a failed refresh records the failed event and changes nothing else, with no retry",
+        "Check that an 'unreachable' link stays in the stream and accepts open, pin, unpin, refresh and delete",
+        "Add Refresh to the card and the detail page with a refreshing indicator and the 'already refreshed recently' message",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/fetcher/routes.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/fetch.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Update the stream in place as fetches complete",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the change-feed behaviours to src/worker/fetcher/fetch.test.ts and src/web/pages/Stream.test.tsx and confirm they fail",
+        "Set updated_at on every write to a link, and implement changed_since on GET /api/v1/links: links not archived changed after the time, oldest change first, with server_time; 400 invalid_changed_since for a bad timestamp",
+        "On the stream page, while any card is pending or refreshing, request the changes every 5 seconds from the last server_time, replace changed cards in place without reordering the rest, and stop when none remains",
+        "Document the parameter in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/stream.ts",
+        "src/worker/links/store.ts",
+        "src/worker/fetcher/fetch.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Show fetch results, Read and Snapshot on the website",
+      "criteria": [
+        "REQ-9.2",
+        "REQ-9.3",
+        "REQ-9.4",
+        "REQ-9.5"
+      ],
+      "steps": [
+        "Add the display behaviours to src/web/components/LinkCard.test.tsx, src/web/pages/Read.test.tsx and src/web/pages/LinkDetail.test.tsx and confirm they fail",
+        "Show on the card the fetched title and favicon, 'unreachable: <reason>', each note, and Read and Snapshot only for a link with a snapshot",
+        "Build the Read page (/links/{id}/read): the reader view sanitised again with DOMPurify, 'no readable content extracted' with a Snapshot link when empty, and a PDF's text as paragraphs",
+        "Build the Snapshot view (/links/{id}/snapshot): an iframe with an empty sandbox attribute for HTML, the browser's PDF viewer with a Download link for a PDF",
+        "Show on the detail page the final URL, HTTP status, fetch time, state reason, notes and the fetch events in the history"
+      ],
+      "touches": [
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/Read.tsx",
+        "src/web/pages/Read.test.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "src/web/App.tsx",
+        "package.json",
+        "e2e/fake-origin.ts"
+      ]
+    }
+  ]
+}

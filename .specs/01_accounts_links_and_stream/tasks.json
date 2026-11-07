@@ -1,0 +1,310 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "01",
+  "spec_name": "accounts_links_and_stream",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/auth src/worker/links src/worker/api src/web"
+  },
+  "dependencies": [],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Create the project and the URL normaliser",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Create package.json (npm, ES modules, TypeScript) with the dependencies named in the PRD's Verified External API, and tsconfig.json with strict mode",
+        "Create wrangler.jsonc for one Worker serving the website's static assets and the API, with run_worker_first for page routes, the D1 binding DB, and the variables ALLOWED_EMAILS, GOOGLE_CLIENT_ID, GOOGLE_AUTH_URL (default https://accounts.google.com/o/oauth2/v2/auth), GOOGLE_TOKEN_URL (default https://oauth2.googleapis.com/token) and PUBLIC_ORIGIN, with GOOGLE_CLIENT_SECRET as a secret",
+        "Create vite.config.ts building the React website from src/web with @cloudflare/vite-plugin, and vitest.config.ts with two projects: the Worker tests under src/worker in the Workers runtime through cloudflareTest with the D1 migrations applied by applyD1Migrations before each file, and the website tests under src/web in happy-dom",
+        "Create playwright.config.ts that starts wrangler dev with local D1 on a fixed port and runs e2e/*.spec.ts in Chromium",
+        "Create eslint.config.js (typescript-eslint, React hooks), .prettierrc.json, typedoc configuration writing to docs/generated/, and a Makefile with the targets help, build, test, e2e, coverage, fmt, vet (tsc --noEmit), lint, check (fmt, vet, lint, test), doc and clean",
+        "Create the Worker entry src/worker/index.ts and the Hono app in src/worker/app.ts, the Env type in src/worker/env.ts, and src/worker/clock.ts whose now() tests can set",
+        "Create migrations/0001_accounts_and_links.sql with the users, sessions, tokens, links and link_uses tables, a unique index on links (user_id, url) and indexes for the stream order",
+        "Write normalizeUrl in src/worker/links/normalize.ts: the trimming, scheme, case, fragment, default-port, tracking-parameter, parameter-order and trailing-slash rules, and the rejection of empty input, non-URLs, schemes other than http and https, localhost, loopback, private and link-local hosts",
+        "Create the shared test helpers src/worker/test/helpers.ts (signIn, createToken, api, seedLinks, setNow), src/worker/test/outbound.ts (a router that answers the Worker's outbound requests in tests, wired through the test runtime's outbound service, to which the doubles for Google and the later packages' fake origin and AI provider add routes) and src/web/test/helpers.tsx (renderPage with a fake API)",
+        "Fill in the Repository Layout and Quality Commands sections of AGENTS.md and the Repository Specifics section of .specs/steering.md with the layout, the TypeScript version, the make targets, the test helpers by path, and that the tests need no network or credentials",
+        "Create docs/api.md, docs/cli.md (one line: there is no CLI), docs/configuration.md (the variables above) and docs/architecture.md (the Worker, D1, the website and the test layers)"
+      ],
+      "touches": [
+        "package.json",
+        "tsconfig.json",
+        "wrangler.jsonc",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "playwright.config.ts",
+        "eslint.config.js",
+        ".prettierrc.json",
+        "Makefile",
+        ".gitignore",
+        "src/worker/index.ts",
+        "src/worker/app.ts",
+        "src/worker/env.ts",
+        "src/worker/clock.ts",
+        "migrations/0001_accounts_and_links.sql",
+        "src/worker/links/normalize.ts",
+        "src/worker/links/normalize.test.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/test/outbound.ts",
+        "src/web/main.tsx",
+        "src/web/App.tsx",
+        "src/web/styles.css",
+        "src/web/test/helpers.tsx",
+        "index.html",
+        "AGENTS.md",
+        ".specs/steering.md",
+        "README.md",
+        "docs/api.md",
+        "docs/cli.md",
+        "docs/configuration.md",
+        "docs/architecture.md"
+      ],
+      "done_when": [
+        "`make check` passes",
+        "`make build` produces the website and the Worker bundle"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Sign in with Google behind the allow-list",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the sign-in behaviours to src/worker/auth/auth.test.ts and src/web/pages/SignIn.test.tsx, with Google's token endpoint answered by a double registered on the outbound router, and confirm they fail",
+        "Implement GET /auth/google with arctic's OAuth2Client and createAuthorizationURLWithPKCE against GOOGLE_AUTH_URL, scopes openid, email and profile, keeping state and code verifier in 10-minute HttpOnly cookies",
+        "Implement GET /auth/google/callback: compare state with its cookie, exchange the code with validateAuthorizationCode against GOOGLE_TOKEN_URL, decode the ID token for email and name, and discard every Google token",
+        "Read ALLOWED_EMAILS on every callback in src/worker/auth/allowlist.ts, comparing case-insensitively with entries trimmed; an address not on it redirects to /signin?error=private and creates nothing",
+        "Redirect every failure (Google error, state mismatch or absence, rejected exchange) to /signin?error=failed, creating nothing",
+        "Create or update the user (email and display name only), create a session whose identifier is stored as its SHA-256 hash, set the alexandria_session cookie and redirect to /",
+        "Build the SignIn page with the single 'Sign in with Google' action and the two error messages",
+        "Write e2e/fake-google.ts, a local fake OIDC authorization and token endpoint that signs in a configured email and name, for the end-to-end tests"
+      ],
+      "touches": [
+        "src/worker/auth/google.ts",
+        "src/worker/auth/allowlist.ts",
+        "src/worker/auth/sessions.ts",
+        "src/worker/auth/routes.ts",
+        "src/worker/auth/auth.test.ts",
+        "src/worker/app.ts",
+        "src/web/pages/SignIn.tsx",
+        "src/web/pages/SignIn.test.tsx",
+        "src/web/App.tsx",
+        "e2e/fake-google.ts",
+        "docs/configuration.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Enforce sessions, sign-out and per-user access",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the session, sign-out, origin and isolation behaviours to src/worker/auth/sessions.test.ts and confirm they fail",
+        "Write the authentication middleware in src/worker/auth/middleware.ts: a session cookie naming an unexpired session authenticates its user and moves its expiry to 30 days after the request; anything else on /api/v1/ answers 401 {error: 'unauthorized'}",
+        "Redirect browser page requests other than /signin without a valid session to /signin, before the static assets are served",
+        "Refuse POST, PUT, PATCH and DELETE requests authenticated by the cookie whose Origin is missing or not PUBLIC_ORIGIN with 403 {error: 'forbidden_origin'}",
+        "Implement POST /auth/signout: delete the session, expire the cookie, redirect to /signin",
+        "Make every query of a user's resources filter by the authenticated user, so that another user's id answers 404 {error: 'not_found'} exactly as a missing one does",
+        "Add a Sign out action to the website's navigation"
+      ],
+      "touches": [
+        "src/worker/auth/middleware.ts",
+        "src/worker/auth/sessions.ts",
+        "src/worker/auth/routes.ts",
+        "src/worker/auth/sessions.test.ts",
+        "src/worker/app.ts",
+        "src/web/App.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Establish the API conventions and its OpenAPI description",
+      "criteria": [
+        "REQ-10"
+      ],
+      "steps": [
+        "Add the envelope, rate-limit, OpenAPI, current-user and unknown-route behaviours to src/worker/api/api.test.ts and src/worker/api/openapi.test.ts and confirm they fail",
+        "Write src/worker/api/errors.ts with the error envelope {error, field, message}, the 401, 404 and 409 shapes and 'invalid_json' for a body that does not parse, and use it for every route",
+        "Write src/worker/api/ratelimit.ts: at most 600 requests per user per minute across sessions and tokens, answering 429 {error: 'rate_limited'} with Retry-After in whole seconds",
+        "Write src/worker/api/pagination.ts with opaque, tamper-evident cursors and the 1 to 100 limit, for every list endpoint",
+        "Implement GET /api/v1/me returning {email, name}, and a 404 {error: 'not_found'} answer for unknown paths under /api/v1/",
+        "Write the OpenAPI 3.1 document in src/worker/api/openapi.ts with the bearer and cookie security schemes, serve it at GET /api/v1/openapi.json, and add the test that compares it with the app's registered routes both ways",
+        "Make the shared api() helper record every response, and add the check that each status and body is declared by the document for its operation"
+      ],
+      "touches": [
+        "src/worker/api/errors.ts",
+        "src/worker/api/ratelimit.ts",
+        "src/worker/api/pagination.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/api/api.test.ts",
+        "src/worker/api/openapi.test.ts",
+        "src/worker/app.ts",
+        "src/worker/test/helpers.ts",
+        "wrangler.jsonc",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Create, list and revoke personal access tokens",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the token behaviours to src/worker/auth/tokens.test.ts and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Implement POST /api/v1/tokens: name of 1 to 100 characters, at most 20 unrevoked tokens per user (409 token_limit 'token limit reached'), 403 not_allowed when the user's email is no longer on ALLOWED_EMAILS, a secret 'alx_' plus 32 random bytes in base64url returned once and stored as its SHA-256 hash",
+        "Implement GET /api/v1/tokens (unrevoked, newest first, no secret) and DELETE /api/v1/tokens/{id} (sets revoked_at, 204)",
+        "Extend the authentication middleware: 'Authorization: Bearer <secret>' for an unrevoked token authenticates its user and records last_used_at",
+        "Build the tokens section of the Settings page: create with a name, the secret shown once with a Copy action until dismissed, the list with created and last-used dates, Revoke",
+        "Document the token routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/auth/tokens.ts",
+        "src/worker/auth/middleware.ts",
+        "src/worker/auth/routes.ts",
+        "src/worker/auth/tokens.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Add links by paste and by API",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the adding behaviours to src/worker/links/links.test.ts and src/web/components/AddLinks.test.tsx and confirm they fail",
+        "Write the link store in src/worker/links/store.ts: insert a pending link with the host as provisional title and added and last used set to now, or boost the existing link for the same user and normalised URL, relying on the unique index so that concurrent adds produce one link",
+        "Implement POST /api/v1/links: 201 {status: 'added', link}, 200 {status: 'boosted', link}, 400 invalid_url with the input, 409 library_full at 20,000 links in any state",
+        "Implement POST /api/v1/links/batch for 1 to 100 URLs: collapse repeats to their first occurrence, give the URLs descending last-used times so that the first ends highest, and answer {added, boosted, invalid}; 400 no_urls or too_many_urls otherwise",
+        "Build the AddLinks input at the top of the stream: split the pasted text on whitespace and newlines, send one batch, put added cards first with a pending indicator, move boosted cards to the top with 'already in your library, moved to top', list each invalid input with 'not a valid web address' and show 'library full (20,000 links)'",
+        "Document both routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/AddLinks.tsx",
+        "src/web/components/AddLinks.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Show the stream",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the stream behaviours to src/worker/links/stream.test.ts, src/worker/links/links.test.ts, src/web/pages/Stream.test.tsx, e2e/layout.spec.ts and e2e/performance.spec.ts and confirm they fail",
+        "Implement GET /api/v1/links in src/worker/links/stream.ts: links not archived, pinned first by pin position, then last used descending with id breaking ties, 50 by default and at most 100 per page, with the shared cursor",
+        "Implement GET /api/v1/links/{id} returning every stored field of the link",
+        "Build the Stream page and LinkCard: favicon where known, title, host, added and last-used dates, state label and the Open, Pin or Unpin and Delete actions, with the next page loaded when the end-of-list sentinel becomes visible",
+        "Style the website with one typeface, generous whitespace, light and dark colours from prefers-color-scheme, and a layout without horizontal scrolling from 375 px",
+        "Keep the stream's first load to one API request and a small bundle so that 50 cards are interactive within 1.5 seconds on throttled 4G",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/stream.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/stream.test.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/components/LinkCard.tsx",
+        "src/web/styles.css",
+        "e2e/layout.spec.ts",
+        "e2e/performance.spec.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Record uses through the open endpoint and show a link's history",
+      "criteria": [
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the use behaviours to src/worker/links/use.test.ts, src/web/components/LinkCard.test.tsx and src/web/pages/LinkDetail.test.tsx and confirm they fail",
+        "Write recordUse in src/worker/links/use.ts: increment use_count atomically, set last_used_at to now and insert a link_uses row, in one batch; later packages call it for reads, snapshots and MCP",
+        "Implement GET /api/v1/links/{id}/open: recordUse, then 302 to the link's normalised URL",
+        "Implement GET /api/v1/links/{id}/history: the link's events newest first, cursor-paged, each {kind: 'use', at}",
+        "Point the card's title and Open action at the open endpoint, and build the LinkDetail page with original URL, normalised URL, added date, use count and history",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/use.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/use.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Pin, move and unpin links",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the pin behaviours to src/worker/links/pin.test.ts and src/web/pages/Stream.test.tsx and confirm they fail",
+        "Implement POST /api/v1/links/{id}/pin: no position pins at the end, a position from 1 places the link there (past the end means the end) shifting the others, 409 pin_limit 'unpin something first' for a 31st, 400 invalid_position otherwise; positions stay 1..n in one transaction",
+        "Implement DELETE /api/v1/links/{id}/pin, closing the gap in the remaining positions",
+        "Add Pin and Unpin to the card and drag-to-reorder within the pinned section, sending the new position, and show 'unpin something first' on pin_limit",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/pin.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/components/LinkCard.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Delete links, with undo on the website",
+      "criteria": [
+        "REQ-9"
+      ],
+      "steps": [
+        "Add the delete behaviours to src/worker/links/links.test.ts and src/web/pages/Stream.test.tsx and confirm they fail",
+        "Implement DELETE /api/v1/links/{id}: remove the link and its use events at once and close the pin-position gap; 204",
+        "On the website hide the card at once and show a Toast with Undo for 10 seconds, sending the DELETE only when the window passes; Undo puts the card back and sends nothing",
+        "Send a pending delete at once with keepalive on pagehide, and on a failed delete put the card back with 'could not delete, try again'",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/components/Toast.tsx",
+        "docs/api.md"
+      ]
+    }
+  ]
+}

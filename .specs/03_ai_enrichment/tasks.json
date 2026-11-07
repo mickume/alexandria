@@ -1,0 +1,238 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "03",
+  "spec_name": "ai_enrichment",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/enrich src/worker/fetcher src/web"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "stores settings on package 01's users, edits its links, and extends its settings page, card, detail page, API conventions, OpenAPI document and test helpers"
+    },
+    {
+      "spec": "02",
+      "reason": "enriches the reader-view text package 02's fetch worker stores, is triggered by its fetch and refresh, skips the links its notes mark, and shows results through its change feed"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Store and verify the owner's AI key",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the key behaviours to src/worker/enrich/keys.test.ts and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Add migrations/0003_ai_enrichment.sql: the users columns ai_provider, ai_model, ai_key_ciphertext, ai_key_iv, ai_key_last4, ai_key_status, ai_key_rejected_message and throttle_next_at; the links columns summary, topic_id, enriched_at, enrichment_status, enrichment_reason and edited_fields; the tables topics, tags and link_tags, each unique per user and name",
+        "Add the secret KEY_ENCRYPTION_KEY and the variables ANTHROPIC_BASE_URL and OPENROUTER_BASE_URL (defaulting to the providers') to wrangler.jsonc, the Env type and docs/configuration.md",
+        "Extend the test helpers with a fake AI provider (src/worker/test/ai.ts, registered on package 01's outbound router src/worker/test/outbound.ts) answering the Anthropic Messages and OpenRouter chat-completions endpoints by a scripted table and logging every request",
+        "Write the provider clients in src/worker/enrich/providers.ts: Anthropic through @anthropic-ai/sdk's messages.create, OpenRouter through @openrouter/sdk's chat.send (or its HTTP API if the SDK does not run on Workers), both with the base URL from configuration, a 60-second timeout, and a minimal test request",
+        "Write src/worker/enrich/keys.ts: AES-GCM encryption under KEY_ENCRYPTION_KEY with a fresh IV and the user id as additional data, and decryption",
+        "Implement PUT, GET and DELETE /api/v1/settings/ai with the validation errors, key_rejected carrying the provider's message, provider_unavailable as 502, the default model claude-opus-5-5, and only the last 4 characters ever returned",
+        "Extend the api() helper's recorded responses with the check that no saved test key appears in any body or header",
+        "Build the AI section of the Settings page: provider choice with Anthropic preselected, key and model inputs (model required for OpenRouter), 'key verified', the provider's message, '…last4', Replace and Remove",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "migrations/0003_ai_enrichment.sql",
+        "wrangler.jsonc",
+        "src/worker/env.ts",
+        "package.json",
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/keys.ts",
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/keys.test.ts",
+        "src/worker/test/ai.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Enrich fetched links with the owner's key",
+      "criteria": [
+        "REQ-2",
+        "REQ-3.1"
+      ],
+      "steps": [
+        "Add the enrichment behaviours to src/worker/enrich/enrich.test.ts and src/worker/enrich/providers.test.ts and confirm they fail",
+        "Add the ENRICH_QUEUE binding (producer and consumer, wired in src/worker/index.ts) to wrangler.jsonc and the Env type",
+        "In the fetch worker, after a fetch or refresh makes a link 'active': with a verified key send an ENRICH_QUEUE message and mark the link 'queued'; without a key mark it 'no_key'; for the notes 'not a web page', 'no text in this PDF' and 'PDF too large to store (50 MB limit)' mark it 'skipped' and send nothing",
+        "Build the request in src/worker/enrich/enrich.ts: instructions, title, host, the user's 100 most used topics and 300 most used tags, and the first 20,000 characters of link_texts or, for an empty reader view, the title and description; nothing else",
+        "Ask each provider for structured {summary, tags, topic}: a forced tool call for Anthropic, a JSON-schema response format for OpenRouter",
+        "Normalise the result (tags lower-cased, spaces to hyphens, other characters dropped, no empties or repeats, first 8; summary to 60 words) and treat fewer than 3 tags, an empty summary or topic, or an unparseable answer as a failure",
+        "Resolve tag and topic names against the user's vocabulary in src/worker/enrich/vocabulary.ts, reusing a name equal ignoring case with spaces read as hyphens and creating one otherwise",
+        "Store summary, tags, topic, enriched_at and status 'enriched', always with the user's own decrypted key and model",
+        "Leave enriched links untouched when the provider, model or key changes"
+      ],
+      "touches": [
+        "wrangler.jsonc",
+        "src/worker/env.ts",
+        "src/worker/index.ts",
+        "src/worker/enrich/enrich.ts",
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/worker/enrich/providers.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Show summary, tags and topic on the card",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the display behaviours to src/worker/enrich/enrich.test.ts, src/web/components/LinkCard.test.tsx and src/web/pages/Stream.test.tsx and confirm they fail",
+        "Include summary, tags, topic, enrichment_status, enrichment_reason and edited_fields in every link object the API returns, and in the OpenAPI document's link schema",
+        "Show on the card the summary clamped to two lines with a 'more' control, one chip per tag, and the topic",
+        "Keep the stream's change-feed polling running while any card's enrichment is queued, or a pending link will be enriched"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Throttle background jobs to 20 per minute per user",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the throttle behaviours to src/worker/enrich/throttle.test.ts and confirm they fail",
+        "Write scheduleThrottled(userId, jobs) in src/worker/enrich/throttle.ts: each job's slot is 3 seconds after the user's previous slot (users.throttle_next_at) or now when that has passed, updated atomically so concurrent calls never share a slot",
+        "Send each job's message with delaySeconds = slot - now, at most 43200; carry the slot in the message, and on arrival before the slot send it again for the time left instead of processing it",
+        "Export the scheduler for package 07's imported links, and describe it in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/enrich/throttle.ts",
+        "src/worker/enrich/throttle.test.ts",
+        "src/worker/enrich/queue.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Work without a key and enrich all unenriched links later",
+      "criteria": [
+        "REQ-3.2",
+        "REQ-3.3",
+        "REQ-3.4",
+        "REQ-3.5"
+      ],
+      "steps": [
+        "Add the no-key and enrich-all behaviours to src/worker/enrich/enrich.test.ts, src/web/pages/Stream.test.tsx and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Implement POST /api/v1/links/enrich-unenriched: 409 no_ai_key without a verified key; otherwise schedule every link in 'no_key', 'waiting_for_key' or 'failed' through scheduleThrottled, mark them 'queued' and answer 202 {queued: n}",
+        "Count unenriched_count (links in 'no_key', 'waiting_for_key' or 'failed') in GET /api/v1/settings/ai",
+        "Show the banner 'not enriched: add an AI key in settings' once above the stream while there is no key and unenriched_count > 0",
+        "Add 'Enrich all unenriched links (n)' to the Settings page and report 'queued n links'",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Retry failed enrichments once and let the owner re-run them",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the failure and re-run behaviours to src/worker/enrich/enrich.test.ts and src/web/components/LinkCard.test.tsx and confirm they fail",
+        "On a failed automatic attempt (provider error, rate limit, refusal, 60-second timeout, invalid result) keep the fetched title and description, mark 'failed' with enrichment_reason, and send the message again with delaySeconds 600 when it was the first attempt",
+        "Implement POST /api/v1/links/{id}/enrich: 409 no_ai_key without a verified key, 409 nothing_to_enrich for a pending, unreachable or skipped link, else an immediate message outside the throttle and 202 {status: 'queued'}",
+        "Show 'enrichment failed' and a 're-run enrichment' action on the card",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Pause enrichment on a rejected key and report it once",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the rejection behaviours to src/worker/enrich/enrich.test.ts, src/web/pages/Settings.test.tsx and src/web/pages/Stream.test.tsx and confirm they fail",
+        "On a provider answer of 401, 402 or 403 mark the key 'rejected' with the provider's message and the link 'waiting_for_key', without counting an attempt or retrying",
+        "While the key is rejected, mark every link reaching enrichment 'waiting_for_key' without calling the provider",
+        "On saving a key that verifies, set the status 'verified', clear the message and lift the pause, leaving waiting links for 'enrich all'",
+        "Show 'your AI key was rejected: <provider message>' once at the top of the Settings page while the key is rejected"
+      ],
+      "touches": [
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/keys.ts",
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/pages/Stream.test.tsx"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Let the owner's edits win over automatic values",
+      "criteria": [
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the edit behaviours to src/worker/enrich/edits.test.ts and src/web/pages/LinkDetail.test.tsx and confirm they fail",
+        "Implement PATCH /api/v1/links/{id} for title, summary, tags and topic with the limits and 400 codes, refusing the whole request on any invalid field, and append each given field to edited_fields",
+        "Normalise edited tags and topics as provider names are and resolve them against the user's vocabulary",
+        "Make the enrichment worker skip edited summary, tags and topic, and the fetch worker skip an edited title, on every enrichment, re-run and refresh",
+        "Add in-place editing of the four fields to the detail page, sending only changed fields and marking edited ones",
+        "Document the route in the OpenAPI document and docs/api.md (package 04 adds the note field to the same route)"
+      ],
+      "touches": [
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/edits.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "e2e/fake-ai.ts",
+        "docs/api.md"
+      ]
+    }
+  ]
+}

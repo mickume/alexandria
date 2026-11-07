@@ -1,0 +1,703 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "03",
+  "spec_name": "ai_enrichment",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "The owner's AI provider and key",
+      "rationale": "Enrichment spends the owner's money and sends the owner's pages, so it runs only on a key they chose and entered.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a user requests PUT /api/v1/settings/ai with provider 'anthropic' or 'openrouter', a non-empty api_key and, for OpenRouter, a model, and the provider accepts a test request made with that key and model",
+          "action": "store the provider, the model (claude-opus-5-5 when an Anthropic model is not given) and the key encrypted, replacing any previous settings, and mark the key verified",
+          "contract": "HTTP 200 with body {configured: true, provider, model, key_last4, status: 'verified', rejected_message: null}",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the providers' endpoints answered by the fake AI provider of src/worker/test/ai.ts"
+            ],
+            "pseudocode": "in src/worker/enrich/keys.test.ts, a table over {anthropic, key 'sk-ant-abcd1234', no model: model 'claude-opus-5-5'; openrouter, key 'sk-or-wxyz', model 'meta/llama-4': that model}: r = api('PUT', '/api/v1/settings/ai', {body}); assert r.status == 200 and r.json == {configured: true, provider, model, key_last4: last 4 of the key, status: 'verified', rejected_message: null}; assert the fake provider received exactly one test request carrying the key and model"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "unwanted",
+          "condition": "the provider rejects the test request made with the submitted key",
+          "action": "refuse to store the key, keeping any previous settings unchanged",
+          "contract": "HTTP 400 with body {\"error\": \"key_rejected\", \"field\": \"api_key\", \"message\": <the provider's error message>}; GET /api/v1/settings/ai returns what it returned before",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts, a table over {no previous key; a previous verified key}: the fake provider answers 401 {error: {message: 'invalid x-api-key'}}; r = PUT a new key; assert 400, error 'key_rejected', field 'api_key', message 'invalid x-api-key'; assert GET settings equals its earlier body"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "PUT /api/v1/settings/ai names a provider other than 'anthropic' or 'openrouter', has an empty or missing api_key, names OpenRouter without a model, or has a model longer than 200 characters",
+          "action": "refuse the request without calling a provider and without storing anything",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_provider\" | \"invalid_key\" | \"model_required\" | \"invalid_model\", \"field\", \"message\"}; the fake provider received no request",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts, a table over {provider 'workers-ai': invalid_provider/provider; api_key '': invalid_key/api_key; no api_key: invalid_key/api_key; openrouter without model: model_required/model; model of 201 characters: invalid_model/model}: assert 400 with error and field; assert the fake provider's request log is empty and settings unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "the provider cannot be reached for the test request, answers with a 5xx status, or does not answer within 60 seconds",
+          "action": "refuse to store the key and say the provider is unavailable",
+          "contract": "HTTP 502 with body {\"error\": \"provider_unavailable\", \"message\": <text>}; settings unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts, a table over the fake provider {refusing connections; answering 529 overloaded; stalling past a 200 ms test timeout}: r = PUT; assert 502 and error 'provider_unavailable'; assert settings unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/settings/ai",
+          "action": "return the stored provider, model, the key's last 4 characters, the key's status with the provider's rejection message when rejected, and the number of the user's links waiting to be enriched",
+          "contract": "HTTP 200 with body {configured: true, provider, model, key_last4, status: 'verified' | 'rejected', rejected_message, unenriched_count} or {configured: false, unenriched_count}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts, a table over {no key and 2 links with enrichment_status 'no_key': {configured: false, unenriched_count: 2}; a verified key: configured true with key_last4; a key marked rejected with 'credit balance too low': status 'rejected' and that message}: assert GET /api/v1/settings/ai body"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "event_driven",
+          "condition": "a user requests DELETE /api/v1/settings/ai",
+          "action": "remove the stored provider, model and key, so that later links are not enriched",
+          "contract": "HTTP 204; GET /api/v1/settings/ai then returns configured false; a link fetched afterwards gets enrichment_status 'no_key'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts: save a key; assert DELETE answers 204; assert GET returns configured false and no ciphertext column is set; add a link and process its fetch; assert enrichment_status 'no_key' and the fake provider received no enrichment request"
+          }
+        },
+        {
+          "id": "REQ-1.7",
+          "pattern": "ubiquitous",
+          "action": "for any stored key, keep it only encrypted with AES-GCM under KEY_ENCRYPTION_KEY with the user's id bound as additional data, and never return the key, or any part of it beyond its last 4 characters, in any API response",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/keys.test.ts: save key 'sk-ant-secret-abcd1234'; assert no D1 value contains 'sk-ant-secret' or the whole key; assert decryptKey(ciphertext, iv, userId) == the key and decryptKey(ciphertext, iv, otherUserId) throws; and an afterAll hook over every response the shared api() helper recorded in the worker test run asserts that no body or header contains a saved test key"
+          }
+        },
+        {
+          "id": "REQ-1.8",
+          "pattern": "event_driven",
+          "condition": "the owner saves, replaces or removes the AI key on the settings page",
+          "system": "website",
+          "action": "offer the provider choice with Anthropic preselected, the key and model inputs, show 'key verified' on success, the provider's message on a rejection, the stored key only as its last 4 characters, and Replace and Remove actions",
+          "contract": "after a successful save the page reads 'key verified' and '…1234'; on key_rejected it shows the provider's message; the key input is empty after any save",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with a fake API: assert the provider select defaults to Anthropic and the model placeholder is 'claude-opus-5-5'; choose OpenRouter and assert the model input is required; save and assert 'key verified' and '…1234' and an empty key input; with the fake answering key_rejected assert its message is shown; click Remove and assert DELETE /api/v1/settings/ai"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Enriching a fetched link",
+      "rationale": "A summary, a few tags and one topic per link are what make a large library browsable at a glance.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a fetch or refresh makes a link 'active' with reader-view text or a title, and its user has a verified key",
+          "action": "send an enrichment message for the link from the fetch worker, then call the user's provider with the user's key and model and store the summary, tags, topic and enrichment time on the link",
+          "contract": "GET /api/v1/links/{id} returns enrichment_status 'enriched', summary, tags: [string] (3 to 8), topic: string and enriched_at",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: save a key; the fake origin serves an article; add the link; process its fetch message, then the recorded ENRICH_QUEUE message, with the fake provider answering {summary: 'A short summary.', tags: ['cloudflare', 'queues', 'workers'], topic: 'web development'}; assert the link's enrichment_status 'enriched' and the three fields"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "ubiquitous",
+          "action": "for any enrichment request, send the provider only the instructions, the link's title and host, the user's existing topic and tag names, and the first 20,000 characters of the reader-view text, or the title and description when the reader view is empty; never the raw HTML, cookies, or the user's email, name or id",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over {an article whose reader text is 30,000 characters: the request holds exactly its first 20,000; a page with an empty reader view: the request holds the title and description and no page text}: enrich; take the fake provider's captured request body; assert the text part; assert it contains none of the snapshot's '<html', the owner's email, name or user id, and no cookie header was sent"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "ubiquitous",
+          "action": "for any tag or topic name returned by the provider, reuse the user's existing tag or topic whose name is equal ignoring case with spaces read as hyphens, and create a new one only when none is, listing the user's 100 most used topics and 300 most used tags in the request",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table of (existing vocabulary, returned names, stored names, new rows): ({tag 'web-dev'}, ['Web Dev'], ['web-dev'], 0); ({topic 'Programming'}, topic 'programming', 'Programming', 0); ({}, ['rust'], ['rust'], 1); and with 400 existing tags assert the captured request lists exactly the 300 most used"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "for any provider result, lower-case the tags, turn spaces into hyphens, drop characters other than a-z, 0-9 and '-', drop empty and repeated tags, keep the first 8, and cut the summary to its first 60 words",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over normalizeResult inputs: tags ['Rust', 'rust', 'Web Assembly', 'C++', '', 'a', 'b', 'c', 'd', 'e', 'f'] -> ['rust', 'web-assembly', 'c', 'a', 'b', 'd', 'e', 'f']; a summary of 75 words -> its first 60 words; a summary of 60 words -> unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "a link is noted 'not a web page', 'no text in this PDF' or 'PDF too large to store (50 MB limit)'",
+          "action": "send no enrichment message and call no provider for it",
+          "contract": "the link's enrichment_status is 'skipped'; no ENRICH_QUEUE message and no provider request",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over the three notes, produced through the fake origin (an image, a scanned PDF, a 60 MB PDF), with a verified key: process the fetch; assert enrichment_status 'skipped', no recorded ENRICH_QUEUE message and an empty fake-provider log"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "ubiquitous",
+          "action": "for any user, call the provider only with that user's own key and model, and never with another user's key or a deployment-wide key",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: user A saves anthropic key kA, user B saves openrouter key kB with model mB; each adds a link; process all messages; assert the fake provider saw kA only on Anthropic requests for A's link and kB with mB only on OpenRouter requests for B's link"
+          }
+        },
+        {
+          "id": "REQ-2.7",
+          "pattern": "ubiquitous",
+          "action": "for any change of provider, model or key, leave the summary, tags and topic of already enriched links unchanged and send no enrichment for them",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: enrich a link; PUT a different provider and model; assert no ENRICH_QUEUE message was recorded and the link's summary, tags, topic and enriched_at are unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.8",
+          "pattern": "ubiquitous",
+          "action": "for either provider, ask for the result as structured data, a forced tool call through the Anthropic Messages API or a JSON-schema response format through OpenRouter's chat completions, and read summary, tags and topic from it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/providers.test.ts, a table over {anthropic: the fake answers a tool_use block with input {summary, tags, topic}; openrouter: the fake answers a message whose content is that JSON}: r = enrichWith(provider, key, model, request); assert r == {summary, tags, topic}; assert the captured request named the model and carried tool_choice for Anthropic or response_format json_schema for OpenRouter"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Working without a key",
+      "rationale": "The library must be fully usable before, and without, any AI provider.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "state_driven",
+          "condition": "a user has no stored AI key",
+          "system": "fetch worker",
+          "action": "fetch and snapshot the user's links as normal and mark each fetched link as not enriched for want of a key, without sending enrichment messages",
+          "contract": "the link is 'active' with its snapshot, enrichment_status 'no_key', no summary, tags or topic; no ENRICH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: with no key, add a link and process its fetch; assert state 'active', the snapshot present, enrichment_status 'no_key', summary null, tags [] and no recorded ENRICH_QUEUE message"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "state_driven",
+          "condition": "the owner has no stored key and at least one link with enrichment_status 'no_key'",
+          "system": "website",
+          "action": "show 'not enriched: add an AI key in settings' once as a banner above the stream, linking to the settings page, and nothing about it on the cards",
+          "contract": "exactly one banner with that text and a link to /settings; no card carries the text",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with a fake API, a table over {no key, unenriched_count 3: one banner; no key, unenriched_count 0: no banner; a verified key, unenriched_count 3: no banner}: renderPage('/'); assert the banner count and that no card contains 'add an AI key'"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "a user with a verified key requests POST /api/v1/links/enrich-unenriched",
+          "action": "schedule every one of the user's links whose enrichment_status is 'no_key', 'waiting_for_key' or 'failed' through the background throttle and mark them queued",
+          "contract": "HTTP 202 with body {queued: n}; each of the n links has enrichment_status 'queued' and one ENRICH_QUEUE message whose delay comes from the throttle",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: seed 25 links with 'no_key', 2 'failed', 1 'enriched' and 1 'skipped'; save a key; r = api('POST', '/api/v1/links/enrich-unenriched'); assert 202 {queued: 27}; assert 27 recorded messages with delaySeconds 0, 3, 6, ... 78 and the enriched and skipped links untouched"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/enrich-unenriched is requested by a user with no stored key or with a key marked rejected",
+          "action": "refuse the request and schedule nothing",
+          "contract": "HTTP 409 with body {\"error\": \"no_ai_key\", \"message\": \"add an AI key in settings\"}; no ENRICH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over {no key; a rejected key}: r = POST enrich-unenriched; assert 409 and the body; assert no recorded message"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "event_driven",
+          "condition": "the owner has a verified key and links waiting to be enriched",
+          "system": "website",
+          "action": "offer 'enrich all unenriched links' with their number on the settings page, and report how many were queued when chosen",
+          "contract": "a button 'Enrich all unenriched links (n)'; after the click the page reads 'queued n links'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with a fake API answering unenriched_count 27: assert the button text; click; assert one POST /api/v1/links/enrich-unenriched and 'queued 27 links'; with unenriched_count 0 assert no button"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "The background throttle",
+      "rationale": "A large import or an 'enrich all' must not flood the provider, the owner's bill or the origin sites.",
+      "system": "background throttle",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "ubiquitous",
+          "action": "for any job scheduled through the throttle for a user, give it a start time 3 seconds after that user's previous scheduled start, or the scheduling time when that slot has already passed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/throttle.test.ts: setNow(t); slots = scheduleThrottled(user, 600 jobs); assert slots[i] == t + 3 i seconds, so the last is t + 1797 s (under 30 minutes); setNow(t + 3 hours); assert the next scheduled slot == t + 3 hours"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "ubiquitous",
+          "action": "for any sequence of throttled scheduling calls for one user at any times, start at most 20 of the user's jobs in any 60-second window",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/enrich/throttle.test.ts: for random sequences of (time offset, batch size up to 200) calls: collect all slots; for every slot s assert count(slots in [s, s + 60 s)) <= 20 and every slot >= its call's time"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "ubiquitous",
+          "action": "for any two users, schedule their throttled jobs independently, so that one user's queued jobs never delay another user's",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/throttle.test.ts: schedule 600 jobs for A at t; schedule 1 job for B at t; assert B's slot == t"
+          }
+        },
+        {
+          "id": "REQ-4.4",
+          "pattern": "unwanted",
+          "condition": "a job's slot is more than 12 hours after the time its message is sent",
+          "action": "send the message with the queue's longest delay of 12 hours and, on its arrival before the slot, send it again for the time left instead of processing it",
+          "contract": "the first send carries delaySeconds 43200; a message arriving before its slot is re-sent with delaySeconds = slot - now and not processed; a message arriving at or after its slot is processed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/throttle.test.ts: give a job a slot t + 14 h; assert the recorded send has delaySeconds 43200; deliver it at t + 12 h; assert it is re-sent with delaySeconds 7200 and the provider was not called; deliver it at t + 14 h; assert it is processed"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Enrichment failures and re-runs",
+      "rationale": "Providers fail and models refuse; the link must stay useful and the owner must be able to try again.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "unwanted",
+          "condition": "the first automatic enrichment attempt of a link fails by a provider error other than a rejected key, a rate limit, a refusal, no answer within 60 seconds, or a result that is invalid after normalisation",
+          "action": "keep the link 'active' with its fetched title and description and no summary, tags or topic, mark it failed with the reason, and send the enrichment message again with a delay of 10 minutes",
+          "contract": "enrichment_status 'failed', enrichment_reason set, summary null, tags []; one ENRICH_QUEUE message re-sent with delaySeconds 600",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over the fake provider's answers {500; 429 with retry-after; a stop_reason 'refusal'; a stall past the test timeout; a result with 2 tags}: process the enrichment message; assert state 'active', the fetched title, enrichment_status 'failed', a reason, and one re-sent message with delaySeconds 600"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "unwanted",
+          "condition": "the automatic retry of a link's enrichment fails as well",
+          "action": "leave the link failed and send no further automatic retry",
+          "contract": "enrichment_status 'failed'; no ENRICH_QUEUE message sent",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts beside the test above: process the re-sent message with the fake still answering 500; assert enrichment_status 'failed' and no message recorded"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "a user with a verified key requests POST /api/v1/links/{id}/enrich for one of their links that has reader-view text or a title to enrich",
+          "action": "send an enrichment message for the link at once, outside the throttle, and mark it queued",
+          "contract": "HTTP 202 with body {status: 'queued'}; one ENRICH_QUEUE message with no delay; a later success stores the result as an automatic enrichment does",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: make a link 'failed'; the fake provider recovers; r = api('POST', '/api/v1/links/' + id + '/enrich'); assert 202 {status: 'queued'} and one message without delay; process it; assert enrichment_status 'enriched'"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/enrich is requested without a verified key, or for a link that is 'pending', 'unreachable' or 'skipped'",
+          "action": "refuse the request and send nothing",
+          "contract": "HTTP 409 with body {\"error\": \"no_ai_key\", \"message\": \"add an AI key in settings\"} without a verified key, or {\"error\": \"nothing_to_enrich\", \"message\": <text>} for such a link; no ENRICH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over {no key: no_ai_key; a 'pending' link: nothing_to_enrich; an 'unreachable' link: nothing_to_enrich; a 'skipped' PDF: nothing_to_enrich}: assert 409, the error code and no recorded message"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "event_driven",
+          "condition": "the stream or detail page shows a link whose enrichment_status is 'failed'",
+          "system": "website",
+          "action": "say 'enrichment failed' on its card with a 're-run enrichment' action that sends the enrich request",
+          "contract": "the card reads 'enrichment failed' and the action sends POST /api/v1/links/{id}/enrich, after which the card shows the queued state",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx with a fake API: render a failed link; assert 'enrichment failed' and the 're-run enrichment' action; click it; assert one POST .../enrich and a queued indicator"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "A key the provider starts rejecting",
+      "rationale": "A revoked or exhausted key must be reported once and stop the spending of failed requests, not fail every link one by one.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "unwanted",
+          "condition": "the provider answers an enrichment request with HTTP 401, 402 or 403",
+          "action": "mark the user's key rejected with the provider's message, pause the user's enrichment, and leave the link waiting for a key without counting a failed attempt or retrying",
+          "contract": "GET /api/v1/settings/ai returns status 'rejected' and rejected_message equal to the provider's message; the link's enrichment_status is 'waiting_for_key'; no ENRICH_QUEUE message is re-sent",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a table over the fake provider's {401 'invalid x-api-key'; 402 'insufficient credits'; 403 'permission denied'}: process an enrichment message; assert the settings status and message, the link's 'waiting_for_key' and no re-sent message"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "state_driven",
+          "condition": "the user's key is marked rejected",
+          "action": "mark every link of the user that reaches enrichment as waiting for a key without calling the provider",
+          "contract": "such links get enrichment_status 'waiting_for_key'; the fake provider receives no request",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: mark the key rejected; add two links and process their fetch and enrichment messages; assert both 'waiting_for_key' and an empty fake-provider log"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "the user saves a key that the provider accepts while the previous key is marked rejected",
+          "action": "replace the key and lift the pause, leaving the waiting links waiting until the owner chooses 'enrich all unenriched links'",
+          "contract": "GET /api/v1/settings/ai returns status 'verified' and rejected_message null; links added afterwards are enriched; waiting links keep 'waiting_for_key' and are counted in unenriched_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: with a rejected key and one waiting link, PUT a key the fake accepts; assert status 'verified'; add a new link and assert it ends 'enriched'; assert the waiting link is still 'waiting_for_key' and unenriched_count == 1"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "state_driven",
+          "condition": "the owner's key is marked rejected",
+          "system": "website",
+          "action": "show 'your AI key was rejected: <provider message>' once at the top of the settings page, beside the Replace and Remove actions, until the key is replaced or removed",
+          "contract": "the settings page shows the message exactly once; no card carries it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with a fake API answering status 'rejected' and 'insufficient credits': assert 'your AI key was rejected: insufficient credits' appears once; with status 'verified' assert it is absent; in src/web/pages/Stream.test.tsx assert no card shows it"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Manual edits win",
+      "rationale": "The owner's own words about a link are worth more than any model's, and must never be silently undone.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a user requests PATCH /api/v1/links/{id} for one of their links with any of title, summary, tags and topic, each valid",
+          "action": "store the given fields and record each of them as edited",
+          "contract": "HTTP 200 with body <link> carrying the new values and edited_fields listing the given fields together with those edited before",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/edits.test.ts: r = api('PATCH', '/api/v1/links/' + id, {body: {tags: ['Reading List', 'rust'], topic: 'Programming'}}); assert 200, tags == ['reading-list', 'rust'], topic 'Programming' and edited_fields == ['tags', 'topic']; PATCH {title: 'My title'}; assert edited_fields == ['tags', 'topic', 'title']"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "ubiquitous",
+          "action": "for any field a user has edited, leave it unchanged through every later automatic enrichment, re-run enrichment and refresh, while still updating the fields not edited",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/edits.test.ts, a table over edited field {title, summary, tags, topic} crossed with {automatic enrichment after a refresh, POST .../enrich}: edit the field; the fake origin and fake provider now answer different values; run the operation through its messages; assert the edited field keeps the owner's value and the other three fields took the new automatic values"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "PATCH /api/v1/links/{id} carries a title that is empty or longer than 500 characters, a summary longer than 2,000 characters, tags that are not a list of at most 20 names each non-empty after normalisation, or a topic that is empty or longer than 100 characters",
+          "action": "refuse the whole request and change nothing",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_title\" | \"invalid_summary\" | \"invalid_tags\" | \"invalid_topic\", \"field\", \"message\"}; the link and its edited_fields are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/edits.test.ts, a table over bodies {title '': invalid_title; title of 501 chars: invalid_title; summary of 2,001 chars: invalid_summary; tags 'rust': invalid_tags; 21 tags: invalid_tags; tags ['++']: invalid_tags; topic '': invalid_topic; topic of 101 chars: invalid_topic; {title: 'ok', topic: ''}: invalid_topic}: assert 400, error, field; assert the link unchanged"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "ubiquitous",
+          "action": "for any edited tag or topic name, normalise it as provider tags are normalised and reuse the user's existing tag or topic of the same name ignoring case, creating one only when none exists",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/edits.test.ts, a table of (existing vocabulary, edit, stored, new rows): ({tag 'web-dev'}, tags ['Web Dev'], ['web-dev'], 0); ({topic 'Programming'}, topic 'PROGRAMMING', 'Programming', 0); ({}, tags ['zig'], ['zig'], 1): PATCH; assert stored names and the count of new tag or topic rows"
+          }
+        },
+        {
+          "id": "REQ-7.5",
+          "pattern": "event_driven",
+          "condition": "the owner edits title, summary, tags or topic on a link's detail page",
+          "system": "website",
+          "action": "offer in-place editing of the four fields, send only the changed fields, show the saved values and mark edited fields as set by the owner",
+          "contract": "one PATCH /api/v1/links/{id} carrying only the changed fields; each edited field shows an 'edited' marker; a 400 shows its message beside the field",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/LinkDetail.test.tsx with a fake API: edit the topic and save; assert one PATCH with body {topic: 'Rust'} only; assert the topic shows 'Rust' with an 'edited' marker; with the fake answering 400 invalid_topic assert the message is shown beside the topic"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Showing summary, tags and topic",
+      "rationale": "Enrichment is only worth its cost if the owner sees it where they browse.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "a client reads a link through GET /api/v1/links, GET /api/v1/links/{id} or the change feed",
+          "system": "Alexandria API",
+          "action": "include the link's summary, tags, topic, enrichment status, enrichment reason and edited fields",
+          "contract": "every link object carries summary: string | null, tags: [string], topic: string | null, enrichment_status, enrichment_reason: string | null, edited_fields: [string]",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts: enrich a link; for each of GET /api/v1/links, GET /api/v1/links/{id} and GET /api/v1/links?changed_since=t0 assert the link object carries the six fields with the enriched values"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "event_driven",
+          "condition": "the stream shows an enriched link",
+          "action": "show its summary in two lines that expand on request, its tags and its topic",
+          "contract": "the card shows the summary clamped to two lines with a 'more' control that expands it, one chip per tag and the topic",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx: render a link with a 60-word summary, tags ['rust', 'wasm', 'performance'] and topic 'Programming'; assert the summary element is clamped to two lines, clicking 'more' removes the clamp, three tag chips and the topic are shown"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "state_driven",
+          "condition": "the stream page holds a card whose enrichment_status is 'queued', or whose link is pending with a verified key",
+          "action": "keep asking for changed links every 5 seconds, so that summary, tags and topic appear on the card without a reload",
+          "contract": "changed_since requests continue while such a card remains; the card shows the summary once the feed returns it; requests stop when none remains",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with fake timers: render an 'active' card with enrichment_status 'queued'; advance 5 s; assert one changed_since request; the fake returns it 'enriched' with a summary; assert the summary on the same card; advance 15 s; assert no further request"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner adds a key and a pasted link is enriched within a minute",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "chooses Anthropic on the settings page, enters an API key and saves"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "sends a test request with the key to the AI provider"
+        },
+        {
+          "actor": "AI provider",
+          "action": "accepts the test request"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the key encrypted and answers verified"
+        },
+        {
+          "actor": "website",
+          "action": "shows 'key verified' and the key's last 4 characters"
+        },
+        {
+          "actor": "owner",
+          "action": "pastes 'https://example.com/article?utm_source=x' and presses Enter"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the page, stores its snapshot and reader view, sets the link 'active' and sends an enrichment message"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "sends the reader text and the vocabulary to the AI provider with the owner's key and model"
+        },
+        {
+          "actor": "AI provider",
+          "action": "returns a summary, tags and a topic"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "normalises the result, reuses or creates tags and the topic, and stores them on the link"
+        },
+        {
+          "actor": "website",
+          "action": "shows the title, summary, tags and topic on the card without a reload"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "FETCH_QUEUE",
+          "fetch worker",
+          "ENRICH_QUEUE",
+          "enrichment worker",
+          "key encryption",
+          "R2 bucket SNAPSHOTS",
+          "D1 database",
+          "@anthropic-ai/sdk client"
+        ],
+        "setup": [
+          "wrangler dev with local bindings and KEY_ENCRYPTION_KEY set",
+          "ANTHROPIC_BASE_URL points at e2e/fake-ai.ts, which accepts the key 'sk-ant-test-1234' and answers enrichment with a fixed summary, tags and topic; ORIGIN_PROXY_URL points at e2e/fake-origin.ts playing https://example.com/article (the provider and the origin are the only stubbed parties besides e2e/fake-google.ts)",
+          "the owner signed in with no key"
+        ],
+        "end_state": [
+          "the settings page showed 'key verified' and '…1234'",
+          "within 60 seconds of Enter, without a reload, the card shows the fetched title, the fake's summary, its tags and its topic",
+          "the users row holds no plaintext key; the fake provider received the key only in its authentication header",
+          "the fake provider's enrichment request contained the article text and not the owner's email"
+        ],
+        "pseudocode": "in e2e/enrichment.spec.ts: sign in; on /settings choose Anthropic, enter 'sk-ant-test-1234', save; expect 'key verified' and '…1234'; on / paste the URL and press Enter; expect within 60 s the first card's summary, tags and topic to equal the fake's, with the navigation count unchanged; assert fakeAi.requests' body contains the article's first sentence and not 'owner@example.test'"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "Links added without a key are enriched after the owner adds one",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "pastes two URLs without having stored a key"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches and snapshots both and marks them not enriched for want of a key"
+        },
+        {
+          "actor": "website",
+          "action": "shows 'not enriched: add an AI key in settings' once above the stream"
+        },
+        {
+          "actor": "owner",
+          "action": "saves an OpenRouter key and model on the settings page and chooses 'Enrich all unenriched links (2)'"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "schedules both links through the background throttle and answers 'queued 2 links'"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "enriches each link with the owner's OpenRouter key and model when its slot comes"
+        },
+        {
+          "actor": "website",
+          "action": "drops the banner and shows summaries, tags and topics on both cards"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "fetch worker",
+          "background throttle",
+          "ENRICH_QUEUE",
+          "enrichment worker",
+          "D1 database",
+          "OpenRouter client"
+        ],
+        "setup": [
+          "wrangler dev with local bindings; OPENROUTER_BASE_URL points at e2e/fake-ai.ts; ORIGIN_PROXY_URL at e2e/fake-origin.ts serving two articles; the owner signed in with no key"
+        ],
+        "end_state": [
+          "before the key, both cards had titles and no summaries, and exactly one banner was shown",
+          "the settings page reported 'queued 2 links'",
+          "the second enrichment request reached the fake provider at least 3 seconds after the first",
+          "both cards show summaries, tags and topics and the banner is gone"
+        ],
+        "pseudocode": "in e2e/enrichment.spec.ts: sign in; paste two URLs; expect both cards 'active' and one banner; on /settings save an OpenRouter key with model 'test/model'; click 'Enrich all unenriched links (2)'; expect 'queued 2 links'; expect both cards' summaries within 60 s; assert fakeAi.requests timestamps differ by >= 3 s and the banner is absent"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "The owner's edits survive a refresh",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "edits an enriched link's tags and topic on its detail page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores them and records tags and topic as edited"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Refresh on the link"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the changed page, replaces the snapshot, keeps edited fields and sends an enrichment message"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "stores the new summary and leaves the edited tags and topic untouched"
+        },
+        {
+          "actor": "website",
+          "action": "shows the new summary with the owner's tags and topic"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "fetch worker",
+          "enrichment worker",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev with local bindings; e2e/fake-ai.ts and e2e/fake-origin.ts as above, both switched to new answers after the edit; a verified key and an enriched link"
+        ],
+        "end_state": [
+          "the link's tags and topic are the owner's values and edited_fields lists them",
+          "its summary is the fake provider's second summary",
+          "the card shows both"
+        ],
+        "pseudocode": "in e2e/enrichment.spec.ts: on the detail page set tags 'mine' and topic 'Mine'; switch the fakes to new answers; click Refresh; expect within 60 s the new summary while tags read 'mine' and topic 'Mine'; GET the link and assert edited_fields contains 'tags' and 'topic'"
+      }
+    }
+  ]
+}

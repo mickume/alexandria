@@ -1,0 +1,197 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "05",
+  "spec_name": "decay_and_liveness",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/decay src/web/pages/Archive.test.tsx src/web/pages/Settings.test.tsx src/web/components/LinkCard.test.tsx src/web/pages/LinkDetail.test.tsx src/web/pages/Stream.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "decays the links it stores, extends recordUse and the re-paste boost, and uses its link deletion, error envelope, cursors, OpenAPI document, Settings page, LinkCard and test helpers"
+    },
+    {
+      "spec": "02",
+      "reason": "sends liveness checks through its outbound request path and HOST_GATE, removes links with their snapshot objects, and relies on its Read view and e2e/fake-origin.ts"
+    },
+    {
+      "spec": "04",
+      "reason": "workspace membership exempts a link from archiving by decay"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Store per-user decay thresholds",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the threshold behaviours to src/worker/decay/decay.test.ts and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Create migrations/0005_decay_and_liveness.sql: users gain dormant_days (60), archive_days (120), remove_days (180) and last_decay_at; links gain archived_at, dead_since, liveness_failures (0), last_checked_at, last_check_result, check_enqueued_at and last_manual_check_at, with indexes for the decay and due-check selections",
+        "Implement GET and PUT /api/v1/settings/decay: integers from 7 to 3650 (400 invalid_threshold naming the field), dormant_days below archive_days (400 invalid_thresholds on dormant_days)",
+        "Add the decay section to the Settings page with the three fields, Save, and the API's message beside the named field",
+        "Document the routes in the OpenAPI document and docs/api.md, and the thresholds in docs/configuration.md as per-user settings"
+      ],
+      "touches": [
+        "migrations/0005_decay_and_liveness.sql",
+        "src/worker/decay/routes.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Settings.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Make unused links dormant, keep sticky ones, and say why",
+      "criteria": [
+        "REQ-2",
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the dormancy, stickiness and decay-note behaviours to src/worker/decay/decay.test.ts and src/web/components/LinkCard.test.tsx and confirm they fail",
+        "Write evaluateDecay(user, now) in src/worker/decay/decay.ts as set-based statements for one user; this task makes active, non-sticky links unused for dormant_days dormant and returns sticky dormant links to active",
+        "Compute stickiness from link_uses as at least 5 uses on at least 5 distinct UTC days",
+        "Extend recordUse and the re-paste boost in package 01's link store so that a dormant link becomes active in the request that boosts it",
+        "Add sticky, archived_at, removal_at, dead_since, last_checked_at, last_check_result and decay_note to every link response, decay_note following the sentences and the days-then-months wording of the criteria",
+        "Dim a dormant card with its 'unused for …' text and label a sticky card 'sticky'",
+        "Document the new link fields in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/decay/decay.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/links/use.ts",
+        "src/worker/links/store.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/styles.css",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Archive and remove links by decay from the hourly scheduled run",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the archiving, removal, race, failure and scheduling behaviours to src/worker/decay/decay.test.ts and confirm they fail",
+        "Extend evaluateDecay to archive links that are not archived, unused for archive_days, and neither sticky, pinned nor a workspace member, with conditions in the write itself so that a link boosted after selection is left alone",
+        "Remove archived links whose archived_at is remove_days old through the same deletion as DELETE /api/v1/links/{id}, so their snapshot objects, reader text, events and memberships go with them",
+        "Make one user's evaluation all-or-nothing and record last_decay_at only when it completes",
+        "Write src/worker/decay/cron.ts: the scheduled handler evaluates every user whose last_decay_at is null or 20 hours or more old, isolating each user's failure from the others, and wire it into src/worker/index.ts with the Cron Trigger '0 * * * *' in wrangler.jsonc",
+        "Describe the hourly run, its per-user isolation and the decay rules in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/decay/decay.ts",
+        "src/worker/decay/cron.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/links/store.ts",
+        "src/worker/index.ts",
+        "wrangler.jsonc",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Archive and restore by hand, and show the Archive page",
+      "criteria": [
+        "REQ-5.1",
+        "REQ-5.2",
+        "REQ-5.3",
+        "REQ-5.4",
+        "REQ-5.6"
+      ],
+      "steps": [
+        "Add the archive and restore behaviours to src/worker/decay/archive.test.ts, src/web/pages/Archive.test.tsx and src/web/pages/Stream.test.tsx and confirm they fail",
+        "Implement POST /api/v1/links/{id}/archive in src/worker/decay/archive.ts: archive whatever the exemptions, unpin and close the pin gap, keep memberships; an archived link answers 200 unchanged",
+        "Implement GET /api/v1/archive: archived links by archived_at descending with removal_at, cursor-paged",
+        "Implement POST /api/v1/links/{id}/restore: active, last_used_at now, archived_at null, use_count unchanged; 409 not_archived for a link that is not archived",
+        "Build the Archive page at /archive with 'removed on <date>', Restore, and Delete with the stream's undo toast, add Archive to the stream card, and add Archive to the navigation",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/decay/archive.ts",
+        "src/worker/decay/routes.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/Archive.tsx",
+        "src/web/pages/Archive.test.tsx",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/components/LinkCard.tsx",
+        "src/web/App.tsx",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Check kept links weekly and mark dead ones",
+      "criteria": [
+        "REQ-6",
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the scheduling and check behaviours to src/worker/decay/liveness.test.ts, with the fake origin of src/worker/test/origin.ts, and confirm they fail",
+        "Add the LIVENESS_QUEUE binding (producer and consumer) to wrangler.jsonc and the Env type",
+        "In the hourly run, enqueue every due link (not archived; active, dormant or pinned; 7 days since its last check or, never checked, since it was added; not enqueued in the last 6 hours) and record check_enqueued_at",
+        "Write checkLink in src/worker/decay/liveness.ts on package 02's request path in src/worker/fetcher/fetch.ts (redirects followed by hand with every target checked, the ORIGIN_PROXY_URL seam), extended to send HEAD and to stop after the headers, awaiting the host gate of src/worker/fetcher/hostgate.ts for every request: HEAD with a 10-second timeout and at most 5 redirects, then GET reading only the headers when HEAD fails, mapping the outcome to 'HTTP <status>', 'timed out', 'could not connect', 'blocked address' or 'too many redirects'",
+        "Write the queue consumer: drop messages for deleted, archived or no longer due links; on a pass reset the failures and clear dead_since; on an origin failure add one and set dead_since on the third; store last_checked_at and last_check_result",
+        "Let an error of Alexandria's own (gate unavailable, a store write failing) change nothing and leave the message to the queue's retry",
+        "Describe the liveness queue in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/decay/liveness.ts",
+        "src/worker/decay/cron.ts",
+        "src/worker/decay/liveness.test.ts",
+        "src/worker/index.ts",
+        "src/worker/env.ts",
+        "wrangler.jsonc",
+        "docs/architecture.md",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Check one link on demand and show dead links",
+      "criteria": [
+        "REQ-8",
+        "REQ-9",
+        "REQ-5.5"
+      ],
+      "steps": [
+        "Add the on-demand check, isolation and dead-card behaviours to src/worker/decay/liveness.test.ts, src/worker/decay/archive.test.ts, src/web/pages/LinkDetail.test.tsx and src/web/components/LinkCard.test.tsx and confirm they fail",
+        "Implement POST /api/v1/links/{id}/check with checkLink: a pass clears dead_since and the failures, a failure stores the result without counting; 429 checked_recently with Retry-After within 10 minutes of the link's last on-demand check; 409 link_archived for an archived link",
+        "Make the archive, restore and check routes answer another user's link with 404 not_found exactly as an unknown one, sending nothing to its URL",
+        "Add Check now with its result to the LinkDetail page, and strike through a dead card's title with 'dead since <date> (<result>)' while keeping Read and Snapshot",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/decay/liveness.ts",
+        "src/worker/decay/routes.ts",
+        "src/worker/decay/liveness.test.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/styles.css",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,719 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "02",
+  "spec_name": "fetch_and_snapshot",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Fetching a link's page",
+      "rationale": "Everything the library knows about a link beyond its URL comes from one courteous GET of its page.",
+      "system": "fetch worker",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a link is added by POST /api/v1/links or POST /api/v1/links/batch with the outcome 'added'",
+          "system": "Alexandria API",
+          "action": "send one fetch message {user_id, link_id} on FETCH_QUEUE for that link, and none for a boosted or refused URL",
+          "contract": "exactly one FETCH_QUEUE message per added link, sent before the add request is answered",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "FETCH_QUEUE observed through the test helpers' queue recorder"
+            ],
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: seed 'https://c.example'; api('POST', '/api/v1/links/batch', {body: {urls: ['https://a.example', 'https://b.example', 'https://c.example', 'nope']}}); assert the recorded messages == [{user_id, link_id: a}, {user_id, link_id: b}]; api('POST', '/api/v1/links', {body: {url: 'https://d.example'}}); assert one more message for d"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "the fetch worker receives a fetch message for an existing link",
+          "action": "send GET to the link's URL with 'Accept: text/html, application/pdf' and 'User-Agent: Alexandria/1.0 (+<PUBLIC_ORIGIN>/about/fetcher)', following at most 5 redirects and recording the URL of the last response as the final URL",
+          "contract": "fetchPage(url) returns {ok: true, finalUrl, status, contentType, body}; the origin receives the two headers on every request",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the Worker's outbound requests answered by the fake origin of src/worker/test/origin.ts"
+            ],
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {a page answering 200 directly; a chain of exactly 5 redirects ending in 200}: r = fetchPage(start); assert r.ok and r.finalUrl == the chain's last URL; assert every request the fake origin logged carried Accept 'text/html, application/pdf' and the User-Agent with PUBLIC_ORIGIN + '/about/fetcher'"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "a response redirects a sixth time, or redirects to a URL whose scheme is not http or https or whose host is localhost, a loopback, private or link-local address",
+          "action": "stop following without requesting the redirect target and report the fetch as failed",
+          "contract": "fetchPage returns {ok: false, reason: 'too many redirects'} or {ok: false, reason: 'blocked address'}; the fake origin logs no request to the refused target",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {a chain of 6 redirects: 'too many redirects'; Location 'http://127.0.0.1/admin': 'blocked address'; Location 'http://169.254.169.254/latest': 'blocked address'; Location 'file:///etc/passwd': 'blocked address'}: r = fetchPage(start); assert r == {ok: false, reason}; assert the refused target was never requested"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "the origin has not delivered the complete response within the fetch timeout of 15 seconds",
+          "action": "abort the request and report the fetch as failed",
+          "contract": "fetchPage returns {ok: false, reason: 'timed out'} no later than 1 second after the timeout",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: a fake origin route that sends headers and then stalls; r = fetchPage(url, {timeoutMs: 200}); assert r == {ok: false, reason: 'timed out'} and the elapsed time < 1200 ms; and fetchPage's default timeoutMs used by the queue consumer is 15000"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "ubiquitous",
+          "system": "host gate",
+          "action": "for any host, space every request Alexandria sends to that host at least 1 second apart, across all users, links, refreshes and background jobs, without delaying requests to other hosts",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the HOST_GATE Durable Object running in the Workers test runtime",
+              "the fake origin recording the arrival time of each request"
+            ],
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: two users each add 3 links on host same.example and 1 link on other.example; deliver all 8 fetch messages concurrently; assert the arrival times at same.example, sorted, differ by >= 1000 ms pairwise-adjacent; assert the other.example request arrived within 500 ms of delivery"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "ubiquitous",
+          "action": "for any fetch, request only the link's URL and the redirects it follows, never robots.txt, the favicon, or any page, image or feed the fetched page refers to",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: the fake origin serves an HTML page referring to /robots.txt, an icon, images, a stylesheet and links; process the link's fetch message; assert the fake origin's log is exactly [GET of the link's URL]"
+          }
+        },
+        {
+          "id": "REQ-1.7",
+          "pattern": "event_driven",
+          "condition": "anyone requests GET /about/fetcher, signed in or not",
+          "system": "Alexandria API",
+          "action": "serve a public page naming Alexandria's fetcher, saying that it fetches only pages its users add, at most once per second per host, and does not read robots.txt",
+          "contract": "HTTP 200 text/html without a session, whose text contains 'Alexandria' and '1 request per second'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: r = SELF.fetch('/about/fetcher', {redirect: 'manual'}) without cookies; assert r.status == 200 and content-type starts with 'text/html' and the body contains 'Alexandria' and '1 request per second'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Storing a fetched web page",
+      "rationale": "The first fetch turns a bare URL into a recognisable card and a copy that survives the site.",
+      "system": "fetch worker",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a fetch receives a 2xx response with content type text/html or application/xhtml+xml",
+          "action": "store the final URL, HTTP status, title, description, favicon URL, language and fetch time on the link, store the raw HTML as the snapshot and the reader view, and set the link's state to 'active'",
+          "contract": "GET /api/v1/links/{id} returns state 'active', final_url, http_status, title, description, favicon_url, language, fetched_at and content_kind 'html'; the R2 object u/{user_id}/l/{link_id}/snapshot holds the response body",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: the fake origin serves a fixture article at https://news.example/a after one redirect; add the link and process its message; l = api('GET', '/api/v1/links/' + id).json; assert l.state == 'active' and l.final_url == the redirect target and l.http_status == 200 and l.title == the fixture's <title> and l.content_kind == 'html'; assert SNAPSHOTS.get(prefix + 'snapshot') bytes == the fixture"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "ubiquitous",
+          "action": "for any fetched HTML, take the title from <title>, else og:title, else the host; the description from og:description, else meta description, else none; the favicon URL from the first link whose rel contains 'icon', resolved against the final URL, else the final URL's origin plus /favicon.ico; and the language from the html element's lang attribute, else none; with surrounding whitespace trimmed and inner runs of whitespace collapsed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/html.test.ts, a table of (html, finalUrl, expected metadata) covering: <title> present; empty <title> with og:title; neither (title == host); og:description over meta description; meta description only; no description (null); <link rel='shortcut icon' href='/i.png'> resolved to an absolute URL; no icon link (origin + '/favicon.ico'); <html lang='de'>; no lang (null); a title with newlines and double spaces: assert extractMetadata(html, finalUrl) == expected"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "an HTML response body is larger than 5 MB",
+          "action": "read only its first 5 MB, store and process them as the page, and note the link as truncated",
+          "contract": "the link is 'active' with notes containing 'truncated'; the snapshot object is exactly 5,242,880 bytes",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: the fake origin streams a 6 MB HTML page; process the fetch; assert state 'active', notes include 'truncated' and the snapshot object's size == 5242880"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "unwanted",
+          "condition": "a 2xx response has a content type that is neither HTML nor PDF",
+          "action": "set the link 'active' with the final URL's last path segment, else its host, as title, store no snapshot and no reader view, and note it as not a web page with its content type",
+          "contract": "the link is 'active' with content_kind 'other', title as stated and notes containing 'not a web page (<content type>)'; no R2 object exists under the link's prefix",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {https://img.example/photos/cat.png as image/png: title 'cat.png', note 'not a web page (image/png)'; https://api.example/ as application/json: title 'api.example', note 'not a web page (application/json)'}: process; assert state, content_kind, title, note; assert SNAPSHOTS.list(prefix) is empty"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "the link of a fetch message is deleted before or while the fetch worker processes it",
+          "action": "write nothing for it, remove any object already written under its prefix, and acknowledge the message",
+          "contract": "no links row and no R2 object for the link exist afterwards; the message is acknowledged and not retried",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {deleted before delivery; deleted while the fake origin holds the response}: process the message; assert no row for the id, SNAPSHOTS.list(prefix) empty and message.ack called once"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "unwanted",
+          "condition": "writing the snapshot to R2 or the link's row to D1 fails while a fetch result is stored",
+          "action": "leave the link as it was before the attempt, remove any object written by the attempt, and hand the message back to the queue for redelivery without counting a fetch attempt",
+          "contract": "the links row equals its state before the attempt (fetch_attempts unchanged); message.retry is called; no partial object remains",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {SNAPSHOTS.put throws; the D1 update throws}, injected through the store's test hooks: process; assert the link row is unchanged, message.retry called, SNAPSHOTS.list(prefix) empty"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Storing PDFs",
+      "rationale": "Papers and manuals arrive as PDFs, and the owner wants the whole file kept.",
+      "system": "fetch worker",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "a fetch receives a 2xx response with content type application/pdf, or a response for a URL whose path ends in '.pdf' whose body starts with '%PDF-'",
+          "action": "store the whole PDF as the snapshot, take the title from the PDF's Title metadata, else the last path segment, store the extracted text up to its first 500,000 characters as the reader-view text, and set the link 'active'",
+          "contract": "the link is 'active' with content_kind 'pdf' and the title as stated; the snapshot object holds the exact PDF bytes; GET /api/v1/links/{id}/reader returns the extracted text",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/pdf.test.ts, a table over {fixture paper.pdf with Title 'On Links' served as application/pdf: title 'On Links'; the same file without Title served as application/octet-stream at /docs/manual.pdf: title 'manual.pdf'}: process; assert state 'active', content_kind 'pdf', title, snapshot bytes == the fixture, and reader text starts with the fixture's first sentence"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "unwanted",
+          "condition": "a stored PDF yields no extractable text, or cannot be parsed",
+          "action": "keep the stored PDF, set the link 'active' with no reader-view text and note that the PDF has no text",
+          "contract": "the link is 'active' with notes containing 'no text in this PDF'; the snapshot object exists; GET /api/v1/links/{id}/reader returns {empty: true}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/pdf.test.ts, a table over {a scanned-image fixture with no text layer; a truncated, unparseable PDF}: process; assert state 'active', note 'no text in this PDF', snapshot present, reader.empty == true"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "a PDF response is larger than 50 MB, by its Content-Length or by the bytes read",
+          "action": "stop reading it, store nothing, and set the link 'active' with the last path segment as title and a note that the PDF is too large",
+          "contract": "the link is 'active' with content_kind 'pdf' and notes containing 'PDF too large to store (50 MB limit)'; no R2 object exists under the link's prefix; no more than 50 MB plus one read chunk was read",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/pdf.test.ts, a table over {Content-Length 60 MB; no Content-Length and a 60 MB streamed body}: process; assert state, note, SNAPSHOTS.list(prefix) empty, and the fake origin's bytes-sent counter <= 50 MB + 64 KB"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Fetch failures and retries",
+      "rationale": "Sites are down for a while all the time; the link must wait, retry and then say plainly why it failed, without becoming useless.",
+      "system": "fetch worker",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "unwanted",
+          "condition": "the first or second fetch attempt of a 'pending' link fails by DNS, connection, TLS, timeout, too many redirects, blocked address or an HTTP 4xx or 5xx status",
+          "action": "keep the link 'pending' with the failure's reason, count the attempt, record a failed fetch event, and send the fetch message again with a delay of 10 minutes after the first failure and 2 hours after the second",
+          "contract": "state 'pending', fetch_attempts 1 or 2, state_reason set; one FETCH_QUEUE message re-sent with delaySeconds 600 or 7200",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: the fake origin answers 503 for the link; process attempt 1; assert state 'pending', fetch_attempts 1, state_reason 'HTTP 503', a re-sent message with delaySeconds 600; process attempt 2; assert fetch_attempts 2 and delaySeconds 7200"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "unwanted",
+          "condition": "the third fetch attempt of a 'pending' link fails",
+          "action": "set the link 'unreachable' with the last failure's reason, keep its host as title, record a failed fetch event and send no further fetch message",
+          "contract": "state 'unreachable', state_reason the last reason, title the host; no FETCH_QUEUE message sent",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts beside the test above: process attempt 3 with the fake origin refusing connections; assert state 'unreachable', state_reason 'could not connect', title == host and no message sent"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "ubiquitous",
+          "action": "for any fetch failure, state its reason as 'host not found' for a DNS failure, 'could not connect' for a refused or reset connection, 'TLS error' for a certificate or handshake failure, 'timed out', 'too many redirects', 'blocked address', or 'HTTP <status>' for a 4xx or 5xx response",
+          "contract": "fetchPage returns {ok: false, reason: <the reason>}, and the same reason becomes the link's state_reason and the fetch event's reason",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table of (fake origin behaviour, reason): (unknown host, 'host not found'); (connection refused, 'could not connect'); (connection reset mid-response, 'could not connect'); (bad certificate, 'TLS error'); (stall past timeout, 'timed out'); (6 redirects, 'too many redirects'); (redirect to 10.0.0.1, 'blocked address'); (403, 'HTTP 403'); (500, 'HTTP 500'): assert fetchPage(url).reason == reason"
+          }
+        },
+        {
+          "id": "REQ-4.4",
+          "pattern": "ubiquitous",
+          "system": "Alexandria API",
+          "action": "for any 'unreachable' link, keep it in the stream and let the owner open, pin, unpin, refresh and delete it like any other link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: make a link 'unreachable' through three failed attempts; assert it is in GET /api/v1/links; a table over {open: 302, pin: 200, unpin: 200, refresh: 202, delete: 204}: assert each status"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Extracting the reader view",
+      "rationale": "Reading the stored article means its words without the site's chrome, and nothing from the stored page may run.",
+      "system": "reader",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "ubiquitous",
+          "action": "for any stored HTML page, produce the reader view with Readability over a DOM of the snapshot, keeping the article title, byline and body with headings, paragraphs, lists, code blocks, links and inline images, with every link and image address made absolute against the final URL, and nothing else",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/reader.test.ts, a table over fixtures {a blog article with nav, sidebar, comments and footer; a documentation page with <pre><code> blocks and nested lists; an article with relative <img src='img/a.png'> and <a href='/b'>}: r = extractReader(html, finalUrl); assert r.title and r.byline match the fixture; assert r.html contains the article's headings, list items and code blocks; assert nav, sidebar, comments and footer text are absent; assert the image src and link href are absolute URLs on the final URL's origin"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "for any HTML input, return reader HTML that contains no script, style, iframe, frame, form, input, button, object or embed element, no attribute whose name starts with 'on', and no URL with a scheme other than http, https or data:image",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/fetcher/reader.test.ts: for generated article pages into which random positions get <script>, <style>, <iframe>, <form><input>, <object>, <embed>, onclick/onerror/onload attributes and javascript: and vbscript: hrefs (in mixed case and with entity-encoded characters): out = extractReader(page, url).html; parse out; assert none of the elements, no on* attribute and no href or src outside the allowed schemes"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "unwanted",
+          "condition": "the reader extraction of a stored HTML page yields fewer than 200 characters of text",
+          "action": "store the reader view as empty, keeping the snapshot, so that Read offers the snapshot instead",
+          "contract": "GET /api/v1/links/{id}/reader returns {empty: true, html: null, text: ''}; the snapshot is still served",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/reader.test.ts, a table over {a page whose article text is 199 characters: empty; one with exactly 200: not empty; a page of only images: empty}: process the fetch; assert reader.empty as stated and GET snapshot answers 200"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "ubiquitous",
+          "action": "for any link, store at most the first 500,000 characters of its reader-view text, for web pages and PDFs alike",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/reader.test.ts, a table over {an HTML article of 600,000 characters of text; a PDF fixture whose text is 700,000 characters; an article of 1,000 characters}: process; assert the length of link_texts.text == min(length, 500000) and it equals the first characters of the extracted text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Serving Read and Snapshot",
+      "rationale": "The stored copy is the point of the library when the site is gone, and reading it is using the link.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id}/reader for one of their links that has a snapshot",
+          "action": "record a use through recordUse and return the stored reader view",
+          "contract": "HTTP 200 with body {content_kind: 'html' | 'pdf', title, byline, html: string | null, text: string, empty: boolean}; use_count is one higher and last_used_at is the request time",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts, a table over {a fetched article: html set, empty false; a fetched PDF: html null, text the extracted text}: setNow(t); r = api('GET', '/api/v1/links/' + id + '/reader'); assert r.status == 200 and the body shape; assert the link's use_count rose by 1 and last_used_at == t"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id}/snapshot for one of their links whose snapshot is HTML",
+          "action": "record a use and return the stored HTML with headers that disable its scripts and isolate it from the site",
+          "contract": "HTTP 200, Content-Type text/html; charset=utf-8, body equal to the stored snapshot, Content-Security-Policy \"sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:\", X-Content-Type-Options nosniff, Referrer-Policy no-referrer; use_count one higher",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts: r = api('GET', '/api/v1/links/' + id + '/snapshot'); assert r.status == 200, the body equals the stored bytes, and the three headers equal the stated values; assert use_count rose by 1"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id}/snapshot for one of their links whose snapshot is a PDF",
+          "action": "record a use and return the stored PDF for display inline, or as a download when the request carries download=1",
+          "contract": "HTTP 200, Content-Type application/pdf, the stored bytes, Content-Disposition 'inline; filename=\"<name>.pdf\"' or, with download=1, 'attachment; filename=\"<name>.pdf\"'; use_count one higher",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts, a table over {no query: inline; ?download=1: attachment}: r = get snapshot; assert content-type, disposition and bytes == the fixture; assert use_count rose by 1 per request"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/links/{id}/reader or /snapshot names one of the user's links that has no stored snapshot",
+          "action": "answer that there is nothing stored and record no use",
+          "contract": "HTTP 404 with body {\"error\": \"no_snapshot\", \"message\": \"no snapshot stored for this link\"}; use_count unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts, a table over links {'pending' never fetched; 'unreachable'; 'not a web page (image/png)'; 'PDF too large to store (50 MB limit)'} crossed with {reader, snapshot}: assert status 404 and body {error: 'no_snapshot', message: 'no snapshot stored for this link'}; assert use_count unchanged"
+          }
+        },
+        {
+          "id": "REQ-6.5",
+          "pattern": "ubiquitous",
+          "action": "for any Read or Snapshot request, serve only what is stored, sending no request to the link's origin",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts: fetch a link, then switch the fake origin to refuse every connection and clear its log; GET reader and snapshot; assert both answer 200 with the stored content and the fake origin's log is empty"
+          }
+        },
+        {
+          "id": "REQ-6.6",
+          "pattern": "ubiquitous",
+          "action": "for any Read, Snapshot or refresh request naming another user's link, answer exactly as for a link that does not exist and record no use",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the other user's use_count is unchanged and no fetch message is sent",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts, as user A for user B's fetched link L, a table over {GET reader, GET snapshot, GET snapshot?download=1, POST refresh}: assert 404 {error: 'not_found'}; assert L's use_count unchanged and no FETCH_QUEUE message"
+          }
+        },
+        {
+          "id": "REQ-6.7",
+          "pattern": "event_driven",
+          "condition": "a user deletes one of their links by DELETE /api/v1/links/{id}",
+          "action": "delete every stored object of the link, its reader-view text and its fetch events together with the link",
+          "contract": "HTTP 204; SNAPSHOTS.list('u/{user_id}/l/{link_id}/') is empty and no link_texts or link_events row remains for the link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/snapshots.test.ts, a table over {a fetched article; a fetched PDF}: api('DELETE', '/api/v1/links/' + id); assert 204; assert the R2 prefix is empty and the link_texts and link_events counts for the id are 0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Refreshing a link",
+      "rationale": "Pages change; the owner can take a new copy, but not hammer a site with it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/refresh for one of their links that has not been refreshed in the last 10 minutes",
+          "action": "send a refresh fetch message for it; when the fetch succeeds, replace the snapshot, reader view and fetched metadata, set the link 'active', clear its reason and notes, and record the new fetch time",
+          "contract": "HTTP 202 with body {status: 'queued'}; after the message is processed the link's fetched_at is the new fetch time and the snapshot holds the new body",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {an 'active' link whose page has changed; an 'unreachable' link whose site is back}: r = api('POST', '/api/v1/links/' + id + '/refresh'); assert 202 {status: 'queued'}; process the message; assert state 'active', state_reason null, fetched_at == now and the snapshot equals the new body"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "unwanted",
+          "condition": "a refresh of a link is requested less than 10 minutes after the previous refresh request of that link",
+          "action": "refuse it without sending a fetch message",
+          "contract": "HTTP 429 with body {\"error\": \"refreshed_recently\", \"message\": \"already refreshed recently\"} and Retry-After equal to the whole seconds left in the window; no FETCH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: refresh at t; setNow(t + 4 min); r = refresh; assert 429, the body, Retry-After == 360 and no new message; setNow(t + 10 min); assert refresh answers 202"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "the fetch of a refresh fails",
+          "action": "keep the link's previous state, snapshot, reader view and metadata, record a failed fetch event with the reason, and send no retry",
+          "contract": "the link's row and R2 objects equal their values before the refresh; one more fetch event {outcome: 'failed', reason}; no FETCH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: fetch an article; switch the fake origin to 500; refresh and process; assert state 'active', title and snapshot unchanged; history's newest event is {kind: 'fetch', outcome: 'failed', reason: 'HTTP 500'}; no message sent"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Refresh on a card or on a link's detail page",
+          "system": "website",
+          "action": "send the refresh request, show the card as refreshing, and show 'already refreshed recently' when the API answers refreshed_recently",
+          "contract": "one POST /api/v1/links/{id}/refresh per click; a 429 refreshed_recently shows 'already refreshed recently'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx with a fake API: click Refresh; assert one POST .../refresh and a refreshing indicator; with the fake answering 429 refreshed_recently assert 'already refreshed recently' is shown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Updating the stream in place",
+      "rationale": "A pasted link must turn into a real card while the owner watches, without a reload.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links with changed_since set to a time the API returned as server_time",
+          "action": "return every link of the user that is not archived and changed after that time, oldest change first, with the current server time for the next request",
+          "contract": "HTTP 200 with body {items: [link with updated_at], server_time}; a link whose fetch completed after changed_since is included with its new title and state; an unchanged link is not",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: add links a and b; r1 = api('GET', '/api/v1/links?changed_since=' + t0); process a's fetch; r2 = api('GET', '/api/v1/links?changed_since=' + r1.json.server_time); assert r2.json.items ids == [a] with state 'active' and the fetched title"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "unwanted",
+          "condition": "changed_since is not an ISO 8601 timestamp",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_changed_since\", \"field\": \"changed_since\", \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, a table over {'yesterday', '', '2026-13-40T00:00:00Z'}: assert 400 and error 'invalid_changed_since' and field 'changed_since'"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "state_driven",
+          "condition": "the stream page holds at least one card whose link is 'pending' or being refreshed",
+          "system": "website",
+          "action": "ask for the links changed since the last server time every 5 seconds and replace each changed card in place, without a reload and without moving the other cards, stopping when no such card remains",
+          "contract": "a GET /api/v1/links?changed_since=... every 5 s while a card is pending; the card's title, favicon, state and notes change in place; no request once nothing is pending",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with fake timers and a fake API: render a stream with one pending card among three; advance 5 s; assert one changed_since request; the fake returns the card as 'active' titled 'An Article'; assert the card shows 'An Article' at the same index and the others unchanged; advance 15 s; assert no further request"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "Showing fetch results",
+      "rationale": "The owner should always see what Alexandria knows about a link and why it is in the state it is in.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "event_driven",
+          "condition": "the fetch worker finishes a fetch attempt, first fetch or refresh, successful or not",
+          "system": "fetch worker",
+          "action": "record a fetch event with its time, outcome, HTTP status and reason, listed by GET /api/v1/links/{id}/history among the use events, newest first",
+          "contract": "history items include {kind: 'fetch', at, outcome: 'ok' | 'failed', http_status: number | null, reason: string | null}, ordered with the {kind: 'use', at} items by time descending",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts: a first attempt fails with 503 at t1, the second succeeds at t2, the owner opens the link at t3; r = api('GET', '/api/v1/links/' + id + '/history'); assert items == [{kind: 'use', at: t3}, {kind: 'fetch', at: t2, outcome: 'ok', http_status: 200, reason: null}, {kind: 'fetch', at: t1, outcome: 'failed', http_status: 503, reason: 'HTTP 503'}]"
+          }
+        },
+        {
+          "id": "REQ-9.2",
+          "pattern": "event_driven",
+          "condition": "the stream shows a card",
+          "action": "show the fetched title and favicon, the state with its reason when 'unreachable', each note ('truncated', 'not a web page (<type>)', 'no text in this PDF', 'PDF too large to store (50 MB limit)'), and the Read and Snapshot actions only for a link with a stored snapshot",
+          "contract": "an 'unreachable' card reads 'unreachable: timed out'; a card without a snapshot has no Read or Snapshot action",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, a table over links {active article with favicon: Read and Snapshot shown; unreachable 'timed out': 'unreachable: timed out', no Read; active with note 'not a web page (image/png)': the note, no Read; active PDF with 'no text in this PDF': the note, Snapshot shown}: render; assert the texts and actions"
+          }
+        },
+        {
+          "id": "REQ-9.3",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Read",
+          "action": "show the reader view's title, byline and body, sanitised again in the browser before display; for an empty reader view show 'no readable content extracted' with a link to the snapshot; for a PDF show its extracted text as paragraphs",
+          "contract": "the Read page shows the stored article, or the message and a Snapshot action",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Read.test.tsx with a fake API, a table over {html reader view: title, byline and body headings shown; empty reader view: 'no readable content extracted' and a Snapshot link; PDF text: one paragraph per blank-line-separated block}: renderPage('/links/' + id + '/read'); assert the content; and a reader html carrying <img onerror> renders without the attribute"
+          }
+        },
+        {
+          "id": "REQ-9.4",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Snapshot",
+          "action": "show an HTML snapshot in a frame with the sandbox attribute and no allowances, and a PDF snapshot in the browser's PDF viewer with a Download action pointing at the download address",
+          "contract": "HTML: an iframe with sandbox=\"\" and src /api/v1/links/{id}/snapshot; PDF: an embedded viewer with that src and a link to /api/v1/links/{id}/snapshot?download=1",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Read.test.tsx, a table over {content_kind html; content_kind pdf}: renderPage('/links/' + id + '/snapshot'); assert the iframe's sandbox attribute is present and empty and its src; for the PDF assert the Download link href ends in '?download=1'"
+          }
+        },
+        {
+          "id": "REQ-9.5",
+          "pattern": "event_driven",
+          "condition": "the owner opens a link's detail page",
+          "action": "show the final URL, HTTP status, last fetch time, state with its reason, notes, and the history with each fetch's outcome and reason beside the uses",
+          "contract": "the detail page shows 'fetched <date>', 'HTTP 200' and one history row per event, a failed fetch reading 'fetch failed: HTTP 503'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/LinkDetail.test.tsx with a fake API returning the three-event history of the fetch-event test: renderPage('/links/' + id); assert the final URL, 'HTTP 200', the fetch date and rows 'opened', 'fetched', 'fetch failed: HTTP 503' in that order"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "A pasted article is fetched, shown in place and read",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "pastes the URL of a reachable article into the add input and presses Enter"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the link as 'pending' and sends a fetch message on FETCH_QUEUE"
+        },
+        {
+          "actor": "website",
+          "action": "shows the card at the top with the host as title and a pending indicator, and starts polling for changes"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "waits for the host gate, fetches the page, stores the metadata, the snapshot in R2 and the reader view, and sets the link 'active'"
+        },
+        {
+          "actor": "website",
+          "action": "receives the changed link and shows the article's title and favicon on the same card without a reload"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Read on the card"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "records a use and returns the stored reader view"
+        },
+        {
+          "actor": "website",
+          "action": "shows the article's title, byline and body"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "FETCH_QUEUE",
+          "fetch worker",
+          "HOST_GATE",
+          "R2 bucket SNAPSHOTS",
+          "D1 database",
+          "Readability extraction"
+        ],
+        "setup": [
+          "wrangler dev with local D1, R2, Queues and Durable Objects",
+          "ORIGIN_PROXY_URL points at e2e/fake-origin.ts, which plays https://news.example/article with a fixture article (the origin site is the only stubbed party besides e2e/fake-google.ts)",
+          "the owner signed in"
+        ],
+        "end_state": [
+          "the card shows the fixture's title within 60 seconds of Enter, with no page reload",
+          "the R2 object u/{user_id}/l/{link_id}/snapshot holds the fixture HTML and link_texts holds its text",
+          "the Read page shows the fixture's headline and first paragraph",
+          "the link's use_count is 1 and its history lists one fetch and one use"
+        ],
+        "pseudocode": "in e2e/fetch.spec.ts: sign in; paste 'https://news.example/article' and press Enter; record the page's navigation count; expect the first card's title to become 'An Article' within 60 s and the navigation count unchanged; click Read; expect the headline and first paragraph; request GET /api/v1/links/{id} and /history and assert use_count 1 and the two events"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "A stored page is read after its site goes offline",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds the URL of a reachable article"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches it and stores the snapshot and reader view"
+        },
+        {
+          "actor": "origin site",
+          "action": "goes offline and refuses every connection"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Snapshot on the card"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "serves the stored HTML under the sandbox policy without contacting the origin"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Read on the card"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "serves the stored reader view"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "fetch worker",
+          "R2 bucket SNAPSHOTS",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev with local bindings; e2e/fake-origin.ts plays the article and can be switched to refuse connections; the owner signed in"
+        ],
+        "end_state": [
+          "the Snapshot frame shows the stored page's headline while the fake origin refuses connections",
+          "the Read page shows the stored article",
+          "the fake origin logged no request after it went offline",
+          "the link's use_count is 2"
+        ],
+        "pseudocode": "in e2e/fetch.spec.ts: add the article and wait for 'active'; fakeOrigin.goOffline(); click Snapshot; expect the sandboxed frame to contain the headline; click Read; expect the article text; assert fakeOrigin.requestsSince(offline) == 0 and use_count == 2"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "A pasted PDF is stored whole and read",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "pastes the URL of a PDF"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the link as 'pending' and sends a fetch message"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the PDF, stores the whole file, extracts its title and text, and sets the link 'active'"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Snapshot and sees the PDF in the browser's viewer with a Download action"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "serves the stored PDF inline, and as an attachment for Download"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Read and sees the PDF's text"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "FETCH_QUEUE",
+          "fetch worker",
+          "PDF text extraction",
+          "R2 bucket SNAPSHOTS",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev with local bindings; e2e/fake-origin.ts serves https://papers.example/on-links.pdf, a fixture PDF titled 'On Links'; the owner signed in"
+        ],
+        "end_state": [
+          "the card's title is 'On Links'",
+          "the snapshot response is application/pdf with the fixture's exact bytes, inline; the Download response is an attachment",
+          "the Read page shows the fixture's first sentence"
+        ],
+        "pseudocode": "in e2e/fetch.spec.ts: paste the PDF URL; expect the card title 'On Links' within 60 s; click Snapshot; expect an embedded viewer whose src answers application/pdf with the fixture bytes; follow Download and expect Content-Disposition attachment; click Read and expect the first sentence"
+      }
+    }
+  ]
+}

@@ -1,0 +1,568 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "05",
+  "spec_name": "decay_and_liveness",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Decay thresholds as per-user settings",
+      "rationale": "How fast a library forgets is the owner's choice, within bounds that keep the rules meaningful.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/settings/decay",
+          "action": "return the user's three decay thresholds in days, the defaults being 60 for dormant, 120 for archive and 180 for removal after archiving",
+          "contract": "HTTP 200 with body {dormant_days, archive_days, remove_days}; {60, 120, 180} for a user who never changed them",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: r = api('GET', '/api/v1/settings/decay', {as: signIn('owner@example.test')}); assert r.status == 200 and r.json == {dormant_days: 60, archive_days: 120, remove_days: 180}"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "a user requests PUT /api/v1/settings/decay with three integers from 7 to 3650 where dormant_days is less than archive_days",
+          "action": "store the thresholds, so that every later decay evaluation of that user applies them",
+          "contract": "HTTP 200 with body {dormant_days, archive_days, remove_days} equal to the request",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: PUT {dormant_days: 7, archive_days: 14, remove_days: 7}; assert 200 and GET returns the same; seed links unused 8 and 15 days and an archived link archived 8 days ago; evaluateDecay(user); assert states dormant, archived, and the old archived link removed; assert another user's thresholds are still the defaults; and the bounds 7 and 3650 are accepted"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "PUT /api/v1/settings/decay carries a threshold that is missing, not an integer, below 7 or above 3650, or a dormant_days that is not less than archive_days",
+          "action": "refuse the request and keep the stored thresholds",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_threshold\", \"field\": <the threshold's name>, \"message\": <text>} for a bad value, or {\"error\": \"invalid_thresholds\", \"field\": \"dormant_days\", \"message\": \"the dormant threshold must be below the archive threshold\"}; GET answers the previous values",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over bodies {remove_days absent: invalid_threshold remove_days; dormant_days 6: invalid_threshold dormant_days; archive_days 3651: invalid_threshold archive_days; remove_days 7.5: invalid_threshold remove_days; dormant_days '60': invalid_threshold dormant_days; dormant_days 120 with archive_days 120: invalid_thresholds dormant_days}: assert status 400, error and field; assert GET still returns the previous values"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "the owner opens the decay section of the settings page and saves new thresholds",
+          "system": "website",
+          "action": "show the three thresholds in days with their meaning, send them with PUT /api/v1/settings/decay, and show the API's message next to the field it names when the save is refused",
+          "contract": "the fields show the stored values; Save sends PUT with the three integers; a 400 shows its message beside the named field and keeps the typed values",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with a fake API: renderPage('/settings'); assert fields 'Dormant after (days)' 60, 'Archive after (days)' 120, 'Remove after archiving (days)' 180; change to 30, 90, 30 and Save; assert one PUT with those integers; with the fake API answering 400 invalid_thresholds assert the message beside the dormant field and the typed values kept"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Dormancy and stickiness",
+      "rationale": "A link the owner stopped using should fade before it goes, and a link the owner keeps coming back to should never fade.",
+      "system": "decay evaluation",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "the decay evaluation runs for a user and finds an active link that is not sticky and was last used at least dormant_days ago",
+          "action": "set the link's state to dormant, whether or not it is pinned or in a workspace",
+          "contract": "the link's state is 'dormant' and it is still listed by GET /api/v1/links in its last-used place",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over (link, days unused, expected state): (active, 59, active); (active, 60, dormant); (active pinned, 61, dormant); (active in a workspace, 200, dormant); (pending, 61, pending); (unreachable, 61, unreachable); (sticky active, 100, active): setNow(t); seed with last_used_at = t - days; evaluateDecay(user); assert the state; assert dormant links are still in GET /api/v1/links"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "a dormant link is boosted by a use (open, read or snapshot view), by being added again or by any other boost",
+          "system": "Alexandria API",
+          "action": "set its state to active in the same request that boosts it",
+          "contract": "the boosting request's response and every later read show state 'active'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over boosts {GET /api/v1/links/{id}/open, POST /api/v1/links with the same URL, POST /api/v1/links/batch with the same URL}: seed a dormant link; perform the boost; assert GET /api/v1/links/{id}.state == 'active' without running the evaluation"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "ubiquitous",
+          "action": "for any link, treat it as sticky exactly when its stored uses number at least 5 and fall on at least 5 distinct UTC calendar days, and never make a sticky link dormant or archive it by decay, returning a sticky dormant link to active at the next evaluation",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table of (use times, sticky?): (5 uses on 5 days, yes); (10 uses on 4 days, no); (4 uses on 4 days, no); (5 uses at 23:59 and 00:01 UTC across 5 midnights spanning 5 days, yes): seed the uses through recordUse with setNow, then age the link 400 days; evaluateDecay(user); assert sticky in GET /api/v1/links/{id} and the state is active when sticky and archived when not; and a sticky link stored as dormant becomes active after evaluateDecay"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Archiving and removal by decay",
+      "rationale": "Links nobody uses must leave the stream and, unless rescued, the library, without ever taking one the owner chose to keep.",
+      "system": "decay evaluation",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "the decay evaluation runs for a user and finds a link that is not archived, was last used at least archive_days ago, and is neither sticky, pinned nor a member of any workspace",
+          "action": "archive the link, setting archived_at to the evaluation time, so that it leaves the stream and keeps its snapshot",
+          "contract": "the link's state is 'archived', archived_at equals the evaluation time and removal_at equals archived_at plus remove_days; GET /api/v1/links no longer lists it and GET /api/v1/archive does; its snapshot is still served",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over (link, days unused, expected): (active, 120, archived); (dormant, 130, archived); (unreachable, 125, archived); (pending, 119, pending); (pinned dormant, 400, dormant); (dormant in a workspace, 400, dormant); (sticky, 400, active); (active with dead_since set, 120, archived); (active with dead_since set, 30, active): setNow(t); evaluateDecay(user); assert state, archived_at and removal_at; assert membership in the stream and the archive list"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "event_driven",
+          "condition": "the decay evaluation runs for a user and finds an archived link whose archived_at is at least remove_days before the evaluation time",
+          "action": "remove the link permanently, exactly as DELETE /api/v1/links/{id} deletes one, its snapshot objects, reader text, use and fetch events and workspace memberships included",
+          "contract": "GET /api/v1/links/{id} answers 404; no R2 object remains under u/{user_id}/l/{link_id}/; no row of the link remains in any table; an archived link 1 day short of the threshold is still listed by GET /api/v1/archive",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: seed two archived links with snapshot objects in SNAPSHOTS, archived remove_days and remove_days - 1 days ago; evaluateDecay(user); assert the first answers 404, env.SNAPSHOTS.list({prefix: 'u/' + user + '/l/' + id + '/'}) is empty and no table holds its id; assert the second is still archived with its snapshot"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "ubiquitous",
+          "action": "for any link and any thresholds, leave after one evaluation exactly the state the decay rules give for its state, days since last use, days since archiving, stickiness, pin and workspace membership, whatever its dead mark",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/decay/decay.test.ts: for generated links over state {pending, active, unreachable, dormant, archived}, days unused 0..1000, days archived 0..400, sticky, pinned, member and dead each true or false, and thresholds with 7 <= dormant < archive <= 3650 and remove in 7..3650: seed, evaluateDecay(user) at a fixed time; assert the result equals a reference function of the rule table (removed, archived, dormant, active, or unchanged pending/unreachable); assert running evaluateDecay a second time changes nothing"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "a link is used, restored or added again after the decay evaluation selected it and before the evaluation writes",
+          "action": "leave the link as the boost left it, archiving or removing only links whose last use and archive date still meet the thresholds at the moment of the write",
+          "contract": "the boosted link's state is 'active' with the boost's last_used_at; it is listed by GET /api/v1/links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: seed a link unused 130 days; run evaluateDecay with a test hook that opens the link through GET /api/v1/links/{id}/open after selection and before the write; assert the link is active, in the stream, and archived_at is null"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "unwanted",
+          "condition": "the decay evaluation of one user fails before it completes",
+          "action": "leave every link of that user exactly as it was before the evaluation, carry on with the other users, and evaluate the failing user again at the next hourly run",
+          "contract": "no link of the failing user changed; the other users' due links are evaluated in the same run; the failing user's last completed evaluation time is unchanged, so the next run selects the user again",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: users A and B each with a link unused 130 days; make A's evaluation throw after its selection through a test hook; runScheduled(t); assert A's link unchanged and B's archived; remove the hook; runScheduled(t + 1 hour); assert A's link archived"
+          }
+        },
+        {
+          "id": "REQ-3.6",
+          "pattern": "event_driven",
+          "condition": "the hourly scheduled run starts",
+          "system": "scheduler",
+          "action": "evaluate decay, removal included, for every user whose last completed evaluation started 20 hours or more ago or who was never evaluated, and for no other user",
+          "contract": "after the run, those users' last completed evaluation time equals the run's start time; the others' is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: users evaluated 19 h ago, 20 h ago and never, each with a link unused 130 days; runScheduled(t) through the Worker's scheduled handler; assert the 19 h user's link is unchanged and the other two are archived; assert their last evaluation times == t"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Why a link is in its state",
+      "rationale": "Decay is only trustworthy if the owner can always see which state a link is in and why.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "ubiquitous",
+          "action": "for any link in any response, carry sticky, archived_at, removal_at, dead_since, last_checked_at, last_check_result and decay_note, one sentence stating the link's decay state and its reason",
+          "contract": "decay_note is 'unused for N days' below 60 days unused and 'unused for N months' (N = whole 30-day months) from 60 days; 'sticky: U uses on D days, never archived'; 'pinned: never archived, unused for …'; 'in a workspace: never archived, unused for …'; 'archived on YYYY-MM-DD, removed on YYYY-MM-DD'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table of (link, decay_note): (unused 3 days, 'unused for 3 days'); (dormant, unused 63 days, 'unused for 2 months'); (sticky with 7 uses on 6 days, 'sticky: 7 uses on 6 days, never archived'); (pinned, unused 90 days, 'pinned: never archived, unused for 3 months'); (member, unused 10 days, 'in a workspace: never archived, unused for 10 days'); (archived 2027-03-01 with remove_days 180, 'archived on 2027-03-01, removed on 2027-08-28'): assert GET /api/v1/links/{id}.decay_note and that the stream items carry the same fields"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "the website shows a card for a dormant or sticky link",
+          "system": "website",
+          "action": "show a dormant link's card dimmed with its 'unused for …' text, and mark a sticky link's card as sticky",
+          "contract": "a dormant card has the dimmed style and the text from decay_note; a sticky card shows the label 'sticky'; an active, non-sticky card has neither",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, a table over links {dormant with decay_note 'unused for 2 months': dimmed and the text; sticky: label 'sticky'; active: neither}: render <LinkCard link />; assert the class or style and texts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Manual archive, the archive list and restore",
+      "rationale": "The owner can always put a link away or bring one back, whatever decay would do.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/archive for one of their links",
+          "action": "archive the link whatever its stickiness, pin or workspace membership, setting archived_at to now, unpinning it and closing the gap in the pin positions, and keeping its workspace memberships; an already archived link is left unchanged",
+          "contract": "HTTP 200 with body <link> whose state is 'archived', pinned false and removal_at equal to archived_at plus remove_days; GET /api/v1/links no longer lists it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: a sticky link pinned at 1 of [x, y] and in a workspace; r = POST archive; assert 200, state 'archived', pinned false; assert y now has pin_position 1; assert it is still a workspace member and absent from the stream; POST archive again and assert 200 with the same archived_at"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/archive",
+          "action": "list the user's archived links, most recently archived first, each with its removal date, at most 100 per page with the shared cursor",
+          "contract": "HTTP 200 with body {items: [link with archived_at and removal_at], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: archive a at t1, b at t3, c at t2, plus another user's archived link; r = GET /api/v1/archive; assert ids == [b, c, a] each with removal_at == archived_at + remove_days; seed 120 archived links and assert pages of 100 and 23 through the cursor"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/restore for one of their archived links",
+          "action": "make the link active with last used set to now and no archive date, leaving its use count unchanged, so that it is at the top of the stream after the pinned links",
+          "contract": "HTTP 200 with body <link> whose state is 'active', archived_at null and last_used_at equal to the request time; GET /api/v1/links lists it first after the pinned links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: archive a link with use_count 3, pin another; setNow(t); r = POST restore; assert 200, state 'active', archived_at null, last_used_at t, use_count 3; assert the stream is [pinned, restored, ...]; assert the archive list no longer has it"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/restore names a link of the user that is not archived",
+          "action": "refuse the request and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"not_archived\", \"message\": \"this link is not archived\"}; the link's state and last_used_at are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over states {active, dormant, pending}: r = POST restore; assert 409 and the body; assert state and last_used_at unchanged"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "ubiquitous",
+          "action": "for any archive, restore or check request that names a link by id, act only on the authenticated user's links, answering another user's link exactly as one that does not exist",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the other user's link is unchanged and no request is sent to its URL",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over {POST archive, POST restore, POST check} on user B's link as user A: assert 404 {error: 'not_found'} identical to an unknown id; assert B's link unchanged and the fake origin of src/worker/test/origin.ts logged no request"
+          }
+        },
+        {
+          "id": "REQ-5.6",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Archive page or chooses Archive on a card",
+          "system": "website",
+          "action": "list the archived links most recently archived first with 'removed on <date>' and the actions Restore and Delete, Delete following the stream's undo toast; Archive on a card removes the card from the stream",
+          "contract": "Restore sends POST /api/v1/links/{id}/restore and removes the row; Delete hides the row and sends DELETE /api/v1/links/{id} after the 10-second undo window; Archive on a stream card sends POST /api/v1/links/{id}/archive and removes the card",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx with a fake API and fake timers: renderPage('/archive'); assert rows in order with 'removed on 2027-08-28'; click Restore and assert the POST and the row gone; click Delete, advance 10 s and assert one DELETE; in src/web/pages/Stream.test.tsx click Archive on a card and assert the POST and the card gone"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Scheduling weekly liveness checks",
+      "rationale": "Every kept link is checked weekly, and nothing else is checked at all.",
+      "system": "scheduler",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the hourly scheduled run starts",
+          "action": "enqueue one liveness check on LIVENESS_QUEUE for every link that is not archived, is active or dormant or pinned, was last checked 7 days ago or more (or, never checked, was added 7 days ago or more), and had no check enqueued in the last 6 hours, recording the enqueue time",
+          "contract": "one queue message {user_id, link_id} per due link; the link's check_enqueued_at equals the run's time; no message for any other link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, a table over (link, enqueued?): (active, checked 7 days ago, yes); (dormant, checked 8 days ago, yes); (pinned unreachable, checked 10 days ago, yes); (active, checked 6 days ago, no); (active never checked, added 7 days ago, yes); (active never checked, added 2 days ago, no); (archived, checked 30 days ago, no); (pending, added 30 days ago, no); (unreachable unpinned, no); (active due but enqueued 5 hours ago, no); (active due, enqueued 7 hours ago, yes): runScheduled(t) with a recording LIVENESS_QUEUE; assert the messages"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "a liveness message names a link that has since been deleted or archived, or that is no longer due",
+          "system": "liveness check",
+          "action": "drop the message without sending any request and without changing any row",
+          "contract": "the message is acknowledged; the fake origin of src/worker/test/origin.ts logs no request; the link's fields are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, a table over {deleted link, archived link, link checked 1 hour ago}: deliver the message to the queue handler; assert it is acked, no outbound request was made and no row changed"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Performing a liveness check and marking dead links",
+      "rationale": "Only the origin's own answer may count against a link, and only three weeks of silence make it dead.",
+      "system": "liveness check",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a liveness check of a link is performed",
+          "action": "send a HEAD request to the link's URL through package 02's outbound request path and per-host gate, with a 10-second timeout and at most 5 redirects, and when the HEAD fails in any way send a GET the same way, reading no more than its headers; the check passes when the last request's final status is 2xx",
+          "contract": "the outcome is {passed: boolean, result: 'HTTP <status>' | 'timed out' | 'could not connect' | 'blocked address' | 'too many redirects'}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts with the fake origin of src/worker/test/origin.ts, a table of (origin behaviour, requests sent, outcome): (HEAD 200, [HEAD], passed 'HTTP 200'); (HEAD 301 to a 200, [HEAD, HEAD], passed 'HTTP 200'); (HEAD 405 then GET 200, [HEAD, GET], passed 'HTTP 200'); (HEAD 404 then GET 404, [HEAD, GET], failed 'HTTP 404'); (no answer for 10 s on both, [HEAD, GET], failed 'timed out'); (connection refused, [HEAD, GET], failed 'could not connect'); (6 redirects, failed 'too many redirects'); (redirect to http://10.0.0.1, failed 'blocked address'): checkLink(link); assert the requests, each via HOST_GATE, and the outcome"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "event_driven",
+          "condition": "a scheduled liveness check passes",
+          "action": "set the link's consecutive failure count to 0, clear its dead mark, and store the check time and result",
+          "contract": "liveness_failures 0, dead_since null, last_checked_at the check time, last_check_result 'HTTP 200'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts: a link with liveness_failures 3 and dead_since set; the fake origin answers HEAD 200; deliver its message; assert liveness_failures 0, dead_since null, last_checked_at == now, last_check_result 'HTTP 200'"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "event_driven",
+          "condition": "a scheduled liveness check fails because of the origin",
+          "action": "add one to the link's consecutive failure count, store the check time and result, and on the third consecutive failure set dead_since to the check time, keeping an earlier dead_since of a link already dead",
+          "contract": "after failures 1 and 2 dead_since is null; after failure 3 dead_since equals the third check's time; later failures leave dead_since unchanged; state, snapshot and decay fields are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts: the fake origin refuses connections; deliver the link's message at t, t + 7 d, t + 14 d, t + 21 d; assert liveness_failures 1, 2, 3, 4; dead_since null, null, t + 14 d, t + 14 d; last_check_result 'could not connect'; state and last_used_at unchanged; and a pass between the second and third failure resets the count so the next failure is 1"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "unwanted",
+          "condition": "a liveness check cannot complete for Alexandria's own reasons: the queue handler throws, the per-host gate is unavailable or a platform limit stops it",
+          "action": "change nothing on the link and leave it to be checked again by a later run",
+          "contract": "liveness_failures, dead_since, last_checked_at and last_check_result are unchanged; the message is retried by the queue, and once the 6-hour window passes a later scheduled run enqueues the link again",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, a table over {HOST_GATE made unavailable through a test hook, the check's store write throws}: a link with liveness_failures 2; deliver its message; assert the message is retried (not acked) and the link's liveness fields unchanged; runScheduled(t + 7 h); assert a new message for it"
+          }
+        },
+        {
+          "id": "REQ-7.5",
+          "pattern": "ubiquitous",
+          "action": "for any set of due links on one host, send their liveness requests at least 1 second apart, together with the fetches package 02 sends to that host",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the real HOST_GATE Durable Object in the Workers test runtime",
+              "five due links on host a.example and one fetch of a.example queued by package 02"
+            ],
+            "pseudocode": "in src/worker/decay/liveness.test.ts: deliver the five liveness messages and the fetch message together; record the time each outbound request to a.example arrives at the fake origin of src/worker/test/origin.ts; assert consecutive times differ by at least 1000 ms"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Checking one link on demand",
+      "rationale": "When a link looks broken the owner wants to know now, without waiting a week.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/check for one of their links that is not archived and was not checked on demand in the last 10 minutes",
+          "action": "perform a liveness check now and answer with its outcome; a pass clears the dead mark and the failure count, and a failure stores the check time and result without adding to the consecutive weekly failures",
+          "contract": "HTTP 200 with body {passed, result, checked_at, link}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, a table over (fake origin answer, link before, link after): (HEAD 200, dead with failures 3, dead_since null and failures 0); (HEAD and GET 503, failures 1, failures 1 and last_check_result 'HTTP 503'): r = api('POST', '/api/v1/links/' + id + '/check'); assert 200 and r.json.passed and r.json.result; assert the link's fields"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/check comes within 10 minutes of the previous on-demand check of the same link",
+          "action": "refuse the request without sending any request to the origin",
+          "contract": "HTTP 429 with body {\"error\": \"checked_recently\", \"message\": \"already checked recently\"} and a Retry-After header of the whole seconds until 10 minutes have passed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts: setNow(t); check once; setNow(t + 4 min); r = check again; assert 429, the body and Retry-After == 360; assert the fake origin logged one request round; setNow(t + 10 min); assert the next check answers 200; and a check of a different link at t + 4 min answers 200"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/check names an archived link of the user",
+          "action": "refuse the request without sending any request to the origin",
+          "contract": "HTTP 409 with body {\"error\": \"link_archived\", \"message\": \"archived links are not checked\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts: archive a link; r = check; assert 409 and the body; assert the fake origin logged nothing"
+          }
+        },
+        {
+          "id": "REQ-8.4",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Check now on a link's detail page",
+          "system": "website",
+          "action": "send the check, show its result and time, and show 'already checked recently' when the API answers checked_recently",
+          "contract": "the detail page shows 'Reachable (HTTP 200), checked just now' or 'Not reachable (could not connect), checked just now'; a 429 shows 'already checked recently'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/LinkDetail.test.tsx with a fake API: click 'Check now'; assert one POST .../check and the result text; with the fake API answering a failure assert 'Not reachable (could not connect)'; with 429 assert 'already checked recently'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "Dead links in the stream",
+      "rationale": "The owner sees at a glance which sites are gone, and that their copies are not.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "event_driven",
+          "condition": "a card is shown for a link whose dead_since is set",
+          "action": "strike through the title, show 'dead since <date>' with the last check result, and keep the Read and Snapshot actions",
+          "contract": "the title element is struck through; the card shows 'dead since 2027-03-01 (could not connect)'; a link without dead_since shows neither",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, a table over {dead_since '2027-03-01', last_check_result 'could not connect': struck title and the text, Read action present; dead_since null: neither}: render <LinkCard link />; assert the computed text-decoration of the title and the texts"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "A link unused for 120 days is archived and the owner restores it",
+      "steps": [
+        {
+          "actor": "scheduler",
+          "action": "runs the hourly evaluation for the owner, whose link 'https://example.org/old' was last used 121 days ago"
+        },
+        {
+          "actor": "scheduler",
+          "action": "archives the link with today's date and a removal date 180 days later"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the stream and no longer finds the link"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the Archive page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "answers GET /api/v1/archive with the link and its removal date"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link with 'removed on <date>' and a Restore action"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Restore"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "makes the link active with last used now"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link at the top of the stream"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "scheduler",
+          "Alexandria API",
+          "website",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev --test-scheduled with local D1, the owner signed in through e2e/fake-google.ts",
+          "one link added through the API whose last_used_at is then set 121 days back with wrangler d1 execute --local"
+        ],
+        "end_state": [
+          "after the scheduled run the link's state was 'archived' with removal_at 180 days after archived_at, and the stream did not list it",
+          "after Restore the link's state is 'active', archived_at is null and last_used_at is the restore time",
+          "the stream shows the link first and the Archive page is empty"
+        ],
+        "pseudocode": "in e2e/decay.spec.ts: add the link; set last_used_at back with wrangler d1 execute; request /__scheduled?cron=0+*+*+*+*; on / expect no card for the link; on /archive expect its row with 'removed on' the date; click Restore; on / expect it first; on /archive expect no rows"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "A site goes offline, is marked dead after three weekly checks, and its copy is still readable",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds a link to an article page served by the fake origin site"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the article and stores its snapshot and reader view"
+        },
+        {
+          "actor": "scheduler",
+          "action": "enqueues the link's weekly liveness check in three runs a week apart, while the origin refuses connections"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "performs each check through the per-host gate, counts three consecutive failures and sets dead since to the third check's date"
+        },
+        {
+          "actor": "owner",
+          "action": "sees the card's title struck through with 'dead since <date>'"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses Read on the card"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "serves the stored reader view without contacting the origin"
+        },
+        {
+          "actor": "website",
+          "action": "shows the stored article"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "scheduler",
+          "liveness queue consumer",
+          "HOST_GATE",
+          "fetch worker",
+          "Alexandria API",
+          "website",
+          "D1 database",
+          "R2 snapshots"
+        ],
+        "setup": [
+          "wrangler dev --test-scheduled with local D1, R2 and Queues, ORIGIN_PROXY_URL pointing at e2e/fake-origin.ts, the owner signed in through e2e/fake-google.ts",
+          "e2e/fake-origin.ts serves the article, then is switched to refuse connections for its host"
+        ],
+        "end_state": [
+          "the link's liveness_failures is 3 and dead_since is set",
+          "the stream card's title is struck through and reads 'dead since <date>'",
+          "the Read view shows the stored article's heading and text while the origin still refuses connections"
+        ],
+        "pseudocode": "in e2e/liveness.spec.ts: add the fake origin's article URL; wait for the card to become active; switch the fake origin offline; three times: set last_checked_at and check_enqueued_at 7 days back with wrangler d1 execute, request /__scheduled and wait until last_checked_at changes; reload /; expect the struck title and 'dead since'; click Read; expect the article heading"
+      }
+    }
+  ]
+}
