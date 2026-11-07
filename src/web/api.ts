@@ -19,12 +19,14 @@ export async function request<T>(
   body?: unknown,
   init: RequestInit = {},
 ): Promise<T> {
+  // A form (an upload) is sent as it is, with its own multipart type.
+  const form = body instanceof FormData;
   const response = await fetch(`/api/v1${path}`, {
     ...init,
     method,
     credentials: 'same-origin',
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || form ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   if (response.status === 401) {
     window.location.assign('/signin');
@@ -332,3 +334,43 @@ export function activeFilters(q: string): string[] {
   const terms = q.match(/[^\s"]*"[^"]*"\S*|\S+/g) ?? [];
   return terms.filter((t) => /^(tag|topic|host|state|in|is):("[^"]*"|[^"\s]+)$/i.test(t));
 }
+
+/** An import's report. */
+export interface ImportReport {
+  id: string;
+  created_at: string;
+  counts: {
+    url_lines: number;
+    added: number;
+    duplicates: number;
+    invalid: number;
+    not_imported: number;
+  };
+  invalid: { line: number; text: string }[];
+  duplicates: { line: number; url: string }[];
+  stopped_at_limit: { line: number } | null;
+}
+
+/** Where an import's added links stand. */
+export interface ImportProgress {
+  waiting: number;
+  in_progress: number;
+  done: number;
+  enriched: number;
+}
+
+export const imports = {
+  /** Uploads a plain-text file of URLs, one per line. */
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<ImportReport>('POST', '/imports', form);
+  },
+  get: (id: string) =>
+    request<ImportReport & { progress: ImportProgress }>(
+      'GET',
+      `/imports/${encodeURIComponent(id)}`,
+    ),
+  /** The address of an import's downloadable report. */
+  reportUrl: (id: string) => `/api/v1/imports/${encodeURIComponent(id)}/report`,
+};
