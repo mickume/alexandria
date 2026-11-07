@@ -13,6 +13,7 @@ import {
   type TestUser,
 } from '../test/helpers';
 import { indexReaderText } from '../search/search';
+import { readerKey, snapshotKey } from '../fetcher/snapshots';
 
 /** A signed-in user with a personal access token. */
 async function agent(email = 'owner@example.test'): Promise<TestUser & { secret: string }> {
@@ -417,5 +418,128 @@ describe('search_links and list_recent', () => {
     expect(r.isError).toBe(true);
     expect(r.structuredContent).toMatchObject({ error: 'invalid_arguments', field });
     expect(r.response.json.error).toBeUndefined();
+  });
+});
+
+/** Stores a fetched link's copies as the fetch worker does: snapshot, reader view and text. */
+async function storeCopies(
+  user: TestUser,
+  id: string,
+  kind: 'html' | 'pdf',
+  {
+    snapshot = '<html><title>T</title><body><p>Body</p></body></html>',
+    text = 'The reader text.',
+  } = {},
+) {
+  await env.DB.prepare(
+    "UPDATE links SET state = 'active', content_kind = ?, has_snapshot = 1, fetched_at = ? WHERE id = ?",
+  )
+    .bind(kind, '2026-01-02T00:00:00.000Z', id)
+    .run();
+  await env.SNAPSHOTS.put(snapshotKey(user.id, id), kind === 'pdf' ? '%PDF-1.4 bytes' : snapshot);
+  if (kind === 'html') {
+    await env.SNAPSHOTS.put(
+      readerKey(user.id, id),
+      JSON.stringify({ title: 'T', byline: null, html: `<p>${text}</p>` }),
+    );
+  }
+  await readerText(user, id, text);
+}
+
+async function useOf(id: string) {
+  return env.DB.prepare('SELECT use_count, last_used_at FROM links WHERE id = ?')
+    .bind(id)
+    .first<{ use_count: number; last_used_at: string }>();
+}
+
+describe('get_link and get_link_content', () => {
+  it('get_link returns the link as GET /api/v1/links/{id} does, recording no use', async () => {
+    const a = await agent();
+    const [id] = await seedLinks(a, [{ url: 'https://enriched.example', state: 'active' }]);
+    await api('PATCH', `/api/v1/links/${id}`, {
+      as: a.session,
+      body: { summary: 'A summary.', tags: ['infra'], topic: 'Ops' },
+    });
+    const before = await useOf(id!);
+    const r = await mcpTool(a.secret, 'get_link', { id });
+    const direct = await api('GET', `/api/v1/links/${id}`, { as: a.session });
+    expect(r.structuredContent).toEqual(direct.json);
+    expect(r.structuredContent).toMatchObject({
+      summary: 'A summary.',
+      tags: ['infra'],
+      topic: 'Ops',
+    });
+    expect(await useOf(id!)).toEqual(before);
+  });
+
+  it.each(['html', 'pdf'] as const)(
+    'get_link_content returns the reader text of a %s link and records a use',
+    async (kind) => {
+      const t = '2026-11-07T10:00:00.000Z';
+      const a = await agent();
+      const [id] = await seedLinks(a, [{ url: `https://${kind}.example`, useCount: 1 }]);
+      await storeCopies(a, id!, kind, { text: `The ${kind} text about queues.` });
+      setNow(t);
+      const r = await mcpTool(a.secret, 'get_link_content', { id, format: 'text' });
+      expect(r.isError).toBeFalsy();
+      expect(r.structuredContent).toEqual({
+        id,
+        format: 'text',
+        content: `The ${kind} text about queues.`,
+      });
+      expect(await useOf(id!)).toEqual({ use_count: 2, last_used_at: t });
+      const history = await api('GET', `/api/v1/links/${id}/history`, { as: a.session });
+      expect(history.json.items[0]).toEqual({ kind: 'use', at: t });
+    },
+  );
+
+  it('get_link_content returns the snapshot HTML and records a use', async () => {
+    const a = await agent();
+    const [id] = await seedLinks(a, [{ url: 'https://snap.example' }]);
+    const html = '<html><title>T</title><body><p>Kept as it was.</p></body></html>';
+    await storeCopies(a, id!, 'html', { snapshot: html });
+    const r = await mcpTool(a.secret, 'get_link_content', { id, format: 'html' });
+    expect(r.structuredContent).toEqual({ id, format: 'html', content: html });
+    expect((await useOf(id!))!.use_count).toBe(1);
+  });
+
+  it.each([
+    ['html of a PDF link', 'pdf', 'html', 'not_html'],
+    ['text of a pending link', 'pending', 'text', 'no_content'],
+    ['html of a link that is not a web page', 'other', 'html', 'no_content'],
+  ] as const)('get_link_content refuses %s', async (_case, kind, format, error) => {
+    const a = await agent();
+    const [id] = await seedLinks(a, [{ url: 'https://refused.example' }]);
+    if (kind === 'pdf') await storeCopies(a, id!, 'pdf');
+    if (kind === 'other') {
+      await env.DB.prepare(
+        `UPDATE links SET state = 'active', content_kind = 'other', has_snapshot = 0,
+           notes = '["not a web page (image/png)"]' WHERE id = ?`,
+      )
+        .bind(id)
+        .run();
+    }
+    const before = await useOf(id!);
+    const r = await mcpTool(a.secret, 'get_link_content', { id, format });
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent.error).toBe(error);
+    if (error === 'not_html') {
+      expect(r.structuredContent.message).toBe('this link is a PDF; use format text');
+    }
+    expect(await useOf(id!)).toEqual(before);
+  });
+
+  it.each([
+    ['get_link', {}, 'id'],
+    ['get_link_content', { format: 'pdf' }, 'format'],
+    ['get_link_content', {}, 'format'],
+  ])('%s refuses %j', async (tool, args, field) => {
+    const a = await agent();
+    const [id] = await seedLinks(a, [{ url: 'https://args.example' }]);
+    const before = await useOf(id!);
+    const r = await mcpTool(a.secret, tool, field === 'id' ? args : { id, ...args });
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent).toMatchObject({ error: 'invalid_arguments', field });
+    expect(await useOf(id!)).toEqual(before);
   });
 });

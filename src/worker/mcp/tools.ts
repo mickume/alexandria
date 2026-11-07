@@ -162,6 +162,42 @@ async function addLink(ctx: ToolContext, args: AddLinkArgs): Promise<Outcome> {
   return { ok: true, body: { status: added.body.status, link: streamView(now.body) } };
 }
 
+const NO_CONTENT = refused(
+  'no_content',
+  'nothing is stored for this link: it was not fetched as a page or a PDF',
+);
+
+/**
+ * get_link_content: the reader-view text (GET /api/v1/links/{id}/reader; a
+ * PDF's extracted text) or the snapshot HTML (GET /api/v1/links/{id}/snapshot),
+ * each recording the use that endpoint records. The link is looked at first
+ * (no use): HTML of a PDF is not_html, and a link with nothing stored is
+ * no_content, neither recording a use.
+ */
+async function getLinkContent(
+  ctx: ToolContext,
+  args: { id: string; format: 'text' | 'html' },
+): Promise<Outcome> {
+  const path = `/links/${encodeURIComponent(args.id)}`;
+  const link = outcomeOf(await ctx.call('GET', path));
+  if (!link.ok) return link;
+  if (args.format === 'html' && link.body.content_kind === 'pdf') {
+    return refused('not_html', 'this link is a PDF; use format text');
+  }
+  if (!link.body.has_snapshot) return NO_CONTENT;
+  if (args.format === 'text') {
+    const reader = await ctx.call('GET', `${path}/reader`);
+    if (reader.status === 404 && reader.json?.error === 'no_snapshot') return NO_CONTENT;
+    const read = outcomeOf(reader);
+    if (!read.ok) return read;
+    return { ok: true, body: { id: args.id, format: 'text', content: read.body.text } };
+  }
+  const snapshot = await ctx.call('GET', `${path}/snapshot`);
+  if (snapshot.status === 404 && snapshot.json?.error === 'no_snapshot') return NO_CONTENT;
+  if (snapshot.status !== 200) return outcomeOf(snapshot);
+  return { ok: true, body: { id: args.id, format: 'html', content: snapshot.text } };
+}
+
 const linkId = z.string().min(1).describe('The id of one of the owner’s links');
 const workspace = z
   .string()
@@ -203,16 +239,21 @@ export const TOOLS: Tool[] = [
       return outcomeOf(await ctx.call('GET', `/search?q=${q}&limit=${args.limit ?? 10}`));
     },
   },
-  pending(
-    'get_link',
-    'A link’s metadata: its addresses, title, state, summary, tags, topic and dates.',
-    z.object({ id: linkId }),
-  ),
-  pending(
-    'get_link_content',
-    'The stored content of a link: its reader-view text (a PDF’s text), or its snapshot HTML. Counts as a use of the link.',
-    z.object({ id: linkId, format: z.enum(['text', 'html']).describe('text or html') }),
-  ),
+  {
+    name: 'get_link',
+    description: 'A link’s metadata: its addresses, title, state, summary, tags, topic and dates.',
+    input: z.object({ id: linkId }),
+    async run(ctx, args: { id: string }) {
+      return outcomeOf(await ctx.call('GET', `/links/${encodeURIComponent(args.id)}`));
+    },
+  },
+  {
+    name: 'get_link_content',
+    description:
+      'The stored content of a link: its reader-view text (a PDF’s text), or its snapshot HTML. Counts as a use of the link.',
+    input: z.object({ id: linkId, format: z.enum(['text', 'html']).describe('text or html') }),
+    run: getLinkContent,
+  },
   pending('list_workspaces', 'Every workspace of the owner, with its link count.', z.object({})),
   pending(
     'add_to_workspace',
