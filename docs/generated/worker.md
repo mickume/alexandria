@@ -38,7 +38,7 @@
 
 ###### batch
 
-`MessageBatch`\<[`FetchMessage`](worker/env.md#fetchmessage) \| [`EnrichMessage`](worker/env.md#enrichmessage)\>
+`MessageBatch`\<[`FetchMessage`](worker/env.md#fetchmessage) \| [`EnrichMessage`](worker/env.md#enrichmessage) \| [`LivenessMessage`](worker/env.md#livenessmessage)\>
 
 ###### env
 
@@ -51,6 +51,28 @@
 ###### Returns
 
 `Promise`\<`void`\>
+
+##### scheduled()
+
+> **scheduled**(`_controller`, `env`, `ctx`): `void`
+
+###### Parameters
+
+###### \_controller
+
+`ScheduledController`
+
+###### env
+
+[`Env`](worker/env.md#env)
+
+###### ctx
+
+`ExecutionContext`\<`unknown`\>
+
+###### Returns
+
+`void`
 
 ## References
 

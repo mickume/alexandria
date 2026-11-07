@@ -41,7 +41,7 @@ export default defineConfig({
         'rm -rf .wrangler/e2e',
         'npx vite build',
         'npx wrangler d1 migrations apply alexandria --local --persist-to .wrangler/e2e -c dist/alexandria/wrangler.json',
-        `npx wrangler dev -c dist/alexandria/wrangler.json --port ${PORT} --persist-to .wrangler/e2e` +
+        `npx wrangler dev -c dist/alexandria/wrangler.json --port ${PORT} --persist-to .wrangler/e2e --test-scheduled` +
           ` --var ALLOWED_EMAILS:owner@example.test` +
           ` --var GOOGLE_CLIENT_ID:e2e-client` +
           ` --var GOOGLE_CLIENT_SECRET:e2e-secret` +

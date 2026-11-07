@@ -247,3 +247,65 @@ describe('a card’s note and workspaces', () => {
     );
   });
 });
+
+describe('a card’s decay', () => {
+  it.each([
+    {
+      label: 'a dormant link',
+      link: { state: 'dormant', decay_note: 'unused for 2 months' },
+      dimmed: true,
+      text: 'unused for 2 months',
+      sticky: false,
+    },
+    {
+      label: 'a sticky link',
+      link: {
+        state: 'active',
+        sticky: true,
+        decay_note: 'sticky: 7 uses on 6 days, never archived',
+      },
+      dimmed: false,
+      text: null,
+      sticky: true,
+    },
+    {
+      label: 'an active link',
+      link: { state: 'active' },
+      dimmed: false,
+      text: null,
+      sticky: false,
+    },
+  ])('shows $label as it is', ({ link: overrides, dimmed, text, sticky }) => {
+    const l = makeLink({ id: 'd', title: 'Decaying', ...overrides });
+    const { container } = render(
+      <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
+    );
+    const card = container.querySelector('article')!;
+    expect(card.classList.contains('dormant')).toBe(dimmed);
+    if (text) expect(card.textContent).toContain(text);
+    else expect(card.textContent).not.toContain('unused for');
+    expect(card.querySelector('.sticky-label')?.textContent ?? null).toBe(sticky ? 'sticky' : null);
+  });
+});
+
+describe('a dead link’s card', () => {
+  it.each([
+    {
+      label: 'a dead link',
+      overrides: {
+        dead_since: '2027-03-01T10:00:00.000Z',
+        last_check_result: 'could not connect',
+        has_snapshot: true,
+      },
+      dead: true,
+    },
+    { label: 'a live link', overrides: { has_snapshot: true }, dead: false },
+  ])('shows $label as it is', ({ overrides, dead }) => {
+    const l = makeLink({ id: 'gone', title: 'Gone Site', state: 'active', ...overrides });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    const title = screen.getByRole('link', { name: 'Gone Site' });
+    expect(getComputedStyle(title).textDecoration.includes('line-through')).toBe(dead);
+    expect(screen.queryByText('dead since 2027-03-01 (could not connect)') !== null).toBe(dead);
+    expect(screen.getByRole('link', { name: 'Read' })).toBeTruthy();
+  });
+});

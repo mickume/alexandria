@@ -89,6 +89,13 @@ export interface Link {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on a link read on its own. */
   note?: string;
+  sticky: boolean;
+  archived_at: string | null;
+  removal_at: string | null;
+  dead_since: string | null;
+  last_checked_at: string | null;
+  last_check_result: string | null;
+  decay_note: string;
 }
 
 /** One page of a list. */
@@ -162,6 +169,14 @@ export const links = {
     id: string,
     fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>> & { note?: string },
   ) => request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  check: (id: string) =>
+    request<{ passed: boolean; result: string; checked_at: string; link: Link }>(
+      'POST',
+      `/links/${encodeURIComponent(id)}/check`,
+    ),
+  archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
+  restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
+  archived: () => request<Page<Link>>('GET', '/archive').then((p) => p.items),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>
@@ -229,4 +244,16 @@ export const workspaces = {
     }),
   removeLink: (id: string, linkId: string) =>
     request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
+};
+
+/** The decay thresholds, in days. */
+export interface Thresholds {
+  dormant_days: number;
+  archive_days: number;
+  remove_days: number;
+}
+
+export const decay = {
+  get: () => request<Thresholds>('GET', '/settings/decay'),
+  save: (t: Thresholds) => request<Thresholds>('PUT', '/settings/decay', t),
 };

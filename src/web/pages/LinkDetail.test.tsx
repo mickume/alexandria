@@ -207,3 +207,60 @@ describe('the note of a link on its detail page', () => {
     expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('too much');
   });
 });
+
+describe('checking a link from its detail page', () => {
+  function checkApi(answer: { status: number; body: unknown }): FakeApi {
+    const link = makeLink({ id: 'abc', title: 'Checked', state: 'active' });
+    return new FakeApi()
+      .on('GET', '/api/v1/links/abc', { status: 200, body: link })
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('POST', '/api/v1/links/abc/check', answer);
+  }
+
+  it.each([
+    {
+      label: 'a pass',
+      answer: {
+        status: 200,
+        body: {
+          passed: true,
+          result: 'HTTP 200',
+          checked_at: new Date().toISOString(),
+          link: makeLink({ id: 'abc' }),
+        },
+      },
+      text: 'Reachable (HTTP 200), checked just now',
+    },
+    {
+      label: 'a failure',
+      answer: {
+        status: 200,
+        body: {
+          passed: false,
+          result: 'could not connect',
+          checked_at: new Date().toISOString(),
+          link: makeLink({ id: 'abc' }),
+        },
+      },
+      text: 'Not reachable (could not connect), checked just now',
+    },
+    {
+      label: 'a refusal',
+      answer: {
+        status: 429,
+        body: { error: 'checked_recently', message: 'already checked recently' },
+      },
+      text: 'already checked recently',
+    },
+  ])('shows $label', async ({ answer, text }) => {
+    const api = checkApi(answer);
+    renderPage('/links/abc', api);
+    const button = await screen.findByRole('button', { name: 'Check now' });
+    await act(async () => button.click());
+    expect(api.sent('POST', '/api/v1/links/abc/check')).toHaveLength(1);
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+});

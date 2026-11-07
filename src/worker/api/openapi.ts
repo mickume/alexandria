@@ -86,6 +86,13 @@ export const Link = z.strictObject({
   edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
   note_preview: z.string().nullable().describe('The note’s first line as plain text'),
   workspaces: z.array(z.strictObject({ id: z.string(), name: z.string() })),
+  sticky: z.boolean().describe('At least 5 uses on 5 UTC days: never dormant or archived by decay'),
+  archived_at: z.string().nullable(),
+  removal_at: z.string().nullable().describe('When an archived link will be removed'),
+  dead_since: z.string().nullable(),
+  last_checked_at: z.string().nullable(),
+  last_check_result: z.string().nullable(),
+  decay_note: z.string().describe('The link’s decay state and why, in one sentence'),
 });
 
 /** A link read on its own, with its whole note. */
@@ -203,6 +210,61 @@ export const operations: Operation[] = [
     operationId: 'deleteAiSettings',
     summary: 'Forget the AI provider, model and key',
     responses: { 204: { description: 'Removed' } },
+  },
+  {
+    method: 'get',
+    path: '/settings/decay',
+    operationId: 'getDecaySettings',
+    summary: 'The decay thresholds, in days',
+    responses: {
+      200: {
+        description: 'The thresholds',
+        schema: z.strictObject({
+          dormant_days: z.number().int(),
+          archive_days: z.number().int(),
+          remove_days: z.number().int(),
+        }),
+      },
+    },
+  },
+  {
+    method: 'put',
+    path: '/settings/decay',
+    operationId: 'saveDecaySettings',
+    summary: 'Set the decay thresholds: whole days from 7 to 3650, dormant below archive',
+    body: z.object({
+      dormant_days: z.number().int().min(7).max(3650),
+      archive_days: z.number().int().min(7).max(3650),
+      remove_days: z.number().int().min(7).max(3650),
+    }),
+    responses: {
+      200: {
+        description: 'The stored thresholds',
+        schema: z.strictObject({
+          dormant_days: z.number().int(),
+          archive_days: z.number().int(),
+          remove_days: z.number().int(),
+        }),
+      },
+      400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/archive',
+    operationId: 'listArchive',
+    summary: 'The archived links, most recently archived first, each with its removal date',
+    query: {
+      limit: { description: 'Links per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of archived links',
+        schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
   },
   {
     method: 'post',
@@ -477,6 +539,51 @@ export const operations: Operation[] = [
         mediaType: 'text/html',
       },
       404: NO_SNAPSHOT,
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/archive',
+    operationId: 'archiveLink',
+    summary:
+      'Archive the link by hand, whatever keeps it from decay; it is unpinned, its workspaces stay',
+    responses: { 200: { description: 'The archived link', schema: LinkWithNote } },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/restore',
+    operationId: 'restoreLink',
+    summary: 'Bring an archived link back: active, last used now, use count unchanged',
+    responses: {
+      200: { description: 'The restored link', schema: LinkWithNote },
+      409: error('not_archived: "this link is not archived"'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/check',
+    operationId: 'checkLink',
+    summary: 'Check now that the link’s address answers; a pass clears its dead mark',
+    responses: {
+      200: {
+        description: 'The check’s outcome and the link',
+        schema: z.strictObject({
+          passed: z.boolean(),
+          result: z.string(),
+          checked_at: z.string(),
+          link: LinkWithNote,
+        }),
+      },
+      409: error('link_archived: "archived links are not checked"'),
+      429: {
+        ...error('checked_recently: "already checked recently", or rate_limited'),
+        headers: {
+          'Retry-After': {
+            description: 'Seconds until a check is allowed',
+            schema: { type: 'integer' },
+          },
+        },
+      },
     },
   },
   {

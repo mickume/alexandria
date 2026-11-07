@@ -9,7 +9,7 @@ import {
   getQueueResult,
   SELF,
 } from 'cloudflare:test';
-import type { EnrichMessage, FetchMessage } from '../env';
+import type { EnrichMessage, FetchMessage, LivenessMessage } from '../env';
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
@@ -244,6 +244,21 @@ export function recordFetchQueue(): SentMessage<FetchMessage>[] {
   return sent;
 }
 
+/** Replaces LIVENESS_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordLivenessQueue(): SentMessage<LivenessMessage>[] {
+  const sent: SentMessage<LivenessMessage>[] = [];
+  env.LIVENESS_QUEUE = recorder(sent);
+  return sent;
+}
+
+/** Delivers liveness messages to the Worker's queue consumer in one batch. */
+export async function deliverLiveness(
+  bodies: LivenessMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  return deliver('alexandria-liveness', bodies, bindings);
+}
+
 /** Replaces ENRICH_QUEUE with a recorder for this test; returns the recorded messages. */
 export function recordEnrichQueue(): SentMessage<EnrichMessage>[] {
   const sent: SentMessage<EnrichMessage>[] = [];
@@ -282,7 +297,7 @@ async function deliver<T>(
   );
   const ctx = createExecutionContext();
   await worker.queue?.(
-    batch as unknown as MessageBatch<FetchMessage | EnrichMessage>,
+    batch as unknown as MessageBatch<FetchMessage | EnrichMessage | LivenessMessage>,
     { ...env, ...bindings },
     ctx,
   );

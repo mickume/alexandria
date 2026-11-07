@@ -139,6 +139,45 @@ its slot and the delay to it, at most the queue's 12 hours; a message that
 arrives before its slot is sent again for the time left instead of being
 processed. A single pasted link is not throttled.
 
+## Decay
+
+Every hour a Cron Trigger (`0 * * * *`) runs the Worker's `scheduled` handler
+(`decay/cron.ts`). It evaluates decay for every user whose last completed
+evaluation (`users.last_decay_at`) started 20 hours or more ago, one user at a
+time. One user's evaluation (`decay/decay.ts`) is a single D1 transaction of
+set-based statements, each carrying its own conditions, so a link boosted
+meanwhile keeps what the boost gave it and a failed evaluation changes
+nothing (that user is evaluated again at the next run):
+
+- a sticky dormant link (at least 5 uses on 5 UTC days) becomes `active`;
+- an `active` link unused for `dormant_days` that is not sticky becomes
+  `dormant` (pinned and workspace links too);
+- a link unused for `archive_days` that is neither sticky, pinned nor in a
+  workspace is `archived` (`archived_at` set; it leaves the stream);
+- an archived link archived `remove_days` ago is removed with everything
+  `DELETE /api/v1/links/{id}` removes, its stored R2 objects deleted after the
+  transaction;
+- `last_decay_at` is set.
+
+A use, a re-paste or a restore makes a dormant link active in its own
+request. `decay/note.ts` gives every link its `decay_note`.
+
+### Liveness
+
+The same hourly run enqueues one `LIVENESS_QUEUE` message per link due a
+weekly check (`decay/liveness.ts`): kept, active, dormant or pinned, last
+checked (or, never checked, added) 7 days ago or more, and not enqueued in
+the last 6 hours (`check_enqueued_at`, set in the selecting statement). The
+consumer drops a message for a link deleted, archived or no longer due;
+otherwise it sends HEAD through the fetcher's request path
+(`fetcher/fetch.ts`, `requestFollowing`: blocked addresses refused, at most 5
+redirects, `ORIGIN_PROXY_URL`, and the host gate shared with fetches), and
+when the HEAD fails a GET that reads only the headers. A final 2xx passes:
+the failure count resets and `dead_since` clears. Any other answer counts one
+failure; the third in a row sets `dead_since`. A failure of Alexandria's own
+(the host gate unavailable, a write failing) is thrown: the message is
+retried and nothing on the link changes.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

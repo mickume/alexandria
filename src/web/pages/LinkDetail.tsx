@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { links, openUrl, type Link, type LinkEvent } from '../api';
+import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { NoteEditor } from '../components/NoteEditor';
 import { RefreshButton, WorkspaceChips } from '../components/LinkCard';
@@ -100,6 +101,7 @@ export function LinkDetail({ id }: { id: string }) {
       </p>
       <div className="card-actions">
         <RefreshButton link={link} />
+        <CheckButton link={link} onChecked={setLink} />
       </div>
       <h2 id="history-heading">History</h2>
       <ul className="history" aria-label="History">

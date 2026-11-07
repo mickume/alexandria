@@ -149,6 +149,15 @@ without text, a PDF too large), or `waiting_for_key` (the key was rejected);
 it is `null` before the first fetch. `edited_fields` lists the fields the
 owner set by hand, which enrichment and refresh never overwrite.
 
+Decay adds `sticky` (at least 5 uses on 5 UTC days: never dormant or archived
+by decay), `archived_at`, `removal_at`, `dead_since`, `last_checked_at`,
+`last_check_result` and `decay_note`, one sentence saying the link's decay
+state and why: "unused for 3 days" (in months of 30 days from 60 days),
+"sticky: 7 uses on 6 days, never archived", "pinned: never archived, unused
+for …", "in a workspace: never archived, unused for …", or "archived on
+2027-03-01, removed on 2027-08-28". A use, a re-paste or a restore makes a
+`dormant` link `active` again at once.
+
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
 are accepted; scheme and host are lower-cased; the fragment and a default port
@@ -445,3 +454,63 @@ list markers and raw HTML, cut to 200 characters, or null) and `workspaces`
 `PATCH /api/v1/links/{id}` carry the whole `note`. The website renders notes
 as Markdown and removes raw HTML, scripts, event handlers and every URL that
 is not http, https or mailto.
+
+### Decay settings
+
+Links the owner does not use decay: after `dormant_days` without use an
+active link becomes `dormant` (dimmed, still in the stream); after
+`archive_days` it is archived (out of the stream, kept with its snapshot);
+`remove_days` after archiving it is removed for good.
+
+#### `GET /api/v1/settings/decay`
+
+`200 {"dormant_days": 60, "archive_days": 120, "remove_days": 180}` (the
+defaults).
+
+#### `PUT /api/v1/settings/decay`
+
+Body with all three, each a whole number of days from 7 to 3650, and
+`dormant_days` below `archive_days`: `200` with the stored values.
+`400 {"error": "invalid_threshold", "field": <name>, "message"}`, or
+`400 {"error": "invalid_thresholds", "field": "dormant_days", "message": "the dormant threshold must be below the archive threshold"}`.
+
+### The archive
+
+#### `POST /api/v1/links/{id}/archive`
+
+Archives the link by hand, whatever would keep it from decay (stickiness, a
+pin, a workspace): `archived_at` is now, the link is unpinned (the pinned
+positions close up) and keeps its workspaces. `200 <link>`; an archived link
+answers `200` unchanged.
+
+#### `GET /api/v1/archive`
+
+The archived links, most recently archived first, each with `archived_at` and
+`removal_at`, at most 100 per page: `200 {"items": [...], "next_cursor"}`.
+
+#### `POST /api/v1/links/{id}/restore`
+
+Brings an archived link back: `active`, `last_used_at` now (a boost, not a
+use: the use count stays), no archive date. `200 <link>`, or
+`409 {"error": "not_archived", "message": "this link is not archived"}`.
+
+### Liveness
+
+Every kept link (active, dormant or pinned, not archived) is checked weekly:
+HEAD, then a headers-only GET when the HEAD fails, 10 seconds each, at most 5
+redirects, never more than one request per second to one host. A final 2xx
+passes. Three failed weekly checks in a row set `dead_since`; a later pass
+clears it. `last_checked_at` and `last_check_result` ("HTTP 200", "could not
+connect", "timed out", …) say how the last check went. A dead link keeps its
+snapshot and reader view and decays like any other.
+
+#### `POST /api/v1/links/{id}/check`
+
+Checks the link now:
+`200 {"passed": <boolean>, "result", "checked_at", "link": <link>}`. A pass
+clears `dead_since` and the failure count; a failure is stored as the last
+result but does not count towards the three. At most one per link per 10
+minutes:
+`429 {"error": "checked_recently", "message": "already checked recently"}`
+with `Retry-After`. An archived link:
+`409 {"error": "link_archived", "message": "archived links are not checked"}`.

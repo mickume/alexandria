@@ -562,3 +562,16 @@ select {
   font-size: 0.9rem;
   color: var(--muted);
 }
+
+.card.dormant {
+  opacity: 0.55;
+}
+
+.sticky-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dead {
+  color: var(--danger);
+}

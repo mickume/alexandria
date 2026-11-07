@@ -256,9 +256,21 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
 ##### content\_kind
 
 > **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
+
+##### dead\_since
+
+> **dead\_since**: `string` \| `null`
+
+##### decay\_note
+
+> **decay\_note**: `string`
 
 ##### description
 
@@ -308,6 +320,14 @@ A link as the API shows it.
 
 > **language**: `string` \| `null`
 
+##### last\_check\_result
+
+> **last\_check\_result**: `string` \| `null`
+
+##### last\_checked\_at
+
+> **last\_checked\_at**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
@@ -338,6 +358,10 @@ The whole note: only on a link read on its own.
 
 > **pinned**: `boolean`
 
+##### removal\_at
+
+> **removal\_at**: `string` \| `null`
+
 ##### state
 
 > **state**: `string`
@@ -345,6 +369,10 @@ The whole note: only on a link read on its own.
 ##### state\_reason
 
 > **state\_reason**: `string` \| `null`
+
+##### sticky
+
+> **sticky**: `boolean`
 
 ##### summary
 
@@ -439,6 +467,26 @@ A link's stored reader view.
 ##### title
 
 > **title**: `string` \| `null`
+
+***
+
+### Thresholds
+
+The decay thresholds, in days.
+
+#### Properties
+
+##### archive\_days
+
+> **archive\_days**: `number`
+
+##### dormant\_days
+
+> **dormant\_days**: `number`
+
+##### remove\_days
+
+> **remove\_days**: `number`
 
 ***
 
@@ -594,6 +642,36 @@ A workspace on its own, with its note.
 
 ***
 
+### decay
+
+> `const` **decay**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: () => `Promise`\<[`Thresholds`](#thresholds)\>
+
+###### Returns
+
+`Promise`\<[`Thresholds`](#thresholds)\>
+
+##### save
+
+> **save**: (`t`) => `Promise`\<[`Thresholds`](#thresholds)\>
+
+###### Parameters
+
+###### t
+
+[`Thresholds`](#thresholds)
+
+###### Returns
+
+`Promise`\<[`Thresholds`](#thresholds)\>
+
+***
+
 ### links
 
 > `const` **links**: `object`
@@ -614,6 +692,28 @@ A workspace on its own, with its note.
 
 `Promise`\<[`BatchResult`](#batchresult)\>
 
+##### archive
+
+> **archive**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
+
+##### archived
+
+> **archived**: () => `Promise`\<[`Link`](#link)[]\>
+
+###### Returns
+
+`Promise`\<[`Link`](#link)[]\>
+
 ##### changedSince
 
 > **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
@@ -627,6 +727,20 @@ A workspace on its own, with its note.
 ###### Returns
 
 `Promise`\<[`Changes`](#changes)\>
+
+##### check
+
+> **check**: (`id`) => `Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
 
 ##### edit
 
@@ -769,6 +883,20 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<`void`\>
+
+##### restore
+
+> **restore**: (`id`) => `Promise`\<[`Link`](#link)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link)\>
 
 ##### unpin
 

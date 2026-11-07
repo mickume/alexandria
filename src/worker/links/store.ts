@@ -1,4 +1,5 @@
 import { now } from '../clock';
+import { decayFields } from '../decay/note';
 import { notePreview } from '../workspaces/notes';
 import { leaveAllWorkspaces } from '../workspaces/store';
 
@@ -48,6 +49,18 @@ export interface LinkRow {
   note: string;
   /** A JSON array of {id, name} of the link's workspaces, when read through link_views. */
   workspaces_json?: string;
+  archived_at: string | null;
+  dead_since: string | null;
+  liveness_failures: number;
+  last_checked_at: string | null;
+  last_check_result: string | null;
+  check_enqueued_at: string | null;
+  last_manual_check_at: string | null;
+  /** Read through link_views: the stored uses, and the UTC days they fall on. */
+  use_events?: number;
+  use_days?: number;
+  /** Read through link_views: the link's user's removal threshold. */
+  user_remove_days?: number;
 }
 
 /** A link as the API shows it. */
@@ -94,6 +107,16 @@ export interface LinkView {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on the link read on its own. */
   note?: string;
+  /** At least 5 uses on at least 5 UTC days: never dormant or archived by decay. */
+  sticky: boolean;
+  archived_at: string | null;
+  /** When an archived link will be removed. */
+  removal_at: string | null;
+  dead_since: string | null;
+  last_checked_at: string | null;
+  last_check_result: string | null;
+  /** One sentence: the link's decay state and why. */
+  decay_note: string;
 }
 
 /** A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else. */
@@ -158,6 +181,7 @@ export function toView(row: LinkRow): LinkView {
     edited_fields: parseStrings(row.edited_fields),
     note_preview: notePreview(row.note ?? ''),
     workspaces: parseWorkspaces(row.workspaces_json),
+    ...decayFields(row),
   };
 }
 
@@ -190,7 +214,8 @@ function addStatement(db: D1Database, userId: string, link: NewLink, at: string,
        WHERE (SELECT COUNT(*) FROM links WHERE user_id = ?2) < ?7
           OR EXISTS (SELECT 1 FROM links WHERE user_id = ?2 AND url = ?3)
        ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at,
-         updated_at = excluded.updated_at
+         updated_at = excluded.updated_at,
+         state = CASE WHEN links.state = 'dormant' THEN 'active' ELSE links.state END
        RETURNING *`,
     )
     .bind(id, userId, link.url, link.original, host, at, LIBRARY_LIMIT);
@@ -261,7 +286,7 @@ export async function getLink(db: D1Database, userId: string, id: string): Promi
 export const PIN_LIMIT = 30;
 
 /** Statements that take a pinned link out of the pinned section and close the gap it leaves. */
-function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
+export function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
   const at = now().toISOString();
   return [
     db

@@ -198,6 +198,12 @@ The per-host rate limit: one Durable Object per host.
 
 The secret the owners' AI keys are encrypted under.
 
+##### LIVENESS\_QUEUE
+
+> **LIVENESS\_QUEUE**: `Queue`\<[`LivenessMessage`](#livenessmessage)\>
+
+The queue of weekly liveness checks, one per link due.
+
 ##### OPENROUTER\_BASE\_URL
 
 > **OPENROUTER\_BASE\_URL**: `string`
@@ -239,6 +245,22 @@ A request to fetch one link's page.
 > `optional` **refresh?**: `boolean`
 
 Set for a refresh the owner asked for; a failed refresh is not retried.
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
+### LivenessMessage
+
+A request to check that one link's address still answers.
+
+#### Properties
+
+##### link\_id
+
+> **link\_id**: `string`
 
 ##### user\_id
 

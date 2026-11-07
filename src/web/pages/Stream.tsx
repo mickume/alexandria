@@ -104,7 +104,7 @@ function useStreamPages() {
  * only when the window passes, at once with keepalive when the page is hidden
  * or left, and a failed delete puts the card back.
  */
-function useUndoableDelete(items: Link[], setItems: SetItems) {
+export function useUndoableDelete(items: Link[], setItems: SetItems) {
   const pendingDeletes = useRef(new Map<string, PendingDelete>());
   const [undoable, setUndoable] = useState<Link[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
@@ -270,6 +270,13 @@ export function Stream() {
     onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
     onDelete: deletes.remove,
     onRefreshing: feed.markRefreshing,
+    onArchive: (link) => {
+      setNotice(null);
+      linksApi
+        .archive(link.id)
+        .then(() => setItems((current) => current.filter((l) => l.id !== link.id)))
+        .catch(() => setNotice('could not archive, try again'));
+    },
     onDragStart: (link) => {
       dragged.current = link;
     },

@@ -123,10 +123,9 @@ The largest PDF that is stored.
 > **fetchPage**(`env`, `url`, `__namedParameters?`): `Promise`\<[`FetchResult`](#fetchresult)\>
 
 Fetches the page at `url` as the fetcher does: GET with Alexandria's Accept
-and User-Agent headers, through the host gate, following at most 5
-redirects by hand and refusing any target that is not a public http(s)
-address, each request and its body within `timeoutMs`. A web page is read up
-to 5 MB and a PDF up to 50 MB; any other kind is not read.
+and User-Agent headers through requestFollowing. A web page is read up to
+5 MB and a PDF up to 50 MB; any other kind is not read; a 4xx or 5xx is a
+failure.
 
 #### Parameters
 
@@ -147,3 +146,49 @@ to 5 MB and a PDF up to 50 MB; any other kind is not read.
 #### Returns
 
 `Promise`\<[`FetchResult`](#fetchresult)\>
+
+***
+
+### requestFollowing()
+
+> **requestFollowing**\<`T`\>(`env`, `url`, `__namedParameters`, `onFinal`): `Promise`\<[`FetchFailed`](#fetchfailed) \| `T`\>
+
+Sends `method` to `url` as the fetcher does: through the host gate before
+every request, following at most 5 redirects by hand and refusing any target
+that is not a public http(s) address, each request within `timeoutMs`; the
+last response is handed to `onFinal` inside the same time limit. A failure of
+Alexandria's own (the host gate) is thrown, not turned into a reason.
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### url
+
+`string`
+
+##### \_\_namedParameters
+
+###### method
+
+`"GET"` \| `"HEAD"`
+
+###### timeoutMs
+
+`number`
+
+##### onFinal
+
+(`response`, `finalUrl`, `signal`) => `Promise`\<`T`\>
+
+#### Returns
+
+`Promise`\<[`FetchFailed`](#fetchfailed) \| `T`\>
