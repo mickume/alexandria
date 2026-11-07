@@ -69,6 +69,8 @@ account and checks the PKCE verifier as Google does.
 | `link_uses` | one row per use of a link |
 | `link_events` | one row per fetch attempt: time, outcome, HTTP status, reason |
 | `link_texts` | the reader-view text of a link, for search and enrichment |
+| `workspaces` | per user: name (unique ignoring case through `name_key`), description, Markdown note |
+| `workspace_links` | the members of each workspace, at positions 1..n |
 | `rate_limits` | requests per user per minute |
 
 Every query of a user's resources is filtered by the authenticated user, so

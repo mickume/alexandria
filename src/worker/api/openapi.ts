@@ -96,6 +96,18 @@ const AiSettingsView = z.strictObject({
   rejected_message: z.string().nullable(),
 });
 
+/** A workspace in a list. */
+export const WorkspaceSummary = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  link_count: z.number().int(),
+  created_at: z.string(),
+});
+
+/** A workspace on its own, with its note. */
+export const Workspace = WorkspaceSummary.extend({ note: z.string() });
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
@@ -186,6 +198,71 @@ export const operations: Operation[] = [
     operationId: 'deleteAiSettings',
     summary: 'Forget the AI provider, model and key',
     responses: { 204: { description: 'Removed' } },
+  },
+  {
+    method: 'post',
+    path: '/workspaces',
+    operationId: 'createWorkspace',
+    summary: 'Create a workspace',
+    body: z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().max(1000).optional().describe('One paragraph, no line break'),
+    }),
+    responses: {
+      201: { description: 'The new, empty workspace', schema: Workspace },
+      400: error('invalid_json, invalid_name or invalid_description'),
+      409: error('name_taken, or workspace_limit: "workspace limit reached (200)"'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/workspaces',
+    operationId: 'listWorkspaces',
+    summary: 'The workspaces, by name ignoring case',
+    query: {
+      limit: { description: 'Workspaces per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of workspaces',
+        schema: z.strictObject({
+          items: z.array(WorkspaceSummary),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/workspaces/{id}',
+    operationId: 'getWorkspace',
+    summary: 'One workspace, with its note',
+    responses: { 200: { description: 'The workspace', schema: Workspace } },
+  },
+  {
+    method: 'patch',
+    path: '/workspaces/{id}',
+    operationId: 'updateWorkspace',
+    summary: 'Rename a workspace, change its description or its note',
+    body: z.object({
+      name: z.string().min(1).max(100).optional(),
+      description: z.string().max(1000).optional(),
+      note: z.string().optional().describe('Markdown, at most 20,000 characters; empty clears it'),
+    }),
+    responses: {
+      200: { description: 'The workspace', schema: Workspace },
+      400: error('invalid_json, invalid_name, invalid_description, invalid_note or note_too_long'),
+      409: error('name_taken'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/workspaces/{id}',
+    operationId: 'deleteWorkspace',
+    summary: 'Delete a workspace and its memberships; its links stay',
+    responses: { 204: { description: 'Deleted' } },
   },
   {
     method: 'post',

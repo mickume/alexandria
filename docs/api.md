@@ -364,3 +364,44 @@ re-runs and refreshes never overwrite it.
 - `200 <link>`
 - `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
   nothing is changed when any field is invalid.
+
+### Workspaces
+
+A workspace is a named, manually ordered collection of the owner's links,
+with a Markdown note. A link can be in any number of workspaces; deleting a
+workspace never deletes a link. A user holds at most 200 workspaces. Names
+are 1 to 100 characters (trimmed) and unique per user ignoring case; a
+description is one paragraph of at most 1,000 characters without a line
+break.
+
+A workspace is shown as `{"id", "name", "description", "note", "link_count", "created_at"}`;
+lists leave out `note`.
+
+#### `POST /api/v1/workspaces`
+
+Body `{"name", "description"?}`: `201 <workspace>` (empty note, no members).
+`400 invalid_name | invalid_description`; `409 {"error": "name_taken", "message": "a workspace with this name already exists"}`;
+`409 {"error": "workspace_limit", "message": "workspace limit reached (200)"}`.
+
+#### `GET /api/v1/workspaces`
+
+The workspaces by name ignoring case, with member counts, at most 100 per
+page: `200 {"items": [...], "next_cursor"}`.
+
+#### `GET /api/v1/workspaces/{id}`
+
+`200 <workspace>` with its note.
+
+#### `PATCH /api/v1/workspaces/{id}`
+
+Any of `name`, `description` and `note` (see Notes). The members and their
+order stay as they are. `200 <workspace>`; the same `400` and `409 name_taken`
+as on create.
+
+#### `DELETE /api/v1/workspaces/{id}`
+
+Deletes the workspace, its note and its memberships, keeping every link:
+`204`.
+
+Another user's workspace answers `404 {"error": "not_found"}`, as an unknown
+one does.

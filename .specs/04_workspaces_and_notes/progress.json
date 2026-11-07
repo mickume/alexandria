@@ -3,11 +3,11 @@
   "spec_id": "04",
   "spec_name": "workspaces_and_notes",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T17:24:03Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

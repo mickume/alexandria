@@ -54,3 +54,5 @@
 - [worker/links/store](worker/links/store.md)
 - [worker/links/stream](worker/links/stream.md)
 - [worker/links/use](worker/links/use.md)
+- [worker/workspaces/routes](worker/workspaces/routes.md)
+- [worker/workspaces/store](worker/workspaces/store.md)

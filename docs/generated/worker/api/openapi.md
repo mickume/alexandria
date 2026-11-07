@@ -112,6 +112,22 @@ Every documented operation. Routes add theirs as they are implemented.
 
 A personal access token, as listed.
 
+***
+
+### Workspace
+
+> `const` **Workspace**: `ZodObject`\<\{ `created_at`: `ZodString`; `description`: `ZodString`; `id`: `ZodString`; `link_count`: `ZodNumber`; `name`: `ZodString`; `note`: `ZodString`; \}, `$strict`\>
+
+A workspace on its own, with its note.
+
+***
+
+### WorkspaceSummary
+
+> `const` **WorkspaceSummary**: `ZodObject`\<\{ `created_at`: `ZodString`; `description`: `ZodString`; `id`: `ZodString`; `link_count`: `ZodNumber`; `name`: `ZodString`; \}, `$strict`\>
+
+A workspace in a list.
+
 ## Functions
 
 ### findOperation()
