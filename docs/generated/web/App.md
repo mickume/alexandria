@@ -1,5 +1,23 @@
 # web/App
 
+## Interfaces
+
+### Location
+
+Where the website is: the path and the query string of the page.
+
+#### Properties
+
+##### path
+
+> **path**: `string`
+
+##### search
+
+> **search**: `string`
+
+The query string, with its leading '?' when it has one.
+
 ## Functions
 
 ### App()
@@ -44,9 +62,10 @@ A link within the website, followed without a reload.
 
 ### navigate()
 
-> **navigate**(`path`): `void`
+> **navigate**(`path`, `__namedParameters?`): `void`
 
-Moves to `path` within the website without a reload.
+Moves to `path` (with its query string) within the website without a
+reload; `replace` replaces the current history entry instead of adding one.
 
 #### Parameters
 
@@ -54,18 +73,42 @@ Moves to `path` within the website without a reload.
 
 `string`
 
+##### \_\_namedParameters?
+
+###### replace?
+
+`boolean` = `false`
+
 #### Returns
 
 `void`
 
 ***
 
-### usePath()
+### queryOf()
 
-> **usePath**(): `string`
+> **queryOf**(`location`): `string`
 
-The current path of the page, following history navigation.
+The search query a location carries in its q parameter, or ''.
+
+#### Parameters
+
+##### location
+
+[`Location`](#location)
 
 #### Returns
 
 `string`
+
+***
+
+### useLocation()
+
+> **useLocation**(): [`Location`](#location)
+
+The current location of the page, following history navigation.
+
+#### Returns
+
+[`Location`](#location)

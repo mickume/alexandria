@@ -17,6 +17,14 @@ in the rest of the stream at a (last used, id) pair.
 
 The most changed links one change-feed answer carries.
 
+***
+
+### NOT\_ARCHIVED
+
+> `const` **NOT\_ARCHIVED**: [`Conditions`](../search/query.md#conditions)
+
+The stream's own restriction: every link but the archived ones.
+
 ## Functions
 
 ### isStreamCursor()
@@ -68,11 +76,12 @@ while a missed change would leave a card pending.
 
 ### listStream()
 
-> **listStream**(`db`, `userId`, `limit`, `after`): `Promise`\<\{ `items`: [`LinkRow`](store.md#linkrow)[]; `next`: [`StreamCursor`](#streamcursor) \| `null`; \}\>
+> **listStream**(`db`, `userId`, `limit`, `after`, `where?`): `Promise`\<\{ `items`: [`LinkRow`](store.md#linkrow)[]; `next`: [`StreamCursor`](#streamcursor) \| `null`; \}\>
 
-One page of the user's stream: the links that are not archived, the pinned
-ones first by pin position, then the rest by last use, newest first, with
-the id breaking ties. Returns the page and the cursor of the next one, if any.
+One page of the user's stream: the links that satisfy `where` (by default,
+those not archived), the pinned ones first by pin position, then the rest
+by last use, newest first, with the id breaking ties. Returns the page and
+the cursor of the next one, if any.
 
 #### Parameters
 
@@ -91,6 +100,10 @@ the id breaking ties. Returns the page and the cursor of the next one, if any.
 ##### after
 
 [`StreamCursor`](#streamcursor) \| `null`
+
+##### where?
+
+[`Conditions`](../search/query.md#conditions) = `NOT_ARCHIVED`
 
 #### Returns
 
