@@ -184,4 +184,5 @@ export const ai = {
   save: (body: { provider: string; api_key: string; model?: string }) =>
     request<AiSettings>('PUT', '/settings/ai', body),
   remove: () => request<void>('DELETE', '/settings/ai'),
+  enrichUnenriched: () => request<{ queued: number }>('POST', '/links/enrich-unenriched'),
 };

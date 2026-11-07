@@ -6,7 +6,8 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { ApiError, links as linksApi, type Link, type Page } from '../api';
+import { Link as PageLink } from '../App';
+import { ai, ApiError, links as linksApi, type Link, type Page } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { Toast } from '../components/Toast';
@@ -224,6 +225,26 @@ function useChangeFeed(items: Link[], setItems: SetItems) {
   };
 }
 
+/** 'not enriched: add an AI key in settings', once, while there is no key and links wait. */
+function NoKeyBanner() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    let live = true;
+    ai.get()
+      .then((s) => live && setShow(!s.configured && s.unenriched_count > 0))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!show) return null;
+  return (
+    <PageLink to="/settings" className="banner">
+      not enriched: add an AI key in settings
+    </PageLink>
+  );
+}
+
 /** The stream: the home page. Pinned links first, then the rest by last use. */
 export function Stream() {
   const { items, setItems, loaded, refresh, loadMore } = useStreamPages();
@@ -263,6 +284,7 @@ export function Stream() {
   return (
     <section className="stream">
       <AddLinks onAdded={(fresh) => setItems((current) => withOnTop(current, fresh))} />
+      <NoKeyBanner />
       {notice && (
         <p className="notice" role="alert">
           {notice}

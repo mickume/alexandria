@@ -466,6 +466,14 @@ One event of a link's history: a use, or a fetch attempt.
 
 #### Type Declaration
 
+##### enrichUnenriched
+
+> **enrichUnenriched**: () => `Promise`\<\{ `queued`: `number`; \}\>
+
+###### Returns
+
+`Promise`\<\{ `queued`: `number`; \}\>
+
 ##### get
 
 > **get**: () => `Promise`\<[`AiSettings`](#aisettings)\>

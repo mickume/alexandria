@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { readJson, refusal, validationError } from '../api/errors';
+import { now } from '../clock';
 import type { AppEnv } from '../env';
 import {
   clearAiSettings,
@@ -10,6 +11,7 @@ import {
   type Provider,
 } from './keys';
 import { testKey } from './providers';
+import { sendThrottled } from './throttle';
 
 /** The longest model identifier accepted. */
 export const MODEL_MAX = 200;
@@ -115,4 +117,30 @@ settingsRoutes.put('/ai', async (c) => {
 settingsRoutes.delete('/ai', async (c) => {
   await clearAiSettings(c.env.DB, c.get('user').id);
   return c.body(null, 204);
+});
+
+/** Asking for enrichment of the user's links, under /api/v1/links. */
+export const enrichLinkRoutes = new Hono<AppEnv>();
+
+const NO_AI_KEY = { error: 'no_ai_key', message: 'add an AI key in settings' };
+
+/** Whether the user has a key the provider accepts. */
+async function hasVerifiedKey(db: D1Database, userId: string): Promise<boolean> {
+  const settings = await getAiSettings(db, userId);
+  return settings?.status === 'verified';
+}
+
+enrichLinkRoutes.post('/enrich-unenriched', async (c) => {
+  const userId = c.get('user').id;
+  if (!(await hasVerifiedKey(c.env.DB, userId))) return c.json(NO_AI_KEY, 409);
+  const rows = await c.env.DB.prepare(
+    `UPDATE links SET enrichment_status = 'queued', enrichment_reason = NULL, updated_at = ?
+     WHERE user_id = ? AND enrichment_status IN (${UNENRICHED_STATES.map(() => '?').join(', ')})
+     RETURNING id`,
+  )
+    .bind(now().toISOString(), userId, ...UNENRICHED_STATES)
+    .all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+  await sendThrottled(c.env, userId, ids);
+  return c.json({ queued: ids.length }, 202);
 });

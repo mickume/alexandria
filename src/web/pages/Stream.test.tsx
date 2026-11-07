@@ -297,3 +297,53 @@ describe('the stream while links are being enriched', () => {
     }
   });
 });
+
+describe('the banner of a library without an AI key', () => {
+  it.each([
+    {
+      label: 'no key and unenriched links',
+      settings: { configured: false, unenriched_count: 3 },
+      banners: 1,
+    },
+    {
+      label: 'no key and nothing waiting',
+      settings: { configured: false, unenriched_count: 0 },
+      banners: 0,
+    },
+    {
+      label: 'a verified key',
+      settings: {
+        configured: true,
+        provider: 'anthropic',
+        model: 'm',
+        key_last4: '1234',
+        status: 'verified',
+        rejected_message: null,
+        unenriched_count: 3,
+      },
+      banners: 0,
+    },
+  ])('shows $banners banner with $label', async ({ settings, banners }) => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/settings/ai', { status: 200, body: settings })
+      .on('GET', '/api/v1/links', {
+        status: 200,
+        body: {
+          items: makeLinks(3).map((l) => ({ ...l, state: 'active', enrichment_status: 'no_key' })),
+          next_cursor: null,
+        },
+      });
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 0' });
+    await waitFor(() => expect(api.sent('GET', '/api/v1/settings/ai')).toHaveLength(1));
+    const found = screen.queryAllByText('not enriched: add an AI key in settings');
+    expect(found).toHaveLength(banners);
+    if (banners)
+      expect(
+        found[0]!.closest('a')?.getAttribute('href') ??
+          found[0]!.querySelector('a')?.getAttribute('href'),
+      ).toBe('/settings');
+    for (const card of screen.getAllByRole('article'))
+      expect(card.textContent).not.toContain('add an AI key');
+  });
+});

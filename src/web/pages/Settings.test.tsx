@@ -161,3 +161,37 @@ describe('the AI key section of the settings page', () => {
     expect((screen.getByLabelText('API key') as HTMLInputElement).value).toBe('');
   });
 });
+
+describe('enriching all unenriched links from the settings page', () => {
+  const verified = (unenriched_count: number) => ({
+    configured: true,
+    provider: 'anthropic',
+    model: 'claude-opus-5-5',
+    key_last4: '1234',
+    status: 'verified',
+    rejected_message: null,
+    unenriched_count,
+  });
+
+  it('offers to enrich the waiting links and says how many were queued', async () => {
+    const api = fakeApi()
+      .on('GET', '/api/v1/settings/ai', { status: 200, body: verified(27) })
+      .on('POST', '/api/v1/links/enrich-unenriched', { status: 202, body: { queued: 27 } });
+    renderPage('/settings', api);
+    const button = await screen.findByRole('button', { name: 'Enrich all unenriched links (27)' });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(api.sent('POST', '/api/v1/links/enrich-unenriched')).toHaveLength(1);
+    expect(await screen.findByText('queued 27 links')).toBeTruthy();
+  });
+
+  it('offers nothing when no link is waiting', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', { status: 200, body: verified(0) }),
+    );
+    await screen.findByText('…1234');
+    expect(screen.queryByRole('button', { name: /Enrich all/ })).toBeNull();
+  });
+});

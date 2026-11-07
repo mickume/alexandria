@@ -240,6 +240,19 @@ export const operations: Operation[] = [
   },
   {
     method: 'post',
+    path: '/links/enrich-unenriched',
+    operationId: 'enrichUnenriched',
+    summary: 'Enrich every link waiting for it (no_key, waiting_for_key, failed), 20 a minute',
+    responses: {
+      202: {
+        description: 'How many links were queued',
+        schema: z.strictObject({ queued: z.number().int() }),
+      },
+      409: error('no_ai_key: "add an AI key in settings" (no key, or a rejected one)'),
+    },
+  },
+  {
+    method: 'post',
     path: '/links/batch',
     operationId: 'addLinks',
     summary: 'Add or boost 1 to 100 links; the first ends highest in the stream',

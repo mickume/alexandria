@@ -44,6 +44,17 @@ export function AiKeySection() {
     }
   }
 
+  async function enrichAll() {
+    setMessage(null);
+    try {
+      const { queued } = await ai.enrichUnenriched();
+      setMessage(`queued ${queued} links`);
+      setSettings((s) => (s ? { ...s, unenriched_count: 0 } : s));
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : 'could not queue the links, try again');
+    }
+  }
+
   async function remove() {
     setMessage(null);
     try {
@@ -80,6 +91,11 @@ export function AiKeySection() {
               Remove
             </button>
           </div>
+          {settings.status === 'verified' && settings.unenriched_count > 0 && (
+            <button type="button" className="button primary" onClick={() => void enrichAll()}>
+              Enrich all unenriched links ({settings.unenriched_count})
+            </button>
+          )}
         </div>
       )}
       {message && <p role="status">{message}</p>}

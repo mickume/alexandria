@@ -2,6 +2,14 @@
 
 ## Variables
 
+### enrichLinkRoutes
+
+> `const` **enrichLinkRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
+
+Asking for enrichment of the user's links, under /api/v1/links.
+
+***
+
 ### MODEL\_MAX
 
 > `const` **MODEL\_MAX**: `200` = `200`

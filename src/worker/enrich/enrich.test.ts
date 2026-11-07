@@ -8,6 +8,8 @@ import {
   deliverEnrichments,
   env,
   recordEnrichQueue,
+  seedLinks,
+  setNow,
   signIn,
   type TestUser,
 } from '../test/helpers';
@@ -379,5 +381,61 @@ describe('an enriched link as the API shows it', () => {
       as: user.session,
     });
     expect(changes.json.items.find((l: { id: string }) => l.id === id)).toMatchObject(expected);
+  });
+});
+
+describe('enriching all unenriched links', () => {
+  it('schedules every waiting link through the throttle', async () => {
+    const user = await signIn();
+    const states = [
+      ...Array.from({ length: 25 }, () => 'no_key'),
+      'failed',
+      'failed',
+      'enriched',
+      'skipped',
+    ];
+    const ids = await seedLinks(
+      user,
+      states.map((_, i) => ({ url: `https://e${i}.example/`, state: 'active' })),
+    );
+    await env.DB.batch(
+      ids.map((id, i) =>
+        env.DB.prepare('UPDATE links SET enrichment_status = ? WHERE id = ?').bind(states[i], id),
+      ),
+    );
+    new FakeAi();
+    await saveKey(user);
+    setNow('2026-11-02T09:00:00.000Z');
+    const sent = recordEnrichQueue();
+    const r = await api('POST', '/api/v1/links/enrich-unenriched', { as: user.session });
+    expect(r.status).toBe(202);
+    expect(r.json).toEqual({ queued: 27 });
+    expect(sent.map((m) => m.delaySeconds)).toEqual(Array.from({ length: 27 }, (_, i) => 3 * i));
+    expect(new Set(sent.map((m) => m.body.link_id))).toEqual(new Set(ids.slice(0, 27)));
+    const statuses = await env.DB.prepare(
+      'SELECT id, enrichment_status FROM links WHERE user_id = ?',
+    )
+      .bind(user.id)
+      .all<{ id: string; enrichment_status: string }>();
+    const byId = new Map(statuses.results.map((s) => [s.id, s.enrichment_status]));
+    for (const id of ids.slice(0, 27)) expect(byId.get(id)).toBe('queued');
+    expect(byId.get(ids[27]!)).toBe('enriched');
+    expect(byId.get(ids[28]!)).toBe('skipped');
+  });
+
+  it.each(['no key', 'a rejected key'])('is refused with %s', async (label) => {
+    const user = await signIn();
+    if (label === 'a rejected key') {
+      new FakeAi();
+      await saveKey(user);
+      await env.DB.prepare("UPDATE users SET ai_key_status = 'rejected' WHERE id = ?")
+        .bind(user.id)
+        .run();
+    }
+    const sent = recordEnrichQueue();
+    const r = await api('POST', '/api/v1/links/enrich-unenriched', { as: user.session });
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error: 'no_ai_key', message: 'add an AI key in settings' });
+    expect(sent).toEqual([]);
   });
 });

@@ -443,3 +443,12 @@ select {
   background: var(--surface);
   border: 1px solid var(--line);
 }
+
+.banner {
+  display: block;
+  padding: 0.6rem var(--space);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--fg);
+}

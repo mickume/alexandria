@@ -324,3 +324,10 @@ rejection.
 #### `DELETE /api/v1/settings/ai`
 
 Forgets the provider, model and key: `204`. Later links are not enriched.
+
+#### `POST /api/v1/links/enrich-unenriched`
+
+Schedules every link waiting to be enriched (`no_key`, `waiting_for_key` or
+`failed`) through the background throttle, at most 20 a minute, and marks
+them `queued`: `202 {"queued": <n>}`. Without a key, or with a rejected one:
+`409 {"error": "no_ai_key", "message": "add an AI key in settings"}`.
