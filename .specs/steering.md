@@ -110,13 +110,26 @@ grepping for declarations.
 
 ## Repository Specifics
 
-<!-- Replace this section with what is true of this repository only:
-
-- What the project is (a library, a service, a command) and which of the
-  reference docs (`api.md`, `cli.md`, `configuration.md`, `architecture.md`)
-  carry real content and which say in one line that the surface does not exist.
-- Any source of truth that is generated from (schemas, IDL, migrations) and
-  the target that regenerates it.
-- What the tests need (network, credentials, services) — ideally nothing.
-- The shared test helpers and fixtures, by path, that the Tests section above
-  refers to. -->
+- **What it is:** a service: one Cloudflare Worker (Hono, TypeScript) with a
+  D1 database, serving a JSON API under `/api/v1/` and a React website built
+  with Vite. `docs/api.md`, `docs/configuration.md` and `docs/architecture.md`
+  carry real content; `docs/cli.md` says in one line that there is no CLI.
+- **Generated sources:** the D1 schema is `migrations/*.sql`, applied in order
+  (no generator). `docs/generated/` is produced by `make doc` (TypeDoc with the
+  Markdown plugin, one file per module).
+- **What the tests need:** nothing beyond `npm install`: no network and no
+  credentials. Worker tests run in workerd with a local D1 (Miniflare binds a
+  local port); outbound requests are answered by the test router. `make e2e`
+  additionally needs Playwright's Chromium (`npx playwright install chromium`).
+- **Shared test helpers:**
+  - `src/worker/test/helpers.ts`: `api()` (a request through the real Worker
+    as a session or a bearer token), `signIn()`, `createToken()`,
+    `seedLinks()`, `setNow()`, `count()`, `sha256Hex()`.
+  - `src/worker/test/outbound.ts`: `onOutbound(origin, handler)`, the router
+    that answers the Worker's outbound requests.
+  - `src/worker/test/setup.ts`: applies the migrations and installs the
+    router before each Worker test file.
+  - `src/web/test/helpers.tsx`: `renderPage(path, api)`, `FakeApi` and
+    `fakeIntersectionObserver()`.
+  - `e2e/helpers.ts`: `signIn(page)` through the fake Google provider,
+    `addLinks(page, urls)`, `longHost(i)`.

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/worker", "src/web"],
+  "entryPointStrategy": "expand",
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/test/**"],
+  "plugin": ["typedoc-plugin-markdown"],
+  "out": "docs/generated",
+  "outputFileStrategy": "modules",
+  "readme": "none",
+  "hidePageHeader": true,
+  "hideBreadcrumbs": true,
+  "disableSources": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "githubPages": false
+}

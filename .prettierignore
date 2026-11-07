@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.wrangler
+.specs
+docs
+*.md
+package-lock.json
+test-results
+playwright-report
