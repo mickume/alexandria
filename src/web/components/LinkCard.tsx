@@ -197,7 +197,17 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       {link.note_preview && <p className="note-preview">{link.note_preview}</p>}
       <div className="card-head">
         {link.favicon_url && (
-          <img className="favicon" src={link.favicon_url} alt="" width={16} height={16} />
+          <img
+            className="favicon"
+            src={link.favicon_url}
+            alt=""
+            width={16}
+            height={16}
+            // A site without a usable icon shows none rather than a broken image.
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
         )}
         <a
           className="card-title"
