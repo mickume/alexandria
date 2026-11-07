@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { notFound, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
+import { dispatchImports } from './dispatch';
 import { getImport, importLines } from './imports';
 import { MAX_IMPORT_BYTES, parseImportFile } from './parse';
 
@@ -44,7 +45,10 @@ importRoutes.post('/', async (c) => {
     if (parsed.error === 'no_urls') return validationError(c, 'no_urls', 'file', NO_URLS_MESSAGE);
     return validationError(c, 'unsupported_file', 'file', UNSUPPORTED_MESSAGE);
   }
-  const report = await importLines(c.env.DB, c.get('user').id, parsed.lines);
+  const userId = c.get('user').id;
+  const report = await importLines(c.env.DB, userId, parsed.lines);
+  // The first links go to the fetch worker at once; the minute's run sends the rest.
+  await dispatchImports(c.env, userId);
   return c.json(report, 201);
 });
 

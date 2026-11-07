@@ -28,6 +28,15 @@ describe('the background throttle', () => {
     expect(await scheduleThrottled(env.DB, user.id, 1)).toEqual([T + 3 * HOUR]);
   });
 
+  it('starts no job within the minute an import dispatch holds', async () => {
+    const user = await signIn();
+    setNow(T);
+    await env.DB.prepare('UPDATE users SET import_window_end = ? WHERE id = ?')
+      .bind(T + 60_000, user.id)
+      .run();
+    expect(await scheduleThrottled(env.DB, user.id, 2)).toEqual([T + 60_000, T + 63_000]);
+  });
+
   it('never starts more than 20 of a user’s jobs in any minute', async () => {
     const user = await signIn();
     const call = fc.record({

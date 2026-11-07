@@ -14,8 +14,9 @@ export const MAX_DELAY_SECONDS = 12 * 60 * 60;
 
 /**
  * Reserves `count` background slots for a user: the first at the user's next
- * free slot, or now when that has passed, and each later one 3 seconds after
- * the one before. One statement moves the user's next free slot, so
+ * free slot, or now when that has passed, but never within the minute the
+ * user's last import dispatch holds, and each later one 3 seconds after the
+ * one before. One statement moves the user's next free slot, so
  * concurrent calls never share a slot. Returns the slots, in milliseconds
  * since the epoch.
  */
@@ -27,7 +28,8 @@ export async function scheduleThrottled(
   if (count <= 0) return [];
   const row = await db
     .prepare(
-      `UPDATE users SET throttle_next_at = MAX(COALESCE(throttle_next_at, 0), ?1) + ?2 * ?3
+      `UPDATE users SET throttle_next_at =
+         MAX(COALESCE(throttle_next_at, 0), COALESCE(import_window_end, 0), ?1) + ?2 * ?3
        WHERE id = ?4 RETURNING throttle_next_at`,
     )
     .bind(now().getTime(), count, THROTTLE_SPACING_MS, userId)

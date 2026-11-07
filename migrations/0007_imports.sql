@@ -28,3 +28,12 @@ CREATE TABLE import_links (
 );
 CREATE INDEX import_links_link ON import_links (link_id);
 CREATE INDEX import_links_waiting ON import_links (import_id, line) WHERE dispatched_at IS NULL;
+
+-- A waiting link found already sent to the fetch worker (by a refresh, say) is
+-- marked skipped: it used none of the import's budget.
+ALTER TABLE import_links ADD COLUMN skipped INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX import_links_dispatched ON import_links (import_id, dispatched_at);
+
+-- Milliseconds since the epoch until which the user's last import dispatch
+-- holds the background budget: 'enrich all' starts no job before it.
+ALTER TABLE users ADD COLUMN import_window_end INTEGER;

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { api, count, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  count,
+  env,
+  recordFetchQueue,
+  seedLinks,
+  setNow,
+  signIn,
+  type SentMessage,
+  type TestUser,
+} from '../test/helpers';
+import type { FetchMessage } from '../env';
+import { sendThrottled } from '../enrich/throttle';
+import { dispatchImports } from './dispatch';
 import { parseImportFile } from './parse';
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -321,5 +334,179 @@ describe('POST /api/v1/imports adds', () => {
       expect(c.added + c.duplicates + c.invalid + c.not_imported).toBe(c.url_lines);
       expect(await count('links', 'user_id = ?', user.id)).toBe(before + c.added);
     }
+  });
+});
+
+/** The import's links by line, and the line of each link. */
+async function linesOf(importId: string) {
+  const rows = await env.DB.prepare(
+    'SELECT link_id, line FROM import_links WHERE import_id = ? ORDER BY line',
+  )
+    .bind(importId)
+    .all<{ link_id: string; line: number }>();
+  return {
+    link: (line: number) => rows.results.find((r) => r.line === line)!.link_id,
+    line: (linkId: string) => rows.results.find((r) => r.link_id === linkId)?.line,
+  };
+}
+
+const urls = (prefix: string, n: number) =>
+  Array.from({ length: n }, (_, i) => `https://${prefix}${i + 1}.example/`).join('\n');
+
+/** Runs the dispatcher for `user` at time `at` and returns the links it sent. */
+async function dispatchAt(sent: SentMessage<FetchMessage>[], user: TestUser, at: number) {
+  setNow(at);
+  const before = sent.length;
+  await dispatchImports(env, user.id);
+  return sent.slice(before).map((m) => m.body.link_id);
+}
+
+describe('dispatching imported links', () => {
+  const t = Date.parse('2026-11-07T10:00:00.000Z');
+
+  it('sends them in file order, at most 20 a minute', async () => {
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    setNow(t);
+    const r = await upload(user, urls('d', 45));
+    const at = (n: number) => sent.slice(0, n).map((m) => m.body.link_id);
+    const byUpload = at(sent.length);
+    const runs = [
+      byUpload,
+      await dispatchAt(sent, user, t),
+      await dispatchAt(sent, user, t + 30_000),
+      await dispatchAt(sent, user, t + 60_000),
+      await dispatchAt(sent, user, t + 120_000),
+    ];
+    const { line } = await linesOf(r.json.id);
+    const lines = runs.map((ids) => ids.map((id) => line(id)));
+    const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+    expect(lines).toEqual([range(1, 20), [], [], range(21, 40), range(41, 45)]);
+    expect(sent.every((m) => m.body.user_id === user.id && !m.delaySeconds)).toBe(true);
+  });
+
+  it.each([
+    {
+      case: 'two imports of one user',
+      setup: async (a: TestUser) => {
+        const first = await upload(a, urls('first', 15));
+        await upload(a, urls('second', 15));
+        return first.json.id as string;
+      },
+    },
+    {
+      case: "an import while 'enrich all' has 15 waiting",
+      setup: async (a: TestUser) => {
+        const ids = await seedLinks(
+          a,
+          Array.from({ length: 15 }, (_, i) => ({ url: `https://enrich${i}.example` })),
+        );
+        await sendThrottled(env, a.id, ids);
+        await upload(a, urls('after', 15));
+        return null;
+      },
+    },
+  ])('shares one budget: $case', async ({ case: name, setup }) => {
+    const a = await signIn();
+    const b = await signIn('other@example.test');
+    const sent = recordFetchQueue();
+    setNow(t);
+    const firstImport = await setup(a);
+    await upload(b, urls('b', 20));
+    for (const offset of [0, 20_000, 40_000, 59_999]) await dispatchAt(sent, a, t + offset);
+    const ofA = sent.filter((m) => m.body.user_id === a.id).map((m) => m.body.link_id);
+    const ofB = sent.filter((m) => m.body.user_id === b.id);
+    expect(ofB).toHaveLength(20);
+    if (name === 'two imports of one user') {
+      expect(ofA).toHaveLength(20);
+      const { line } = await linesOf(firstImport!);
+      expect(ofA.slice(0, 15).map((id) => line(id))).toEqual(
+        Array.from({ length: 15 }, (_, i) => i + 1),
+      );
+      expect(ofA.slice(15).every((id) => line(id) === undefined)).toBe(true);
+    } else {
+      // 15 enrichment slots fall in this minute: at most 5 are left for the import.
+      expect(ofA.length).toBeLessThanOrEqual(5);
+      await dispatchAt(sent, a, t + 120_000);
+      expect(sent.filter((m) => m.body.user_id === a.id).length).toBe(15);
+    }
+  });
+
+  it("starts 'enrich all' after the minute an import's links took", async () => {
+    const user = await signIn();
+    recordFetchQueue();
+    setNow(t);
+    await upload(user, urls('x', 20));
+    const ids = await seedLinks(user, [{ url: 'https://later.example' }]);
+    const enrich = (await import('../test/helpers')).recordEnrichQueue();
+    setNow(t + 10_000);
+    await sendThrottled(env, user.id, ids);
+    expect(enrich[0]!.body.slot).toBe(t + 60_000);
+  });
+
+  it('skips a deleted link and one already sent, without using the budget', async () => {
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    setNow(t);
+    // The import is made while another import holds the minute's budget.
+    const blocker = await upload(user, urls('block', 20));
+    expect(sent).toHaveLength(20);
+    const r = await upload(user, urls('s', 21));
+    expect(sent).toHaveLength(20);
+    const { link } = await linesOf(r.json.id);
+    expect((await api('DELETE', `/api/v1/links/${link(3)}`, { as: user.session })).status).toBe(
+      204,
+    );
+    const refreshed = await api('POST', `/api/v1/links/${link(4)}/refresh`, { as: user.session });
+    expect(refreshed.status).toBe(202);
+    expect(sent.at(-1)!.body).toMatchObject({ link_id: link(4), refresh: true });
+    expect(blocker.status).toBe(201);
+
+    const run = await dispatchAt(sent, user, t + 60_000);
+    expect(run).toEqual([1, 2, ...Array.from({ length: 17 }, (_, i) => i + 5)].map(link));
+    expect(sent.filter((m) => m.body.link_id === link(4))).toHaveLength(1);
+
+    setNow(t + 70_000);
+    const more = await upload(user, urls('m', 25));
+    const next = await linesOf(more.json.id);
+    await api('DELETE', `/api/v1/links/${next.link(1)}`, { as: user.session });
+    const nextRun = await dispatchAt(sent, user, t + 120_000);
+    expect(nextRun).toEqual(Array.from({ length: 20 }, (_, i) => next.link(i + 2)));
+  });
+
+  it('sends a pasted link at once, outside the budget', async () => {
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    setNow(t);
+    await upload(user, urls('p', 100));
+    expect(sent).toHaveLength(20);
+    const pasted = await api('POST', '/api/v1/links', {
+      as: user.session,
+      body: { url: 'https://pasted.example' },
+    });
+    expect(sent.at(-1)!.body.link_id).toBe(pasted.json.link.id);
+    expect(await dispatchAt(sent, user, t + 30_000)).toEqual([]);
+    expect(await dispatchAt(sent, user, t + 60_000)).toHaveLength(20);
+  });
+
+  it('runs every minute for every user with links waiting', async () => {
+    const a = await signIn();
+    const b = await signIn('other@example.test');
+    const sent = recordFetchQueue();
+    setNow(t);
+    await upload(a, urls('a', 30));
+    await upload(b, urls('b', 30));
+    expect(sent).toHaveLength(40);
+    setNow(t + 60_000);
+    const { default: worker } = await import('../index');
+    const { createExecutionContext, waitOnExecutionContext } = await import('cloudflare:test');
+    const ctx = createExecutionContext();
+    await worker.scheduled!(
+      { cron: '* * * * *', scheduledTime: t + 60_000, noRetry() {} } as ScheduledController,
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(sent).toHaveLength(60);
   });
 });
