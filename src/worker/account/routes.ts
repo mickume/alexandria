@@ -3,12 +3,13 @@ import { notFound } from '../api/errors';
 import type { AppEnv } from '../env';
 import { readerBody, snapshotResponse } from '../fetcher/routes';
 import { getLink } from '../links/store';
+import { publicOrigin } from '../origin';
 import { exportResponse, hasReader } from './export';
 
 /** The export, under /api/v1/export. */
 export const exportRoutes = new Hono<AppEnv>();
 
-exportRoutes.get('/', (c) => exportResponse(c.env, c.get('user')));
+exportRoutes.get('/', (c) => exportResponse(c.env, c.get('user'), publicOrigin(c.env, c.req.url)));
 
 /** 404 for the user's own link with nothing of the kind asked for stored. */
 const NO_CONTENT = { error: 'no_content' };

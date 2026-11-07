@@ -10,13 +10,13 @@ for local development.
 `wrangler.jsonc` holds the settings every deployment shares. The settings of
 one deployment are not in it: set them with `wrangler secret put <NAME>` (or
 as variables in the dashboard; `keep_vars` keeps those across deploys), and in
-`.dev.vars` for local development. Without them nobody can sign in.
+`.dev.vars` for local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secrets below) nobody can sign in.
 
 | Name               | Where                       | Meaning |
 | ------------------ | --------------------------- | ------- |
 | `ALLOWED_EMAILS`   | per deployment              | Comma-separated email addresses that may sign in. Compared case-insensitively; whitespace around each entry is ignored. Read on every request that needs it, so a change takes effect at once. Unset: nobody. |
 | `GOOGLE_CLIENT_ID` | per deployment              | The OAuth 2.0 client id of the Google Cloud project. |
-| `PUBLIC_ORIGIN`    | per deployment              | The site's own origin, such as `https://alexandria.example.com`. Used for the OAuth redirect URI (`<PUBLIC_ORIGIN>/auth/google/callback`) and to check that changes made with the session cookie come from the site. |
+| `PUBLIC_ORIGIN`    | per deployment, optional    | The site's own origin, such as `https://alexandria.example.com`. Used for the OAuth redirect URI (`<origin>/auth/google/callback`), to check that changes made with the session cookie come from the site, for the export's content URLs and in the fetcher's User-Agent. Unset, the origin each request reached is used (such as the Worker's workers.dev address), and the User-Agent names no address. Set it when the site has more than one address, so that Google always gets the same callback. |
 | `GOOGLE_AUTH_URL`  | `wrangler.jsonc`            | Google's authorization endpoint, `https://accounts.google.com/o/oauth2/v2/auth`. Changed only to run against a local fake provider in tests. |
 | `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
 | `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
@@ -76,8 +76,9 @@ do. The token needs Account > Workers Scripts, D1, Queues and Workers R2
 Storage, each Edit.
 
 Set the per-deployment settings once (above), with the secrets below, and add
-`<PUBLIC_ORIGIN>/auth/google/callback` as an authorised redirect URI of the
-Google OAuth client.
+`<the site's origin>/auth/google/callback` (for example
+`https://alexandria.<subdomain>.workers.dev/auth/google/callback`) as an
+authorised redirect URI of the Google OAuth client.
 
 ## Development environment
 

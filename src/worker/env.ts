@@ -14,8 +14,8 @@ export interface Env {
   GOOGLE_AUTH_URL: string;
   /** Google's token endpoint; configurable so tests can run a local fake. */
   GOOGLE_TOKEN_URL: string;
-  /** The site's own origin, such as https://alexandria.example.com. */
-  PUBLIC_ORIGIN: string;
+  /** The site's own origin, such as https://alexandria.example.com; unset, the origin requests reach. */
+  PUBLIC_ORIGIN?: string;
   /** The queue of fetch messages, one per link to fetch. */
   FETCH_QUEUE: Queue<FetchMessage>;
   /** The queue of enrichment messages, one per link to summarise, tag and file. */

@@ -10,8 +10,8 @@ import { toFullView, type LinkRow } from '../links/store';
 const PAGE = 100;
 
 /** The address of an export content route of a link. */
-function contentUrl(env: Env, id: string, kind: 'snapshot' | 'reader'): string {
-  return `${env.PUBLIC_ORIGIN}/api/v1/export/links/${encodeURIComponent(id)}/${kind}`;
+function contentUrl(origin: string, id: string, kind: 'snapshot' | 'reader'): string {
+  return `${origin}/api/v1/export/links/${encodeURIComponent(id)}/${kind}`;
 }
 
 /** Whether a link has a reader view to serve: a PDF's text, or a page's non-empty reader view. */
@@ -20,16 +20,20 @@ export function hasReader(row: LinkRow): boolean {
 }
 
 /** A link's export entry: its API representation and the URLs of its stored content. */
-function linkEntry(env: Env, row: LinkRow): Record<string, unknown> {
+function linkEntry(origin: string, row: LinkRow): Record<string, unknown> {
   return {
     ...toFullView(row),
-    snapshot_url: row.has_snapshot ? contentUrl(env, row.id, 'snapshot') : null,
-    reader_url: hasReader(row) ? contentUrl(env, row.id, 'reader') : null,
+    snapshot_url: row.has_snapshot ? contentUrl(origin, row.id, 'snapshot') : null,
+    reader_url: hasReader(row) ? contentUrl(origin, row.id, 'reader') : null,
   };
 }
 
 /** The user's links, page by page in id order, each as its export entry. */
-async function* links(env: Env, userId: string): AsyncGenerator<Record<string, unknown>> {
+async function* links(
+  env: Env,
+  userId: string,
+  origin: string,
+): AsyncGenerator<Record<string, unknown>> {
   let after = '';
   for (;;) {
     const page = await env.DB.prepare(
@@ -38,7 +42,7 @@ async function* links(env: Env, userId: string): AsyncGenerator<Record<string, u
     )
       .bind(userId, after, PAGE)
       .all<LinkRow>();
-    for (const row of page.results) yield linkEntry(env, row);
+    for (const row of page.results) yield linkEntry(origin, row);
     if (page.results.length < PAGE) return;
     after = page.results.at(-1)!.id;
   }
@@ -91,7 +95,12 @@ async function vocabulary(db: D1Database, userId: string, kind: 'topics' | 'tags
 }
 
 /** The document's text, piece by piece: the header, every link, then the rest and "complete". */
-async function* pieces(env: Env, user: AuthUser, at: string): AsyncGenerator<string> {
+async function* pieces(
+  env: Env,
+  user: AuthUser,
+  at: string,
+  origin: string,
+): AsyncGenerator<string> {
   const head = {
     format: 'alexandria-export',
     version: 1,
@@ -100,7 +109,7 @@ async function* pieces(env: Env, user: AuthUser, at: string): AsyncGenerator<str
   };
   yield `${JSON.stringify(head).slice(0, -1)},"links":[`;
   let first = true;
-  for await (const entry of links(env, user.id)) {
+  for await (const entry of links(env, user.id, origin)) {
     yield `${first ? '' : ','}${JSON.stringify(entry)}`;
     first = false;
   }
@@ -117,10 +126,10 @@ async function* pieces(env: Env, user: AuthUser, at: string): AsyncGenerator<str
  * errors the stream, so a cut-off download never ends as a complete export.
  * Nothing else of the user is in it: no settings, key, token, session or import.
  */
-export function exportResponse(env: Env, user: AuthUser): Response {
+export function exportResponse(env: Env, user: AuthUser, origin: string): Response {
   const at = now().toISOString();
   const encoder = new TextEncoder();
-  const source = pieces(env, user, at);
+  const source = pieces(env, user, at, origin);
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {

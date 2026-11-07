@@ -3,6 +3,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
 import { refusal, unauthorized } from '../api/errors';
 import type { AppEnv, AuthUser } from '../env';
+import { publicOrigin } from '../origin';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, useSession } from './sessions';
 import { useToken } from './tokens';
 
@@ -33,7 +34,7 @@ async function sessionUser(c: Context<AppEnv>): Promise<AuthUser | null> {
  * is the website's credential; this stops another site from acting with it.
  */
 function sameOrigin(c: Context<AppEnv>): boolean {
-  return c.req.header('Origin') === c.env.PUBLIC_ORIGIN;
+  return c.req.header('Origin') === publicOrigin(c.env, c.req.url);
 }
 
 /**
@@ -52,7 +53,7 @@ async function tokenUser(c: Context<AppEnv>, authorization: string): Promise<Aut
 /**
  * Authenticates every request under /api/v1/: a bearer token (a personal
  * access token) or the session cookie. Anything else is answered 401 before the route runs. A change
- * authenticated by the cookie must come from PUBLIC_ORIGIN. The Worker's own
+ * authenticated by the cookie must come from the site's own origin. The Worker's own
  * internal requests carry their user already.
  */
 export const requireAuth: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(async (c, next) => {

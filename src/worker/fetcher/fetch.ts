@@ -175,7 +175,10 @@ function send(
 ): Promise<Response> {
   const headers = new Headers({
     Accept: 'text/html, application/pdf',
-    'User-Agent': `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`,
+    // The page that explains the fetcher, when the deployment names its address.
+    'User-Agent': env.PUBLIC_ORIGIN
+      ? `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`
+      : 'Alexandria/1.0',
   });
   let url = target.href;
   if (env.ORIGIN_PROXY_URL) {
