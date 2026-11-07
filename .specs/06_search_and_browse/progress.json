@@ -3,7 +3,7 @@
   "spec_id": "06",
   "spec_name": "search_and_browse",
   "schema_version": 3,
-  "updated_at": "2026-11-07T18:45:04Z",
+  "updated_at": "2026-11-07T18:49:17Z",
   "tasks": [
     {
       "id": 1,
@@ -35,7 +35,7 @@
     },
     {
       "id": 8,
-      "state": "pending"
+      "state": "done"
     }
   ]
 }

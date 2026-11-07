@@ -108,6 +108,16 @@ export const fakeAi = {
   async answer(result: { summary: string; tags: string[]; topic: string }): Promise<void> {
     await fetch(`${this.url}/__answer`, { method: 'POST', body: JSON.stringify(result) });
   },
+  /** Answers every enrichment whose request holds `contains` with `result`. */
+  async answerWhen(
+    contains: string,
+    result: { summary: string; tags: string[]; topic: string },
+  ): Promise<void> {
+    await fetch(`${this.url}/__answer_when`, {
+      method: 'POST',
+      body: JSON.stringify({ contains, result }),
+    });
+  },
 };
 
 /** Runs the Worker's hourly scheduled handler through wrangler dev's test endpoint. */
@@ -119,4 +129,31 @@ export async function runScheduled(page: Page): Promise<void> {
 /** The time `days` before now, as stored. */
 export function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
+/** Saves the Anthropic key the fake AI provider accepts, through the API. */
+export async function saveAiKey(page: Page): Promise<void> {
+  const r = await page.request.put('/api/v1/settings/ai', {
+    data: { provider: 'anthropic', api_key: 'sk-ant-test-1234' },
+    headers: { Origin: new URL(page.url()).origin },
+  });
+  expect(r.status()).toBe(200);
+}
+
+/** The stream card of the link `id`. */
+export function cardOf(page: Page, id: string) {
+  return page
+    .locator('article', { has: page.locator(`a[href="/api/v1/links/${id}/open"]`) })
+    .first();
+}
+
+/** Adds `urls` through the API and returns the new links' ids, in order. */
+export async function addLinkIds(page: Page, urls: string[]): Promise<string[]> {
+  const r = await page.request.post('/api/v1/links/batch', {
+    data: { urls },
+    headers: { Origin: new URL(page.url()).origin },
+  });
+  expect(r.status()).toBe(200);
+  const body = (await r.json()) as { added: { id: string; url: string }[] };
+  return urls.map((u) => body.added.find((l) => l.url === u)!.id);
 }
