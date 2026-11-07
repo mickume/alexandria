@@ -89,20 +89,24 @@ export class FakeOrigin {
     return this.serve(url, () => {
       let sent = 0;
       const head = new TextEncoder().encode(prefix);
-      const body = new ReadableStream<Uint8Array>({
-        pull: (controller) => {
-          if (sent >= size) {
-            controller.close();
-            return;
-          }
-          const n = Math.min(CHUNK, size - sent);
-          const chunk = new Uint8Array(n).fill(0x61);
-          if (sent === 0) chunk.set(head.subarray(0, n));
-          sent += n;
-          this.bytesSent += n;
-          controller.enqueue(chunk);
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull: (controller) => {
+            if (sent >= size) {
+              controller.close();
+              return;
+            }
+            const n = Math.min(CHUNK, size - sent);
+            const chunk = new Uint8Array(n).fill(0x61);
+            if (sent === 0) chunk.set(head.subarray(0, n));
+            sent += n;
+            this.bytesSent += n;
+            controller.enqueue(chunk);
+          },
         },
-      });
+        // Nothing is produced ahead of the reader, so bytesSent counts what was asked for.
+        { highWaterMark: 0 },
+      );
       const headers: Record<string, string> = { 'Content-Type': contentType };
       if (contentLength) headers['Content-Length'] = String(size);
       return new Response(body, { headers });

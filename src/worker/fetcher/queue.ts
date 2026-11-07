@@ -3,6 +3,7 @@ import type { Env, FetchMessage } from '../env';
 import { getLink, type LinkRow } from '../links/store';
 import { fetchPage, type FetchOk } from './fetch';
 import { extractMetadata } from './html';
+import { readPdf } from './pdf';
 import { capText, extractReader } from './reader';
 import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
 
@@ -164,11 +165,55 @@ function storeOther(env: Env, link: LinkRow, result: FetchOk) {
   );
 }
 
+/** Stores a fetched PDF whole, with its title and text; a PDF over 50 MB is not stored. */
+async function storePdf(env: Env, link: LinkRow, result: FetchOk) {
+  const name = lastSegmentOrHost(result.finalUrl);
+  const base = { description: null, faviconUrl: null, language: null, contentKind: 'pdf' as const };
+  if (!result.body) {
+    return writeFetched(
+      env,
+      link,
+      result,
+      {
+        ...base,
+        title: name,
+        hasSnapshot: false,
+        readerEmpty: true,
+        notes: ['PDF too large to store (50 MB limit)'],
+        text: null,
+      },
+      [],
+    );
+  }
+  const { title, text } = await readPdf(result.body);
+  return writeFetched(
+    env,
+    link,
+    result,
+    {
+      ...base,
+      title: title ?? name,
+      hasSnapshot: true,
+      readerEmpty: text === '',
+      notes: text === '' ? ['no text in this PDF'] : [],
+      text: text === '' ? null : capText(text),
+    },
+    [
+      {
+        key: snapshotKey(link.user_id, link.id),
+        body: result.body,
+        contentType: 'application/pdf',
+      },
+    ],
+  );
+}
+
 /** Stores what a successful fetch returned. */
 async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<boolean> {
   if (result.kind === 'html' && result.body) {
     return storeHtml(env, link, { ...result, body: result.body });
   }
+  if (result.kind === 'pdf') return storePdf(env, link, result);
   return storeOther(env, link, result);
 }
 
