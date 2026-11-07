@@ -14,6 +14,34 @@ The website: one page per path.
 
 ***
 
+### Link()
+
+> **Link**(`__namedParameters`): `Element`
+
+A link within the website, followed without a reload.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### children
+
+`ReactNode`
+
+###### className?
+
+`string`
+
+###### to
+
+`string`
+
+#### Returns
+
+`Element`
+
+***
+
 ### navigate()
 
 > **navigate**(`path`): `void`

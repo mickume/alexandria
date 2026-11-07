@@ -3,7 +3,14 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv } from '../env';
 import { isAllowed } from './allowlist';
 import { finishSignIn, startSignIn } from './google';
-import { createSession, SESSION_COOKIE, SESSION_TTL_SECONDS, upsertUser } from './sessions';
+import { requireSameOrigin } from './middleware';
+import {
+  createSession,
+  deleteSession,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  upsertUser,
+} from './sessions';
 
 const STATE_COOKIE = 'alexandria_oauth_state';
 const VERIFIER_COOKIE = 'alexandria_oauth_verifier';
@@ -54,4 +61,11 @@ authRoutes.get('/google/callback', async (c) => {
     maxAge: SESSION_TTL_SECONDS,
   });
   return c.redirect('/', 302);
+});
+
+authRoutes.post('/signout', requireSameOrigin, async (c) => {
+  const session = getCookie(c, SESSION_COOKIE);
+  if (session) await deleteSession(c.env.DB, session);
+  deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
+  return c.redirect('/signin', 302);
 });

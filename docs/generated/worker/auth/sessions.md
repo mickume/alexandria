@@ -40,6 +40,28 @@ Creates a session for `userId` and returns its identifier, which is stored only 
 
 ***
 
+### deleteSession()
+
+> **deleteSession**(`db`, `id`): `Promise`\<`void`\>
+
+Ends a session at once.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
 ### upsertUser()
 
 > **upsertUser**(`db`, `email`, `name`): `Promise`\<`string`\>
@@ -63,3 +85,27 @@ Creates the user on first sign-in, or updates the stored display name, and retur
 #### Returns
 
 `Promise`\<`string`\>
+
+***
+
+### useSession()
+
+> **useSession**(`db`, `id`): `Promise`\<\{ `email`: `string`; `id`: `string`; `name`: `string`; \} \| `null`\>
+
+Finds the user of an unexpired session and moves its expiry to SESSION_TTL
+after now. An expired session is deleted. Returns null when the identifier
+names no live session.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<\{ `email`: `string`; `id`: `string`; `name`: `string`; \} \| `null`\>

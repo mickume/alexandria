@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { SignIn } from './pages/SignIn';
 
 /** The current path of the page, following history navigation. */
@@ -18,14 +18,60 @@ export function navigate(path: string): void {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
+/** A link within the website, followed without a reload. */
+export function Link({
+  to,
+  children,
+  className,
+}: {
+  to: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <a
+      href={to}
+      className={className}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        navigate(to);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+/** The frame of every signed-in page: the navigation and the page's content. */
+function Layout({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <header className="nav">
+        <Link to="/" className="brand">
+          Alexandria
+        </Link>
+        <nav>
+          <Link to="/settings">Settings</Link>
+          <form method="post" action="/auth/signout">
+            <button type="submit" className="link-button">
+              Sign out
+            </button>
+          </form>
+        </nav>
+      </header>
+      <main className="page">{children}</main>
+    </>
+  );
+}
+
 /** The website: one page per path. */
 export function App() {
   const path = usePath();
   if (path === '/signin') return <SignIn />;
   return (
-    <main className="page">
-      <h1>Alexandria</h1>
+    <Layout>
       <p>{path}</p>
-    </main>
+    </Layout>
   );
 }

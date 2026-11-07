@@ -10,6 +10,7 @@
 - [worker/auth/allowlist](worker/auth/allowlist.md)
 - [worker/auth/crypto](worker/auth/crypto.md)
 - [worker/auth/google](worker/auth/google.md)
+- [worker/auth/middleware](worker/auth/middleware.md)
 - [worker/auth/routes](worker/auth/routes.md)
 - [worker/auth/sessions](worker/auth/sessions.md)
 - [worker/clock](worker/clock.md)

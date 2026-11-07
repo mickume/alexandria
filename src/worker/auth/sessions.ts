@@ -35,3 +35,43 @@ export async function createSession(db: D1Database, userId: string): Promise<str
 function expiry(from: Date): string {
   return new Date(from.getTime() + SESSION_TTL_SECONDS * 1000).toISOString();
 }
+
+/**
+ * Finds the user of an unexpired session and moves its expiry to SESSION_TTL
+ * after now. An expired session is deleted. Returns null when the identifier
+ * names no live session.
+ */
+export async function useSession(
+  db: D1Database,
+  id: string,
+): Promise<{ id: string; email: string; name: string } | null> {
+  const hash = await sha256Hex(id);
+  const t = now();
+  const row = await db
+    .prepare(
+      `UPDATE sessions SET expires_at = ?2
+       WHERE id_hash = ?1 AND expires_at > ?3
+       RETURNING user_id`,
+    )
+    .bind(hash, expiry(t), t.toISOString())
+    .first<{ user_id: string }>();
+  if (!row) {
+    await db
+      .prepare('DELETE FROM sessions WHERE id_hash = ? AND expires_at <= ?')
+      .bind(hash, t.toISOString())
+      .run();
+    return null;
+  }
+  return db
+    .prepare('SELECT id, email, name FROM users WHERE id = ?')
+    .bind(row.user_id)
+    .first<{ id: string; email: string; name: string }>();
+}
+
+/** Ends a session at once. */
+export async function deleteSession(db: D1Database, id: string): Promise<void> {
+  await db
+    .prepare('DELETE FROM sessions WHERE id_hash = ?')
+    .bind(await sha256Hex(id))
+    .run();
+}

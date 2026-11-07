@@ -4,7 +4,7 @@
  */
 import { env, SELF } from 'cloudflare:test';
 import { sha256Hex } from '../auth/crypto';
-import { setNow as setClock } from '../clock';
+import { now, setNow as setClock } from '../clock';
 
 export { sha256Hex };
 
@@ -104,7 +104,7 @@ export interface TestUser {
  * and returns the user with the session cookie value.
  */
 export async function signIn(email = 'owner@example.test', name = 'Ada Owner'): Promise<TestUser> {
-  const nowIso = new Date().toISOString();
+  const nowIso = now().toISOString();
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
     .bind(email.toLowerCase())
     .first<{ id: string }>();
@@ -115,7 +115,7 @@ export async function signIn(email = 'owner@example.test', name = 'Ada Owner'): 
       .run();
   }
   const session = randomSecret();
-  const expires = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  const expires = new Date(now().getTime() + 30 * 24 * 3600 * 1000).toISOString();
   await env.DB.prepare(
     'INSERT INTO sessions (id_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
   )
@@ -134,7 +134,7 @@ export async function createToken(
   await env.DB.prepare(
     'INSERT INTO tokens (id, user_id, name, secret_hash, created_at) VALUES (?, ?, ?, ?, ?)',
   )
-    .bind(id, user.id, name, await sha256Hex(secret), new Date().toISOString())
+    .bind(id, user.id, name, await sha256Hex(secret), now().toISOString())
     .run();
   return { id, secret };
 }

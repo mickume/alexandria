@@ -18,7 +18,20 @@ export interface Env {
   PUBLIC_ORIGIN: string;
 }
 
+/** The user a request is authenticated as. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
 /** The Hono environment of the application: its bindings and per-request variables. */
 export interface AppEnv {
   Bindings: Env;
+  Variables: {
+    /** The authenticated user, set by the authentication middleware. */
+    user: AuthUser;
+    /** How the request was authenticated. */
+    via: 'session' | 'token';
+  };
 }

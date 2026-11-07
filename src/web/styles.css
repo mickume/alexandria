@@ -108,3 +108,40 @@ a:hover {
   gap: var(--space);
   padding-top: 20vh;
 }
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: var(--space);
+}
+
+.nav nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.nav form {
+  margin: 0;
+}
+
+.brand {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}

@@ -12,6 +12,42 @@ The Hono environment of the application: its bindings and per-request variables.
 
 > **Bindings**: [`Env`](#env)
 
+##### Variables
+
+> **Variables**: `object`
+
+###### user
+
+> **user**: [`AuthUser`](#authuser)
+
+The authenticated user, set by the authentication middleware.
+
+###### via
+
+> **via**: `"session"` \| `"token"`
+
+How the request was authenticated.
+
+***
+
+### AuthUser
+
+The user a request is authenticated as.
+
+#### Properties
+
+##### email
+
+> **email**: `string`
+
+##### id
+
+> **id**: `string`
+
+##### name
+
+> **name**: `string`
+
 ***
 
 ### Env
