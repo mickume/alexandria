@@ -514,3 +514,51 @@ minutes:
 `429 {"error": "checked_recently", "message": "already checked recently"}`
 with `Retry-After`. An archived link:
 `409 {"error": "link_archived", "message": "archived links are not checked"}`.
+
+### Search
+
+#### `GET /api/v1/search`
+
+Searches the library: `?q=<query>`, at most 200 characters, with `limit` (1
+to 100, default 50) and `cursor` as every list takes them.
+
+A query is free words and prefix filters. Every free word must match, as the
+start of a word, case- and accent-insensitively (`cloud` finds "Cloudflare",
+`cafe` finds "Café"), in the link's title, summary, tags, topic, host,
+original URL, note or reader-view text. Quotes and the full-text engine's
+operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
+plain text. Archived links are left out.
+
+```json
+{
+  "items": [
+    {
+      "link": { "id": "…", "title": "Cloudflare Queues explained", "…": "…" },
+      "snippet": [
+        { "text": "Cloudflare ", "match": false },
+        { "text": "Queues", "match": true },
+        { "text": " explained", "match": false }
+      ]
+    }
+  ],
+  "workspaces": [{ "id": "…", "name": "Kitchen remodel", "snippet": [] }],
+  "next_cursor": null
+}
+```
+
+Results are ordered by relevance, with the fields weighted title 10, tags and
+topic 5, summary 3, host, original URL and note 2, reader text 1; equally
+relevant links put pinned links first (by position), then the more recently
+used. Each result's `snippet` is a passage of at most 32 words from the field
+that matched best, split into segments with the matched words marked; it is
+text, never HTML. The first page also lists, in `workspaces`, the workspaces
+whose name, description or note holds every free word; later pages have
+`[]`.
+
+An empty or blank query answers with the stream, exactly as
+`GET /api/v1/links` lists it, each snippet `[]`.
+
+Errors: `400 {"error": "query_too_long", "field": "q"}`, and
+`400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;
+`invalid_limit`, `invalid_cursor`.
+

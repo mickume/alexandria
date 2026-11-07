@@ -120,6 +120,16 @@ export const WorkspaceSummary = z.strictObject({
 /** A workspace on its own, with its note. */
 export const Workspace = WorkspaceSummary.extend({ note: z.string() });
 
+/** A snippet: the passage of the best-matching text, matched words marked. */
+const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
+
+/** The answer of a search. */
+export const SearchResults = z.strictObject({
+  items: z.array(z.strictObject({ link: Link, snippet: Snippet })),
+  workspaces: z.array(z.strictObject({ id: z.string(), name: z.string(), snippet: Snippet })),
+  next_cursor: z.string().nullable(),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
@@ -247,6 +257,30 @@ export const operations: Operation[] = [
         }),
       },
       400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/search',
+    operationId: 'search',
+    summary:
+      'Search the links (and on the first page the workspaces); without free words, the stream',
+    query: {
+      q: {
+        description:
+          'Free words and the filters tag:, topic:, host:, state:, in: and is:, at most 200 characters',
+        schema: z.string(),
+      },
+      limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description:
+          'One page of results, most relevant first, each with its snippet as text segments',
+        schema: SearchResults,
+      },
+      400: error('query_too_long, invalid_filter (field q), invalid_limit or invalid_cursor'),
     },
   },
   {

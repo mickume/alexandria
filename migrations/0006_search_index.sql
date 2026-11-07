@@ -68,3 +68,39 @@ SELECT k.id, l.title, COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags 
   l.original_url, l.note, COALESCE((SELECT substr(text, 1, 500000) FROM link_texts WHERE link_id = l.id), ''),
   'u' || replace(l.user_id, '-', ''), l.id
 FROM links l JOIN link_search_keys k ON k.link_id = l.id;
+
+-- Workspaces are searched on their name, description and note.
+CREATE TABLE workspace_search_keys (
+  id INTEGER PRIMARY KEY,
+  workspace_id TEXT NOT NULL UNIQUE
+);
+
+CREATE VIRTUAL TABLE workspace_search USING fts5(
+  name, description, note, owner,
+  workspace_id UNINDEXED,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER workspace_search_insert AFTER INSERT ON workspaces BEGIN
+  INSERT INTO workspace_search_keys (workspace_id) VALUES (new.id);
+  INSERT INTO workspace_search (rowid, name, description, note, owner, workspace_id)
+  VALUES ((SELECT id FROM workspace_search_keys WHERE workspace_id = new.id), new.name,
+    new.description, new.note, 'u' || replace(new.user_id, '-', ''), new.id);
+END;
+
+CREATE TRIGGER workspace_search_update AFTER UPDATE OF name, description, note ON workspaces
+WHEN new.name IS NOT old.name OR new.description IS NOT old.description OR new.note IS NOT old.note
+BEGIN
+  UPDATE workspace_search SET name = new.name, description = new.description, note = new.note
+  WHERE rowid = (SELECT id FROM workspace_search_keys WHERE workspace_id = new.id);
+END;
+
+CREATE TRIGGER workspace_search_delete AFTER DELETE ON workspaces BEGIN
+  DELETE FROM workspace_search WHERE rowid = (SELECT id FROM workspace_search_keys WHERE workspace_id = old.id);
+  DELETE FROM workspace_search_keys WHERE workspace_id = old.id;
+END;
+
+INSERT INTO workspace_search_keys (workspace_id) SELECT id FROM workspaces;
+INSERT INTO workspace_search (rowid, name, description, note, owner, workspace_id)
+SELECT k.id, w.name, w.description, w.note, 'u' || replace(w.user_id, '-', ''), w.id
+FROM workspaces w JOIN workspace_search_keys k ON k.workspace_id = w.id;
