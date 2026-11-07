@@ -186,3 +186,108 @@ export async function listWorkspaces(
     next: rows.results.length > limit && last ? { k: last.name_key, i: last.id } : null,
   };
 }
+
+/** What adding a link to a workspace did. */
+export type AddMemberOutcome =
+  { status: 'added' | 'moved' | 'unchanged'; position: number } | { status: 'no_link' };
+
+/**
+ * Adds one of the user's links to one of their workspaces, or moves it there:
+ * without a position a new member goes to the bottom and an existing one
+ * stays; with a position (1-based, past the end meaning the end) the link is
+ * placed there and the others keep their order. Positions stay 1..n in one
+ * transaction. The workspace must be the user's.
+ */
+export async function addMember(
+  db: D1Database,
+  userId: string,
+  workspaceId: string,
+  linkId: string,
+  position?: number,
+): Promise<AddMemberOutcome> {
+  const [link, current, total] = await db.batch<{ v: number | null }>([
+    db.prepare('SELECT 1 AS v FROM links WHERE id = ? AND user_id = ?').bind(linkId, userId),
+    db
+      .prepare('SELECT position AS v FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
+      .bind(workspaceId, linkId),
+    db
+      .prepare('SELECT COUNT(*) AS v FROM workspace_links WHERE workspace_id = ?')
+      .bind(workspaceId),
+  ]);
+  if (!link?.results.length) return { status: 'no_link' };
+  const was = current?.results[0]?.v ?? null;
+  if (was !== null && position === undefined) return { status: 'unchanged', position: was };
+  const others = (total?.results[0]?.v ?? 0) - (was === null ? 0 : 1);
+  const target = Math.min(position ?? others + 1, others + 1);
+  await db.batch([
+    ...(was === null
+      ? []
+      : [
+          db
+            .prepare(
+              'UPDATE workspace_links SET position = position - 1 WHERE workspace_id = ? AND position > ?',
+            )
+            .bind(workspaceId, was),
+          db
+            .prepare('DELETE FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
+            .bind(workspaceId, linkId),
+        ]),
+    db
+      .prepare(
+        'UPDATE workspace_links SET position = position + 1 WHERE workspace_id = ? AND position >= ?',
+      )
+      .bind(workspaceId, target),
+    db
+      .prepare('INSERT INTO workspace_links (workspace_id, link_id, position) VALUES (?, ?, ?)')
+      .bind(workspaceId, linkId, target),
+  ]);
+  return { status: was === null ? 'added' : 'moved', position: target };
+}
+
+/** Removes a link from one workspace, closing the gap; false when it was not a member. */
+export async function removeMember(
+  db: D1Database,
+  workspaceId: string,
+  linkId: string,
+): Promise<boolean> {
+  const results = await db.batch([
+    db
+      .prepare(
+        `UPDATE workspace_links SET position = position - 1 WHERE workspace_id = ?1 AND position > (
+           SELECT position FROM workspace_links WHERE workspace_id = ?1 AND link_id = ?2)`,
+      )
+      .bind(workspaceId, linkId),
+    db
+      .prepare('DELETE FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
+      .bind(workspaceId, linkId),
+  ]);
+  return (results[1]?.meta.changes ?? 0) > 0;
+}
+
+/**
+ * The statements that take a link out of every workspace it is in, closing
+ * each gap; part of deleting the link.
+ */
+export function leaveAllWorkspaces(db: D1Database, linkId: string): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `UPDATE workspace_links SET position = position - 1
+         WHERE workspace_id IN (SELECT workspace_id FROM workspace_links WHERE link_id = ?1)
+           AND position > (SELECT m.position FROM workspace_links m
+                           WHERE m.workspace_id = workspace_links.workspace_id AND m.link_id = ?1)`,
+      )
+      .bind(linkId),
+    db.prepare('DELETE FROM workspace_links WHERE link_id = ?').bind(linkId),
+  ];
+}
+
+/** Where a page of a workspace's links ends. */
+export interface MemberCursor {
+  p: number;
+}
+
+export function isMemberCursor(value: unknown): value is MemberCursor {
+  const c = value as Record<string, unknown> | null;
+  return typeof c === 'object' && c !== null && Number.isInteger(c.p);
+}

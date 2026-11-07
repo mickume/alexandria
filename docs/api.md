@@ -403,5 +403,28 @@ as on create.
 Deletes the workspace, its note and its memberships, keeping every link:
 `204`.
 
+#### `GET /api/v1/workspaces/{id}/links`
+
+The members in their order, whatever their state (archived ones included),
+each a link as in the stream plus its `position`, at most 100 per page:
+`200 {"items": [...], "next_cursor"}`.
+
+#### `POST /api/v1/workspaces/{id}/links`
+
+Body `{"link_id", "position"?}`. A new member goes to the bottom (`201`); a
+`position` (1-based; past the end means the end) places or moves the link
+there, the others keeping their order (`201` new, `200` moved); an existing
+member without a position stays (`200`). The answer is
+`{"workspace_id", "link_id", "position"}`. `400 invalid_link_id | invalid_position`;
+`404 not_found` for a link that is not the user's.
+
+#### `DELETE /api/v1/workspaces/{id}/links/{link_id}`
+
+Takes the link out of the workspace and closes the gap; the link stays:
+`204`, or `404` when it was not a member.
+
+Deleting a link (`DELETE /api/v1/links/{id}`) takes it out of every
+workspace it was in.
+
 Another user's workspace answers `404 {"error": "not_found"}`, as an unknown
 one does.

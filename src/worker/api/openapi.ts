@@ -258,6 +258,59 @@ export const operations: Operation[] = [
     },
   },
   {
+    method: 'get',
+    path: '/workspaces/{id}/links',
+    operationId: 'listWorkspaceLinks',
+    summary: 'The workspace’s links in their order, whatever their state',
+    query: {
+      limit: { description: 'Links per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of members, each a link with its position',
+        schema: z.strictObject({
+          items: z.array(Link.extend({ position: z.number().int() })),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/workspaces/{id}/links',
+    operationId: 'addWorkspaceLink',
+    summary: 'Add a link to the workspace, or move it: at the bottom, or at a 1-based position',
+    body: z.object({ link_id: z.string(), position: z.number().int().min(1).optional() }),
+    responses: {
+      200: {
+        description: 'Moved, or already a member',
+        schema: z.strictObject({
+          workspace_id: z.string(),
+          link_id: z.string(),
+          position: z.number().int(),
+        }),
+      },
+      201: {
+        description: 'Added',
+        schema: z.strictObject({
+          workspace_id: z.string(),
+          link_id: z.string(),
+          position: z.number().int(),
+        }),
+      },
+      400: error('invalid_json, invalid_link_id or invalid_position'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/workspaces/{id}/links/{linkId}',
+    operationId: 'removeWorkspaceLink',
+    summary: 'Take a link out of the workspace; the link stays in the library',
+    responses: { 204: { description: 'Removed' } },
+  },
+  {
     method: 'delete',
     path: '/workspaces/{id}',
     operationId: 'deleteWorkspace',

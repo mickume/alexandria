@@ -1,4 +1,5 @@
 import { now } from '../clock';
+import { leaveAllWorkspaces } from '../workspaces/store';
 
 /** The most links one library holds, in any state. */
 export const LIBRARY_LIMIT = 20_000;
@@ -312,6 +313,7 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    ...leaveAllWorkspaces(db, id),
     db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);

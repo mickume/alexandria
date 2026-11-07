@@ -2,6 +2,18 @@
 
 ## Interfaces
 
+### MemberCursor
+
+Where a page of a workspace's links ends.
+
+#### Properties
+
+##### p
+
+> **p**: `number`
+
+***
+
 ### WorkspaceCursor
 
 Where a page of the workspace list ends.
@@ -86,6 +98,14 @@ A workspace as the API shows it in a list: without its note.
 
 ## Type Aliases
 
+### AddMemberOutcome
+
+> **AddMemberOutcome** = \{ `position`: `number`; `status`: `"added"` \| `"moved"` \| `"unchanged"`; \} \| \{ `status`: `"no_link"`; \}
+
+What adding a link to a workspace did.
+
+***
+
 ### SaveOutcome
 
 > **SaveOutcome** = \{ `ok`: `true`; `row`: [`WorkspaceRow`](#workspacerow); \} \| \{ `error`: `"name_taken"` \| `"workspace_limit"` \| `"not_found"`; `ok`: `false`; \}
@@ -127,6 +147,44 @@ A workspace as the API shows it on its own: with its note.
 The most workspaces one user may hold.
 
 ## Functions
+
+### addMember()
+
+> **addMember**(`db`, `userId`, `workspaceId`, `linkId`, `position?`): `Promise`\<[`AddMemberOutcome`](#addmemberoutcome)\>
+
+Adds one of the user's links to one of their workspaces, or moves it there:
+without a position a new member goes to the bottom and an existing one
+stays; with a position (1-based, past the end meaning the end) the link is
+placed there and the others keep their order. Positions stay 1..n in one
+transaction. The workspace must be the user's.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### workspaceId
+
+`string`
+
+##### linkId
+
+`string`
+
+##### position?
+
+`number`
+
+#### Returns
+
+`Promise`\<[`AddMemberOutcome`](#addmemberoutcome)\>
+
+***
 
 ### createWorkspace()
 
@@ -210,6 +268,22 @@ One of the user's workspaces, or null.
 
 ***
 
+### isMemberCursor()
+
+> **isMemberCursor**(`value`): `value is MemberCursor`
+
+#### Parameters
+
+##### value
+
+`unknown`
+
+#### Returns
+
+`value is MemberCursor`
+
+***
+
 ### isWorkspaceCursor()
 
 > **isWorkspaceCursor**(`value`): `value is WorkspaceCursor`
@@ -223,6 +297,29 @@ One of the user's workspaces, or null.
 #### Returns
 
 `value is WorkspaceCursor`
+
+***
+
+### leaveAllWorkspaces()
+
+> **leaveAllWorkspaces**(`db`, `linkId`): `D1PreparedStatement`[]
+
+The statements that take a link out of every workspace it is in, closing
+each gap; part of deleting the link.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### linkId
+
+`string`
+
+#### Returns
+
+`D1PreparedStatement`[]
 
 ***
 
@@ -271,6 +368,32 @@ The key names are compared by: trimmed and lower-cased.
 #### Returns
 
 `string`
+
+***
+
+### removeMember()
+
+> **removeMember**(`db`, `workspaceId`, `linkId`): `Promise`\<`boolean`\>
+
+Removes a link from one workspace, closing the gap; false when it was not a member.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### workspaceId
+
+`string`
+
+##### linkId
+
+`string`
+
+#### Returns
+
+`Promise`\<`boolean`\>
 
 ***
 
