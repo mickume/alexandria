@@ -111,6 +111,7 @@ a:hover {
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space);
@@ -121,6 +122,7 @@ a:hover {
 
 .nav nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space);
 }
@@ -574,4 +576,31 @@ select {
 
 .dead {
   color: var(--danger);
+}
+
+.vocabulary table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vocabulary th,
+.vocabulary td {
+  padding: calc(var(--space) / 2) 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.vocabulary th {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.vocabulary .count {
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vocabulary th:nth-child(2) {
+  text-align: right;
 }

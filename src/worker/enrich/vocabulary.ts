@@ -76,3 +76,32 @@ export async function resolveTopic(db: D1Database, userId: string, name: string)
 export function resolveTags(db: D1Database, userId: string, names: string[]): Promise<string[]> {
   return resolve(db, 'tags', userId, names);
 }
+
+/**
+ * The statements that give one of the user's links exactly the tags `tagIds`,
+ * in that order. Tags the link keeps are never removed on the way, so that a
+ * kept tag is not deleted as unused in between.
+ */
+export function setTagsStatements(
+  db: D1Database,
+  userId: string,
+  linkId: string,
+  tagIds: string[],
+): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        'DELETE FROM link_tags WHERE link_id = ? AND tag_id NOT IN (SELECT value FROM json_each(?))',
+      )
+      .bind(linkId, JSON.stringify(tagIds)),
+    ...tagIds.map((tagId, i) =>
+      db
+        .prepare(
+          `INSERT INTO link_tags (link_id, tag_id, position)
+           SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?
+           ON CONFLICT (link_id, tag_id) DO UPDATE SET position = excluded.position`,
+        )
+        .bind(tagId, i, linkId, userId),
+    ),
+  ];
+}

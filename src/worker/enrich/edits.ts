@@ -1,7 +1,7 @@
 import { now } from '../clock';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
 import { normalizeTags } from './enrich';
-import { resolveTags, resolveTopic } from './vocabulary';
+import { resolveTags, resolveTopic, setTagsStatements } from './vocabulary';
 
 /** The fields the owner can edit, in the order edited_fields records them. */
 export const EDITABLE = ['title', 'summary', 'tags', 'topic'] as const;
@@ -121,16 +121,7 @@ export async function applyEdit(
         userId,
       ),
   ];
-  if (tagIds) {
-    statements.push(db.prepare('DELETE FROM link_tags WHERE link_id = ?').bind(id));
-    tagIds.forEach((tagId, i) =>
-      statements.push(
-        db
-          .prepare('INSERT INTO link_tags (link_id, tag_id, position) VALUES (?, ?, ?)')
-          .bind(id, tagId, i),
-      ),
-    );
-  }
+  if (tagIds) statements.push(...setTagsStatements(db, userId, id, tagIds));
   await db.batch(statements);
   return getLink(db, userId, id);
 }

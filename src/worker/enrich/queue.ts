@@ -5,7 +5,7 @@ import { buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
 import { deferIfEarly } from './throttle';
-import { listVocabulary, resolveTags, resolveTopic } from './vocabulary';
+import { listVocabulary, resolveTags, resolveTopic, setTagsStatements } from './vocabulary';
 
 /** Notes that mean a link has nothing to enrich. */
 const NOTHING_TO_ENRICH = [/^not a web page/, /^no text in this PDF$/, /^PDF too large to store/];
@@ -70,16 +70,7 @@ async function storeEnrichment(env: Env, link: LinkRow, result: Enrichment): Pro
       link.id,
       link.user_id,
     ),
-    ...(tagIds
-      ? [
-          env.DB.prepare('DELETE FROM link_tags WHERE link_id = ?').bind(link.id),
-          ...tagIds.map((tagId, i) =>
-            env.DB.prepare(
-              'INSERT INTO link_tags (link_id, tag_id, position) SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?',
-            ).bind(tagId, i, link.id, link.user_id),
-          ),
-        ]
-      : []),
+    ...(tagIds ? setTagsStatements(env.DB, link.user_id, link.id, tagIds) : []),
   ]);
 }
 

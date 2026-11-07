@@ -6,6 +6,7 @@ import { toView, type LinkRow } from '../links/store';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
 import { linkMatch, matchingWorkspaces, rankedLinks } from './search';
+import { isVocabularyCursor, listVocabularyItems, type VocabularyKind } from './vocabulary';
 
 /** GET /api/v1/search. */
 export const searchRoutes = new Hono<AppEnv>();
@@ -111,3 +112,36 @@ searchRoutes.get('/', async (c) => {
     ? streamPage(c, parsed.filters, limit, raw)
     : rankedPage(c, parsed, limit, raw);
 });
+
+/** GET /api/v1/topics or /api/v1/tags: the vocabulary of `kind`, newest first. */
+function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
+  const routes = new Hono<AppEnv>();
+  routes.get('/', async (c) => {
+    const limit = parseLimit(c.req.query('limit'));
+    if (limit === null) {
+      return validationError(
+        c,
+        'invalid_limit',
+        'limit',
+        `limit must be an integer from 1 to ${MAX_LIMIT}`,
+      );
+    }
+    const raw = c.req.query('cursor');
+    let after = null;
+    if (raw !== undefined) {
+      after = await decodeCursor(c.env, raw);
+      if (!isVocabularyCursor(after)) return invalidCursor(c);
+    }
+    const page = await listVocabularyItems(c.env.DB, c.get('user').id, kind, limit, after);
+    return c.json({
+      items: page.items,
+      next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
+    });
+  });
+  return routes;
+}
+
+/** The topics, at /api/v1/topics. */
+export const topicRoutes = vocabularyRoutes('topics');
+/** The tags, at /api/v1/tags. */
+export const tagRoutes = vocabularyRoutes('tags');

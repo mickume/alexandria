@@ -257,3 +257,41 @@ export const decay = {
   get: () => request<Thresholds>('GET', '/settings/decay'),
   save: (t: Thresholds) => request<Thresholds>('PUT', '/settings/decay', t),
 };
+
+/** A topic or tag as listed, with its number of links. */
+export interface VocabularyItem {
+  id: string;
+  name: string;
+  count: number;
+  newest_added_at: string;
+}
+
+/** Topics or tags. */
+export type VocabularyKind = 'topics' | 'tags';
+
+export const vocabulary = {
+  /** Every topic or tag with a link, newest first, following the cursor to the end. */
+  listAll: async (kind: VocabularyKind): Promise<VocabularyItem[]> => {
+    const items: VocabularyItem[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: Page<VocabularyItem> = await request<Page<VocabularyItem>>(
+        'GET',
+        `/${kind}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      );
+      items.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return items;
+  },
+};
+
+/** The search query of a topic or tag filter, quoting a name that holds a space. */
+export function filterQuery(name: 'topic' | 'tag', value: string): string {
+  return `${name}:${/\s/.test(value) ? `"${value}"` : value}`;
+}
+
+/** The website's address of a search. */
+export function searchPath(q: string): string {
+  return `/search?q=${encodeURIComponent(q)}`;
+}

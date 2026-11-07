@@ -586,3 +586,20 @@ Errors: `400 {"error": "query_too_long", "field": "q"}`, and
 `400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;
 `invalid_limit`, `invalid_cursor`.
 
+### Topics and tags
+
+The topics and tags enrichment and the owner's edits give links. A topic or
+tag whose last link loses it (by an edit, a merge, decay's removal or a
+deletion) is deleted: it is neither listed nor offered to enrichment again.
+
+#### `GET /api/v1/topics`
+
+Every topic that has a link, with the number of its links in any state
+(archived included) and the added date of its newest link, newest first:
+`200 {"items": [{"id", "name", "count", "newest_added_at"}], "next_cursor"}`,
+with `limit` (1 to 100, default 50) and `cursor`.
+
+#### `GET /api/v1/tags`
+
+The same for tags.
+

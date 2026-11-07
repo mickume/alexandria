@@ -104,3 +104,27 @@ INSERT INTO workspace_search_keys (workspace_id) SELECT id FROM workspaces;
 INSERT INTO workspace_search (rowid, name, description, note, owner, workspace_id)
 SELECT k.id, w.name, w.description, w.note, 'u' || replace(w.user_id, '-', ''), w.id
 FROM workspaces w JOIN workspace_search_keys k ON k.workspace_id = w.id;
+
+-- A topic or tag whose last link loses it is deleted, so that it is neither
+-- listed nor offered to enrichment.
+CREATE TRIGGER tags_drop_unused AFTER DELETE ON link_tags
+WHEN NOT EXISTS (SELECT 1 FROM link_tags WHERE tag_id = old.tag_id)
+BEGIN
+  DELETE FROM tags WHERE id = old.tag_id;
+END;
+
+CREATE TRIGGER topics_drop_unused AFTER UPDATE OF topic_id ON links
+WHEN old.topic_id IS NOT NULL AND old.topic_id IS NOT new.topic_id
+  AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = old.topic_id)
+BEGIN
+  DELETE FROM topics WHERE id = old.topic_id;
+END;
+
+CREATE TRIGGER topics_drop_unused_with_link AFTER DELETE ON links
+WHEN old.topic_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = old.topic_id)
+BEGIN
+  DELETE FROM topics WHERE id = old.topic_id;
+END;
+
+DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM link_tags);
+DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM links WHERE topic_id IS NOT NULL);

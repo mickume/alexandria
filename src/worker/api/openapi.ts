@@ -137,6 +137,14 @@ const FILTER_PARAMETERS: Operation['query'] = {
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
+/** A topic or tag as listed. */
+const VocabularyItem = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  count: z.number().int(),
+  newest_added_at: z.string(),
+});
+
 /** The answer of a search. */
 export const SearchResults = z.strictObject({
   items: z.array(z.strictObject({ link: Link, snippet: Snippet })),
@@ -297,6 +305,26 @@ export const operations: Operation[] = [
       400: error('query_too_long, invalid_filter (field q), invalid_limit or invalid_cursor'),
     },
   },
+  ...(['topics', 'tags'] as const).map((kind): Operation => ({
+    method: 'get',
+    path: `/${kind}`,
+    operationId: kind === 'topics' ? 'listTopics' : 'listTags',
+    summary: `The ${kind} that have a link, with their counts, newest link first`,
+    query: {
+      limit: { description: 'Items per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: `One page of ${kind}: the number of links in any state and the newest link's added date`,
+        schema: z.strictObject({
+          items: z.array(VocabularyItem),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  })),
   {
     method: 'get',
     path: '/archive',

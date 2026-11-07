@@ -5,6 +5,8 @@ import { Read, Snapshot } from './pages/Read';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
 import { Stream } from './pages/Stream';
+import { Tags } from './pages/Tags';
+import { Topics } from './pages/Topics';
 import { WorkspacePage } from './pages/Workspace';
 import { Workspaces } from './pages/Workspaces';
 
@@ -60,6 +62,8 @@ function Layout({ children }: { children: ReactNode }) {
         </Link>
         <nav>
           <Link to="/workspaces">Workspaces</Link>
+          <Link to="/topics">Topics</Link>
+          <Link to="/tags">Tags</Link>
           <Link to="/archive">Archive</Link>
           <Link to="/settings">Settings</Link>
           <form method="post" action="/auth/signout">
@@ -83,6 +87,8 @@ export function App() {
   else if (path === '/settings') page = <Settings />;
   else if (path === '/workspaces') page = <Workspaces />;
   else if (path === '/archive') page = <Archive />;
+  else if (path === '/topics') page = <Topics />;
+  else if (path === '/tags') page = <Tags />;
   else if (path.startsWith('/workspaces/')) {
     const id = decodeURIComponent(path.slice('/workspaces/'.length));
     page = <WorkspacePage key={id} id={id} />;

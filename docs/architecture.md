@@ -200,6 +200,13 @@ Triggers keep the index current, so no writer can forget it:
 - a `link_tags` row inserted or deleted rewrites the link's `tags`;
 - renaming a topic or a tag rewrites the rows of the links that carry it.
 
+Three more triggers delete a topic or tag whose last link loses it: a
+`link_tags` row deleted (an edit, a merge, decay's removal, or a link deleted,
+through the cascade), a link's topic changed, and a link deleted. Writers
+therefore never empty a link's tags before setting them:
+`enrich/vocabulary.ts`'s `setTagsStatements` removes only the tags the link
+loses and upserts the rest with their positions.
+
 The reader-view text is written by the fetch worker in the batch that stores
 it in `link_texts` (`search/search.ts`, `indexReaderTextStatement`): at most
 its first 500,000 characters, replacing what was indexed before, and nothing
