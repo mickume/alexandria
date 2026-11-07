@@ -162,3 +162,176 @@ describe('the MCP endpoint', () => {
     expect(next.structuredContent.items).toHaveLength(1);
   });
 });
+
+async function linkCount(user: TestUser) {
+  return count('links', 'user_id = ?', user.id);
+}
+
+/** Creates a workspace through the API and returns its id. */
+async function createWorkspace(user: TestUser, name: string): Promise<string> {
+  const r = await api('POST', '/api/v1/workspaces', { as: user.session, body: { name } });
+  expect(r.status).toBe(201);
+  return r.json.id;
+}
+
+async function workspaceLinks(user: TestUser, id: string): Promise<string[]> {
+  const r = await api('GET', `/api/v1/workspaces/${id}/links`, { as: user.session });
+  return r.json.items.map((l: { id: string }) => l.id);
+}
+
+describe('add_link', () => {
+  it('adds a new link as POST /api/v1/links does', async () => {
+    const a = await agent();
+    const r = await mcpTool(a.secret, 'add_link', {
+      url: 'https://example.net/paper?utm_source=x',
+    });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent.status).toBe('added');
+    expect(r.structuredContent.link).toMatchObject({
+      url: 'https://example.net/paper',
+      state: 'pending',
+      title: 'example.net',
+    });
+    expect(JSON.parse(r.content[0]!.text)).toEqual(r.structuredContent);
+    const stream = await api('GET', '/api/v1/links', { as: a.session });
+    expect(stream.json.items[0].id).toBe(r.structuredContent.link.id);
+  });
+
+  it('boosts a link already in the library', async () => {
+    setNow('2026-11-07T10:00:00.000Z');
+    const a = await agent();
+    await seedLinks(a, [
+      { url: 'https://example.net/paper', useCount: 2, lastUsedAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    const r = await mcpTool(a.secret, 'add_link', { url: 'https://EXAMPLE.net/paper#x' });
+    expect(r.structuredContent.status).toBe('boosted');
+    expect(await linkCount(a)).toBe(1);
+    expect(r.structuredContent.link).toMatchObject({
+      use_count: 2,
+      last_used_at: '2026-11-07T10:00:00.000Z',
+    });
+  });
+
+  it('applies tags as a manual edit and files the link into a workspace once', async () => {
+    const a = await agent();
+    const research = await createWorkspace(a, 'Research');
+    const [old] = await seedLinks(a, [{ url: 'https://old.example' }]);
+    await api('POST', `/api/v1/workspaces/${research}/links`, {
+      as: a.session,
+      body: { link_id: old },
+    });
+    const first = await mcpTool(a.secret, 'add_link', {
+      url: 'https://new.example/x',
+      tags: [' Reading ', 'ml'],
+      workspace: 'research',
+    });
+    expect(first.isError).toBeFalsy();
+    const id = first.structuredContent.link.id;
+    expect(first.structuredContent.link.tags).toEqual(['reading', 'ml']);
+    expect(first.structuredContent.link.workspaces).toEqual([{ id: research, name: 'Research' }]);
+    const stored = await api('GET', `/api/v1/links/${id}`, { as: a.session });
+    expect(stored.json.edited_fields).toContain('tags');
+    expect(await workspaceLinks(a, research)).toEqual([old, id]);
+
+    const again = await mcpTool(a.secret, 'add_link', {
+      url: 'https://new.example/x',
+      workspace: research,
+    });
+    expect(again.structuredContent.status).toBe('boosted');
+    expect(again.structuredContent.link.tags).toEqual(['reading', 'ml']);
+    expect(await workspaceLinks(a, research)).toEqual([old, id]);
+  });
+
+  it.each(['javascript:alert(1)', 'http://localhost', 'not a url'])(
+    'refuses the url %j as POST /api/v1/links does',
+    async (url) => {
+      const a = await agent();
+      const r = await mcpTool(a.secret, 'add_link', { url });
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent).toEqual({
+        error: 'invalid_url',
+        field: 'url',
+        url,
+        message: 'not a valid web address',
+      });
+      expect(r.response.json.error).toBeUndefined();
+      expect(await linkCount(a)).toBe(0);
+    },
+  );
+
+  describe('stores nothing when an argument is refused', () => {
+    it.each([
+      ['a workspace that does not exist', { workspace: 'Nowhere' }, 'not_found', undefined],
+      ["another user's workspace", { workspace: 'THEIRS' }, 'not_found', undefined],
+      ['a tag of two words', { tags: ['two words'] }, 'invalid_arguments', 'tags'],
+      ['an empty tag', { tags: ['ok', ''] }, 'invalid_arguments', 'tags'],
+      [
+        'too many tags',
+        { tags: Array.from({ length: 21 }, (_, i) => `t${i}`) },
+        'invalid_arguments',
+        'tags',
+      ],
+    ])('%s', async (_case, args, error, field) => {
+      const a = await agent();
+      const b = await agent('other@example.test');
+      const theirs = await createWorkspace(b, 'Theirs');
+      const mine = await createWorkspace(a, 'Mine');
+      const workspace = (args as { workspace?: string }).workspace;
+      const r = await mcpTool(a.secret, 'add_link', {
+        url: 'https://example.net/',
+        ...args,
+        ...(workspace === 'THEIRS' ? { workspace: theirs } : {}),
+      });
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent.error).toBe(error);
+      expect(typeof r.structuredContent.message).toBe('string');
+      if (field) expect(r.structuredContent.field).toBe(field);
+      expect(await linkCount(a)).toBe(0);
+      expect(await workspaceLinks(a, mine)).toEqual([]);
+      expect(await workspaceLinks(b, theirs)).toEqual([]);
+    });
+
+    it('a new url while the library is full', { timeout: 60_000 }, async () => {
+      const a = await agent();
+      await seedLinks(
+        a,
+        Array.from({ length: 20_000 }, (_, i) => ({ url: `https://full${i}.example` })),
+      );
+      const r = await mcpTool(a.secret, 'add_link', { url: 'https://one-more.example/' });
+      expect(r.isError).toBe(true);
+      expect(r.structuredContent).toEqual({
+        error: 'library_full',
+        message: 'library full (20,000 links)',
+      });
+      expect(await linkCount(a)).toBe(20_000);
+    });
+  });
+
+  it(
+    'counts once against the rate limit, however many operations it performs',
+    { timeout: 120_000 },
+    async () => {
+      setNow('2026-11-07T10:00:05.000Z');
+      const a = await agent();
+      await createWorkspace(a, 'Research');
+      for (let i = 0; i < 300; i++) {
+        expect((await api('GET', '/api/v1/me', { bearer: a.secret })).status).toBe(200);
+      }
+      for (let i = 0; i < 299; i++) {
+        const r = await mcpTool(a.secret, 'add_link', {
+          url: `https://rl${i}.example/`,
+          tags: ['rate'],
+          workspace: 'Research',
+        });
+        expect(r.isError, JSON.stringify(r.structuredContent)).toBeFalsy();
+      }
+      const r = await mcp(a.secret, 'tools/call', {
+        name: 'add_link',
+        arguments: { url: 'https://one-too-many.example/', tags: ['rate'], workspace: 'Research' },
+      });
+      expect(r.status).toBe(429);
+      expect(r.json).toEqual({ error: 'rate_limited' });
+      expect(await linkCount(a)).toBe(299);
+    },
+  );
+});

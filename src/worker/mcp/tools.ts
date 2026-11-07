@@ -73,6 +73,95 @@ const listRecent: Tool = {
   },
 };
 
+/** Every workspace of the user, reading every page of GET /api/v1/workspaces. */
+export async function allWorkspaces(ctx: ToolContext): Promise<Outcome> {
+  const items: { id: string; name: string }[] = [];
+  let cursor: string | null = null;
+  do {
+    const after: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+    const page = outcomeOf(await ctx.call('GET', `/workspaces?limit=100${after}`));
+    if (!page.ok) return page;
+    items.push(...(page.body.items as { id: string; name: string }[]));
+    cursor = page.body.next_cursor as string | null;
+  } while (cursor);
+  return { ok: true, body: { items } };
+}
+
+/** The id of the user's workspace named by `value`: its id, or its name ignoring case; else null. */
+export async function resolveWorkspace(ctx: ToolContext, value: string): Promise<string | null> {
+  const all = await allWorkspaces(ctx);
+  if (!all.ok) return null;
+  const items = all.body.items as { id: string; name: string }[];
+  const key = value.trim().toLowerCase();
+  return (
+    items.find((w) => w.id === value)?.id ??
+    items.find((w) => w.name.trim().toLowerCase() === key)?.id ??
+    null
+  );
+}
+
+const NO_WORKSPACE = refused('not_found', 'no workspace of yours has this id or name');
+
+/** A tag as add_link takes it: trimmed and lower-cased, a word or a hyphenated phrase. */
+const TAG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** The most tags a link carries (PATCH /api/v1/links/{id}). */
+const TAGS_MAX = 20;
+
+/** The tags trimmed and lower-cased, or null when one is not a word or a hyphenated phrase. */
+function cleanTags(tags: string[]): string[] | null {
+  const clean = tags.map((t) => t.trim().toLowerCase());
+  return clean.length <= TAGS_MAX && clean.every((t) => TAG.test(t)) ? clean : null;
+}
+
+/** A link as the stream shows it: the link read on its own, without its whole note. */
+function streamView(link: Record<string, unknown>): Record<string, unknown> {
+  const { note: _note, ...view } = link;
+  void _note;
+  return view;
+}
+
+interface AddLinkArgs {
+  url: string;
+  tags?: string[];
+  workspace?: string;
+}
+
+/**
+ * add_link: checks the workspace and the tags first, so that a refused call
+ * stores nothing; then adds or boosts the link (POST /api/v1/links), applies
+ * the tags as a manual edit (PATCH /api/v1/links/{id}) and files it at the
+ * bottom of the workspace unless it is a member already.
+ */
+async function addLink(ctx: ToolContext, args: AddLinkArgs): Promise<Outcome> {
+  const workspaceId =
+    args.workspace === undefined ? undefined : await resolveWorkspace(ctx, args.workspace);
+  if (workspaceId === null) return NO_WORKSPACE;
+  const tags = args.tags === undefined ? undefined : cleanTags(args.tags);
+  if (tags === null) {
+    return refused(
+      'invalid_arguments',
+      `tags: at most ${TAGS_MAX}, each a single word or a hyphenated phrase`,
+      'tags',
+    );
+  }
+  const added = outcomeOf(await ctx.call('POST', '/links', { url: args.url }));
+  if (!added.ok || (tags === undefined && workspaceId === undefined)) return added;
+  const link = added.body.link as { id: string; workspaces: { id: string }[] };
+  if (tags !== undefined) {
+    const edited = outcomeOf(await ctx.call('PATCH', `/links/${link.id}`, { tags }));
+    if (!edited.ok) return edited;
+  }
+  if (workspaceId !== undefined && !link.workspaces.some((w) => w.id === workspaceId)) {
+    const filed = outcomeOf(
+      await ctx.call('POST', `/workspaces/${workspaceId}/links`, { link_id: link.id }),
+    );
+    if (!filed.ok) return filed;
+  }
+  const now = outcomeOf(await ctx.call('GET', `/links/${link.id}`));
+  if (!now.ok) return now;
+  return { ok: true, body: { status: added.body.status, link: streamView(now.body) } };
+}
+
 const linkId = z.string().min(1).describe('The id of one of the owner’s links');
 const workspace = z
   .string()
@@ -93,15 +182,17 @@ function pending(name: string, description: string, input: z.ZodObject): Tool {
 
 /** Every tool the MCP server offers. */
 export const TOOLS: Tool[] = [
-  pending(
-    'add_link',
-    'Add a link to the library, or move a link already in it to the top. Optionally tag it (a manual tag edit) and file it into a workspace.',
-    z.object({
+  {
+    name: 'add_link',
+    description:
+      'Add a link to the library, or move a link already in it to the top. Optionally tag it (a manual tag edit) and file it into a workspace.',
+    input: z.object({
       url: z.string().describe('The web address to keep'),
       tags: z.array(z.string()).optional().describe('Tags: single words or hyphenated phrases'),
       workspace: workspace.optional(),
     }),
-  ),
+    run: addLink,
+  },
   pending(
     'search_links',
     'Search the library by keywords, with the prefix filters tag:, topic:, host:, state:, in: and is:. Returns the matching links with a snippet each.',

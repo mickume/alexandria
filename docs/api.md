@@ -740,5 +740,15 @@ unexpected failure is
 
 | Tool | Arguments | Does |
 |---|---|---|
+| `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
 | `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
+
+A `workspace` argument is a workspace's id or its name, compared ignoring
+case; one that names no workspace of the user is
+`{"error": "not_found", "message"}`, and no workspace is created. `add_link`
+checks its arguments before it stores anything: tags are trimmed and
+lower-cased, and each must be a single word or a hyphenated phrase (at most
+20), else `{"error": "invalid_arguments", "field": "tags", "message"}`. Its
+`url` is refused as `POST /api/v1/links` refuses it (`invalid_url` with the
+input as `url`, `library_full`), with nothing stored.
 
