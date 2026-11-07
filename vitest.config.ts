@@ -12,6 +12,7 @@ export const testBindings = {
   GOOGLE_AUTH_URL: 'https://google.test/o/oauth2/v2/auth',
   GOOGLE_TOKEN_URL: 'https://google.test/token',
   PUBLIC_ORIGIN: 'https://alexandria.test',
+  KEY_ENCRYPTION_KEY: 'test-key-encryption-key',
 };
 
 export default defineConfig({

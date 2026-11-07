@@ -3,11 +3,11 @@
   "spec_id": "03",
   "spec_name": "ai_enrichment",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-07T16:52:44Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

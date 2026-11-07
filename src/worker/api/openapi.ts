@@ -77,6 +77,16 @@ export const Link = z.strictObject({
   updated_at: z.string().describe('When the link last changed in any way'),
 });
 
+/** The AI settings, never with the key beyond its last 4 characters. */
+const AiSettingsView = z.strictObject({
+  configured: z.literal(true),
+  provider: z.enum(['anthropic', 'openrouter']),
+  model: z.string(),
+  key_last4: z.string(),
+  status: z.enum(['verified', 'rejected']),
+  rejected_message: z.string().nullable(),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
@@ -123,6 +133,50 @@ export const operations: Operation[] = [
         schema: z.looseObject({ openapi: z.string() }),
       },
     },
+  },
+  {
+    method: 'get',
+    path: '/settings/ai',
+    operationId: 'getAiSettings',
+    summary: 'The AI provider, model and key (by its last 4 characters), and how many links wait',
+    responses: {
+      200: {
+        description: 'The settings, or configured: false without a key',
+        schema: z.union([
+          AiSettingsView.extend({ unenriched_count: z.number().int() }),
+          z.strictObject({ configured: z.literal(false), unenriched_count: z.number().int() }),
+        ]),
+      },
+    },
+  },
+  {
+    method: 'put',
+    path: '/settings/ai',
+    operationId: 'saveAiSettings',
+    summary: 'Store the AI provider, model and key after a test request the provider accepts',
+    body: z.object({
+      provider: z.enum(['anthropic', 'openrouter']),
+      api_key: z.string().min(1),
+      model: z
+        .string()
+        .max(200)
+        .optional()
+        .describe('Required for OpenRouter; default claude-opus-5-5'),
+    }),
+    responses: {
+      200: { description: 'Stored and verified', schema: AiSettingsView },
+      400: error(
+        'invalid_json, invalid_provider, invalid_key, model_required, invalid_model, or key_rejected with the provider’s message',
+      ),
+      502: error('provider_unavailable: the provider could not be reached or did not answer'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/settings/ai',
+    operationId: 'deleteAiSettings',
+    summary: 'Forget the AI provider, model and key',
+    responses: { 204: { description: 'Removed' } },
   },
   {
     method: 'post',

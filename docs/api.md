@@ -278,3 +278,35 @@ event (a refresh is not retried). At most one refresh per link per 10
 minutes: a second one is
 `429 {"error": "refreshed_recently", "message": "already refreshed recently"}`
 with `Retry-After` in seconds.
+
+### AI provider settings
+
+Enrichment runs only with the owner's own AI key ("bring your own key"),
+Anthropic or OpenRouter. The key is stored encrypted and never returned: the
+API shows only its last 4 characters.
+
+#### `GET /api/v1/settings/ai`
+
+`200 {"configured": true, "provider": "anthropic" | "openrouter", "model", "key_last4", "status": "verified" | "rejected", "rejected_message": <string or null>, "unenriched_count"}`,
+or `{"configured": false, "unenriched_count"}` without a key. `unenriched_count`
+counts the links waiting to be enriched (`no_key`, `waiting_for_key` or
+`failed`).
+
+#### `PUT /api/v1/settings/ai`
+
+Body `{"provider": "anthropic" | "openrouter", "api_key": "…", "model": "…"}`.
+The model is optional for Anthropic (default `claude-opus-5-5`) and required
+for OpenRouter (at most 200 characters). The key is stored only after a test
+request the provider accepts, replacing any earlier settings and lifting a
+rejection.
+
+- `200` with the settings as above (without `unenriched_count`), `status: "verified"`
+- `400 {"error": "invalid_provider" | "invalid_key" | "model_required" | "invalid_model", "field", "message"}`,
+  without calling the provider
+- `400 {"error": "key_rejected", "field": "api_key", "message": <the provider's message>}`
+- `502 {"error": "provider_unavailable", "message"}` when the provider cannot
+  be reached, answers 5xx, or does not answer within 60 seconds
+
+#### `DELETE /api/v1/settings/ai`
+
+Forgets the provider, model and key: `204`. Later links are not enriched.

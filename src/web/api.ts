@@ -158,3 +158,23 @@ export const links = {
     }
   },
 };
+
+/** The owner's AI settings, never with the key beyond its last 4 characters. */
+export type AiSettings =
+  | {
+      configured: true;
+      provider: 'anthropic' | 'openrouter';
+      model: string;
+      key_last4: string;
+      status: 'verified' | 'rejected';
+      rejected_message: string | null;
+      unenriched_count: number;
+    }
+  | { configured: false; unenriched_count: number };
+
+export const ai = {
+  get: () => request<AiSettings>('GET', '/settings/ai'),
+  save: (body: { provider: string; api_key: string; model?: string }) =>
+    request<AiSettings>('PUT', '/settings/ai', body),
+  remove: () => request<void>('DELETE', '/settings/ai'),
+};

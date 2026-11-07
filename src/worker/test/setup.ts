@@ -5,7 +5,7 @@ import { applyD1Migrations, env } from 'cloudflare:test';
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'vitest';
 import { findOperation, responseMismatch } from '../api/openapi';
 import { setNow } from '../clock';
-import { recordedResponses, recordFetchQueue } from './helpers';
+import { recordedResponses, recordFetchQueue, savedKeys } from './helpers';
 import { installOutbound, resetOutbound } from './outbound';
 
 let tables: string[] = [];
@@ -43,4 +43,13 @@ afterAll(() => {
     return why ? [`${method} ${path}: ${why}`] : [];
   });
   expect(mismatches).toEqual([]);
+});
+
+afterAll(() => {
+  // No answer of the API may carry an AI key, beyond its last 4 characters.
+  const leaks = recordedResponses.flatMap(({ method, path, body, headers }) => {
+    const text = `${JSON.stringify(body)}\n${headers}`;
+    return [...savedKeys].filter((key) => text.includes(key)).map(() => `${method} ${path}`);
+  });
+  expect(leaks).toEqual([]);
 });

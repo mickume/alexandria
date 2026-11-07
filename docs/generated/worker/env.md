@@ -62,6 +62,12 @@ The bindings and variables of the Worker, as wrangler.jsonc declares them.
 
 Comma-separated email addresses that may sign in, compared case-insensitively.
 
+##### ANTHROPIC\_BASE\_URL
+
+> **ANTHROPIC\_BASE\_URL**: `string`
+
+The Anthropic API's base URL; configurable so tests can run a local fake.
+
 ##### ASSETS
 
 > **ASSETS**: `object`
@@ -145,6 +151,18 @@ Google's token endpoint; configurable so tests can run a local fake.
 > **HOST\_GATE**: `DurableObjectNamespace`\<[`HostGate`](fetcher/hostgate.md#hostgate)\>
 
 The per-host rate limit: one Durable Object per host.
+
+##### KEY\_ENCRYPTION\_KEY
+
+> **KEY\_ENCRYPTION\_KEY**: `string`
+
+The secret the owners' AI keys are encrypted under.
+
+##### OPENROUTER\_BASE\_URL
+
+> **OPENROUTER\_BASE\_URL**: `string`
+
+OpenRouter's API base URL; configurable so tests can run a local fake.
 
 ##### ORIGIN\_PROXY\_URL?
 

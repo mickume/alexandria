@@ -420,6 +420,14 @@ A personal access token as listed.
 
 ## Type Aliases
 
+### AiSettings
+
+> **AiSettings** = \{ `configured`: `true`; `key_last4`: `string`; `model`: `string`; `provider`: `"anthropic"` \| `"openrouter"`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; `unenriched_count`: `number`; \} \| \{ `configured`: `false`; `unenriched_count`: `number`; \}
+
+The owner's AI settings, never with the key beyond its last 4 characters.
+
+***
+
 ### LinkEvent
 
 > **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
@@ -427,6 +435,54 @@ A personal access token as listed.
 One event of a link's history: a use, or a fetch attempt.
 
 ## Variables
+
+### ai
+
+> `const` **ai**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: () => `Promise`\<[`AiSettings`](#aisettings)\>
+
+###### Returns
+
+`Promise`\<[`AiSettings`](#aisettings)\>
+
+##### remove
+
+> **remove**: () => `Promise`\<`void`\>
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### save
+
+> **save**: (`body`) => `Promise`\<[`AiSettings`](#aisettings)\>
+
+###### Parameters
+
+###### body
+
+###### api_key
+
+`string`
+
+###### model?
+
+`string`
+
+###### provider
+
+`string`
+
+###### Returns
+
+`Promise`\<[`AiSettings`](#aisettings)\>
+
+***
 
 ### links
 

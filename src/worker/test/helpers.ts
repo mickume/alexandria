@@ -54,10 +54,15 @@ export interface RecordedResponse {
   path: string;
   status: number;
   body: unknown;
+  /** The response's headers, as one string. */
+  headers: string;
 }
 
 /** Every response api() received in the current test file. */
 export const recordedResponses: RecordedResponse[] = [];
+
+/** Every AI key a test saved through the API in the current test file. */
+export const savedKeys = new Set<string>();
 
 /** Sends a request through the Worker, as a browser or a script would. */
 export async function api(
@@ -74,6 +79,8 @@ export async function api(
     headers.set('Origin', opts.origin);
   }
   if (opts.bearer !== undefined) headers.set('Authorization', `Bearer ${opts.bearer}`);
+  const apiKey = (opts.body as { api_key?: unknown } | undefined)?.api_key;
+  if (typeof apiKey === 'string' && apiKey.length > 4) savedKeys.add(apiKey);
   let body: string | undefined;
   if (opts.body !== undefined) {
     body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
@@ -95,6 +102,7 @@ export async function api(
     path: new URL(path, ORIGIN).pathname,
     status: response.status,
     body: json,
+    headers: [...response.headers].map(([k, v]) => `${k}: ${v}`).join('\n'),
   });
   return { status: response.status, headers: response.headers, json, response };
 }

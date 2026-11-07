@@ -24,6 +24,12 @@ export interface Env {
   SNAPSHOTS: R2Bucket;
   /** End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target. */
   ORIGIN_PROXY_URL?: string;
+  /** The secret the owners' AI keys are encrypted under. */
+  KEY_ENCRYPTION_KEY: string;
+  /** The Anthropic API's base URL; configurable so tests can run a local fake. */
+  ANTHROPIC_BASE_URL: string;
+  /** OpenRouter's API base URL; configurable so tests can run a local fake. */
+  OPENROUTER_BASE_URL: string;
 }
 
 /** A request to fetch one link's page. */
