@@ -1,8 +1,11 @@
 // Applies the D1 migrations before each test file, empties every table before
-// each test, and installs the outbound router.
+// each test, installs the outbound router, and checks after each file that every
+// API response the tests received is one the OpenAPI document declares.
 import { applyD1Migrations, env } from 'cloudflare:test';
-import { afterEach, beforeAll, beforeEach } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'vitest';
+import { findOperation, responseMismatch } from '../api/openapi';
 import { setNow } from '../clock';
+import { recordedResponses } from './helpers';
 import { installOutbound, resetOutbound } from './outbound';
 
 let tables: string[] = [];
@@ -27,4 +30,13 @@ beforeEach(async () => {
 afterEach(() => {
   setNow(null);
   resetOutbound();
+});
+
+afterAll(() => {
+  const mismatches = recordedResponses.flatMap(({ method, path, status, body }) => {
+    const op = findOperation(method, path);
+    const why = op && responseMismatch(op, status, body);
+    return why ? [`${method} ${path}: ${why}`] : [];
+  });
+  expect(mismatches).toEqual([]);
 });

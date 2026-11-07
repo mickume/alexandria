@@ -1,4 +1,7 @@
 import { Hono } from 'hono';
+import { notFound } from './api/errors';
+import { openApiDocument } from './api/openapi';
+import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes } from './auth/routes';
 import type { AppEnv } from './env';
@@ -6,12 +9,13 @@ import type { AppEnv } from './env';
 /** The JSON API under /api/v1/; every route needs an authenticated user. */
 function createApi(): Hono<AppEnv> {
   const api = new Hono<AppEnv>();
-  api.use('*', requireAuth);
+  api.use('*', requireAuth, rateLimit);
   api.get('/me', (c) => {
     const { email, name } = c.get('user');
     return c.json({ email, name });
   });
-  api.all('*', (c) => c.json({ error: 'not_found' }, 404));
+  api.get('/openapi.json', (c) => c.json(openApiDocument()));
+  api.all('*', notFound);
   return api;
 }
 
@@ -21,6 +25,10 @@ export function createApp(): Hono<AppEnv> {
   app.route('/api/v1', createApi());
   app.route('/auth', authRoutes);
   app.get('*', servePage);
+  app.onError((err, c) => {
+    console.error(err);
+    return c.json({ error: 'internal' }, 500);
+  });
   return app;
 }
 

@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
+import { refusal, unauthorized } from '../api/errors';
 import type { AppEnv, AuthUser } from '../env';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, useSession } from './sessions';
 
@@ -43,13 +44,12 @@ export const requireAuth: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(a
   const authorization = c.req.header('Authorization');
   if (authorization !== undefined) {
     // Personal access tokens are recognised from the tokens module.
-    return c.json({ error: 'unauthorized' }, 401);
+    return unauthorized(c);
   }
   const user = await sessionUser(c);
-  if (!user) return c.json({ error: 'unauthorized' }, 401);
-  if (UNSAFE_METHODS.has(c.req.method) && !sameOrigin(c)) {
-    return c.json({ error: 'forbidden_origin' }, 403);
-  }
+  if (!user) return unauthorized(c);
+  if (UNSAFE_METHODS.has(c.req.method) && !sameOrigin(c))
+    return refusal(c, 403, 'forbidden_origin');
   c.set('user', user);
   c.set('via', 'session');
   await next();
@@ -79,7 +79,7 @@ export const servePage: MiddlewareHandler<AppEnv> = async (c) => {
 export const requireSameOrigin: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(
   async (c, next) => {
     if (UNSAFE_METHODS.has(c.req.method) && getCookie(c, SESSION_COOKIE) && !sameOrigin(c)) {
-      return c.json({ error: 'forbidden_origin' }, 403);
+      return refusal(c, 403, 'forbidden_origin');
     }
     await next();
   },

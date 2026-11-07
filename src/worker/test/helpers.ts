@@ -40,6 +40,17 @@ export interface ApiOptions {
   headers?: Record<string, string>;
 }
 
+/** One response api() received, kept to compare with the OpenAPI document. */
+export interface RecordedResponse {
+  method: string;
+  path: string;
+  status: number;
+  body: unknown;
+}
+
+/** Every response api() received in the current test file. */
+export const recordedResponses: RecordedResponse[] = [];
+
 /** Sends a request through the Worker, as a browser or a script would. */
 export async function api(
   method: string,
@@ -71,6 +82,12 @@ export async function api(
   if (text && response.headers.get('Content-Type')?.includes('application/json')) {
     json = JSON.parse(text);
   }
+  recordedResponses.push({
+    method,
+    path: new URL(path, ORIGIN).pathname,
+    status: response.status,
+    body: text ? json : null,
+  });
   return { status: response.status, headers: response.headers, json, response };
 }
 
