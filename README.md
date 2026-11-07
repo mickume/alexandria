@@ -19,9 +19,12 @@ npx vite dev     # a local development server
 ```
 
 For local sign-in, create `.dev.vars` with `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET` and `ALLOWED_EMAILS` (see
-[docs/configuration.md](docs/configuration.md)), and apply the migrations with
-`npx wrangler d1 migrations apply alexandria --local`.
+`GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `PUBLIC_ORIGIN` and
+`KEY_ENCRYPTION_KEY` (see [docs/configuration.md](docs/configuration.md)), and
+apply the migrations with `npx wrangler d1 migrations apply alexandria --local`.
+
+To deploy to Cloudflare, run `npm run deploy` with `CLOUDFLARE_API_TOKEN`
+set; see [Deploying](docs/configuration.md#deploying).
 
 ## Search
 
