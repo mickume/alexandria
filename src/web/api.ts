@@ -284,6 +284,18 @@ export const vocabulary = {
     } while (cursor);
     return items;
   },
+  rename: (kind: VocabularyKind, id: string, name: string) =>
+    request<{ id: string; name: string; count: number }>(
+      'PATCH',
+      `/${kind}/${encodeURIComponent(id)}`,
+      { name },
+    ),
+  merge: (kind: VocabularyKind, id: string, into: string) =>
+    request<{ id: string; name: string; count: number }>(
+      'POST',
+      `/${kind}/${encodeURIComponent(id)}/merge`,
+      { into },
+    ),
 };
 
 /** The search query of a topic or tag filter, quoting a name that holds a space. */

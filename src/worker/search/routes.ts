@@ -1,12 +1,21 @@
 import { Hono, type Context } from 'hono';
-import { validationError } from '../api/errors';
+import { notFound, readJson, refusal, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
 import { linkMatch, matchingWorkspaces, rankedLinks } from './search';
-import { isVocabularyCursor, listVocabularyItems, type VocabularyKind } from './vocabulary';
+import {
+  isVocabularyCursor,
+  listVocabularyItems,
+  mergeEntry,
+  parseName,
+  renameEntry,
+  TAG_NAME_MAX,
+  TOPIC_NAME_MAX,
+  type VocabularyKind,
+} from './vocabulary';
 
 /** GET /api/v1/search. */
 export const searchRoutes = new Hono<AppEnv>();
@@ -138,8 +147,55 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
       next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
     });
   });
+
+  routes.patch('/:id', async (c) => {
+    const parsed = await readJson(c);
+    if (!parsed.ok) return parsed.response;
+    const name = parseName(kind, parsed.body.name);
+    if (name === null) {
+      return validationError(c, 'invalid_name', 'name', NAME_RULE[kind]);
+    }
+    const renamed = await renameEntry(c.env.DB, c.get('user').id, kind, c.req.param('id'), name);
+    if (renamed === null) return notFound(c);
+    if (renamed === 'taken') {
+      const what = kind === 'topics' ? 'topic' : 'tag';
+      return refusal(
+        c,
+        409,
+        'name_taken',
+        `another ${what} is named ${name}: merge this ${what} into it instead`,
+      );
+    }
+    return c.json(renamed);
+  });
+
+  routes.post('/:id/merge', async (c) => {
+    const parsed = await readJson(c);
+    if (!parsed.ok) return parsed.response;
+    const id = c.req.param('id');
+    const into = parsed.body.into;
+    if (typeof into !== 'string' || into === '') {
+      return validationError(c, 'invalid_merge', 'into', `into must name another of your ${kind}`);
+    }
+    if (into === id) {
+      return validationError(
+        c,
+        'invalid_merge',
+        'into',
+        `a ${kind.slice(0, -1)} cannot merge into itself`,
+      );
+    }
+    const merged = await mergeEntry(c.env.DB, c.get('user').id, kind, id, into);
+    return merged ? c.json(merged) : notFound(c);
+  });
   return routes;
 }
+
+/** What a valid new name is, as the refusal of an invalid one says. */
+const NAME_RULE: Record<VocabularyKind, string> = {
+  tags: `a tag name of 1 to ${TAG_NAME_MAX} lower-case letters and digits in hyphen-joined words`,
+  topics: `a topic name of 1 to ${TOPIC_NAME_MAX} characters`,
+};
 
 /** The topics, at /api/v1/topics. */
 export const topicRoutes = vocabularyRoutes('topics');

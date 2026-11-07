@@ -604,3 +604,24 @@ select {
 .vocabulary th:nth-child(2) {
   text-align: right;
 }
+
+.vocabulary .actions {
+  text-align: right;
+}
+
+.vocabulary .actions button + button {
+  margin-left: var(--space);
+}
+
+.vocabulary form {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--space) / 2);
+}
+
+.vocabulary input,
+.vocabulary select {
+  max-width: 12rem;
+}

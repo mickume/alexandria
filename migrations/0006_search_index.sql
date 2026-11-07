@@ -128,3 +128,21 @@ END;
 
 DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM link_tags);
 DELETE FROM topics WHERE id NOT IN (SELECT topic_id FROM links WHERE topic_id IS NOT NULL);
+
+-- The former names of renamed and merged topics and tags, each kept as an
+-- alias of its survivor, so that enrichment naming it lands on the survivor.
+CREATE TABLE topic_aliases (
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  topic_id TEXT NOT NULL REFERENCES topics (id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX topic_aliases_name ON topic_aliases (user_id, name COLLATE NOCASE);
+CREATE INDEX topic_aliases_topic ON topic_aliases (topic_id);
+
+CREATE TABLE tag_aliases (
+  user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  tag_id TEXT NOT NULL REFERENCES tags (id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX tag_aliases_name ON tag_aliases (user_id, name COLLATE NOCASE);
+CREATE INDEX tag_aliases_tag ON tag_aliases (tag_id);

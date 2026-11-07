@@ -108,6 +108,30 @@ describe('the search index', () => {
       expect(await indexed(user, 'bravotopic')).toEqual([id]);
     });
 
+    it('renaming a tag and merging a topic through the API', async () => {
+      const user = await signIn();
+      const id = await add(user, 'https://labels.example/');
+      const other = await add(user, 'https://survivor.example/');
+      await patch(user, id, { tags: ['alpha'], topic: 'Charlie' });
+      await patch(user, other, { topic: 'Delta' });
+      const tag = await env.DB.prepare("SELECT id FROM tags WHERE name = 'alpha'").first<{
+        id: string;
+      }>();
+      await api('PATCH', `/api/v1/tags/${tag!.id}`, { as: user.session, body: { name: 'bravo' } });
+      expect(await indexed(user, 'alpha')).toEqual([]);
+      expect(await indexed(user, 'bravo')).toEqual([id]);
+      const ids = await env.DB.prepare('SELECT id, name FROM topics WHERE user_id = ?')
+        .bind(user.id)
+        .all<{ id: string; name: string }>();
+      const byName = Object.fromEntries(ids.results.map((t) => [t.name, t.id]));
+      await api('POST', `/api/v1/topics/${byName.Charlie}/merge`, {
+        as: user.session,
+        body: { into: byName.Delta },
+      });
+      expect(await indexed(user, 'charlie')).toEqual([]);
+      expect((await indexed(user, 'delta')).sort()).toEqual([id, other].sort());
+    });
+
     it('deleting the link', async () => {
       const user = await signIn();
       const id = await add(user, 'https://alpha.example/');

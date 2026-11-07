@@ -100,3 +100,19 @@ export function buildPrompt(input: PromptInput): string {
   }
   return lines.join('\n');
 }
+
+/** The user's aliases: each former name's key (nameKey) with the name of its survivor. */
+export interface Aliases {
+  topics: Map<string, string>;
+  tags: Map<string, string>;
+}
+
+/**
+ * An enrichment result with every topic or tag that is an alias replaced by
+ * its survivor, compared ignoring case; tags that become repeats are dropped.
+ */
+export function applyAliases(result: Enrichment, aliases: Aliases): Enrichment {
+  const topic = aliases.topics.get(nameKey(result.topic)) ?? result.topic;
+  const tags = normalizeTags(result.tags.map((t) => aliases.tags.get(nameKey(t)) ?? t));
+  return { ...result, topic, tags };
+}

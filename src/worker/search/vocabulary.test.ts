@@ -155,3 +155,262 @@ describe('the topics and tags lists', () => {
     });
   });
 });
+
+/** The user's topic or tag named `name`, by its id. */
+async function idOf(user: TestUser, kind: 'topics' | 'tags', name: string): Promise<string> {
+  const row = await env.DB.prepare(`SELECT id FROM ${kind} WHERE user_id = ? AND name = ?`)
+    .bind(user.id, name)
+    .first<{ id: string }>();
+  return row!.id;
+}
+
+async function aliases(user: TestUser, kind: 'topic' | 'tag'): Promise<[string, string][]> {
+  const rows = await env.DB.prepare(
+    `SELECT a.name, v.name AS survivor FROM ${kind}_aliases a JOIN ${kind}s v ON v.id = a.${kind}_id
+     WHERE a.user_id = ? ORDER BY a.name`,
+  )
+    .bind(user.id)
+    .all<{ name: string; survivor: string }>();
+  return rows.results.map((r) => [r.name, r.survivor]);
+}
+
+async function linkLabels(user: TestUser, id: string) {
+  const r = await api('GET', `/api/v1/links/${id}`, { as: user.session });
+  return { tags: r.json.tags as string[], topic: r.json.topic as string | null };
+}
+
+describe('renaming a topic or tag', () => {
+  it.each([
+    { kind: 'topics' as const, from: 'Infra', to: 'Infrastructure', edit: { topic: 'Infra' } },
+    { kind: 'tags' as const, from: 'js', to: 'javascript', edit: { tags: ['js'] } },
+  ])('renames $kind and keeps the old name as an alias', async ({ kind, from, to, edit }) => {
+    const user = await signIn();
+    const [l1, l2] = await seedLinks(user, [
+      { url: 'https://one.example/' },
+      { url: 'https://two.example/' },
+    ]);
+    await patch(user, l1!, edit);
+    await patch(user, l2!, edit);
+    const id = await idOf(user, kind, from);
+    const r = await api('PATCH', `/api/v1/${kind}/${id}`, { as: user.session, body: { name: to } });
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ id, name: to, count: 2 });
+    const labels = await linkLabels(user, l1!);
+    expect(kind === 'topics' ? labels.topic : labels.tags).toEqual(kind === 'topics' ? to : [to]);
+    expect(await aliases(user, kind === 'topics' ? 'topic' : 'tag')).toEqual([[from, to]]);
+  });
+
+  it('refuses a name another topic or tag has, changing nothing', async () => {
+    const user = await signIn();
+    const [l1, l2] = await seedLinks(user, [
+      { url: 'https://one.example/' },
+      { url: 'https://two.example/' },
+    ]);
+    await patch(user, l1!, { tags: ['js'], topic: 'A' });
+    await patch(user, l2!, { tags: ['javascript'], topic: 'B' });
+    const tag = await api('PATCH', `/api/v1/tags/${await idOf(user, 'tags', 'js')}`, {
+      as: user.session,
+      body: { name: 'JavaScript' },
+    });
+    expect(tag.status).toBe(409);
+    expect(tag.json.error).toBe('name_taken');
+    expect(tag.json.message).toContain('merge');
+    const topic = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'A')}`, {
+      as: user.session,
+      body: { name: 'b' },
+    });
+    expect(topic.status).toBe(409);
+    expect(topic.json.error).toBe('name_taken');
+    expect(await linkLabels(user, l1!)).toEqual({ tags: ['js'], topic: 'A' });
+    expect(await linkLabels(user, l2!)).toEqual({ tags: ['javascript'], topic: 'B' });
+    expect(await aliases(user, 'tag')).toEqual([]);
+    const same = await api('PATCH', `/api/v1/tags/${await idOf(user, 'tags', 'js')}`, {
+      as: user.session,
+      body: { name: 'js' },
+    });
+    expect(same.status).toBe(200);
+    expect(await aliases(user, 'tag')).toEqual([]);
+  });
+
+  it.each([
+    ['tags', undefined],
+    ['tags', ''],
+    ['tags', 'two words'],
+    ['tags', 'Under_score'],
+    ['tags', 'x'.repeat(51)],
+    ['tags', '-lead'],
+    ['tags', 42],
+    ['topics', undefined],
+    ['topics', '   '],
+    ['topics', 'x'.repeat(101)],
+  ] as const)('refuses the %s name %j', async (kind, name) => {
+    const user = await signIn();
+    const [l1] = await seedLinks(user, [{ url: 'https://one.example/' }]);
+    await patch(user, l1!, { tags: ['before'], topic: 'Before' });
+    const id = await idOf(user, kind, kind === 'tags' ? 'before' : 'Before');
+    const r = await api('PATCH', `/api/v1/${kind}/${id}`, {
+      as: user.session,
+      body: name === undefined ? {} : { name },
+    });
+    expect(r.status).toBe(400);
+    expect(r.json).toMatchObject({ error: 'invalid_name', field: 'name' });
+    expect(await linkLabels(user, l1!)).toEqual({ tags: ['before'], topic: 'Before' });
+  });
+
+  it('stores a tag name lower-cased and accepts a topic of 100 characters', async () => {
+    const user = await signIn();
+    const [l1] = await seedLinks(user, [{ url: 'https://one.example/' }]);
+    await patch(user, l1!, { tags: ['before'], topic: 'Before' });
+    const tag = await api('PATCH', `/api/v1/tags/${await idOf(user, 'tags', 'before')}`, {
+      as: user.session,
+      body: { name: 'Web-Dev' },
+    });
+    expect(tag.json.name).toBe('web-dev');
+    const long = 'x'.repeat(100);
+    const topic = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'Before')}`, {
+      as: user.session,
+      body: { name: `  ${long}  ` },
+    });
+    expect(topic.status).toBe(200);
+    expect(topic.json.name).toBe(long);
+  });
+
+  it("answers 404 for another user's topic or tag", async () => {
+    const user = await signIn();
+    const other = await signIn('other@example.test');
+    const [theirs] = await seedLinks(other, [{ url: 'https://one.example/' }]);
+    await patch(other, theirs!, { tags: ['secret'] });
+    const r = await api('PATCH', `/api/v1/tags/${await idOf(other, 'tags', 'secret')}`, {
+      as: user.session,
+      body: { name: 'mine' },
+    });
+    expect(r.status).toBe(404);
+    expect((await linkLabels(other, theirs!)).tags).toEqual(['secret']);
+  });
+});
+
+describe('merging topics and tags', () => {
+  it('moves every link of a tag to the survivor without repeating it', async () => {
+    const user = await signIn();
+    const [l1, l2, l3] = await seedLinks(user, [
+      { url: 'https://one.example/' },
+      { url: 'https://two.example/' },
+      { url: 'https://three.example/' },
+    ]);
+    await patch(user, l1!, { tags: ['js'] });
+    await patch(user, l2!, { tags: ['js', 'javascript'] });
+    await patch(user, l3!, { tags: ['javascript'] });
+    const js = await idOf(user, 'tags', 'js');
+    const javascript = await idOf(user, 'tags', 'javascript');
+    const r = await api('POST', `/api/v1/tags/${js}/merge`, {
+      as: user.session,
+      body: { into: javascript },
+    });
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ id: javascript, name: 'javascript', count: 3 });
+    for (const id of [l1, l2, l3])
+      expect((await linkLabels(user, id!)).tags).toEqual(['javascript']);
+    const listed = await api('GET', '/api/v1/tags', { as: user.session });
+    expect(listed.json.items.map((i: { name: string }) => i.name)).toEqual(['javascript']);
+    expect(await aliases(user, 'tag')).toEqual([['js', 'javascript']]);
+  });
+
+  it('gives every link of a topic the survivor, and carries its aliases over', async () => {
+    const user = await signIn();
+    const [l1, l2, l3] = await seedLinks(user, [
+      { url: 'https://one.example/' },
+      { url: 'https://two.example/' },
+      { url: 'https://three.example/' },
+    ]);
+    await patch(user, l1!, { topic: 'Ops' });
+    await patch(user, l2!, { topic: 'Ops' });
+    await patch(user, l3!, { topic: 'Infrastructure' });
+    await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'Ops')}`, {
+      as: user.session,
+      body: { name: 'Infra' },
+    });
+    const infra = await idOf(user, 'topics', 'Infra');
+    const survivor = await idOf(user, 'topics', 'Infrastructure');
+    const r = await api('POST', `/api/v1/topics/${infra}/merge`, {
+      as: user.session,
+      body: { into: survivor },
+    });
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ id: survivor, name: 'Infrastructure', count: 3 });
+    for (const id of [l1, l2, l3])
+      expect((await linkLabels(user, id!)).topic).toBe('Infrastructure');
+    expect(await aliases(user, 'topic')).toEqual([
+      ['Infra', 'Infrastructure'],
+      ['Ops', 'Infrastructure'],
+    ]);
+  });
+
+  describe.each(['tags', 'topics'] as const)('refuses a bad merge of %s', (kind) => {
+    async function setup() {
+      const user = await signIn();
+      const other = await signIn('other@example.test');
+      const [l1, l2] = await seedLinks(user, [
+        { url: 'https://one.example/' },
+        { url: 'https://two.example/' },
+      ]);
+      const [theirs] = await seedLinks(other, [{ url: 'https://theirs.example/' }]);
+      const label = (name: string) => (kind === 'tags' ? { tags: [name] } : { topic: name });
+      await patch(user, l1!, label('first'));
+      await patch(user, l2!, label('second'));
+      await patch(other, theirs!, label('theirs'));
+      return {
+        user,
+        links: [l1!, l2!],
+        first: await idOf(user, kind, 'first'),
+        second: await idOf(user, kind, 'second'),
+        theirs: await idOf(other, kind, 'theirs'),
+      };
+    }
+
+    it.each([
+      { case: 'into absent', body: () => ({}), status: 400, error: 'invalid_merge' },
+      {
+        case: 'into the source',
+        body: (s: { first: string }) => ({ into: s.first }),
+        status: 400,
+        error: 'invalid_merge',
+      },
+      {
+        case: "into another user's",
+        body: (s: { theirs: string }) => ({ into: s.theirs }),
+        status: 404,
+        error: 'not_found',
+      },
+      {
+        case: 'into nothing',
+        body: () => ({ into: 'no-such-id' }),
+        status: 404,
+        error: 'not_found',
+      },
+    ])('$case', async ({ body, status, error }) => {
+      const s = await setup();
+      const r = await api('POST', `/api/v1/${kind}/${s.first}/merge`, {
+        as: s.user.session,
+        body: body(s as never),
+      });
+      expect(r.status).toBe(status);
+      expect(r.json.error).toBe(error);
+      if (status === 400) expect(r.json.field).toBe('into');
+      const labels = await Promise.all(s.links.map((id) => linkLabels(s.user, id)));
+      expect(labels.map((l) => (kind === 'tags' ? l.tags[0] : l.topic))).toEqual([
+        'first',
+        'second',
+      ]);
+    });
+
+    it("from another user's", async () => {
+      const s = await setup();
+      const r = await api('POST', `/api/v1/${kind}/${s.theirs}/merge`, {
+        as: s.user.session,
+        body: { into: s.first },
+      });
+      expect(r.status).toBe(404);
+      expect(r.json.error).toBe('not_found');
+    });
+  });
+});

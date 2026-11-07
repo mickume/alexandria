@@ -603,3 +603,35 @@ with `limit` (1 to 100, default 50) and `cursor`.
 
 The same for tags.
 
+#### `PATCH /api/v1/topics/{id}` and `PATCH /api/v1/tags/{id}`
+
+Renames a topic or tag: `{"name": "<new name>"}`. Every link carrying it shows
+the new name, and the old name becomes an alias of it (see below).
+`200 {"id", "name", "count"}`.
+
+A tag name is lower-cased and must be 1 to 50 characters of letters and digits
+in hyphen-joined words (`web-dev`); a topic name is trimmed, its spaces
+collapsed, and must be 1 to 100 characters. Otherwise
+`400 {"error": "invalid_name", "field": "name", "message"}`. A name another
+topic (or tag) of the user has, ignoring case, is
+`409 {"error": "name_taken", "message": "another tag is named javascript: merge this tag into it instead"}`
+and nothing changes. Renaming to the same name answers 200.
+
+#### `POST /api/v1/topics/{id}/merge` and `POST /api/v1/tags/{id}/merge`
+
+Merges a topic or tag into another: `{"into": "<the id of the survivor>"}`.
+Every link of the source gets the survivor (a link never carries a tag
+twice), the source is deleted, and its name and its aliases become aliases
+of the survivor, all at once. `200 {"id", "name", "count"}` of the survivor.
+A missing `into`, or the source itself, is
+`400 {"error": "invalid_merge", "field": "into", "message"}`; a source or
+`into` that is not one of the user's is `404 {"error": "not_found"}`.
+
+#### Aliases
+
+A renamed or merged-away name is an alias of its survivor. When enrichment's
+provider proposes a topic or tag that is an alias, ignoring case, the link
+gets the survivor and no topic or tag with the old name is created. The
+provider is only ever shown current names. A current name wins over an alias
+of the same name.
+

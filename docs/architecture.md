@@ -74,6 +74,8 @@ account and checks the PKCE verifier as Google does.
 | `rate_limits` | requests per user per minute |
 | `link_search` | the FTS5 full-text index: one row per link (see Search) |
 | `link_search_keys` | the index row id of each link |
+| `workspace_search`, `workspace_search_keys` | the FTS5 index of workspaces' names, descriptions and notes |
+| `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.

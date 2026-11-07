@@ -1,4 +1,4 @@
-import { nameKey } from './enrich';
+import { nameKey, type Aliases } from './enrich';
 
 /** How many of the user's topics and tags the provider is shown. */
 export const PROMPT_TOPICS = 100;
@@ -104,4 +104,26 @@ export function setTagsStatements(
         .bind(tagId, i, linkId, userId),
     ),
   ];
+}
+
+/**
+ * The user's aliases of topics and tags, by nameKey, each with its survivor's
+ * name. An alias that is also a current name is left out: a current name wins.
+ */
+export async function listAliases(db: D1Database, userId: string): Promise<Aliases> {
+  const query = (kind: 'topic' | 'tag') =>
+    db
+      .prepare(
+        `SELECT a.name, v.name AS survivor FROM ${kind}_aliases a JOIN ${kind}s v ON v.id = a.${kind}_id
+         WHERE a.user_id = ?1 AND NOT EXISTS (
+           SELECT 1 FROM ${kind}s c WHERE c.user_id = ?1 AND c.name = a.name COLLATE NOCASE)`,
+      )
+      .bind(userId);
+  const [topics, tags] = await db.batch<{ name: string; survivor: string }>([
+    query('topic'),
+    query('tag'),
+  ]);
+  const byKey = (rows: { name: string; survivor: string }[] = []) =>
+    new Map(rows.map((r) => [nameKey(r.name), r.survivor]));
+  return { topics: byKey(topics?.results), tags: byKey(tags?.results) };
 }

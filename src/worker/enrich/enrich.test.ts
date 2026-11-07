@@ -286,6 +286,69 @@ describe('enriching a fetched link', () => {
   });
 });
 
+describe('enrichment after renames and merges', () => {
+  /** Two links: one tagged js with topic Infra, one tagged javascript with topic Infrastructure. */
+  async function vocabularyWithTwoNames(user: TestUser) {
+    const [a, b] = await seedLinks(user, [
+      { url: 'https://a.example/' },
+      { url: 'https://b.example/' },
+    ]);
+    const edit = (id: string, body: unknown) =>
+      api('PATCH', `/api/v1/links/${id}`, { as: user.session, body });
+    await edit(a!, { tags: ['js'], topic: 'Infra' });
+    await edit(b!, { tags: ['javascript'], topic: 'Infrastructure' });
+    const id = async (table: string, name: string) =>
+      (await env.DB.prepare(`SELECT id FROM ${table} WHERE user_id = ? AND name = ?`)
+        .bind(user.id, name)
+        .first<{ id: string }>())!.id;
+    return { id };
+  }
+
+  it('offers the provider only the current names', async () => {
+    const user = await signIn();
+    const { id } = await vocabularyWithTwoNames(user);
+    await api('POST', `/api/v1/tags/${await id('tags', 'js')}/merge`, {
+      as: user.session,
+      body: { into: await id('tags', 'javascript') },
+    });
+    await api('PATCH', `/api/v1/topics/${await id('topics', 'Infra')}`, {
+      as: user.session,
+      body: { name: 'Operations' },
+    });
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    const ai = new FakeAi();
+    await saveKey(user);
+    await addFetchAndEnrich(user, ARTICLE);
+    const body = JSON.stringify(ai.enrichments[0]!.body);
+    expect(body).toContain('javascript');
+    expect(body).toContain('Infrastructure');
+    expect(body).toContain('Operations');
+    expect(body).not.toMatch(/\bjs\b/);
+    expect(body).not.toMatch(/\bInfra\b/);
+  });
+
+  it('stores the survivor for a tag or topic the provider names by an alias', async () => {
+    const user = await signIn();
+    const { id } = await vocabularyWithTwoNames(user);
+    await api('POST', `/api/v1/tags/${await id('tags', 'js')}/merge`, {
+      as: user.session,
+      body: { into: await id('tags', 'javascript') },
+    });
+    await api('POST', `/api/v1/topics/${await id('topics', 'Infra')}/merge`, {
+      as: user.session,
+      body: { into: await id('topics', 'Infrastructure') },
+    });
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    new FakeAi().answer({ summary: 'S.', tags: ['JS', 'react', 'javascript'], topic: 'infra' });
+    await saveKey(user);
+    const { id: linkId } = await addFetchAndEnrich(user, ARTICLE);
+    expect(await storedTags(linkId)).toEqual(['javascript', 'react']);
+    expect(await topicOf(linkId)).toBe('Infrastructure');
+    expect(await count('tags', "user_id = ? AND name = 'js'", user.id)).toBe(0);
+    expect(await count('topics', "user_id = ? AND name = 'Infra' COLLATE NOCASE", user.id)).toBe(0);
+  });
+});
+
 describe('a provider’s result', () => {
   it.each([
     {

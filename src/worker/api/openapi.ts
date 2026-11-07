@@ -145,6 +145,13 @@ const VocabularyItem = z.strictObject({
   newest_added_at: z.string(),
 });
 
+/** A topic or tag after a rename or merge. */
+const VocabularyEntry = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  count: z.number().int(),
+});
+
 /** The answer of a search. */
 export const SearchResults = z.strictObject({
   items: z.array(z.strictObject({ link: Link, snippet: Snippet })),
@@ -325,6 +332,34 @@ export const operations: Operation[] = [
       400: error('invalid_limit or invalid_cursor'),
     },
   })),
+  ...(['topics', 'tags'] as const).flatMap((kind): Operation[] => {
+    const one = kind === 'topics' ? 'Topic' : 'Tag';
+    return [
+      {
+        method: 'patch',
+        path: `/${kind}/{id}`,
+        operationId: `rename${one}`,
+        summary: `Rename a ${one.toLowerCase()}; the old name becomes an alias of it`,
+        body: z.object({ name: z.string() }),
+        responses: {
+          200: { description: `The renamed ${one.toLowerCase()}`, schema: VocabularyEntry },
+          400: error('invalid_json or invalid_name (field name)'),
+          409: error('name_taken: another one has the name; merge instead'),
+        },
+      },
+      {
+        method: 'post',
+        path: `/${kind}/{id}/merge`,
+        operationId: `merge${one}`,
+        summary: `Merge a ${one.toLowerCase()} into another, which keeps every link`,
+        body: z.object({ into: z.string() }),
+        responses: {
+          200: { description: 'The survivor', schema: VocabularyEntry },
+          400: error('invalid_json, or invalid_merge (field into): into missing or the source'),
+        },
+      },
+    ];
+  }),
   {
     method: 'get',
     path: '/archive',
