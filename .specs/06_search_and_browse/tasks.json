@@ -1,0 +1,212 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "06",
+  "spec_name": "search_and_browse",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/search src/worker/links/stream.test.ts src/worker/enrich/enrich.test.ts src/web/pages/Search.test.tsx src/web/pages/Topics.test.tsx src/web/pages/Tags.test.tsx src/web/pages/Archive.test.tsx src/web/components/SearchBox.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "builds on users, links, the stream order and cursors, the error envelope, the OpenAPI document, LinkCard and the shared test helpers"
+    },
+    {
+      "spec": "02",
+      "reason": "indexes the reader-view text the fetch worker stores, and hooks the indexing into it"
+    },
+    {
+      "spec": "03",
+      "reason": "lists, renames and merges the topics and tags enrichment creates, and changes the vocabulary enrichment is offered"
+    },
+    {
+      "spec": "04",
+      "reason": "searches workspace and link notes and filters by workspace membership"
+    },
+    {
+      "spec": "05",
+      "reason": "filters by archived and dead links and puts the search on the Archive page"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Parse search queries into words and prefix filters",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the parsing behaviours to src/worker/search/query.test.ts and confirm they fail",
+        "Write parseQuery in src/worker/search/query.ts: split on whitespace outside double quotes; recognise the prefixes tag, topic, host, state, in and is case-insensitively with a word or quoted value; keep every other term, an unclosed quote included, as a free word",
+        "Refuse a query over 200 characters with query_too_long, and a state value outside pending, active, unreachable, dormant, archived and any or an is value outside pinned and dead with invalid_filter naming the filter"
+      ],
+      "touches": [
+        "src/worker/search/query.ts",
+        "src/worker/search/query.test.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Build the full-text index and keep it current",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the index-currency behaviours to src/worker/search/search.test.ts and confirm they fail",
+        "Add a migration creating the FTS5 table link_search with the unicode61 tokenizer removing diacritics, one row per link: an owner column holding the user's id as a term, and the columns title, tags, topic, summary, host, original_url, note and reader_text, with the link id unindexed",
+        "Add triggers that rewrite a link's row when its title, summary, host, original URL, note or topic changes, when a link_tags row is inserted or deleted, when a topic or tag is renamed, and delete the row when the link is deleted; populate the rows of existing links in the same migration",
+        "Write indexReaderText(env, linkId, text) in src/worker/search/search.ts, storing at most the first 500,000 characters, and call it where the fetch worker stores or replaces reader-view text",
+        "Index the reader text of links fetched before this migration from package 02's link_texts table in the same migration",
+        "Describe the index and its triggers in docs/architecture.md"
+      ],
+      "touches": [
+        "migrations/0006_search_index.sql",
+        "src/worker/search/search.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/snapshots.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Answer keyword searches with ranked, snippeted results",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the search behaviours to src/worker/search/search.test.ts and confirm they fail",
+        "Implement GET /api/v1/search in src/worker/search/routes.ts: parse the query, build an FTS5 match that requires the owner term and each free word as a quoted prefix term, so that operators and punctuation are literal",
+        "Rank by bm25 with the column weights title 10, tags and topic 5, summary 3, host, original URL and note 2, reader text 1, then pinned first, then last used descending, then link id; exclude archived links by default; page with the shared cursor, 50 by default and at most 100",
+        "Build each result's snippet with FTS5's snippet function on the best-matching column, at most 32 words, and return it as {text, match} segments, never as HTML",
+        "On the first page also match the user's workspaces on name, description and note through a second FTS5 table workspace_search kept current by triggers, and return them with their snippets",
+        "Answer an empty or whitespace query with the stream as GET /api/v1/links returns it",
+        "Add the 10,000-link timing test, and add indexes the query plan needs until it passes",
+        "Document the route in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/search.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/search/search.test.ts",
+        "migrations/0006_search_index.sql",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Apply the prefix filters to search and to the link list",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the filter behaviours to src/worker/search/search.test.ts and src/worker/links/stream.test.ts and confirm they fail",
+        "Translate the parsed filters into conditions on the links: tag and topic by name case-insensitively, host equal to the value or ending in '.' plus the value, in by workspace name, is:pinned by pin position, is:dead by dead_since, all applying together",
+        "Apply the state rule: archived links only with state:archived (only those) or state:any (every state), another state value selecting that state, and no archived links otherwise",
+        "List a filter-only query in stream order with empty snippets",
+        "Accept the query parameters tag, topic, host, state, in and is on GET /api/v1/links with the same meaning, repeated parameters all applying, answering invalid_filter with the parameter as field",
+        "Document the parameters in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/search.ts",
+        "src/worker/search/query.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/links/stream.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "List topics and tags and show their pages",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the listing behaviours to src/worker/search/vocabulary.test.ts, src/web/pages/Topics.test.tsx and src/web/pages/Tags.test.tsx and confirm they fail",
+        "Implement GET /api/v1/topics and GET /api/v1/tags in src/worker/search/vocabulary.ts: each with at least one link, its count over links in every state and the added date of its newest link, newest first, cursor-paged",
+        "Delete a topic or tag when its last link loses it, by trigger, so that it is neither listed nor offered to enrichment",
+        "Build the Topics and Tags pages: one row per item with name and count, each opening /search?q=topic:\"name\" or tag:name, and link them from the website's navigation",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/search/vocabulary.test.ts",
+        "migrations/0006_search_index.sql",
+        "src/web/pages/Topics.tsx",
+        "src/web/pages/Tags.tsx",
+        "src/web/pages/Topics.test.tsx",
+        "src/web/pages/Tags.test.tsx",
+        "src/web/App.tsx",
+        "src/web/api.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Rename and merge topics and tags, and enrich with the survivors",
+      "criteria": [
+        "REQ-6",
+        "REQ-7",
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the rename, merge and alias behaviours to src/worker/search/vocabulary.test.ts and src/worker/enrich/enrich.test.ts and confirm they fail",
+        "Add the topic_aliases and tag_aliases tables (user, name, survivor id) to the search migration",
+        "Implement PATCH /api/v1/topics/{id} and PATCH /api/v1/tags/{id}: tag names lower-cased and 1 to 50 characters of hyphen-joined letters and digits, topic names 1 to 100 characters after trimming, 409 name_taken for another item's name, recording the old name as an alias",
+        "Implement POST /api/v1/topics/{id}/merge and POST /api/v1/tags/{id}/merge with {into}: move every link to the survivor without duplicate tags, delete the source, record its name and its aliases as aliases of the survivor, in one batch; 400 invalid_merge for a missing or equal into, 404 for an id that is not the user's",
+        "In src/worker/enrich/vocabulary.ts offer enrichment only current names, and in src/worker/enrich/enrich.ts map a proposed topic or tag that is an alias to its survivor before storing",
+        "Add Rename and Merge actions to the Topics and Tags pages",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/search/vocabulary.test.ts",
+        "migrations/0006_search_index.sql",
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/enrich/enrich.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/web/pages/Topics.tsx",
+        "src/web/pages/Tags.tsx",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Put the search box and its two shortcuts on every page",
+      "criteria": [
+        "REQ-9",
+        "REQ-10"
+      ],
+      "steps": [
+        "Add the website search behaviours to src/web/pages/Search.test.tsx, src/web/components/SearchBox.test.tsx and src/web/pages/Archive.test.tsx and confirm they fail",
+        "Build SearchBox in the header of every page, with maxLength 200, sending the query 200 ms after the last keystroke and navigating to /search?q=",
+        "Build the Search page: the matching workspaces first, then each result as a LinkCard with its snippet below, the matched segments in <mark> and every segment rendered as text; 'nothing found for <query>' with one chip per active filter; an emptied box returns to the stream",
+        "On the Archive page send the query with state:archived added and show the results there",
+        "Handle '/' outside text fields by focusing the search box without typing, and Escape in the search box by clearing it, returning to the page the search started from and focusing the main region; bind no other key",
+        "Describe search, the filters and the two shortcuts in README.md"
+      ],
+      "touches": [
+        "src/web/components/SearchBox.tsx",
+        "src/web/components/SearchBox.test.tsx",
+        "src/web/pages/Search.tsx",
+        "src/web/pages/Search.test.tsx",
+        "src/web/pages/Archive.tsx",
+        "src/web/pages/Archive.test.tsx",
+        "src/web/App.tsx",
+        "src/web/api.ts",
+        "src/web/styles.css",
+        "README.md"
+      ]
+    }
+  ]
+}

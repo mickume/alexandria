@@ -1,0 +1,142 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "04",
+  "spec_name": "workspaces_and_notes",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/workspaces src/web/pages/Workspaces.test.tsx src/web/pages/Workspace.test.tsx src/web/components/Markdown.test.tsx src/web/components/LinkCard.test.tsx src/web/pages/LinkDetail.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "builds on its authentication, error envelope, cursors, OpenAPI document, link store and routes, LinkCard, LinkDetail and the shared test helpers"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Create, list, rename and delete workspaces",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the workspace behaviours to src/worker/workspaces/workspaces.test.ts and confirm they fail",
+        "Create migrations/0004_workspaces_and_notes.sql with the workspaces table (id, user_id, name, name_key for the case-insensitive uniqueness, description, note, created_at, unique on user_id and name_key), the workspace_links table (workspace_id, link_id, position, unique on workspace_id and link_id) and the links.note column defaulting to ''",
+        "Write the workspace store in src/worker/workspaces/store.ts, every query filtered by the authenticated user",
+        "Implement POST /api/v1/workspaces: trimmed name of 1 to 100 characters (400 invalid_name), description of at most 1,000 characters without a line break (400 invalid_description), 409 name_taken for a clash ignoring case, 409 workspace_limit at 200",
+        "Implement PATCH /api/v1/workspaces/{id} for name and description with the same validation, and DELETE /api/v1/workspaces/{id} removing the workspace and its memberships and no link",
+        "Implement GET /api/v1/workspaces ordered by name ignoring case, with link_count, paged with the shared cursor at most 100 per page",
+        "Answer another user's workspace id with 404 not_found exactly as an unknown one",
+        "Document the routes in the OpenAPI document and docs/api.md, and the new tables in docs/architecture.md"
+      ],
+      "touches": [
+        "migrations/0004_workspaces_and_notes.sql",
+        "src/worker/workspaces/store.ts",
+        "src/worker/workspaces/routes.ts",
+        "src/worker/workspaces/workspaces.test.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Add, order and remove workspace members",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the membership behaviours to src/worker/workspaces/workspaces.test.ts and confirm they fail",
+        "Implement POST /api/v1/workspaces/{id}/links: a new member goes to the bottom (201), a position from 1 places or moves the link there with past the end meaning the end (201 new, 200 moved), an existing member without a position changes nothing (200); 400 invalid_link_id or invalid_position, 404 for a link that is not the user's; positions stay 1..n in one transaction",
+        "Implement DELETE /api/v1/workspaces/{id}/links/{link_id}, closing the gap and keeping the link",
+        "Implement GET /api/v1/workspaces/{id} with the note and GET /api/v1/workspaces/{id}/links listing every member in position order whatever its state, in the stream's link shape plus position, cursor-paged",
+        "Extend the link deletion of DELETE /api/v1/links/{id} to remove the link from every workspace and close each gap in the same transaction",
+        "Document the routes in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/workspaces/store.ts",
+        "src/worker/workspaces/routes.ts",
+        "src/worker/workspaces/workspaces.test.ts",
+        "src/worker/links/store.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Store notes and carry them and the workspaces on links",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the note behaviours to src/worker/workspaces/notes.test.ts and src/web/components/Markdown.test.tsx and confirm they fail",
+        "Validate notes in src/worker/workspaces/notes.ts: a string of at most 20,000 Unicode code points (400 note_too_long 'note too long (20,000 characters)'), anything else 400 invalid_note",
+        "Accept note on PATCH /api/v1/workspaces/{id}, and on PATCH /api/v1/links/{id}, creating that route if it does not exist yet and extending it otherwise, changing no other field",
+        "Compute note_preview (first non-empty line, heading and list markers and raw HTML elements removed, trimmed, at most 200 characters, null when empty) and add note_preview and workspaces [{id, name}] by name to every link in the stream and in workspace lists; carry the whole note only on GET /api/v1/links/{id}",
+        "Write the Markdown component src/web/components/Markdown.tsx rendering with marked and sanitising with DOMPurify so that no raw HTML element or attribute, script, event handler or URL scheme other than http, https and mailto survives",
+        "Document the fields in the OpenAPI document and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/workspaces/notes.ts",
+        "src/worker/workspaces/notes.test.ts",
+        "src/worker/workspaces/routes.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/store.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/components/Markdown.tsx",
+        "src/web/components/Markdown.test.tsx",
+        "package.json",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Build the Workspaces and Workspace pages and the add-to-workspace action",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the page behaviours to src/web/pages/Workspaces.test.tsx, src/web/pages/Workspace.test.tsx and src/web/components/LinkCard.test.tsx and confirm they fail",
+        "Build the Workspaces page at /workspaces: list by name with member counts, create, rename, and delete after the confirmation 'Delete this workspace? Its links stay in your library.', showing the API's 409 messages",
+        "Build the Workspace page at /workspaces/{id}: the rendered note above the member cards, an in-place note editor that keeps the text and shows 'note too long (20,000 characters)' on that error, drag to reorder sending the new position, and Remove from workspace",
+        "Add the Add to workspace action to LinkCard: a picker of the owner's workspaces marking those already containing the link, adding at the bottom",
+        "Add Workspaces to the website's navigation and its typed client calls to src/web/api.ts"
+      ],
+      "touches": [
+        "src/web/pages/Workspaces.tsx",
+        "src/web/pages/Workspaces.test.tsx",
+        "src/web/pages/Workspace.tsx",
+        "src/web/pages/Workspace.test.tsx",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/App.tsx",
+        "src/web/api.ts",
+        "src/web/styles.css"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Show notes and workspaces on cards and the detail view",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the card and detail behaviours to src/web/components/LinkCard.test.tsx and src/web/pages/LinkDetail.test.tsx and confirm they fail",
+        "Show note_preview as the card's first line and one chip per workspace linking to /workspaces/{id}, and nothing when the link has neither",
+        "Show the link's note rendered with the Markdown component on the LinkDetail page, with an in-place editor saving through PATCH /api/v1/links/{id} and the 'note too long (20,000 characters)' message, and the link's workspace chips"
+      ],
+      "touches": [
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "src/web/api.ts",
+        "src/web/styles.css"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,899 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "01",
+  "spec_name": "accounts_links_and_stream",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Sign in with Google, allow-listed",
+      "rationale": "The library is private: only the people the deployment names may have one, and identity comes from Google alone.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a visitor requests GET /auth/google",
+          "action": "start the OAuth 2.0 authorization-code flow with PKCE by redirecting to the configured Google authorization endpoint with a fresh state and an S256 code challenge, and keep the state and code verifier in HttpOnly cookies that expire after 10 minutes",
+          "contract": "HTTP 302 whose Location starts with GOOGLE_AUTH_URL and carries response_type=code, client_id, redirect_uri ending in /auth/google/callback, scope 'openid email profile', state and code_challenge with code_challenge_method=S256; Set-Cookie for the state and the verifier, HttpOnly, Max-Age=600",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "GOOGLE_AUTH_URL, GOOGLE_CLIENT_ID and PUBLIC_ORIGIN set in the test bindings"
+            ],
+            "pseudocode": "in src/worker/auth/auth.test.ts: r = SELF.fetch('/auth/google', {redirect: 'manual'}); assert r.status == 302; loc = URL(r.headers.Location); assert loc starts with GOOGLE_AUTH_URL; assert loc.params.code_challenge_method == 'S256' and loc.params.scope == 'openid email profile'; assert the state cookie value == loc.params.state; assert both cookies are HttpOnly with Max-Age=600"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "Google redirects to GET /auth/google/callback with a code and a state equal to the state cookie, and the email in the returned ID token is on the allow-list",
+          "action": "exchange the code with the code verifier, create the user on first sign-in or update the stored display name on later ones, create a session and set the session cookie",
+          "contract": "HTTP 302 with Location '/' and Set-Cookie 'alexandria_session' (HttpOnly, Secure, SameSite=Lax, Path=/, Max-Age=2592000); exactly one users row for the email, holding the ID token's email and name",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "ALLOWED_EMAILS = 'owner@example.test'",
+              "Google's token endpoint answered by a test double returning an ID token for owner@example.test named 'Ada Owner'"
+            ],
+            "pseudocode": "in src/worker/auth/auth.test.ts, a table over {first sign-in, second sign-in after the double changes the name to 'Ada O.'}: start = SELF.fetch('/auth/google'); r = SELF.fetch('/auth/google/callback?code=c&state=' + start.state, cookies of start); assert r.status == 302 and r.Location == '/'; assert the session cookie flags; assert users rows for the email == 1 and its name is the double's current name"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "ubiquitous",
+          "action": "for any completed sign-in, store from the Google profile only the email address and the display name, and retain neither the Google access token, the refresh token nor the ID token after the callback response",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the token-endpoint double returns access token 'g-access-123', refresh token 'g-refresh-456' and an ID token carrying picture and locale claims"
+            ],
+            "pseudocode": "in src/worker/auth/auth.test.ts: complete a sign-in; for every table of the D1 database and every column: assert no value contains 'g-access-123', 'g-refresh-456', the ID token, the picture URL or the locale"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "the email in the returned ID token is not on the allow-list read at the time of the callback",
+          "action": "refuse the sign-in, creating no user record and no session",
+          "contract": "HTTP 302 with Location '/signin?error=private'; no 'alexandria_session' cookie set; the users and sessions row counts are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/auth.test.ts, a table over {ALLOWED_EMAILS = 'owner@example.test' and an ID token for stranger@example.test; an existing user whose address was removed from ALLOWED_EMAILS before the callback}: r = callback; assert r.status == 302 and r.Location == '/signin?error=private'; assert no session cookie; assert the users and sessions counts equal their values before the request and the existing user's links are still stored"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "unwanted",
+          "condition": "the callback carries an error parameter from Google, has no state, has a state that differs from the state cookie, or the code exchange with the code verifier is rejected by the token endpoint",
+          "action": "refuse the sign-in, creating no user record and no session",
+          "contract": "HTTP 302 with Location '/signin?error=failed'; no 'alexandria_session' cookie set; the users and sessions row counts are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/auth.test.ts, a table over {?error=access_denied, missing state, state 'x' with cookie 'y', token-endpoint double answering 400 invalid_grant}: r = callback; assert r.status == 302 and r.Location == '/signin?error=failed'; assert no session cookie; assert users and sessions counts unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "ubiquitous",
+          "action": "for any sign-in, read ALLOWED_EMAILS from the deployment configuration at the time of the request and compare it with the ID token's email case-insensitively, ignoring whitespace around each comma-separated entry",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/auth.test.ts beside the tests above, a table of (ALLOWED_EMAILS, ID-token email, allowed?): (' Owner@Example.test , b@x.test', 'owner@example.TEST', yes); ('b@x.test', 'owner@example.test', no); ('', 'owner@example.test', no); then change ALLOWED_EMAILS between two callbacks for the same email and assert the second outcome follows the new value"
+          }
+        },
+        {
+          "id": "REQ-1.7",
+          "pattern": "event_driven",
+          "condition": "the website shows the sign-in page",
+          "system": "website",
+          "action": "show one action, 'Sign in with Google', linking to /auth/google, and show 'This library is private' when the page address carries error=private and 'Sign-in failed, please try again' when it carries error=failed",
+          "contract": "the page has exactly one button or link, labelled 'Sign in with Google', with target /auth/google, and the message for the error parameter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/SignIn.test.tsx, a table over {no error: no message; error=private: 'This library is private'; error=failed: 'Sign-in failed, please try again'}: renderPage('/signin?...'); assert exactly one interactive element, named 'Sign in with Google', pointing at /auth/google; assert the message text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Sessions, sign-out and per-user access control",
+      "rationale": "A session is the website's credential, and nothing it opens may reach another user's data.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "state_driven",
+          "condition": "a request carries a session cookie whose session has not expired",
+          "action": "authenticate the request as the session's user and set the session's expiry to 30 days after the request",
+          "contract": "the request is answered as that user (GET /api/v1/me returns 200 with the user's email); the stored expires_at equals the request time plus 30 days",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a signed-in user whose session was last used 29 days ago, set through the clock"
+            ],
+            "pseudocode": "in src/worker/auth/sessions.test.ts: setNow(t); r = api('GET', '/api/v1/me', {as: session}); assert r.status == 200 and r.json.email == user.email; assert sessions.expires_at == t + 30 days"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "unwanted",
+          "condition": "a request to a route under /api/v1/ carries no session cookie and no bearer token, a session cookie that names no session, a session that has expired, or a bearer token that names no token",
+          "action": "refuse the request without performing it",
+          "contract": "HTTP 401 with body {\"error\": \"unauthorized\"}; no row is created, changed or deleted",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/sessions.test.ts, a table over {no credentials, cookie 'nope', a session unused for 30 days and 1 second, 'Authorization: Bearer alx_unknown'} crossed with {GET /api/v1/links, POST /api/v1/links}: r = request; assert r.status == 401 and r.json == {error: 'unauthorized'}; assert the links count is unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "a browser requests any website page other than /signin and the public pages under /about/ without a valid session",
+          "action": "redirect the browser to the sign-in page instead of serving the page",
+          "contract": "HTTP 302 with Location '/signin'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/sessions.test.ts, a table over the paths {'/', '/settings', '/links/abc'} with header Accept: text/html and no cookie: r = SELF.fetch(path, {redirect: 'manual'}); assert r.status == 302 and r.Location == '/signin'; and GET /signin without a cookie answers 200 and does not redirect"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "event_driven",
+          "condition": "a signed-in user requests POST /auth/signout",
+          "action": "delete the session and clear the session cookie, so that the same cookie authenticates nothing afterwards",
+          "contract": "HTTP 302 with Location '/signin' and a Set-Cookie that expires 'alexandria_session'; the session row is gone; a later request with the old cookie gets 401",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/sessions.test.ts: c = signIn('owner@example.test'); r = SELF.fetch('/auth/signout', {method: 'POST', cookie: c, Origin: PUBLIC_ORIGIN}); assert r.status == 302 and r.Location == '/signin'; assert the cookie is expired; assert api('GET', '/api/v1/me', {as: c}).status == 401"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "a POST, PUT, PATCH or DELETE request is authenticated by the session cookie and its Origin header is missing or differs from PUBLIC_ORIGIN",
+          "action": "refuse the request without performing it",
+          "contract": "HTTP 403 with body {\"error\": \"forbidden_origin\"}; no row is created, changed or deleted; the same request authenticated with a bearer token and no Origin header is performed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/sessions.test.ts, a table over Origin {missing, 'https://evil.example'}: r = api('POST', '/api/v1/links', {as: session, origin, body: {url: 'https://a.example'}}); assert r.status == 403 and r.json.error == 'forbidden_origin'; assert links count unchanged; then the same call with a bearer token and no Origin answers 201"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "ubiquitous",
+          "action": "for any authenticated request that names a link or token by id, act only on resources of the authenticated user, and answer a request for another user's resource exactly as for one that does not exist",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}, never 403; the other user's resource and its use count are unchanged",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "two users A and B; B has link L and token T"
+            ],
+            "pseudocode": "in src/worker/auth/sessions.test.ts, a table over {GET /api/v1/links/L, DELETE /api/v1/links/L, GET /api/v1/links/L/open, GET /api/v1/links/L/history, POST /api/v1/links/L/pin, DELETE /api/v1/links/L/pin, DELETE /api/v1/tokens/T} as A: assert status 404 and body {error: 'not_found'}; assert the same requests for an id that exists nowhere give the identical status and body; assert L, its use_count and T are unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Personal access tokens",
+      "rationale": "Scripts, agents and a later native app reach the library through tokens the owner creates and revokes.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "a signed-in user whose email is on the allow-list requests POST /api/v1/tokens with a name of 1 to 100 characters",
+          "action": "create a token and return its secret this once, storing only the secret's SHA-256 hash",
+          "contract": "HTTP 201 with body {id, name, created_at, last_used_at: null, secret} where secret starts with 'alx_'; no stored column holds the secret",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: r = api('POST', '/api/v1/tokens', {as: session, body: {name: 'laptop script'}}); assert r.status == 201 and r.json.secret starts with 'alx_'; assert no D1 value equals r.json.secret; assert tokens.secret_hash == sha256(r.json.secret)"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "event_driven",
+          "condition": "a signed-in user requests GET /api/v1/tokens",
+          "action": "list the user's tokens that are not revoked, newest first, with name, created date and last used date and never the secret",
+          "contract": "HTTP 200 with body {items: [{id, name, created_at, last_used_at}]}; no item has a secret field",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: create tokens 'a' and 'b', revoke 'a'; r = api('GET', '/api/v1/tokens'); assert r.json.items.map(name) == ['b']; assert no item has key 'secret'"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "a request carries 'Authorization: Bearer <secret>' for a token that is not revoked",
+          "action": "authenticate the request as the token's user with the same rights as a session, and set the token's last used date to the request time",
+          "contract": "the request is answered as that user (POST /api/v1/links returns 201 with a link owned by the user); GET /api/v1/tokens shows last_used_at equal to the request time",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: s = createToken(user); setNow(t); r = api('POST', '/api/v1/links', {bearer: s, body: {url: 'https://a.example'}}); assert r.status == 201; assert the link's user is user; assert the token's last_used_at == t"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "event_driven",
+          "condition": "a signed-in user requests DELETE /api/v1/tokens/{id} for one of their tokens",
+          "action": "revoke the token, so that it authenticates nothing from the next request on",
+          "contract": "HTTP 204; the next request with the token's secret gets 401 {\"error\": \"unauthorized\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: s = createToken(user); assert api('DELETE', '/api/v1/tokens/' + id, {as: session}).status == 204; assert api('GET', '/api/v1/links', {bearer: s}).status == 401"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "unwanted",
+          "condition": "a user who holds 20 tokens that are not revoked requests POST /api/v1/tokens",
+          "action": "refuse to create the token",
+          "contract": "HTTP 409 with body {\"error\": \"token_limit\", \"message\": \"token limit reached\"}; the user still holds 20 tokens",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: create 20 tokens; r = create a 21st; assert r.status == 409 and r.json == {error: 'token_limit', message: 'token limit reached'}; revoke one; assert creating another now answers 201"
+          }
+        },
+        {
+          "id": "REQ-3.6",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/tokens carries no name, an empty name, a name of only whitespace or a name longer than 100 characters",
+          "action": "refuse to create the token",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_name\", \"field\": \"name\", \"message\": <text>}; no token row is created",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts, a table over names {absent, '', '   ', 'x' * 101}: r = create; assert r.status == 400 and r.json.error == 'invalid_name' and r.json.field == 'name'; assert the token count is unchanged; and a name of 100 characters answers 201"
+          }
+        },
+        {
+          "id": "REQ-3.7",
+          "pattern": "unwanted",
+          "condition": "a signed-in user whose email has been removed from ALLOWED_EMAILS requests POST /api/v1/tokens",
+          "action": "refuse to create the token and keep the user's existing data",
+          "contract": "HTTP 403 with body {\"error\": \"not_allowed\", \"message\": <text>}; no token row is created; the user's links are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/auth/tokens.test.ts: sign in owner, add a link, set ALLOWED_EMAILS to '' ; r = create token; assert r.status == 403 and r.json.error == 'not_allowed'; assert token count unchanged and the link still exists"
+          }
+        },
+        {
+          "id": "REQ-3.8",
+          "pattern": "event_driven",
+          "condition": "the owner creates, views or revokes tokens on the settings page",
+          "system": "website",
+          "action": "show the new token's secret once with a copy action and never again, list the tokens with name, created date and last used date, and remove a revoked token from the list",
+          "contract": "after creation the secret is visible until the owner dismisses it; after a reload the list shows the token without its secret; a 409 shows 'token limit reached'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx with a fake API: type a name and create; assert the secret and a 'Copy' button are shown; dismiss; assert the secret text is no longer in the document; assert the list row shows name, created and last used dates; click 'Revoke' and assert DELETE /api/v1/tokens/{id} was sent and the row is gone; with the fake answering 409 assert 'token limit reached' is shown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "URL normalisation and validation",
+      "rationale": "Duplicate detection is only as good as the normal form it compares, and the same rules must apply wherever a URL enters.",
+      "system": "URL normaliser",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "ubiquitous",
+          "action": "for any accepted input, produce the normalised URL by trimming surrounding whitespace, adding 'https://' to an input without a scheme, lower-casing the scheme and host, dropping the fragment, dropping a default port (80 for http, 443 for https), dropping every query parameter whose name starts with 'utm_' and the parameters fbclid, gclid, mc_cid and mc_eid and no others, sorting the remaining query parameters by name, and dropping a trailing slash on an otherwise empty path",
+          "contract": "normalizeUrl(input) returns {ok: true, url: <normalised string>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/normalize.test.ts, a table of (input, expected): ('  https://example.com/a  ', 'https://example.com/a'); ('example.com', 'https://example.com'); ('HTTPS://Example.COM/Path', 'https://example.com/Path'); ('https://example.com/a#top', 'https://example.com/a'); ('http://example.com:80/a', 'http://example.com/a'); ('https://example.com:443/', 'https://example.com'); ('https://example.com:8443/', 'https://example.com:8443'); ('https://example.com/article?utm_source=x&utm_medium=y', 'https://example.com/article'); ('https://example.com/?fbclid=1&gclid=2&mc_cid=3&mc_eid=4&b=2&a=1', 'https://example.com/?a=1&b=2'); ('https://example.com/?ref=hn&source=rss', 'https://example.com/?ref=hn&source=rss'); ('https://example.com/a/', 'https://example.com/a/'); assert normalizeUrl(input) == {ok: true, url: expected}"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "ubiquitous",
+          "action": "for any input it accepts, return a normalised URL that normalises to itself",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/links/normalize.test.ts: for generated URLs over schemes {http, https, none}, mixed-case hosts, optional ports, paths with and without trailing slashes, query parameters drawn from {utm_*, fbclid, gclid, mc_cid, mc_eid, ref, a, b} in random order and optional fragments: u = normalizeUrl(x).url; assert normalizeUrl(u) == {ok: true, url: u}"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "the input is empty or only whitespace, is not parseable as a URL, has a scheme other than http or https (such as javascript:, file:, data:, ftp:), or has a host that is localhost, a loopback address (127.0.0.0/8, ::1) or a private or link-local address (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, fc00::/7, fe80::/10)",
+          "action": "reject the input without producing a URL",
+          "contract": "normalizeUrl(input) returns {ok: false, error: 'invalid_url'}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/normalize.test.ts beside the table above, a table over {'', '   ', 'not a url', 'javascript:alert(1)', 'file:///etc/passwd', 'data:text/html,x', 'ftp://example.com', 'http://localhost/', 'http://LOCALHOST:8080', 'http://127.0.0.1', 'http://[::1]/', 'http://10.1.2.3', 'http://172.16.0.1', 'http://192.168.1.1', 'http://169.254.169.254', 'http://[fd00::1]', 'http://[fe80::1]'}: assert normalizeUrl(x) == {ok: false, error: 'invalid_url'}; and 'http://172.32.0.1' is accepted"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Adding links",
+      "rationale": "Capture has to be one paste: anything slower and the tabs stay open.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links with a url whose normalised form is not in that user's library",
+          "action": "store a new link in state 'pending' with the normalised URL, the input as original URL, the host as provisional title, and added and last used set to the request time",
+          "contract": "HTTP 201 with body {status: 'added', link: {id, url, original_url, host, title, state: 'pending', added_at, last_used_at, use_count: 0, pinned: false, pin_position: null}}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts: setNow(t); r = api('POST', '/api/v1/links', {body: {url: 'https://example.com/article?utm_source=x'}}); assert r.status == 201; assert r.json.link.url == 'https://example.com/article' and original_url == the input and title == 'example.com' and state == 'pending' and added_at == last_used_at == t"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links with a url whose normalised form is already in that user's library",
+          "action": "boost the existing link by setting its last used to the request time, leaving its use count unchanged and creating no new link",
+          "contract": "HTTP 200 with body {status: 'boosted', link: <the existing link with the new last_used_at>}; the user's link count is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, a table over {the same user added 'https://example.com/a' earlier: 200 boosted, count unchanged, use_count unchanged, last_used_at == now; only another user added it: 201 added, a second link exists for this user}: r = api('POST', '/api/v1/links', {body: {url: 'https://Example.com/a?utm_campaign=z'}}); assert the outcome of the row"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links carries a url that the URL normaliser rejects, or carries no url field",
+          "action": "refuse the request and store nothing",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_url\", \"field\": \"url\", \"url\": <the input, or null when absent>, \"message\": \"not a valid web address\"}; the link count is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, a table over bodies {{url: 'javascript:alert(1)'}, {url: 'http://localhost'}, {}}: r = post; assert r.status == 400 and r.json.error == 'invalid_url' and r.json.url == input and r.json.message == 'not a valid web address'; assert link count unchanged"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/batch with between 1 and 100 URLs",
+          "action": "add or boost each valid URL as POST /api/v1/links does, collapse repeated URLs of the batch to their first occurrence, give the URLs last used times such that the first URL of the batch ends highest in the stream, and list every invalid input back",
+          "contract": "HTTP 200 with body {added: [link], boosted: [link], invalid: [{url, error: 'invalid_url' | 'library_full'}]}; GET /api/v1/links then lists the batch's URLs in the order they were given, above every link older than the batch",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts: seed 'https://c.example' earlier; r = api('POST', '/api/v1/links/batch', {body: {urls: ['https://a.example', 'nope', 'https://b.example', 'https://c.example', 'https://a.example/']}}); assert added hosts == ['a.example', 'b.example']; boosted hosts == ['c.example']; invalid == [{url: 'nope', error: 'invalid_url'}]; assert the stream's first three hosts are a.example, b.example, c.example"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/batch carries no urls array, an empty array or more than 100 URLs",
+          "action": "refuse the request and store nothing",
+          "contract": "HTTP 400 with body {\"error\": \"no_urls\" or \"too_many_urls\", \"field\": \"urls\", \"message\": <text>}; the link count is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, a table over {no urls: 'no_urls'; []: 'no_urls'; 101 valid URLs: 'too_many_urls'}: r = post batch; assert r.status == 400 and r.json.error == expected and r.json.field == 'urls'; assert link count unchanged; and exactly 100 valid URLs answers 200"
+          }
+        },
+        {
+          "id": "REQ-5.6",
+          "pattern": "unwanted",
+          "condition": "a URL that is not already in the user's library is added while the library holds 20,000 links in any state",
+          "action": "refuse to add it, while still boosting URLs that are already in the library",
+          "contract": "for POST /api/v1/links: HTTP 409 with body {\"error\": \"library_full\", \"message\": \"library full (20,000 links)\"}; for POST /api/v1/links/batch: the URL listed in invalid with error 'library_full'; the user's link count stays 20,000",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "a user with 20,000 links seeded directly through the store"
+            ],
+            "pseudocode": "in src/worker/links/links.test.ts: r = post {url: 'https://new.example'}; assert r.status == 409 and r.json == {error: 'library_full', message: 'library full (20,000 links)'}; r2 = post an existing URL; assert r2.status == 200 and r2.json.status == 'boosted'; r3 = post batch [new, existing]; assert r3.json.invalid == [{url: new, error: 'library_full'}] and r3.json.boosted has the existing one; assert count == 20000"
+          }
+        },
+        {
+          "id": "REQ-5.7",
+          "pattern": "ubiquitous",
+          "action": "for any number of concurrent requests adding the same new URL for one user, store exactly one link for that normalised URL, answering one request 'added' and the others 'boosted'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts: rs = await Promise.all(10 x api('POST', '/api/v1/links', {body: {url: 'https://race.example'}})); assert count(links where url == 'https://race.example') == 1; assert rs.filter(status == 201).length == 1 and the other 9 are 200 'boosted'"
+          }
+        },
+        {
+          "id": "REQ-5.8",
+          "pattern": "event_driven",
+          "condition": "the owner pastes text into the add input at the top of the stream and presses Enter",
+          "system": "website",
+          "action": "split the text on whitespace and newlines, send the URLs in one batch request, show the added links at the top of the stream with their host as title and a pending indicator, and report boosted and refused inputs",
+          "contract": "added cards appear first in the stream without a reload; a boosted URL shows 'already in your library, moved to top' and its card moves to the top; each invalid input is listed with 'not a valid web address'; a library_full input shows 'library full (20,000 links)'; the input is cleared",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/AddLinks.test.tsx with a fake API answering the batch with one added, one boosted and two invalid (invalid_url, library_full): type 'https://a.example\\nnope  https://c.example x' and press Enter; assert one POST /api/v1/links/batch with urls ['https://a.example', 'nope', 'https://c.example', 'x']; assert the a.example card is first, labelled 'a.example' with a pending indicator; assert the messages 'already in your library, moved to top', 'nope: not a valid web address' and 'library full (20,000 links)'; assert the input is empty"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "The stream",
+      "rationale": "One flat list, most recently used first, is the whole browsing model; everything else is layered on it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links",
+          "action": "return the user's links whose state is not 'archived', the pinned ones first in pin position order, then the rest by last used descending with the link id breaking ties, 50 per page by default",
+          "contract": "HTTP 200 with body {items: [link], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts: seed links with last_used_at t1 < t2 < t3, pin the t1 link at position 1, and one link in state 'archived'; r = api('GET', '/api/v1/links'); assert r.json.items ids == [pinned t1, t3, t2]; assert the archived link is absent; assert next_cursor == null"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links with a limit between 1 and 100 and the cursor of a previous page",
+          "action": "return the next page in the same order, with no link repeated or skipped while the library is unchanged, and no cursor after the last page",
+          "contract": "HTTP 200 with body {items, next_cursor}; next_cursor is null on the last page",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts: seed 120 links with 30 sharing one last_used_at; pages = follow cursors with limit 50; assert page sizes == [50, 50, 20]; assert the concatenated ids equal the single-page order of all 120 with no duplicates; with limit 100 assert sizes [100, 20]"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/links carries a limit that is not an integer from 1 to 100, or a cursor that was not issued by the API",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_limit\" or \"invalid_cursor\", \"field\": \"limit\" or \"cursor\", \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, a table over {limit=0, limit=101, limit=abc: invalid_limit; cursor=garbage, a cursor with a tampered payload: invalid_cursor}: assert status 400 and error and field"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id} for one of their links",
+          "action": "return the link with its normalised URL, original URL, host, title, state, added date, last used date, use count and pin state",
+          "contract": "HTTP 200 with body {id, url, original_url, host, title, state, added_at, last_used_at, use_count, pinned, pin_position}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts: add 'https://example.com/a?utm_source=x'; r = api('GET', '/api/v1/links/' + id); assert r.status == 200 and r.json.original_url == 'https://example.com/a?utm_source=x' and r.json.url == 'https://example.com/a' and every listed field is present"
+          }
+        },
+        {
+          "id": "REQ-6.5",
+          "pattern": "event_driven",
+          "condition": "the owner opens the stream page",
+          "system": "website",
+          "action": "show one card per link in the API's order, each with favicon where known, title, host, added date, last-used date, state and the actions open, pin or unpin, and delete, and load the next page when the owner scrolls to the end of the list",
+          "contract": "the first 50 cards render from GET /api/v1/links; scrolling to the end requests the next_cursor page once and appends its cards; no request is made when next_cursor is null",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with a fake API serving 70 links in pages of 50 and 20: renderPage('/'); assert 50 cards in order with title, host, added and last-used dates, a 'pending' state label and the actions Open, Pin and Delete; trigger the end-of-list sentinel; assert one request with the cursor and 70 cards; trigger again and assert no further request"
+          }
+        },
+        {
+          "id": "REQ-6.6",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "render every page of the website in one typeface, without horizontal scrolling at any viewport width from 375 px, in light or dark colours following the system's colour-scheme setting",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "wrangler dev with local D1, a signed-in owner and 50 links with 200-character titles"
+            ],
+            "pseudocode": "in e2e/layout.spec.ts, a table over pages {/signin, /, /settings, /links/{id}} crossed with viewport widths {375, 1280} and colorScheme {light, dark}: assert document.documentElement.scrollWidth <= viewport width; assert the computed font-family of body, headings, inputs and buttons is one family; assert the body background colour differs between light and dark"
+          }
+        },
+        {
+          "id": "REQ-6.7",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "make the stream's first page of 50 links interactive within 1.5 seconds of navigation on a 4G connection",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "a production build served by wrangler dev with local D1, a signed-in owner with 50 links",
+              "Chromium with network throttled to 9 Mbps down, 1.5 Mbps up, 170 ms latency and CPU slowed 4x through the DevTools protocol"
+            ],
+            "pseudocode": "in e2e/performance.spec.ts: t0 = now; page.goto('/'); wait until the 50th card is visible and its Pin button is enabled; assert now - t0 <= 1500 ms, taking the median of 3 runs"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Opening a link records a use",
+      "rationale": "Last use drives the stream's order and, later, decay, so every open must pass through one place that records it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id}/open for one of their links",
+          "action": "record a use by incrementing the use count, setting last used to the request time and storing a use event with that time, then redirect to the link's normalised URL",
+          "contract": "HTTP 302 with Location equal to the link's url; use_count is one higher, last_used_at equals the request time and one more use event exists",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts: add 'https://example.com/a?utm_source=x'; setNow(t); r = api('GET', '/api/v1/links/' + id + '/open', {redirect: 'manual'}); assert r.status == 302 and r.Location == 'https://example.com/a'; l = get link; assert l.use_count == 1 and l.last_used_at == t; and the same call with a bearer token records a second use"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "ubiquitous",
+          "action": "for any number N of opens of one link, including concurrent ones, increase its use count by exactly N and store exactly N use events",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts: await Promise.all(10 x open(id)); assert use_count == 10 and count(use events of id) == 10"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/links/{id}/history for one of their links",
+          "action": "return the link's events newest first, each with its kind and time, cursor-paged at most 100 per page",
+          "contract": "HTTP 200 with body {items: [{kind: 'use', at}], next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts: open the link at t1 and t2; r = api('GET', '/api/v1/links/' + id + '/history'); assert r.json.items == [{kind: 'use', at: t2}, {kind: 'use', at: t1}] and next_cursor == null"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "event_driven",
+          "condition": "the owner opens a link's detail page or clicks a card's title or its Open action",
+          "system": "website",
+          "action": "point the card's title and Open action at /api/v1/links/{id}/open, and show on the detail page the original URL, the normalised URL, the added date, the use count and the history of uses",
+          "contract": "the title anchor's href is /api/v1/links/{id}/open; the detail page lists every history item with its date",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx: render a card; assert the title anchor and Open action href == '/api/v1/links/' + id + '/open'; in src/web/pages/LinkDetail.test.tsx with a fake API: renderPage('/links/' + id); assert original URL, URL, added date, 'used 2 times' and two dated history rows are shown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Pinning",
+      "rationale": "The handful of sites in daily use belong above everything else, in the order the owner chooses.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/pin for one of their links without a position",
+          "action": "pin the link at the bottom of the pinned section, or leave an already pinned link where it is",
+          "contract": "HTTP 200 with body <link> where pinned is true and pin_position equals the number of pinned links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts: pin a, then b; assert b.pin_position == 2; assert the stream starts [a, b]; pin a again; assert positions unchanged"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "event_driven",
+          "condition": "a user requests POST /api/v1/links/{id}/pin with a position P, an integer of at least 1",
+          "action": "place the link at position P of the pinned section, or at the end when P exceeds the number of pinned links, shifting the other pinned links to keep their order",
+          "contract": "HTTP 200 with body <link>; the pinned links' positions are 1..n in the requested order",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts, a table over (pinned before, call, pinned after): ([a, b, c], pin c at 1, [c, a, b]); ([a, b, c], pin a at 3, [b, c, a]); ([a, b], pin unpinned d at 2, [a, d, b]); ([a, b], pin d at 9, [a, b, d]): assert the stream's pinned prefix and positions"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "unwanted",
+          "condition": "a user with 30 pinned links requests to pin a link that is not pinned",
+          "action": "refuse to pin it and change no position",
+          "contract": "HTTP 409 with body {\"error\": \"pin_limit\", \"message\": \"unpin something first\"}; the 30 pinned links and their positions are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts: pin 30 links; r = pin a 31st; assert r.status == 409 and r.json == {error: 'pin_limit', message: 'unpin something first'}; assert positions unchanged; and moving an already pinned link to position 1 still answers 200"
+          }
+        },
+        {
+          "id": "REQ-8.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/pin carries a position that is not an integer of at least 1",
+          "action": "refuse the request and change no position",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_position\", \"field\": \"position\", \"message\": <text>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts, a table over positions {0, -1, 1.5, 'top'}: assert status 400, error 'invalid_position', field 'position'; assert pin state unchanged"
+          }
+        },
+        {
+          "id": "REQ-8.5",
+          "pattern": "event_driven",
+          "condition": "a user requests DELETE /api/v1/links/{id}/pin for one of their pinned links",
+          "action": "unpin the link, return it to the stream's last-used order and close the gap in the remaining pin positions",
+          "contract": "HTTP 200 with body <link> where pinned is false and pin_position is null; the remaining pinned links' positions are 1..n-1",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts: pin [a, b, c]; unpin b; assert positions a=1, c=2; assert b appears after the pinned section at its last-used place"
+          }
+        },
+        {
+          "id": "REQ-8.6",
+          "pattern": "ubiquitous",
+          "action": "for any sequence of pin, move and unpin requests, keep the positions of a user's pinned links exactly 1 to n with no gap and no repeat",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/links/pin.test.ts: for random sequences of up to 60 operations drawn from {pin x, pin x at p, unpin x} over 40 links (p from 1 to 35): apply each through the API; after every step assert sorted(pin positions) == [1..count(pinned)] and count(pinned) <= 30"
+          }
+        },
+        {
+          "id": "REQ-8.7",
+          "pattern": "event_driven",
+          "condition": "the owner pins, unpins or drags a pinned card to a new place in the pinned section",
+          "system": "website",
+          "action": "send the pin, unpin or pin-with-position request and show the stream in the order the API returns, showing 'unpin something first' when the API answers pin_limit",
+          "contract": "dropping the third pinned card on the first sends POST /api/v1/links/{id}/pin with {position: 1}; a 409 pin_limit shows 'unpin something first' and leaves the order unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with a fake API: click Pin on an unpinned card and assert POST .../pin without a position; drag pinned card 3 onto card 1 and assert POST .../pin with {position: 1} and the new order; click Unpin and assert DELETE .../pin; with the fake answering 409 pin_limit assert 'unpin something first' is shown and the order is unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "Deleting links",
+      "rationale": "Letting go of a link must be one action, forgiving on the website and final on the API.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "event_driven",
+          "condition": "a user requests DELETE /api/v1/links/{id} for one of their links",
+          "action": "delete the link and its use events immediately and permanently, closing the gap in pin positions when it was pinned",
+          "contract": "HTTP 204; GET /api/v1/links/{id} then answers 404; the stream no longer lists it; adding the same URL again answers 201 'added' with a new id",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts: add a pinned link with two uses; r = api('DELETE', '/api/v1/links/' + id); assert r.status == 204; assert GET answers 404; assert no use events remain for id; assert the remaining pin positions are contiguous; assert re-adding the URL answers 201 with a different id"
+          }
+        },
+        {
+          "id": "REQ-9.2",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Delete on a card",
+          "system": "website",
+          "action": "hide the card at once and show a toast with an Undo action for 10 seconds, sending the delete request only when the 10 seconds pass without Undo; Undo restores the card in its place and sends nothing",
+          "contract": "no DELETE request before 10 seconds; exactly one DELETE /api/v1/links/{id} after 10 seconds; none after Undo",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx with fake timers and a fake API: click Delete; assert the card is hidden and the toast shows 'Undo'; advance 9.9 s and assert no DELETE; advance 0.1 s and assert one DELETE; on a second card click Delete then Undo; advance 10 s; assert no DELETE for it and the card is back in its place"
+          }
+        },
+        {
+          "id": "REQ-9.3",
+          "pattern": "event_driven",
+          "condition": "the page is hidden or left while a delete's undo toast is still open",
+          "system": "website",
+          "action": "send the pending delete request at once with keepalive, so that the deletion is not lost",
+          "contract": "one DELETE /api/v1/links/{id} sent with keepalive: true on the pagehide event",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx: click Delete; dispatch 'pagehide' on window; assert one DELETE request with keepalive true; advance 10 s and assert no second request"
+          }
+        },
+        {
+          "id": "REQ-9.4",
+          "pattern": "unwanted",
+          "condition": "the delete request sent after the undo window fails or answers with a status other than 204 or 404",
+          "system": "website",
+          "action": "put the card back in the stream and tell the owner the link was not deleted",
+          "contract": "the card is visible again in its place and the toast shows 'could not delete, try again'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx, a table over the fake API's answers {network error, 500}: click Delete; advance 10 s; assert the card is visible and 'could not delete, try again' is shown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-10",
+      "title": "API conventions",
+      "rationale": "Scripts, agents and a later native app depend on one predictable contract: the same errors, limits and description everywhere.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-10.1",
+          "pattern": "unwanted",
+          "condition": "a request under /api/v1/ has a body that is not valid JSON where JSON is expected, or a required field that is missing or of the wrong type",
+          "action": "refuse the request with the validation error envelope and change nothing",
+          "contract": "HTTP 400 with body {\"error\": <code>, \"field\": <name or null>, \"message\": <text>}, the code being 'invalid_json' for a body that does not parse",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/api.test.ts, a table over {POST /api/v1/links with body 'not json': invalid_json, field null; POST /api/v1/tokens with {name: 5}: invalid_name, field 'name'; POST /api/v1/links/batch with {urls: 'x'}: no_urls, field 'urls'}: assert status 400 and the three keys error, field, message are present with the expected values; assert no row changed"
+          }
+        },
+        {
+          "id": "REQ-10.2",
+          "pattern": "unwanted",
+          "condition": "a user makes more than 600 requests to /api/v1/ within one minute, counted across all of the user's sessions and tokens",
+          "action": "refuse each further request in that minute without performing it, leaving other users unaffected",
+          "contract": "HTTP 429 with body {\"error\": \"rate_limited\"} and a Retry-After header of whole seconds from 1 to 60; another user's request in the same minute answers normally",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/api.test.ts: with the clock fixed, send 600 GET /api/v1/me split between a session and a token of user A; assert all 200; r = the 601st; assert r.status == 429 and r.json == {error: 'rate_limited'} and 1 <= int(r.headers['Retry-After']) <= 60; assert user B's GET /api/v1/me answers 200; advance the clock 60 s and assert A's next request answers 200"
+          }
+        },
+        {
+          "id": "REQ-10.3",
+          "pattern": "event_driven",
+          "condition": "an authenticated client requests GET /api/v1/openapi.json",
+          "action": "return the OpenAPI 3.1 document that describes every route under /api/v1/ with its method, path, parameters, request body, responses and the bearer and cookie security schemes",
+          "contract": "HTTP 200, Content-Type application/json, body with openapi '3.1.0'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/openapi.test.ts: r = api('GET', '/api/v1/openapi.json'); assert r.status == 200 and r.json.openapi == '3.1.0'; assert r.json.components.securitySchemes has a bearer scheme and a cookie scheme named alexandria_session"
+          }
+        },
+        {
+          "id": "REQ-10.4",
+          "pattern": "ubiquitous",
+          "action": "for any route registered under /api/v1/ in the application, keep the OpenAPI document in step: every registered method and path is documented and every documented operation is registered, and every response the test suite receives from a documented operation has a status code and body that the document declares for it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/openapi.test.ts: registered = the Hono app's routes under /api/v1/ as (method, path template); documented = (method, path) pairs of the document; assert registered == documented; and the shared api() helper records every (operation, status, body) of the worker test run, and an afterAll hook asserts each status is declared for its operation and each body validates against the declared schema"
+          }
+        },
+        {
+          "id": "REQ-10.5",
+          "pattern": "event_driven",
+          "condition": "an authenticated client requests GET /api/v1/me",
+          "action": "return the current user's email and display name and nothing else from the account",
+          "contract": "HTTP 200 with body {email, name}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/api.test.ts: r = api('GET', '/api/v1/me', {as: signIn('owner@example.test')}); assert r.json == {email: 'owner@example.test', name: 'Ada Owner'}"
+          }
+        },
+        {
+          "id": "REQ-10.6",
+          "pattern": "unwanted",
+          "condition": "an authenticated client requests a path under /api/v1/ that names no route",
+          "action": "answer that the resource does not exist",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/api/api.test.ts: assert api('GET', '/api/v1/nothing-here').status == 404 and json == {error: 'not_found'}; and without credentials the same path answers 401 {error: 'unauthorized'}"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner signs in, adds a link and opens it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the site without a session and is redirected to the sign-in page"
+        },
+        {
+          "actor": "owner",
+          "action": "chooses 'Sign in with Google'"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "redirects to Google with a state and an S256 PKCE challenge"
+        },
+        {
+          "actor": "Google",
+          "action": "authenticates the owner and redirects back to /auth/google/callback with an authorization code"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "exchanges the code, finds the email on the allow-list, stores the email and display name, sets the session cookie and redirects to the stream"
+        },
+        {
+          "actor": "owner",
+          "action": "pastes 'https://example.com/article?utm_source=x' into the add input and presses Enter"
+        },
+        {
+          "actor": "website",
+          "action": "sends the URL in POST /api/v1/links/batch"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "normalises it to 'https://example.com/article' and stores a pending link with last used = now"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link's card at the top of the stream, titled 'example.com', with a pending indicator"
+        },
+        {
+          "actor": "owner",
+          "action": "clicks the card's title"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "records a use and redirects to 'https://example.com/article'"
+        },
+        {
+          "actor": "owner",
+          "action": "returns to the stream and sees the card's last-used date as now"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "session cookies",
+          "the OAuth PKCE exchange"
+        ],
+        "setup": [
+          "wrangler dev with local D1 and the migrations applied",
+          "ALLOWED_EMAILS = 'owner@example.test'; GOOGLE_AUTH_URL and GOOGLE_TOKEN_URL point at e2e/fake-google.ts, a local fake OIDC provider that signs in owner@example.test as 'Ada Owner' (Google is the only stubbed party)",
+          "Playwright fulfils requests to https://example.com/ with a static page, so the redirect target is observable without the network"
+        ],
+        "end_state": [
+          "one users row for owner@example.test named 'Ada Owner' and one session",
+          "one link with url 'https://example.com/article', original_url 'https://example.com/article?utm_source=x', state 'pending', use_count 1",
+          "the card appeared at the top within 1 second of Enter",
+          "the browser landed on https://example.com/article after the click",
+          "the stream shows the card first with last used 'just now'"
+        ],
+        "pseudocode": "in e2e/signin.spec.ts: page.goto('/'); expect url '/signin'; click 'Sign in with Google'; expect url '/'; fill the add input and press Enter; expect the first card's title 'example.com' and a pending label within 1000 ms; click it; expect page url 'https://example.com/article'; page.goto('/'); expect first card last used 'just now'; query D1 through wrangler for the user and link rows"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "A script uses a personal access token until the owner revokes it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "creates a token named 'laptop script' on the settings page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the token's hash and returns its secret once"
+        },
+        {
+          "actor": "website",
+          "action": "shows the secret once with a copy action"
+        },
+        {
+          "actor": "script",
+          "action": "sends POST /api/v1/links with 'Authorization: Bearer <secret>' and the URL 'https://example.org/docs'"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "authenticates the token as the owner and stores the link"
+        },
+        {
+          "actor": "script",
+          "action": "reads GET /api/v1/links and finds the link at the top"
+        },
+        {
+          "actor": "owner",
+          "action": "revokes the token on the settings page"
+        },
+        {
+          "actor": "script",
+          "action": "sends GET /api/v1/links again and is refused with 401"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1 database",
+          "token authentication"
+        ],
+        "setup": [
+          "wrangler dev with local D1, the owner signed in through e2e/fake-google.ts"
+        ],
+        "end_state": [
+          "the link 'https://example.org/docs' is in the owner's stream on the website",
+          "the token row has revoked_at set and its last_used_at equals the script's first request",
+          "the script's last request got 401 {\"error\": \"unauthorized\"}",
+          "after a reload of the settings page, the secret is nowhere in the page"
+        ],
+        "pseudocode": "in e2e/tokens.spec.ts: sign in; on /settings create 'laptop script' and read the secret; r = request.post('/api/v1/links', bearer secret); expect 201; expect request.get('/api/v1/links').items[0].url == 'https://example.org/docs'; click Revoke; expect request.get('/api/v1/links', bearer secret).status == 401; reload /settings and expect the secret text absent"
+      }
+    }
+  ]
+}
