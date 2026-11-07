@@ -21,7 +21,7 @@
     },
   ],
   // The hourly run: decay evaluation and the weekly liveness checks.
-  "triggers": { "crons": ["0 * * * *", "* * * * *"] },
+  "triggers": { "crons": ["0 * * * *", "* * * * *", "*/5 * * * *"] },
   "queues": {
     "producers": [
       { "binding": "FETCH_QUEUE", "queue": "alexandria-fetch" },

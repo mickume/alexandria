@@ -1,16 +1,21 @@
+import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import worker from '../index';
 import {
   api,
   count,
   createToken,
+  deliverAccount,
   env,
   recordAccountQueue,
+  recordFetchQueue,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
 } from '../test/helpers';
 import { googleSignIn } from '../test/google';
+import { deletionHooks } from './deletion';
 
 /** A user with two sessions, three tokens, an AI key and links. */
 async function owner(): Promise<TestUser> {
@@ -121,5 +126,323 @@ describe('DELETE /api/v1/me', () => {
     ).toBe(false);
     expect(await count('users')).toBe(usersBefore);
     expect(await count('sessions', 'user_id = ?', user.id)).toBe(0);
+  });
+});
+
+/** The tables of the database with a user_id or link_id column, and which of the two they have. */
+async function referencingTables(): Promise<{ name: string; user: boolean; link: boolean }[]> {
+  const tables = await env.DB.prepare(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+       AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' AND sql NOT LIKE 'CREATE TABLE ''%'`,
+  ).all<{ name: string }>();
+  const out = [];
+  for (const { name } of tables.results) {
+    const cols = await env.DB.prepare(`SELECT name FROM pragma_table_info(?)`)
+      .bind(name)
+      .all<{ name: string }>();
+    const names = cols.results.map((c) => c.name);
+    if (names.includes('user_id') || names.includes('link_id')) {
+      out.push({ name, user: names.includes('user_id'), link: names.includes('link_id') });
+    }
+  }
+  return out;
+}
+
+/** Every row of every table that references the user or one of `linkIds`, by table. */
+async function rowsOf(userId: string, linkIds: string[]) {
+  const out: Record<string, unknown[]> = {};
+  for (const t of await referencingTables()) {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (t.user) {
+      where.push('user_id = ?');
+      params.push(userId);
+    }
+    if (t.link) {
+      where.push('link_id IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(linkIds));
+    }
+    const rows = await env.DB.prepare(`SELECT * FROM ${t.name} WHERE ${where.join(' OR ')}`)
+      .bind(...params)
+      .all();
+    out[t.name] = rows.results.map((r) => JSON.stringify(r)).sort();
+  }
+  out.users = (
+    await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).all()
+  ).results.map((r) => JSON.stringify(r));
+  return out;
+}
+
+/** Every R2 object under the user's prefix, with its body. */
+async function objectsOf(userId: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  let cursor: string | undefined;
+  do {
+    const page = await env.SNAPSHOTS.list({ prefix: `u/${userId}/`, cursor });
+    for (const o of page.objects) out[o.key] = await (await env.SNAPSHOTS.get(o.key))!.text();
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return out;
+}
+
+async function linkIdsOf(userId: string): Promise<string[]> {
+  return (
+    await env.DB.prepare('SELECT id FROM links WHERE user_id = ?')
+      .bind(userId)
+      .all<{ id: string }>()
+  ).results.map((r) => r.id);
+}
+
+/** Delivers the queued deletion runs, and the runs they queue, until none is left. */
+async function driveDeletion(queue: { body: { user_id: string } }[], bindings = {}) {
+  let runs = 0;
+  while (queue.length > 0) {
+    const next = queue.splice(0, queue.length);
+    for (const m of next) {
+      await deliverAccount([m.body], bindings);
+      runs += 1;
+    }
+    if (runs > 10_000) throw new Error('the deletion never ended');
+  }
+  return runs;
+}
+
+/** Fills a user's library with every kind of data the packages keep. */
+async function everything(user: TestUser, prefix: string) {
+  const states = ['pending', 'active', 'dormant', 'archived', 'unreachable', 'active'];
+  const ids = await seedLinks(
+    user,
+    states.map((state, i) => ({ url: `https://${prefix}${i}.example`, state, useCount: i })),
+  );
+  for (const [i, id] of ids.entries()) {
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO link_uses (link_id, user_id, at) VALUES (?, ?, ?)').bind(
+        id,
+        user.id,
+        '2026-01-01T00:00:00.000Z',
+      ),
+      env.DB.prepare(
+        "INSERT INTO link_events (link_id, user_id, kind, at, outcome) VALUES (?, ?, 'fetch', ?, 'ok')",
+      ).bind(id, user.id, '2026-01-01T00:00:00.000Z'),
+      env.DB.prepare('INSERT INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)').bind(
+        id,
+        user.id,
+        `text ${prefix} ${i}`,
+      ),
+    ]);
+    await env.SNAPSHOTS.put(`u/${user.id}/l/${id}/snapshot`, `<html>${prefix}${i}</html>`);
+    await env.SNAPSHOTS.put(`u/${user.id}/l/${id}/reader.json`, `{"html":"${prefix}${i}"}`);
+  }
+  await api('PATCH', `/api/v1/links/${ids[1]}`, {
+    as: user.session,
+    body: {
+      summary: 'S',
+      tags: [`${prefix}-a`, `${prefix}-b`],
+      topic: `${prefix} topic`,
+      note: 'a note',
+    },
+  });
+  await api(
+    'PATCH',
+    `/api/v1/tags/${(await env.DB.prepare('SELECT id FROM tags WHERE user_id = ? LIMIT 1').bind(user.id).first<{ id: string }>())!.id}`,
+    {
+      as: user.session,
+      body: { name: `${prefix}-renamed` },
+    },
+  );
+  const ws = await api('POST', '/api/v1/workspaces', {
+    as: user.session,
+    body: { name: `${prefix} ws` },
+  });
+  await api('POST', `/api/v1/workspaces/${ws.json.id}/links`, {
+    as: user.session,
+    body: { link_id: ids[1] },
+  });
+  await api('PATCH', `/api/v1/workspaces/${ws.json.id}`, {
+    as: user.session,
+    body: { note: 'ws note' },
+  });
+  await api('POST', '/api/v1/imports', {
+    as: user.session,
+    body: new TextEncoder().encode(`https://${prefix}-imported.example\nnot-a-url`),
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  await env.DB.prepare(
+    "UPDATE users SET ai_provider = 'anthropic', ai_key_ciphertext = 'c' WHERE id = ?",
+  )
+    .bind(user.id)
+    .run();
+  return ids;
+}
+
+describe('the deletion job', () => {
+  it(
+    'removes every row and object of the account and nothing of anyone else',
+    { timeout: 120_000 },
+    async () => {
+      const a = await signIn('owner@example.test');
+      const b = await signIn('other@example.test');
+      recordFetchQueue();
+      await everything(a, 'a');
+      await everything(b, 'b');
+      const aLinks = await linkIdsOf(a.id);
+      const bLinks = await linkIdsOf(b.id);
+      const bRows = await rowsOf(b.id, bLinks);
+      const bObjects = await objectsOf(b.id);
+      expect(Object.keys(bObjects).length).toBeGreaterThan(0);
+      const queue = recordAccountQueue();
+      const r = await api('DELETE', '/api/v1/me', {
+        as: a.session,
+        body: { confirm_email: a.email },
+      });
+      expect(r.status).toBe(202);
+      await driveDeletion(queue);
+      const left = await rowsOf(a.id, aLinks);
+      for (const [table, rows] of Object.entries(left)) expect(rows, table).toEqual([]);
+      expect(await objectsOf(a.id)).toEqual({});
+      expect(await rowsOf(b.id, bLinks)).toEqual(bRows);
+      expect(await objectsOf(b.id)).toEqual(bObjects);
+    },
+  );
+
+  it('signs the same email in to a new, empty library once it is done', async () => {
+    const a = await signIn('owner@example.test');
+    await seedLinks(a, [{ url: 'https://old.example' }]);
+    const queue = recordAccountQueue();
+    await api('DELETE', '/api/v1/me', { as: a.session, body: { confirm_email: a.email } });
+    await driveDeletion(queue);
+    const r = await googleSignIn('owner@example.test');
+    expect(r.status).toBe(302);
+    expect(r.headers.get('Location')).toBe('/');
+    const cookie = r.headers.getSetCookie().find((c) => c.startsWith('alexandria_session='))!;
+    const session = cookie.split(';')[0]!.split('=')[1]!;
+    const links = await api('GET', '/api/v1/links', { as: session });
+    expect(links.json.items).toEqual([]);
+    const user = await env.DB.prepare('SELECT id FROM users WHERE email = ?')
+      .bind(a.email)
+      .first<{ id: string }>();
+    expect(user!.id).not.toBe(a.id);
+  });
+
+  it(
+    'removes 20,000 links with their copies in batches of at most 1,000',
+    { timeout: 900_000 },
+    async () => {
+      const a = await signIn('owner@example.test');
+      for (let start = 0; start < 20_000; start += 500) {
+        const statements: D1PreparedStatement[] = [];
+        const puts: Promise<unknown>[] = [];
+        for (let i = start; i < start + 500; i++) {
+          const id = `big-${i}`;
+          statements.push(
+            env.DB.prepare(
+              `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at,
+               last_used_at, updated_at, has_snapshot) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 1)`,
+            ).bind(
+              id,
+              a.id,
+              `https://b${i}.example/`,
+              `https://b${i}.example/`,
+              `b${i}.example`,
+              `B ${i}`,
+              '2026-01-01T00:00:00.000Z',
+              '2026-01-01T00:00:00.000Z',
+              '2026-01-01T00:00:00.000Z',
+            ),
+          );
+          puts.push(env.SNAPSHOTS.put(`u/${a.id}/l/${id}/snapshot`, 'x'));
+          puts.push(env.SNAPSHOTS.put(`u/${a.id}/l/${id}/reader.json`, '{}'));
+        }
+        await env.DB.batch(statements);
+        await Promise.all(puts);
+      }
+      const batches: number[] = [];
+      deletionHooks.onBatch = (n) => {
+        batches.push(n);
+      };
+      const t0 = performance.now();
+      const queue = recordAccountQueue();
+      await api('DELETE', '/api/v1/me', { as: a.session, body: { confirm_email: a.email } });
+      await driveDeletion(queue);
+      deletionHooks.onBatch = () => undefined;
+      expect(Math.max(...batches)).toBeLessThanOrEqual(1_000);
+      expect(await count('links', 'user_id = ?', a.id)).toBe(0);
+      expect(await objectsOf(a.id)).toEqual({});
+      expect(await count('users', 'id = ?', a.id)).toBe(0);
+      expect(performance.now() - t0).toBeLessThan(600_000);
+    },
+  );
+
+  it(
+    'continues after a failed run, restoring nothing, and ignores a finished account',
+    { timeout: 300_000 },
+    async () => {
+      const a = await signIn('owner@example.test');
+      const ids = await seedLinks(
+        a,
+        Array.from({ length: 2_500 }, (_, i) => ({ url: `https://r${i}.example` })),
+      );
+      await Promise.all(ids.map((id) => env.SNAPSHOTS.put(`u/${a.id}/l/${id}/snapshot`, 'x')));
+      const queue = recordAccountQueue();
+      await api('DELETE', '/api/v1/me', { as: a.session, body: { confirm_email: a.email } });
+      let deletes = 0;
+      const failing = {
+        SNAPSHOTS: new Proxy(env.SNAPSHOTS, {
+          get(target, prop) {
+            if (prop === 'delete') {
+              return (keys: string[]) => {
+                deletes += 1;
+                if (deletes === 2) throw new Error('R2 is down');
+                return target.delete(keys);
+              };
+            }
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        }) as R2Bucket,
+      };
+      const first = queue.splice(0, 1)[0]!;
+      expect((await deliverAccount([first.body], failing)).acked).toEqual(['m0']);
+      const retried = queue.splice(0, 1)[0]!;
+      const second = await deliverAccount([retried.body], failing);
+      expect(second.retried).toEqual(['m0']);
+      expect(await count('links', 'user_id = ?', a.id)).toBeLessThan(2_500);
+      await driveDeletion([retried]);
+      await driveDeletion(queue);
+      expect(await count('links', 'user_id = ?', a.id)).toBe(0);
+      expect(await objectsOf(a.id)).toEqual({});
+      expect(await count('users', 'id = ?', a.id)).toBe(0);
+      const again = await deliverAccount([{ user_id: a.id }]);
+      expect(again.acked).toEqual(['m0']);
+      expect(queue).toEqual([]);
+    },
+  );
+
+  it('is run by the 5-minute sweep for an account marked more than 5 minutes ago', async () => {
+    const t = Date.parse('2026-11-07T10:00:00.000Z');
+    setNow(t);
+    const a = await signIn('owner@example.test');
+    const c = await signIn('third@example.test');
+    await seedLinks(a, [{ url: 'https://a.example' }]);
+    await seedLinks(c, [{ url: 'https://c.example' }]);
+    await env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
+      .bind(new Date(t - 6 * 60_000).toISOString(), a.id)
+      .run();
+    await env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
+      .bind(new Date(t - 60_000).toISOString(), c.id)
+      .run();
+    const queue = recordAccountQueue();
+    const ctx = createExecutionContext();
+    await worker.scheduled!(
+      { cron: '*/5 * * * *', scheduledTime: t, noRetry() {} } as ScheduledController,
+      env,
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    await driveDeletion(queue);
+    expect(await count('users', 'id = ?', a.id)).toBe(0);
+    expect(await count('links', 'user_id = ?', a.id)).toBe(0);
+    expect(await count('users', 'id = ?', c.id)).toBe(1);
+    expect(await count('links', 'user_id = ?', c.id)).toBe(1);
   });
 });

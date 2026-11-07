@@ -41,6 +41,8 @@ for local development.
   liveness checks.
 - `* * * * *`: the every-minute run that sends imported links waiting for
   their turn to the fetch worker.
+- `*/5 * * * *`: the sweep that runs the deletion job of every account marked
+  for deletion more than 5 minutes ago.
 
 The `scheduled` handler tells them apart by `controller.cron`.
 
