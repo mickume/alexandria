@@ -1,4 +1,12 @@
-import { useState, type DragEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, links, openUrl, type Link } from '../api';
 import { formatDate, formatWhen } from '../format';
@@ -116,11 +124,99 @@ export function WorkspaceChips({ workspaces }: { workspaces: { id: string; name:
   );
 }
 
+/** A link to the site itself, through the open route so the visit counts as a use, in a new tab. */
+function SiteLink({
+  link,
+  className,
+  style,
+  children,
+}: {
+  link: Link;
+  className?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      className={className}
+      href={openUrl(link.id)}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={style}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
+ * The ⋯ button and the actions behind it. A disclosure, not an ARIA menu, so
+ * what it holds keeps its own roles. It closes on Escape, giving the focus
+ * back to the button, on a click elsewhere, and once an action is chosen;
+ * a control marked `data-keep-open` (Refresh, the workspace picker) leaves
+ * it open, to show what it did.
+ */
+function CardMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function outside(e: MouseEvent) {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', outside);
+    return () => document.removeEventListener('mousedown', outside);
+  }, [open]);
+
+  return (
+    <div
+      className="card-menu"
+      ref={root}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation();
+          setOpen(false);
+          trigger.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={trigger}
+        type="button"
+        className="link-button card-menu-button"
+        aria-label="More actions"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          id={id}
+          className="card-menu-panel"
+          onClick={(e) => {
+            const chosen = (e.target as Element).closest('a, button');
+            if (chosen && !chosen.closest('[data-keep-open]')) setOpen(false);
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** What the card says about the link: host, dates, state with its reason, and notes. */
 function CardMeta({ link }: { link: Link }) {
   return (
     <div className="card-meta muted">
-      <span>{link.host}</span>
+      <SiteLink link={link} className="card-host">
+        {link.host}
+      </SiteLink>
       <span>Added {formatDate(link.added_at)}</span>
       <span>Used {formatWhen(link.last_used_at)}</span>
       <span className={`state state-${link.state}`}>
@@ -184,7 +280,6 @@ function byName(a: { name: string }, b: { name: string }): number {
 
 /** One link in the stream: favicon, title, host, dates, state and actions. */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
-  const open = openUrl(link.id);
   const [memberOf, setMemberOf] = useState(link.workspaces);
   return (
     <article
@@ -209,13 +304,13 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             }}
           />
         )}
-        <a
+        <SiteLink
+          link={link}
           className="card-title"
-          href={open}
           style={link.dead_since ? { textDecoration: 'line-through' } : undefined}
         >
           {link.title}
-        </a>
+        </SiteLink>
       </div>
       <CardMeta link={link} />
       {link.summary && <Summary text={link.summary} />}
@@ -225,22 +320,14 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       <Labels link={link} />
       <WorkspaceChips workspaces={memberOf} />
       <div className="card-actions">
-        <a className="link-button" href={open}>
+        <SiteLink link={link} className="link-button">
           Open
-        </a>
+        </SiteLink>
         {link.has_snapshot && (
-          <>
-            <PageLink to={`/links/${link.id}/read`} className="link-button">
-              Read
-            </PageLink>
-            <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
-              Snapshot
-            </PageLink>
-          </>
+          <PageLink to={`/links/${link.id}/read`} className="link-button">
+            Read
+          </PageLink>
         )}
-        <PageLink to={`/links/${link.id}`} className="link-button">
-          Details
-        </PageLink>
         <button
           type="button"
           className="link-button"
@@ -248,31 +335,49 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         >
           {link.pinned ? 'Unpin' : 'Pin'}
         </button>
-        <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
-        <WorkspacePicker
-          linkId={link.id}
-          memberOf={memberOf.map((w) => w.id)}
-          onAdded={(w) =>
-            setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
-          }
-        />
-        {actions.onRemoveFromWorkspace && (
+        <CardMenu>
+          {link.has_snapshot && (
+            <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
+              Snapshot
+            </PageLink>
+          )}
+          <PageLink to={`/links/${link.id}`} className="link-button">
+            Details
+          </PageLink>
+          <span className="card-menu-item" data-keep-open>
+            <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
+          </span>
+          <span className="card-menu-item" data-keep-open>
+            <WorkspacePicker
+              linkId={link.id}
+              memberOf={memberOf.map((w) => w.id)}
+              onAdded={(w) =>
+                setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
+              }
+            />
+          </span>
+          {actions.onRemoveFromWorkspace && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => actions.onRemoveFromWorkspace?.(link)}
+            >
+              Remove from workspace
+            </button>
+          )}
+          {actions.onArchive && (
+            <button type="button" className="link-button" onClick={() => actions.onArchive?.(link)}>
+              Archive
+            </button>
+          )}
           <button
             type="button"
-            className="link-button"
-            onClick={() => actions.onRemoveFromWorkspace?.(link)}
+            className="link-button danger"
+            onClick={() => actions.onDelete(link)}
           >
-            Remove from workspace
+            Delete
           </button>
-        )}
-        {actions.onArchive && (
-          <button type="button" className="link-button" onClick={() => actions.onArchive?.(link)}>
-            Archive
-          </button>
-        )}
-        <button type="button" className="link-button" onClick={() => actions.onDelete(link)}>
-          Delete
-        </button>
+        </CardMenu>
       </div>
     </article>
   );

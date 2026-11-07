@@ -73,6 +73,7 @@ describe('a workspace’s page', () => {
     await waitFor(() => expect(titles()).toEqual(['Beta', 'Alpha']));
 
     const alpha = screen.getByRole('article', { name: 'Alpha' });
+    fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
     await act(async () => {
       fireEvent.click(within(alpha).getByRole('button', { name: 'Remove from workspace' }));
     });

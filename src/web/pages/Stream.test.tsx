@@ -33,7 +33,7 @@ describe('the stream page', () => {
     expect(first.getByText('pending')).toBeTruthy();
     expect(first.getByRole('link', { name: 'Open' })).toBeTruthy();
     expect(first.getByRole('button', { name: 'Pin' })).toBeTruthy();
-    expect(first.getByRole('button', { name: 'Delete' })).toBeTruthy();
+    expect(first.getByRole('button', { name: 'More actions' })).toBeTruthy();
 
     await act(async () => observer.reveal());
     await screen.findByRole('article', { name: 'Title 69' });
@@ -150,6 +150,7 @@ describe('deleting on the stream page', () => {
 
   async function clickDelete(title: string) {
     const card = screen.getByRole('article', { name: title });
+    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
     await act(async () => within(card).getByRole('button', { name: 'Delete' }).click());
   }
 
@@ -392,6 +393,7 @@ describe('archiving from the stream', () => {
       }));
     renderPage('/', api);
     const card = await screen.findByRole('article', { name: 'Title 0' });
+    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
     await act(async () => within(card).getByRole('button', { name: 'Archive' }).click());
     expect(api.sent('POST', '/api/v1/links/l0/archive')).toHaveLength(1);
     await waitFor(() => expect(screen.queryByRole('article', { name: 'Title 0' })).toBeNull());
