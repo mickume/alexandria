@@ -1,18 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { FakeOrigin } from '../test/origin';
-import { api, deliverFetches, env, recordFetchQueue, signIn, type TestUser } from '../test/helpers';
+import { addAndFetch, api, env, signIn, type TestUser } from '../test/helpers';
 import { longPdf, PAPER_FIRST_SENTENCE, paperPdf, scannedPdf, truncatedPdf } from './fixtures/pdfs';
 
-async function addAndFetch(user: TestUser, url: string) {
-  const sent = recordFetchQueue();
-  const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
-  const id: string = r.json.link.id;
-  await deliverFetches(sent.map((m) => m.body));
+/** Adds and fetches a PDF, and returns what was stored for it. */
+async function fetchPdf(user: TestUser, url: string) {
+  const { id, prefix } = await addAndFetch(user, url);
   const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
   const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
     .bind(id)
     .first<{ text: string }>();
-  const prefix = `u/${user.id}/l/${id}/`;
   const snapshot = await env.SNAPSHOTS.get(`${prefix}snapshot`);
   return {
     id,
@@ -41,7 +38,7 @@ describe('storing a PDF', () => {
     },
   ])('keeps the whole file and its text for $label', async ({ url, pdf, type, title }) => {
     new FakeOrigin().page(url, pdf, type);
-    const r = await addAndFetch(await signIn(), url);
+    const r = await fetchPdf(await signIn(), url);
     expect(r.link).toMatchObject({
       state: 'active',
       content_kind: 'pdf',
@@ -58,7 +55,7 @@ describe('storing a PDF', () => {
   ])('keeps $label and notes it has no text', async ({ pdf }) => {
     const url = 'https://papers.example/scan.pdf';
     new FakeOrigin().page(url, pdf, 'application/pdf');
-    const r = await addAndFetch(await signIn(), url);
+    const r = await fetchPdf(await signIn(), url);
     expect(r.link.state).toBe('active');
     expect(r.link.notes).toContain('no text in this PDF');
     expect(r.snapshot).toEqual(pdf);
@@ -76,7 +73,7 @@ describe('storing a PDF', () => {
         contentLength,
         prefix: '%PDF-1.4\n',
       });
-      const r = await addAndFetch(await signIn(), url);
+      const r = await fetchPdf(await signIn(), url);
       expect(r.link).toMatchObject({
         state: 'active',
         content_kind: 'pdf',
@@ -93,7 +90,7 @@ describe('storing a PDF', () => {
   it('keeps at most 500,000 characters of a PDF’s text', async () => {
     const url = 'https://papers.example/long.pdf';
     new FakeOrigin().page(url, longPdf(700_000), 'application/pdf');
-    const r = await addAndFetch(await signIn(), url);
+    const r = await fetchPdf(await signIn(), url);
     expect(r.text?.length).toBe(500_000);
   }, 30_000);
 });

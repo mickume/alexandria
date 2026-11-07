@@ -31,3 +31,31 @@ export async function deleteLinkObjects(env: Env, userId: string, linkId: string
     if (!page.truncated) return;
   }
 }
+
+/** The reader view as the API returns it. */
+export interface ReaderResponse {
+  content_kind: 'html' | 'pdf';
+  title: string | null;
+  byline: string | null;
+  html: string | null;
+  text: string;
+  empty: boolean;
+}
+
+/** A link's stored reader-view text, or '' when it has none. */
+export async function storedText(env: Env, userId: string, linkId: string): Promise<string> {
+  const row = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ? AND user_id = ?')
+    .bind(linkId, userId)
+    .first<{ text: string }>();
+  return row?.text ?? '';
+}
+
+/** A file name for a stored PDF: the link's title without characters a header cannot carry. */
+export function pdfFileName(title: string): string {
+  const base =
+    title
+      .replace(/\.pdf$/i, '')
+      .replace(/[^\w .,()-]+/g, '_')
+      .trim() || 'document';
+  return `${base}.pdf`;
+}

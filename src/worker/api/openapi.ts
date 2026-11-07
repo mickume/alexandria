@@ -12,8 +12,10 @@ type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 /** One documented response of an operation. */
 export interface ResponseSpec {
   description: string;
-  /** The body's schema; absent for a response without a body. */
+  /** The body's schema; absent for a response without a JSON body. */
   schema?: z.ZodType;
+  /** The media type of a body that is not JSON, such as text/html. */
+  mediaType?: string;
   headers?: Record<string, { description: string; schema: { type: string } }>;
 }
 
@@ -75,6 +77,8 @@ export const Link = z.strictObject({
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
+
+const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
 
 /** The answers any authenticated operation may give, added to each. */
 function commonResponses(op: Operation): Record<number, ResponseSpec> {
@@ -218,10 +222,47 @@ export const operations: Operation[] = [
     responses: { 200: { description: 'The link', schema: Link } },
   },
   {
+    method: 'get',
+    path: '/links/{id}/reader',
+    operationId: 'readLink',
+    summary: 'Record a use and return the stored reader view',
+    responses: {
+      200: {
+        description: 'The reader view; for a PDF, its text',
+        schema: z.strictObject({
+          content_kind: z.enum(['html', 'pdf']),
+          title: z.string().nullable(),
+          byline: z.string().nullable(),
+          html: z.string().nullable(),
+          text: z.string(),
+          empty: z.boolean(),
+        }),
+      },
+      404: NO_SNAPSHOT,
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}/snapshot',
+    operationId: 'getSnapshot',
+    summary: 'Record a use and return the stored snapshot: HTML under a sandbox policy, or the PDF',
+    query: {
+      download: { description: '1 to download a PDF as an attachment', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description:
+          'text/html with Content-Security-Policy sandbox, or application/pdf inline (attachment with download=1)',
+        mediaType: 'text/html',
+      },
+      404: NO_SNAPSHOT,
+    },
+  },
+  {
     method: 'delete',
     path: '/links/{id}',
     operationId: 'deleteLink',
-    summary: 'Delete the link and its history, at once and for good',
+    summary: 'Delete the link, its history and its stored copies, at once and for good',
     responses: { 204: { description: 'Deleted' } },
   },
   {

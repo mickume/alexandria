@@ -252,7 +252,7 @@ export async function unpinLink(
 }
 
 /**
- * Deletes one of the user's links and its use events at once and for good,
+ * Deletes one of the user's links, its use and fetch events and its text at once and for good,
  * closing the gap in the pinned section if it was pinned. Returns false when
  * the user has no such link.
  */
@@ -260,6 +260,8 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
   const results = await db.batch([
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
   return (results.at(-1)?.meta.changes ?? 0) > 0;

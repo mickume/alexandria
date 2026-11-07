@@ -207,3 +207,34 @@ Deletes the link and its history at once and for good: `204`. A pinned
 link's place in the pinned section closes up. Adding the same URL again
 creates a new link. (The website holds a delete for 10 seconds so that it can
 be undone; the API does not.)
+
+### Stored copies: Read and Snapshot
+
+Every fetched web page keeps a snapshot (its raw HTML) and a reader view (its
+article alone, sanitised); a fetched PDF keeps the whole file and its text.
+Both are served from storage alone, never from the origin, so they work when
+the site is down or gone, and only to the link's owner. Reading either
+records a use of the link. A link with nothing stored (pending, unreachable,
+not a web page, a PDF over 50 MB) answers
+`404 {"error": "no_snapshot", "message": "no snapshot stored for this link"}`
+and records no use.
+
+#### `GET /api/v1/links/{id}/reader`
+
+`200 {"content_kind": "html" | "pdf", "title", "byline", "html": <string or null>, "text", "empty": <boolean>}`.
+For a web page, `html` is the sanitised article; when fewer than 200
+characters of text were extracted the view is `empty` (`html` null, `text`
+''), and the snapshot is still there. For a PDF, `html` is null and `text` is
+its text.
+
+#### `GET /api/v1/links/{id}/snapshot`
+
+For a web page: the stored HTML, `Content-Type: text/html; charset=utf-8`,
+with `Content-Security-Policy: sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, so that
+its scripts never run. For a PDF: the stored file, `application/pdf`,
+`Content-Disposition: inline; filename="<title>.pdf"`, or `attachment` with
+`?download=1`.
+
+Deleting a link (`DELETE /api/v1/links/{id}`) also deletes its stored copies,
+its text and its fetch events.

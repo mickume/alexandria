@@ -320,7 +320,7 @@ the first of the batch ends highest in the stream.
 
 > **deleteLink**(`db`, `userId`, `id`): `Promise`\<`boolean`\>
 
-Deletes one of the user's links and its use events at once and for good,
+Deletes one of the user's links, its use and fetch events and its text at once and for good,
 closing the gap in the pinned section if it was pinned. Returns false when
 the user has no such link.
 

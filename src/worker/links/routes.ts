@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv, Env } from '../env';
+import { deleteLinkObjects } from '../fetcher/snapshots';
 import { normalizeUrl } from './normalize';
 import {
   addLink,
@@ -188,6 +189,9 @@ linkRoutes.delete('/:id/pin', async (c) => {
 });
 
 linkRoutes.delete('/:id', async (c) => {
-  const deleted = await deleteLink(c.env.DB, c.get('user').id, c.req.param('id'));
-  return deleted ? c.body(null, 204) : notFound(c);
+  const userId = c.get('user').id;
+  const deleted = await deleteLink(c.env.DB, userId, c.req.param('id'));
+  if (!deleted) return notFound(c);
+  await deleteLinkObjects(c.env, userId, c.req.param('id'));
+  return c.body(null, 204);
 });

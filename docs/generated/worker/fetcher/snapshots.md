@@ -2,6 +2,38 @@
 
 ## Interfaces
 
+### ReaderResponse
+
+The reader view as the API returns it.
+
+#### Properties
+
+##### byline
+
+> **byline**: `string` \| `null`
+
+##### content\_kind
+
+> **content\_kind**: `"html"` \| `"pdf"`
+
+##### empty
+
+> **empty**: `boolean`
+
+##### html
+
+> **html**: `string` \| `null`
+
+##### text
+
+> **text**: `string`
+
+##### title
+
+> **title**: `string` \| `null`
+
+***
+
 ### StoredReader
 
 The stored reader view of a web page.
@@ -70,6 +102,24 @@ Where a link's stored objects live in SNAPSHOTS.
 
 ***
 
+### pdfFileName()
+
+> **pdfFileName**(`title`): `string`
+
+A file name for a stored PDF: the link's title without characters a header cannot carry.
+
+#### Parameters
+
+##### title
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
 ### readerKey()
 
 > **readerKey**(`userId`, `linkId`): `string`
@@ -111,3 +161,29 @@ The key of a link's snapshot: the raw HTML, or the whole PDF.
 #### Returns
 
 `string`
+
+***
+
+### storedText()
+
+> **storedText**(`env`, `userId`, `linkId`): `Promise`\<`string`\>
+
+A link's stored reader-view text, or '' when it has none.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### userId
+
+`string`
+
+##### linkId
+
+`string`
+
+#### Returns
+
+`Promise`\<`string`\>

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { outboundRequests } from '../test/outbound';
 import { FakeOrigin } from '../test/origin';
 import {
+  addAndFetch,
   api,
   count,
   deliverFetches,
@@ -12,7 +13,6 @@ import {
   seedLinks,
   setNow,
   signIn,
-  type TestUser,
 } from '../test/helpers';
 import { blogArticle } from './fixtures/pages';
 import { fetchPage } from './fetch';
@@ -174,18 +174,6 @@ describe('the fetcher’s public page', () => {
     expect(text).toContain('1 request per second');
   });
 });
-
-/** Adds `url` for `user` and delivers its fetch message; returns the link's id and the delivery. */
-async function addAndFetch(user: TestUser, url: string, bindings: Partial<Cloudflare.Env> = {}) {
-  const sent = recordFetchQueue();
-  const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
-  const id: string = r.json.link.id;
-  const delivery = await deliverFetches(
-    sent.map((m) => m.body),
-    bindings,
-  );
-  return { id, delivery, prefix: `u/${user.id}/l/${id}/` };
-}
 
 async function objectsUnder(prefix: string): Promise<string[]> {
   return (await env.SNAPSHOTS.list({ prefix })).objects.map((o) => o.key);

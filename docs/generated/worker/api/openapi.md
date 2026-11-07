@@ -60,11 +60,17 @@ One documented response of an operation.
 
 > `optional` **headers?**: `Record`\<`string`, \{ `description`: `string`; `schema`: \{ `type`: `string`; \}; \}\>
 
+##### mediaType?
+
+> `optional` **mediaType?**: `string`
+
+The media type of a body that is not JSON, such as text/html.
+
 ##### schema?
 
 > `optional` **schema?**: `ZodType`\<`unknown`, `unknown`, `$ZodTypeInternals`\<`unknown`, `unknown`\>\>
 
-The body's schema; absent for a response without a body.
+The body's schema; absent for a response without a JSON body.
 
 ## Variables
 

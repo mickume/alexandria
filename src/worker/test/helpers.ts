@@ -85,16 +85,16 @@ export async function api(
     body,
     redirect: 'manual',
   });
-  const text = await response.clone().text();
   let json: unknown = null;
-  if (text && response.headers.get('Content-Type')?.includes('application/json')) {
-    json = JSON.parse(text);
+  if (response.headers.get('Content-Type')?.includes('application/json')) {
+    const text = await response.clone().text();
+    if (text) json = JSON.parse(text);
   }
   recordedResponses.push({
     method,
     path: new URL(path, ORIGIN).pathname,
     status: response.status,
-    body: text ? json : null,
+    body: json,
   });
   return { status: response.status, headers: response.headers, json, response };
 }
@@ -250,4 +250,24 @@ export async function deliverFetches(
     acked: result.explicitAcks,
     retried: result.retryMessages.map((m) => m.msgId),
   };
+}
+
+/**
+ * Adds `url` for `user` through the API and delivers its fetch message to the
+ * consumer; returns the link's id, the delivery, the messages sent and the
+ * link's R2 prefix.
+ */
+export async function addAndFetch(
+  user: TestUser,
+  url: string,
+  bindings: Partial<Cloudflare.Env> = {},
+) {
+  const sent = recordFetchQueue();
+  const r = await api('POST', '/api/v1/links', { as: user.session, body: { url } });
+  const id: string = r.json.link.id;
+  const delivery = await deliverFetches(
+    sent.map((m) => m.body),
+    bindings,
+  );
+  return { id, delivery, sent, prefix: `u/${user.id}/l/${id}/` };
 }

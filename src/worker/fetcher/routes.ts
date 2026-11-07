@@ -1,5 +1,16 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { notFound } from '../api/errors';
 import type { AppEnv } from '../env';
+import { getLink, type LinkRow } from '../links/store';
+import { recordUse } from '../links/use';
+import {
+  pdfFileName,
+  readerKey,
+  snapshotKey,
+  storedText,
+  type ReaderResponse,
+  type StoredReader,
+} from './snapshots';
 
 /** The public page the fetcher's User-Agent points site operators at. */
 export const aboutRoutes = new Hono<AppEnv>();
@@ -27,3 +38,85 @@ crawl, follow links, or fetch images, feeds or other resources the page refers t
 </body>
 </html>`),
 );
+
+/** Headers of a served HTML snapshot: its scripts never run and it cannot act on the session. */
+const SNAPSHOT_HEADERS = {
+  'Content-Type': 'text/html; charset=utf-8',
+  'Content-Security-Policy':
+    "sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+};
+
+/** The stored copies of a user's links, under /api/v1/links: Read and Snapshot. */
+export const snapshotRoutes = new Hono<AppEnv>();
+
+/** The user's link with a stored snapshot, or the answer that says why there is none. */
+async function storedLink(c: Context<AppEnv>): Promise<LinkRow | Response> {
+  const link = await getLink(c.env.DB, c.get('user').id, c.req.param('id') ?? '');
+  if (!link) return notFound(c);
+  if (!link.has_snapshot) return c.json(NO_SNAPSHOT, 404);
+  return link;
+}
+
+const NO_SNAPSHOT = { error: 'no_snapshot', message: 'no snapshot stored for this link' };
+
+snapshotRoutes.get('/:id/reader', async (c) => {
+  const link = await storedLink(c);
+  if (link instanceof Response) return link;
+  const text = await storedText(c.env, link.user_id, link.id);
+  let body: ReaderResponse;
+  if (link.content_kind === 'pdf') {
+    body = {
+      content_kind: 'pdf',
+      title: link.title,
+      byline: null,
+      html: null,
+      text,
+      empty: text === '',
+    };
+  } else {
+    const object = link.reader_empty
+      ? null
+      : await c.env.SNAPSHOTS.get(readerKey(link.user_id, link.id));
+    const reader = object ? await object.json<StoredReader>() : null;
+    body = reader?.html
+      ? {
+          content_kind: 'html',
+          title: reader.title,
+          byline: reader.byline,
+          html: reader.html,
+          text,
+          empty: false,
+        }
+      : {
+          content_kind: 'html',
+          title: link.title,
+          byline: null,
+          html: null,
+          text: '',
+          empty: true,
+        };
+  }
+  await recordUse(c.env.DB, link.user_id, link.id);
+  return c.json(body);
+});
+
+snapshotRoutes.get('/:id/snapshot', async (c) => {
+  const link = await storedLink(c);
+  if (link instanceof Response) return link;
+  const object = await c.env.SNAPSHOTS.get(snapshotKey(link.user_id, link.id));
+  if (!object) return c.json(NO_SNAPSHOT, 404);
+  await recordUse(c.env.DB, link.user_id, link.id);
+  if (link.content_kind === 'pdf') {
+    const disposition = c.req.query('download') === '1' ? 'attachment' : 'inline';
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `${disposition}; filename="${pdfFileName(link.title)}"`,
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  }
+  return new Response(object.body, { headers: SNAPSHOT_HEADERS });
+});
