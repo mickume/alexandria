@@ -58,7 +58,12 @@ export class FakeApi {
       window.location.origin,
     );
     const method = (init?.method ?? 'GET').toUpperCase();
-    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+    const body =
+      typeof init?.body === 'string'
+        ? (JSON.parse(init.body) as unknown)
+        : init?.body instanceof FormData
+          ? init.body
+          : undefined;
     const req: RecordedRequest = {
       method,
       path: url.pathname + url.search,

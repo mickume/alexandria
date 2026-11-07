@@ -138,7 +138,7 @@ tags (`topics`, `tags`, `link_tags`). Links are read through the
 
 ### The background throttle
 
-Background enrichment ("enrich all", and package 07's imports) goes through
+Background enrichment ("enrich all") goes through
 `enrich/throttle.ts`: `scheduleThrottled` reserves a user's slots 3 seconds
 apart (at most 20 a minute), starting at the user's next free slot
 (`users.throttle_next_at`) or now, in one statement so concurrent calls never
@@ -146,6 +146,32 @@ share a slot; users are independent. `sendThrottled` sends each message with
 its slot and the delay to it, at most the queue's 12 hours; a message that
 arrives before its slot is sent again for the time left instead of being
 processed. A single pasted link is not throttled.
+
+## Imports
+
+`POST /api/v1/imports` (`imports/`) reads the file (`parse.ts`), adds its new
+URLs as pending links within the request (`imports.ts`, in D1 batches of 500)
+and records the import: `imports` holds the report, `import_links` each added
+link with its line, when it was sent to the fetch worker (`dispatched_at`)
+and whether it was skipped. The links are not sent to the fetch worker by the
+add; the import dispatcher (`dispatch.ts`) sends them:
+
+- once at the end of the upload request, then every minute from the
+  `* * * * *` Cron Trigger for every user with links waiting;
+- earlier imports first, each in line order, all at once with no delay;
+- at most 20 of a user's imported links in any 60 seconds (counted from
+  `dispatched_at`), less the 'enrich all' slots that may fall within a minute
+  of now (estimated from `throttle_next_at`, from a minute before now);
+- a link deleted meanwhile is gone from `import_links` (cascade); one that
+  another action already sent (it left `pending`, or was refreshed or fetched)
+  is marked skipped and uses no budget;
+- after sending, `users.import_window_end` is set a minute ahead, and
+  `scheduleThrottled` starts no 'enrich all' job before it, so the two share
+  the budget.
+
+Each sent link is then fetched, and enriched after its fetch, as any added
+link is. A link pasted or added through the API during an import goes to the
+fetch worker at once, outside the budget.
 
 ## Decay
 

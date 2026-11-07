@@ -44,6 +44,12 @@ The path under /api/v1, as an OpenAPI template such as /links/{id}.
 
 > **summary**: `string`
 
+##### upload?
+
+> `optional` **upload?**: `Record`\<`string`, `object`\>
+
+A body that is not JSON: its media types, each with its JSON Schema.
+
 ***
 
 ### ResponseSpec

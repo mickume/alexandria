@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeApi, renderPage } from '../test/helpers';
 
 const existing = {
@@ -285,5 +285,114 @@ describe('the decay section of the settings page', () => {
     );
     expect(message.closest('[data-field="dormant_days"]')).not.toBeNull();
     expect(dormant.value).toBe('200');
+  });
+});
+
+describe('importing from the settings page', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const report = {
+    id: 'imp1',
+    created_at: '2026-11-07T10:00:00.000Z',
+    counts: { url_lines: 400, added: 397, duplicates: 0, invalid: 3, not_imported: 0 },
+    invalid: [
+      { line: 57, text: 'not-a-url' },
+      { line: 211, text: 'javascript:alert(1)' },
+      { line: 399, text: 'http://localhost/x' },
+    ],
+    duplicates: [],
+    stopped_at_limit: null,
+  };
+
+  function importApi(
+    answer: { status: number; body: unknown },
+    progress: { waiting: number; in_progress: number; done: number; enriched: number }[] = [],
+  ) {
+    let polls = 0;
+    return fakeApi()
+      .on('POST', '/api/v1/imports', answer)
+      .on('GET', '/api/v1/imports/:id', () => ({
+        status: 200,
+        body: { ...report, progress: progress[Math.min(polls++, progress.length - 1)] },
+      }));
+  }
+
+  async function startImport() {
+    const input = screen.getByLabelText('File of URLs') as HTMLInputElement;
+    const file = new File(['https://a.example\n'], 'links.txt', { type: 'text/plain' });
+    fireEvent.change(input, { target: { files: [file] } });
+    await act(async () => screen.getByRole('button', { name: 'Import' }).click());
+    return file;
+  }
+
+  it('uploads the file, shows the report and follows the progress until done', async () => {
+    vi.useFakeTimers();
+    const api = importApi({ status: 201, body: report }, [
+      { waiting: 377, in_progress: 20, done: 0, enriched: 0 },
+      { waiting: 0, in_progress: 0, done: 397, enriched: 397 },
+    ]);
+    renderPage('/settings', api);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    const file = await startImport();
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+
+    const sent = api.sent('POST', '/api/v1/imports');
+    expect(sent).toHaveLength(1);
+    expect((sent[0]!.body as FormData).get('file')).toBe(file);
+    const view = screen.getByRole('region', { name: 'Import' });
+    for (const text of ['added 397', 'duplicates 0', 'invalid 3']) {
+      expect(within(view).getByText(text)).toBeTruthy();
+    }
+    expect(within(view).getByText('line 57: not-a-url')).toBeTruthy();
+    expect(within(view).getByText('line 211: javascript:alert(1)')).toBeTruthy();
+    expect(within(view).getByText('line 399: http://localhost/x')).toBeTruthy();
+    expect(within(view).getByRole('link', { name: 'Download report' }).getAttribute('href')).toBe(
+      '/api/v1/imports/imp1/report',
+    );
+
+    expect(api.sent('GET', '/api/v1/imports/imp1')).toHaveLength(0);
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(api.sent('GET', '/api/v1/imports/imp1')).toHaveLength(1);
+    expect(within(view).getByText('waiting 377')).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(5_000));
+    expect(api.sent('GET', '/api/v1/imports/imp1')).toHaveLength(2);
+    expect(within(view).getByText('done 397')).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(api.sent('GET', '/api/v1/imports/imp1')).toHaveLength(2);
+  });
+
+  it.each([
+    [400, 'unsupported_file', 'only plain-text files with one URL per line are accepted'],
+    [409, 'import_too_large', 'too large: at most 5,000 URLs / 2 MB per import'],
+    [400, 'no_urls', 'the file holds no URL: one URL per line is expected'],
+  ])('shows a refusal (%s %s) and no progress', async (status, error, message) => {
+    renderPage('/settings', importApi({ status, body: { error, field: 'file', message } }));
+    await startImport();
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(screen.queryByText(/^added /)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Download report' })).toBeNull();
+  });
+
+  it('says where the library limit stopped the import', async () => {
+    const stopped = {
+      ...report,
+      counts: { url_lines: 5, added: 2, duplicates: 1, invalid: 0, not_imported: 2 },
+      invalid: [],
+      stopped_at_limit: { line: 4 },
+    };
+    renderPage(
+      '/settings',
+      importApi({ status: 201, body: stopped }, [
+        { waiting: 0, in_progress: 0, done: 2, enriched: 0 },
+      ]),
+    );
+    await startImport();
+    expect(
+      await screen.findByText(
+        'library full (20,000 links): stopped at line 4, 2 lines not imported',
+      ),
+    ).toBeTruthy();
   });
 });

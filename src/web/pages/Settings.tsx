@@ -3,6 +3,7 @@ import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
 import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
+import { ImportSection } from './ImportSection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
 function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
@@ -29,7 +30,7 @@ function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
   );
 }
 
-/** The settings page: personal access tokens. */
+/** The settings page: tokens, the AI key, decay thresholds and importing. */
 export function Settings() {
   const [list, setList] = useState<Token[] | null>(null);
   const [name, setName] = useState('');
@@ -116,6 +117,7 @@ export function Settings() {
       {list?.length === 0 && <p className="muted">No tokens yet.</p>}
       <AiKeySection />
       <DecaySection />
+      <ImportSection />
     </section>
   );
 }

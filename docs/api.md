@@ -635,3 +635,73 @@ gets the survivor and no topic or tag with the old name is created. The
 provider is only ever shown current names. A current name wins over an alias
 of the same name.
 
+### Imports
+
+#### `POST /api/v1/imports`
+
+Imports a plain-text list of URLs, one per line: the file as a `text/plain`
+body (or with no type), or as the part `file` of a `multipart/form-data`
+form. The file must be UTF-8, at most 2 MB (2,097,152 bytes) and at most
+5,000 URL lines. A byte-order mark is dropped; lines end at `\n` or `\r\n`;
+blank lines and lines whose first non-blank character is `#` are skipped;
+of every other line, only the first word counts (`https://example.com some
+note` imports the URL alone).
+
+Each URL line is normalised as `POST /api/v1/links` does. A new URL is added
+as a pending link (its host as provisional title), last used at the import
+time minus one millisecond per line, so that the stream lists the file in
+order, the first line highest, above every link used before the import (when
+a link was used within that span, the import's times start that much later). A URL already in the library, or on an earlier
+line, is a duplicate: reported, neither added nor boosted. A line the
+normaliser rejects is invalid. When the library (20,000 links) is full, the
+import stops at the first new URL with no room: that line and every later
+URL line are not imported.
+
+```json
+{
+  "id": "…",
+  "created_at": "2026-11-07T10:00:00.000Z",
+  "counts": { "url_lines": 400, "added": 397, "duplicates": 0, "invalid": 3, "not_imported": 0 },
+  "invalid": [{ "line": 57, "text": "not-a-url" }],
+  "duplicates": [{ "line": 12, "url": "https://example.com" }],
+  "stopped_at_limit": null
+}
+```
+
+`201` with the report; `stopped_at_limit` is `{"line": N}` when the limit
+stopped the import. Refusals, after which nothing is imported:
+
+- `400 {"error": "unsupported_file", "field": "file", "message": "only plain-text files with one URL per line are accepted"}`:
+  a declared type other than `text/plain`, bytes that are not UTF-8, a NUL
+  byte, markup (first non-blank character `<`) or a JSON object or array;
+- `409 {"error": "import_too_large", "message": "too large: at most 5,000 URLs / 2 MB per import"}`;
+- `400 {"error": "no_urls", "field": "file", "message"}`: no URL line, or a
+  form without a `file` part.
+
+#### `GET /api/v1/imports/{id}`
+
+The import's report, as `POST` answered it, with the progress of its added
+links that are still in the library:
+`"progress": {"waiting", "in_progress", "done", "enriched"}`: not yet sent to
+the fetch worker; sent and still pending; no longer pending; and of those,
+enriched. The website polls this every 5 seconds until nothing is waiting or
+in progress.
+
+Imported links are fetched, then enriched, in the background: at most 20 of a
+user's imported links are sent to the fetch worker in any minute, in file
+order, earlier imports first, sharing that budget with "enrich all"
+(`POST /api/v1/links/enrich-unenriched`). A link pasted or added through the
+API meanwhile is fetched at once.
+
+#### `GET /api/v1/imports/{id}/report`
+
+The report as a downloadable file: `text/plain; charset=utf-8`,
+`Content-Disposition: attachment; filename="alexandria-import-<YYYY-MM-DD>.txt"`,
+with the import date, the counts (`added: 397`, …), the library-limit stop
+(`library full (20,000 links): stopped at line N, M lines not imported`), every
+invalid line (`line 57: not-a-url`) and every duplicate
+(`line 5: duplicate of https://a.example`).
+
+Both answer `404 {"error": "not_found"}` for an id that is not one of the
+user's imports.
+

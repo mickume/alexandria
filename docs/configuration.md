@@ -29,10 +29,14 @@ for local development.
 | `DB`     | D1 database   | Every user's data. The schema is in `migrations/`; apply it with `wrangler d1 migrations apply alexandria`. |
 | `ASSETS` | static assets | The website, built by `make build` into `dist/client/`.                                                     |
 
-## Cron Trigger
+## Cron Triggers
 
-`0 * * * *`: the hourly run that evaluates decay and enqueues the weekly
-liveness checks.
+- `0 * * * *`: the hourly run that evaluates decay and enqueues the weekly
+  liveness checks.
+- `* * * * *`: the every-minute run that sends imported links waiting for
+  their turn to the fetch worker.
+
+The `scheduled` handler tells them apart by `controller.cron`.
 
 ## Development environment
 

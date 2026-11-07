@@ -81,10 +81,13 @@ export async function api(
   if (opts.bearer !== undefined) headers.set('Authorization', `Bearer ${opts.bearer}`);
   const apiKey = (opts.body as { api_key?: unknown } | undefined)?.api_key;
   if (typeof apiKey === 'string' && apiKey.length > 4) savedKeys.add(apiKey);
-  let body: string | undefined;
-  if (opts.body !== undefined) {
+  let body: BodyInit | undefined;
+  if (opts.body instanceof FormData || opts.body instanceof Uint8Array) {
+    // An upload: sent as given, with its own type (multipart's boundary, or opts.headers).
+    body = opts.body as BodyInit;
+  } else if (opts.body !== undefined) {
     body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
-    headers.set('Content-Type', 'application/json');
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   }
   const response = await SELF.fetch(new URL(path, ORIGIN), {
     method,

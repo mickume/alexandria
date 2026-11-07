@@ -4,6 +4,7 @@ import { handleEnrichBatch } from './enrich/queue';
 import { handleLivenessBatch } from './decay/liveness';
 import type { EnrichMessage, Env, FetchMessage, LivenessMessage } from './env';
 import { handleFetchBatch } from './fetcher/queue';
+import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
 
 export { HostGate } from './fetcher/hostgate';
 
@@ -11,8 +12,9 @@ export default {
   fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
-  scheduled(_controller, env, ctx) {
-    ctx.waitUntil(runScheduled(env));
+  scheduled(controller, env, ctx) {
+    // Every minute: imported links; every hour: decay and liveness.
+    ctx.waitUntil(controller.cron === DISPATCH_CRON ? dispatchAllImports(env) : runScheduled(env));
   },
   queue(batch, env, ctx) {
     if (batch.queue === 'alexandria-liveness') {

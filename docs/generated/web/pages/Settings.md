@@ -6,7 +6,7 @@
 
 > **Settings**(): `Element`
 
-The settings page: personal access tokens.
+The settings page: tokens, the AI key, decay thresholds and importing.
 
 #### Returns
 

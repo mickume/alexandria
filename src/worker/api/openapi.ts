@@ -28,6 +28,8 @@ export interface Operation {
   summary: string;
   query?: Record<string, { description: string; schema: z.ZodType }>;
   body?: z.ZodType;
+  /** A body that is not JSON: its media types, each with its JSON Schema. */
+  upload?: Record<string, object>;
   /** Whether the body may be left out. */
   bodyOptional?: boolean;
   responses: Record<number, ResponseSpec>;
@@ -136,6 +138,22 @@ const FILTER_PARAMETERS: Operation['query'] = {
 
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
+
+/** An import's report. */
+const ImportReport = z.strictObject({
+  id: z.string(),
+  created_at: z.string(),
+  counts: z.strictObject({
+    url_lines: z.number().int(),
+    added: z.number().int(),
+    duplicates: z.number().int(),
+    invalid: z.number().int(),
+    not_imported: z.number().int(),
+  }),
+  invalid: z.array(z.strictObject({ line: z.number().int(), text: z.string() })),
+  duplicates: z.array(z.strictObject({ line: z.number().int(), url: z.string() })),
+  stopped_at_limit: z.strictObject({ line: z.number().int() }).nullable(),
+});
 
 /** A topic or tag as listed. */
 const VocabularyItem = z.strictObject({
@@ -286,6 +304,61 @@ export const operations: Operation[] = [
         }),
       },
       400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/imports',
+    operationId: 'importLinks',
+    summary:
+      'Import a plain-text file of URLs, one per line: new ones added in file order, the rest reported',
+    upload: {
+      'text/plain': { type: 'string', description: 'The file itself, UTF-8, at most 2 MB' },
+      'multipart/form-data': {
+        type: 'object',
+        properties: { file: { type: 'string', format: 'binary' } },
+        required: ['file'],
+      },
+    },
+    responses: {
+      201: { description: 'The import and its report', schema: ImportReport },
+      400: error(
+        'unsupported_file: "only plain-text files with one URL per line are accepted", or no_urls (field file)',
+      ),
+      409: error('import_too_large: "too large: at most 5,000 URLs / 2 MB per import"'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/imports/{id}',
+    operationId: 'getImport',
+    summary: 'An import’s report and the progress of its links',
+    responses: {
+      200: {
+        description:
+          'The report, and how many added links wait for their turn, are being fetched, are done and are enriched',
+        schema: ImportReport.extend({
+          progress: z.strictObject({
+            waiting: z.number().int(),
+            in_progress: z.number().int(),
+            done: z.number().int(),
+            enriched: z.number().int(),
+          }),
+        }),
+      },
+    },
+  },
+  {
+    method: 'get',
+    path: '/imports/{id}/report',
+    operationId: 'getImportReport',
+    summary: 'An import’s report as a downloadable text file',
+    responses: {
+      200: {
+        description:
+          'text/plain attachment alexandria-import-<YYYY-MM-DD>.txt: the counts, invalid lines, duplicates and the limit stop',
+        mediaType: 'text/plain',
+      },
     },
   },
   {
@@ -863,6 +936,16 @@ export function openApiDocument(): object {
             },
           }
         : {}),
+      ...(op.upload
+        ? {
+            requestBody: {
+              required: true,
+              content: Object.fromEntries(
+                Object.entries(op.upload).map(([type, schema]) => [type, { schema }]),
+              ),
+            },
+          }
+        : {}),
       responses: Object.fromEntries(
         Object.entries(responses).map(([status, r]) => [
           status,
@@ -871,7 +954,9 @@ export function openApiDocument(): object {
             ...(r.headers ? { headers: r.headers } : {}),
             ...(r.schema
               ? { content: { 'application/json': { schema: jsonSchema(r.schema) } } }
-              : {}),
+              : r.mediaType
+                ? { content: { [r.mediaType]: { schema: { type: 'string' } } } }
+                : {}),
           },
         ]),
       ),

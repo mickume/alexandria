@@ -246,6 +246,98 @@ The links changed since a server time, and the server time to ask from next.
 
 ***
 
+### ImportProgress
+
+Where an import's added links stand.
+
+#### Properties
+
+##### done
+
+> **done**: `number`
+
+##### enriched
+
+> **enriched**: `number`
+
+##### in\_progress
+
+> **in\_progress**: `number`
+
+##### waiting
+
+> **waiting**: `number`
+
+***
+
+### ImportReport
+
+An import's report.
+
+#### Properties
+
+##### counts
+
+> **counts**: `object`
+
+###### added
+
+> **added**: `number`
+
+###### duplicates
+
+> **duplicates**: `number`
+
+###### invalid
+
+> **invalid**: `number`
+
+###### not\_imported
+
+> **not\_imported**: `number`
+
+###### url\_lines
+
+> **url\_lines**: `number`
+
+##### created\_at
+
+> **created\_at**: `string`
+
+##### duplicates
+
+> **duplicates**: `object`[]
+
+###### line
+
+> **line**: `number`
+
+###### url
+
+> **url**: `string`
+
+##### id
+
+> **id**: `string`
+
+##### invalid
+
+> **invalid**: `object`[]
+
+###### line
+
+> **line**: `number`
+
+###### text
+
+> **text**: `string`
+
+##### stopped\_at\_limit
+
+> **stopped\_at\_limit**: \{ `line`: `number`; \} \| `null`
+
+***
+
 ### Link
 
 A link as the API shows it.
@@ -757,6 +849,60 @@ A workspace on its own, with its note.
 ###### Returns
 
 `Promise`\<[`Thresholds`](#thresholds)\>
+
+***
+
+### imports
+
+> `const` **imports**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: (`id`) => `Promise`\<[`ImportReport`](#importreport) & `object`\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`ImportReport`](#importreport) & `object`\>
+
+##### reportUrl
+
+> **reportUrl**: (`id`) => `string`
+
+The address of an import's downloadable report.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`string`
+
+##### upload
+
+> **upload**: (`file`) => `Promise`\<[`ImportReport`](#importreport)\>
+
+Uploads a plain-text file of URLs, one per line.
+
+###### Parameters
+
+###### file
+
+`File`
+
+###### Returns
+
+`Promise`\<[`ImportReport`](#importreport)\>
 
 ***
 

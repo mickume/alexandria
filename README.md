@@ -50,6 +50,17 @@ Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the
 search started from.
 
+## Import
+
+Settings → Import takes a plain-text file with one URL per line (at most 5,000
+URLs and 2 MB): blank lines and lines starting with `#` are skipped, and
+anything after the first space on a line is ignored. New URLs join the stream
+in file order, the first line highest; URLs already in the library are
+reported as duplicates and left as they are, and malformed lines are listed
+with their line numbers. The links are then fetched and enriched in the
+background, 20 a minute, and the report can be downloaded. Scripts can do the
+same with `POST /api/v1/imports` (see [docs/api.md](docs/api.md)).
+
 ## Documentation
 
 - [docs/api.md](docs/api.md): the HTTP API
