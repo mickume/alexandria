@@ -10,6 +10,7 @@ import { decaySettingsRoutes } from './decay/routes';
 import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
 import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
+import { importRoutes } from './imports/routes';
 import { linkRoutes } from './links/routes';
 import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
 import { workspaceRoutes } from './workspaces/routes';
@@ -33,6 +34,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);
   api.route('/archive', archiveRoutes);
+  api.route('/imports', importRoutes);
   api.route('/search', searchRoutes);
   api.route('/topics', topicRoutes);
   api.route('/tags', tagRoutes);

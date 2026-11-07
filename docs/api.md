@@ -635,3 +635,49 @@ gets the survivor and no topic or tag with the old name is created. The
 provider is only ever shown current names. A current name wins over an alias
 of the same name.
 
+### Imports
+
+#### `POST /api/v1/imports`
+
+Imports a plain-text list of URLs, one per line: the file as a `text/plain`
+body (or with no type), or as the part `file` of a `multipart/form-data`
+form. The file must be UTF-8, at most 2 MB (2,097,152 bytes) and at most
+5,000 URL lines. A byte-order mark is dropped; lines end at `\n` or `\r\n`;
+blank lines and lines whose first non-blank character is `#` are skipped;
+of every other line, only the first word counts (`https://example.com some
+note` imports the URL alone).
+
+Each URL line is normalised as `POST /api/v1/links` does. A new URL is added
+as a pending link (its host as provisional title), last used at the import
+time minus one millisecond per line, so that the stream lists the file in
+order, the first line highest. A URL already in the library, or on an earlier
+line, is a duplicate: reported, neither added nor boosted. A line the
+normaliser rejects is invalid. When the library (20,000 links) is full, the
+import stops at the first new URL with no room: that line and every later
+URL line are not imported.
+
+```json
+{
+  "id": "…",
+  "created_at": "2026-11-07T10:00:00.000Z",
+  "counts": { "url_lines": 400, "added": 397, "duplicates": 0, "invalid": 3, "not_imported": 0 },
+  "invalid": [{ "line": 57, "text": "not-a-url" }],
+  "duplicates": [{ "line": 12, "url": "https://example.com" }],
+  "stopped_at_limit": null
+}
+```
+
+`201` with the report; `stopped_at_limit` is `{"line": N}` when the limit
+stopped the import. Refusals, after which nothing is imported:
+
+- `400 {"error": "unsupported_file", "field": "file", "message": "only plain-text files with one URL per line are accepted"}`:
+  a declared type other than `text/plain`, bytes that are not UTF-8, a NUL
+  byte, markup (first non-blank character `<`) or a JSON object or array;
+- `409 {"error": "import_too_large", "message": "too large: at most 5,000 URLs / 2 MB per import"}`;
+- `400 {"error": "no_urls", "field": "file", "message"}`: no URL line, or a
+  form without a `file` part.
+
+#### `GET /api/v1/imports/{id}`
+
+The import's report, as `POST` answered it.
+
