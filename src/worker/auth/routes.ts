@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { beingDeleted } from '../account/deletion';
 import { limitReached, notFound, readJson, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
 import { isAllowed } from './allowlist';
@@ -52,6 +53,9 @@ authRoutes.get('/google/callback', async (c) => {
   const identity = await finishSignIn(c.env, code, verifier);
   if (!identity) return failed();
   if (!isAllowed(c.env, identity.email)) return c.redirect('/signin?error=private', 302);
+  if (await beingDeleted(c.env.DB, identity.email)) {
+    return c.redirect('/signin?error=deleting', 302);
+  }
 
   const userId = await upsertUser(c.env.DB, identity.email, identity.name);
   const session = await createSession(c.env.DB, userId);

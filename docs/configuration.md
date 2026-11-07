@@ -28,6 +28,12 @@ for local development.
 | -------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | `DB`     | D1 database   | Every user's data. The schema is in `migrations/`; apply it with `wrangler d1 migrations apply alexandria`. |
 | `ASSETS` | static assets | The website, built by `make build` into `dist/client/`.                                                     |
+| `SNAPSHOTS` | R2 bucket | Snapshots and reader views, under `u/{user_id}/l/{link_id}/`. |
+| `HOST_GATE` | Durable Object | One per host: spaces Alexandria's requests to a host a second apart. |
+| `FETCH_QUEUE` | Queue `alexandria-fetch` | One message per link to fetch. |
+| `ENRICH_QUEUE` | Queue `alexandria-enrich` | One message per link to enrich. |
+| `LIVENESS_QUEUE` | Queue `alexandria-liveness` | One message per weekly liveness check. |
+| `ACCOUNT_QUEUE` | Queue `alexandria-account` | One message per run of an account's deletion job; the job queues its next run until nothing of the account remains (batch size 1, 10 retries). |
 
 ## Cron Triggers
 
@@ -35,6 +41,8 @@ for local development.
   liveness checks.
 - `* * * * *`: the every-minute run that sends imported links waiting for
   their turn to the fetch worker.
+- `*/5 * * * *`: the sweep that runs the deletion job of every account marked
+  for deletion more than 5 minutes ago.
 
 The `scheduled` handler tells them apart by `controller.cron`.
 

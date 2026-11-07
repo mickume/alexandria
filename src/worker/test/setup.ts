@@ -9,6 +9,7 @@ import {
   recordedResponses,
   recordEnrichQueue,
   recordFetchQueue,
+  recordAccountQueue,
   recordLivenessQueue,
   savedKeys,
 } from './helpers';
@@ -18,6 +19,7 @@ let tables: string[] = [];
 const fetchQueue = env.FETCH_QUEUE;
 const enrichQueue = env.ENRICH_QUEUE;
 const livenessQueue = env.LIVENESS_QUEUE;
+const accountQueue = env.ACCOUNT_QUEUE;
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
@@ -36,6 +38,7 @@ beforeEach(async () => {
   recordFetchQueue();
   recordEnrichQueue();
   recordLivenessQueue();
+  recordAccountQueue();
   await env.DB.batch([
     env.DB.prepare('PRAGMA defer_foreign_keys = on'),
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
@@ -46,6 +49,7 @@ afterEach(() => {
   env.FETCH_QUEUE = fetchQueue;
   env.ENRICH_QUEUE = enrichQueue;
   env.LIVENESS_QUEUE = livenessQueue;
+  env.ACCOUNT_QUEUE = accountQueue;
   setNow(null);
   resetOutbound();
 });

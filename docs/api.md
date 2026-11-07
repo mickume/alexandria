@@ -705,6 +705,75 @@ invalid line (`line 57: not-a-url`) and every duplicate
 Both answer `404 {"error": "not_found"}` for an id that is not one of the
 user's imports.
 
+### Export
+
+#### `GET /api/v1/export`
+
+The whole library as one JSON document, sent as a download
+(`Content-Disposition: attachment; filename="alexandria-export-<YYYY-MM-DD>.json"`):
+
+```json
+{
+  "format": "alexandria-export",
+  "version": 1,
+  "exported_at": "2026-11-07T10:00:00.000Z",
+  "user": { "email": "owner@example.com", "name": "Ada Owner" },
+  "links": [
+    {
+      "id": "…",
+      "…": "every field GET /api/v1/links/{id} returns, the whole note included",
+      "snapshot_url": "https://alexandria.example.com/api/v1/export/links/…/snapshot",
+      "reader_url": "https://alexandria.example.com/api/v1/export/links/…/reader"
+    }
+  ],
+  "workspaces": [
+    { "id": "…", "name": "Research", "description": "", "note": "…", "link_ids": ["…"] }
+  ],
+  "topics": [{ "id": "…", "name": "databases", "link_count": 2 }],
+  "tags": [{ "id": "…", "name": "sql", "link_count": 3 }],
+  "complete": true
+}
+```
+
+Every link is there, in every state (archived included), as
+`GET /api/v1/links/{id}` returns it, with `snapshot_url` and `reader_url`
+(`null` when nothing of that kind is stored). A workspace's `link_ids` are in
+its manual order. The document is sent as it is read: when reading fails
+part-way the download breaks off, so a file that does not end with
+`"complete": true` (and does not parse) is not a whole export. The export holds
+nothing else: no settings, no part of the AI key, no tokens, sessions or import
+reports.
+
+#### `GET /api/v1/export/links/{id}/snapshot` and `GET /api/v1/export/links/{id}/reader`
+
+The `snapshot_url` and `reader_url` of an export entry: the link's stored
+snapshot and reader view exactly as `GET /api/v1/links/{id}/snapshot` and
+`GET /api/v1/links/{id}/reader` serve them (same status, headers and body),
+archived links included, with the same credentials, but **recording no use**,
+so that fetching a backup does not reset the library's decay. A link of the
+user with nothing of that kind stored answers `404 {"error": "no_content"}`;
+another user's link and an unknown id answer `404 {"error": "not_found"}`.
+
+### Deleting the account
+
+#### `DELETE /api/v1/me`
+
+Deletes the account and everything of it: `{"confirm_email": "<the account's email>"}`,
+compared ignoring case and surrounding whitespace. Only a session (the
+website) can do it: with a personal access token the answer is
+`403 {"error": "session_required", "message": "delete the account from the settings page"}`.
+Any other email, or none, is
+`400 {"error": "confirmation_mismatch", "field": "confirm_email", "message": "type your email address to confirm"}`
+and nothing changes.
+
+On success, at once: every session and token of the user and the AI key are
+deleted, the account is marked for deletion and the session cookie is
+cleared; `202 {"status": "deleting"}`. The deletion job then removes every
+link, snapshot, workspace and everything else of the account within minutes,
+and the user record last. There is no undo. Signing in with the same Google
+account while the job runs is refused (`/signin?error=deleting`); afterwards
+it starts a new, empty library.
+
 ## MCP server
 
 `POST /mcp` is a Model Context Protocol server over the Streamable HTTP

@@ -4,6 +4,8 @@ import { openApiDocument } from './api/openapi';
 import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes, tokenRoutes } from './auth/routes';
+import { requestDeletion } from './account/deletion';
+import { exportRoutes } from './account/routes';
 import { archiveLinkRoutes, archiveRoutes } from './decay/archive';
 import { checkRoutes } from './decay/liveness';
 import { decaySettingsRoutes } from './decay/routes';
@@ -24,6 +26,7 @@ function createApi(): Hono<AppEnv> {
     const { email, name } = c.get('user');
     return c.json({ email, name });
   });
+  api.delete('/me', requestDeletion);
   api.get('/openapi.json', (c) => c.json(openApiDocument()));
   api.route('/tokens', tokenRoutes);
   api.route('/settings', settingsRoutes);
@@ -35,6 +38,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);
   api.route('/archive', archiveRoutes);
+  api.route('/export', exportRoutes);
   api.route('/imports', importRoutes);
   api.route('/search', searchRoutes);
   api.route('/topics', topicRoutes);

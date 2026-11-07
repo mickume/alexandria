@@ -374,3 +374,10 @@ export const imports = {
   /** The address of an import's downloadable report. */
   reportUrl: (id: string) => `/api/v1/imports/${encodeURIComponent(id)}/report`,
 };
+
+export const account = {
+  me: () => request<{ email: string; name: string }>('GET', '/me'),
+  /** Deletes the account, confirmed by its email typed by the owner. */
+  remove: (confirmEmail: string) =>
+    request<{ status: 'deleting' }>('DELETE', '/me', { confirm_email: confirmEmail }),
+};

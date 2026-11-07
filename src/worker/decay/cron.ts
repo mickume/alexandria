@@ -16,7 +16,8 @@ export const DECAY_INTERVAL_MS = 20 * 3_600_000;
 export async function runScheduled(env: Env): Promise<void> {
   const t = now();
   const due = await env.DB.prepare(
-    'SELECT id FROM users WHERE last_decay_at IS NULL OR last_decay_at <= ?',
+    `SELECT id FROM users
+     WHERE deletion_requested_at IS NULL AND (last_decay_at IS NULL OR last_decay_at <= ?)`,
   )
     .bind(new Date(t.getTime() - DECAY_INTERVAL_MS).toISOString())
     .all<{ id: string }>();

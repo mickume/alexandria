@@ -1,5 +1,6 @@
 import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
+import { accountActive } from '../account/deletion';
 import { afterFetch } from '../enrich/queue';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
 import { indexReaderTextStatement } from '../search/search';
@@ -288,6 +289,8 @@ async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<bo
 /** Fetches one link's page and stores the result. */
 async function processFetch(env: Env, message: Message<FetchMessage>): Promise<void> {
   const { user_id, link_id } = message.body;
+  // An account being deleted is fetched for no more.
+  if (!(await accountActive(env.DB, user_id))) return message.ack();
   const link = await getLink(env.DB, user_id, link_id);
   if (!link) {
     await deleteLinkObjects(env, user_id, link_id);
@@ -295,6 +298,8 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     return;
   }
   const result = await fetchPage(env, link.url);
+  // Nor is anything written for it when its deletion began during the fetch.
+  if (!(await accountActive(env.DB, user_id))) return message.ack();
   try {
     if (result.ok) {
       if (await storeResult(env, link, result)) {

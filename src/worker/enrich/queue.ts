@@ -1,3 +1,4 @@
+import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
@@ -99,8 +100,10 @@ async function promptFor(env: Env, link: LinkRow): Promise<string> {
 
 /** Enriches one link with its user's own key and model. */
 async function processEnrichment(env: Env, message: Message<EnrichMessage>): Promise<void> {
-  if (await deferIfEarly(env, message.body)) return message.ack();
   const { user_id, link_id } = message.body;
+  // An account being deleted is enriched for no more.
+  if (!(await accountActive(env.DB, user_id))) return message.ack();
+  if (await deferIfEarly(env, message.body)) return message.ack();
   const link = await getLink(env.DB, user_id, link_id);
   if (!link) return message.ack();
   const settings: AiSettings | null = await getAiSettings(env.DB, user_id);

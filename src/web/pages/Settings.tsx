@@ -3,6 +3,7 @@ import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
 import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
+import { DeleteAccountSection } from './DeleteAccountSection';
 import { ImportSection } from './ImportSection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
@@ -30,7 +31,23 @@ function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
   );
 }
 
-/** The settings page: tokens, the AI key, decay thresholds and importing. */
+/** The export section: the whole library as one file. */
+function ExportSection() {
+  return (
+    <section aria-labelledby="export-heading">
+      <h2 id="export-heading">Export</h2>
+      <p className="muted">
+        Your whole library as one JSON file: every link, workspace, topic and tag, with the
+        addresses of each link’s stored copies.
+      </p>
+      <a className="button" href="/api/v1/export" download>
+        Export library
+      </a>
+    </section>
+  );
+}
+
+/** The settings page: tokens, the AI key, decay, importing, exporting and leaving. */
 export function Settings() {
   const [list, setList] = useState<Token[] | null>(null);
   const [name, setName] = useState('');
@@ -118,6 +135,8 @@ export function Settings() {
       <AiKeySection />
       <DecaySection />
       <ImportSection />
+      <ExportSection />
+      <DeleteAccountSection />
     </section>
   );
 }

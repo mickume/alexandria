@@ -139,6 +139,23 @@ const FILTER_PARAMETERS: Operation['query'] = {
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
+/** A link's stored reader view; for a PDF, its text. */
+const ReaderView = z.strictObject({
+  content_kind: z.enum(['html', 'pdf']),
+  title: z.string().nullable(),
+  byline: z.string().nullable(),
+  html: z.string().nullable(),
+  text: z.string(),
+  empty: z.boolean(),
+});
+
+/** A topic or tag in the export. */
+const ExportedLabel = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  link_count: z.number().int(),
+});
+
 /** An import's report. */
 const ImportReport = z.strictObject({
   id: z.string(),
@@ -211,6 +228,25 @@ export const operations: Operation[] = [
     operationId: 'getMe',
     summary: 'The current user',
     responses: { 200: { description: 'The user’s email and display name', schema: Me } },
+  },
+  {
+    method: 'delete',
+    path: '/me',
+    operationId: 'deleteAccount',
+    summary:
+      'Delete the account and all its data, confirmed by its email; with a session only. No undo',
+    body: z.object({ confirm_email: z.string() }),
+    responses: {
+      202: {
+        description:
+          'Signed out everywhere at once; the rest of the account is removed within minutes',
+        schema: z.strictObject({ status: z.literal('deleting') }),
+      },
+      400: error('invalid_json, or confirmation_mismatch: "type your email address to confirm"'),
+      403: error(
+        'session_required: "delete the account from the settings page" (a token cannot), or forbidden_origin',
+      ),
+    },
   },
   {
     method: 'get',
@@ -359,6 +395,63 @@ export const operations: Operation[] = [
           'text/plain attachment alexandria-import-<YYYY-MM-DD>.txt: the counts, invalid lines, duplicates and the limit stop',
         mediaType: 'text/plain',
       },
+    },
+  },
+  {
+    method: 'get',
+    path: '/export',
+    operationId: 'exportLibrary',
+    summary:
+      'The whole library as one JSON document, streamed as a download, ending with "complete": true',
+    responses: {
+      200: {
+        description:
+          'attachment alexandria-export-<YYYY-MM-DD>.json: the user, links (each its GET /links/{id} body with snapshot_url and reader_url), workspaces, topics and tags',
+        schema: z.strictObject({
+          format: z.literal('alexandria-export'),
+          version: z.literal(1),
+          exported_at: z.string(),
+          user: z.strictObject({ email: z.string(), name: z.string() }),
+          links: z.array(
+            LinkWithNote.extend({
+              snapshot_url: z.string().nullable(),
+              reader_url: z.string().nullable(),
+            }),
+          ),
+          workspaces: z.array(
+            z.strictObject({
+              id: z.string(),
+              name: z.string(),
+              description: z.string(),
+              note: z.string(),
+              link_ids: z.array(z.string()),
+            }),
+          ),
+          topics: z.array(ExportedLabel),
+          tags: z.array(ExportedLabel),
+          complete: z.literal(true),
+        }),
+      },
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/snapshot',
+    operationId: 'exportSnapshot',
+    summary: 'A link’s stored snapshot as the snapshot route serves it, recording no use',
+    responses: {
+      200: { description: 'The stored HTML (sandboxed) or PDF', mediaType: 'text/html' },
+      404: error('not_found, or no_content: nothing of this kind is stored for the link'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/reader',
+    operationId: 'exportReader',
+    summary: 'A link’s reader view as the reader route serves it, recording no use',
+    responses: {
+      200: { description: 'The reader view', schema: ReaderView },
+      404: error('not_found, or no_content: nothing of this kind is stored for the link'),
     },
   },
   {
@@ -699,14 +792,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description: 'The reader view; for a PDF, its text',
-        schema: z.strictObject({
-          content_kind: z.enum(['html', 'pdf']),
-          title: z.string().nullable(),
-          byline: z.string().nullable(),
-          html: z.string().nullable(),
-          text: z.string(),
-          empty: z.boolean(),
-        }),
+        schema: ReaderView,
       },
       404: NO_SNAPSHOT,
     },

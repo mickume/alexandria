@@ -9,7 +9,7 @@ import {
   getQueueResult,
   SELF,
 } from 'cloudflare:test';
-import type { EnrichMessage, FetchMessage, LivenessMessage } from '../env';
+import type { AccountMessage, EnrichMessage, FetchMessage, LivenessMessage } from '../env';
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
@@ -247,6 +247,13 @@ export function recordFetchQueue(): SentMessage<FetchMessage>[] {
   return sent;
 }
 
+/** Replaces ACCOUNT_QUEUE with a recorder for this test; returns the recorded messages. */
+export function recordAccountQueue(): SentMessage<AccountMessage>[] {
+  const sent: SentMessage<AccountMessage>[] = [];
+  env.ACCOUNT_QUEUE = recorder(sent);
+  return sent;
+}
+
 /** Replaces LIVENESS_QUEUE with a recorder for this test; returns the recorded messages. */
 export function recordLivenessQueue(): SentMessage<LivenessMessage>[] {
   const sent: SentMessage<LivenessMessage>[] = [];
@@ -281,6 +288,14 @@ export async function deliverFetches(
   return deliver('alexandria-fetch', bodies, bindings);
 }
 
+/** Delivers account deletion messages to the Worker's queue consumer in one batch. */
+export async function deliverAccount(
+  bodies: AccountMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  return deliver('alexandria-account', bodies, bindings);
+}
+
 /** Delivers enrichment messages to the Worker's queue consumer in one batch. */
 export async function deliverEnrichments(
   bodies: EnrichMessage[],
@@ -300,7 +315,9 @@ async function deliver<T>(
   );
   const ctx = createExecutionContext();
   await worker.queue?.(
-    batch as unknown as MessageBatch<FetchMessage | EnrichMessage | LivenessMessage>,
+    batch as unknown as MessageBatch<
+      FetchMessage | EnrichMessage | LivenessMessage | AccountMessage
+    >,
     { ...env, ...bindings },
     ctx,
   );

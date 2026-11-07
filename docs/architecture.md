@@ -264,6 +264,43 @@ with `registerTool` (for `tools/list`) and handles `tools/call` itself, so
 that argument errors and unexpected failures are tool errors in the API's
 envelope.
 
+## Export and account deletion
+
+`GET /api/v1/export` (`account/export.ts`) streams the library as one JSON
+document from a `ReadableStream` fed page by page (100 links a query, in id
+order); each link is serialised by the same `toFullView` as
+`GET /api/v1/links/{id}`, and a read error errors the stream, so that a cut-off
+download lacks the closing `"complete": true`. The export's content URLs
+(`/api/v1/export/links/{id}/snapshot` and `/reader`) serve through the same
+`snapshotResponse` and `readerBody` as the link routes (`fetcher/routes.ts`),
+without `recordUse`.
+
+`DELETE /api/v1/me` (`account/deletion.ts`), with a session only, deletes the
+user's sessions, tokens and AI key at once, sets `users.deletion_requested_at`
+and sends a message on `ACCOUNT_QUEUE`. Each message is one run of the
+deletion job (`runDeletion`):
+
+- one batch of at most 1,000 of the user's R2 objects under `u/{user_id}/`;
+- one batch of at most 1,000 rows from each table that holds the user's rows,
+  found from the schema (every table with a `link_id` or `user_id` column,
+  except full-text tables and the tables triggers keep): rows referencing the
+  user's links first, then the links once none references them (their
+  triggers remove their search index rows), then the rest;
+- when nothing is left, the users row.
+
+A run that removed a full batch anywhere queues the next run. A failed run is
+retried and continues with what remains; a run for an account that is gone
+(or not marked) does nothing. A sign-in for a marked account is refused. The
+`*/5 * * * *` Cron Trigger (`account/sweep.ts`) runs the job for every account
+marked more than 5 minutes ago, so that a lost message cannot stop a deletion.
+
+Nothing in the background writes for an account once it is marked:
+`accountActive` is checked by the fetch consumer (before fetching and again
+before writing), the enrichment consumer, the import dispatcher and the
+liveness consumer (before checking and before recording), and the hourly
+decay evaluation and the liveness enqueue select only accounts not marked.
+Their messages are acknowledged, not retried.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

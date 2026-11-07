@@ -21,17 +21,19 @@
     },
   ],
   // The hourly run: decay evaluation and the weekly liveness checks.
-  "triggers": { "crons": ["0 * * * *", "* * * * *"] },
+  "triggers": { "crons": ["0 * * * *", "* * * * *", "*/5 * * * *"] },
   "queues": {
     "producers": [
       { "binding": "FETCH_QUEUE", "queue": "alexandria-fetch" },
       { "binding": "ENRICH_QUEUE", "queue": "alexandria-enrich" },
       { "binding": "LIVENESS_QUEUE", "queue": "alexandria-liveness" },
+      { "binding": "ACCOUNT_QUEUE", "queue": "alexandria-account" },
     ],
     "consumers": [
       { "queue": "alexandria-fetch", "max_batch_size": 10, "max_retries": 5 },
       { "queue": "alexandria-enrich", "max_batch_size": 5, "max_retries": 5 },
       { "queue": "alexandria-liveness", "max_batch_size": 10, "max_retries": 3 },
+      { "queue": "alexandria-account", "max_batch_size": 1, "max_retries": 10 },
     ],
   },
   // One Durable Object per host spaces Alexandria's requests to it a second apart.
