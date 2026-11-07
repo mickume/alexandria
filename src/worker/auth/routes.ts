@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { beingDeleted } from '../account/deletion';
+import { publicOrigin } from '../origin';
 import { limitReached, notFound, readJson, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
 import { isAllowed } from './allowlist';
@@ -32,7 +33,7 @@ const flowCookie = {
 export const authRoutes = new Hono<AppEnv>();
 
 authRoutes.get('/google', (c) => {
-  const { url, state, verifier } = startSignIn(c.env);
+  const { url, state, verifier } = startSignIn(c.env, publicOrigin(c.env, c.req.url));
   setCookie(c, STATE_COOKIE, state, flowCookie);
   setCookie(c, VERIFIER_COOKIE, verifier, flowCookie);
   return c.redirect(url.toString(), 302);
@@ -50,7 +51,7 @@ authRoutes.get('/google/callback', async (c) => {
   if (c.req.query('error') || !code || !state || !expectedState || !verifier) return failed();
   if (state !== expectedState) return failed();
 
-  const identity = await finishSignIn(c.env, code, verifier);
+  const identity = await finishSignIn(c.env, code, verifier, publicOrigin(c.env, c.req.url));
   if (!identity) return failed();
   if (!isAllowed(c.env, identity.email)) return c.redirect('/signin?error=private', 302);
   if (await beingDeleted(c.env.DB, identity.email)) {

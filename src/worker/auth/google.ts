@@ -16,19 +16,23 @@ export interface GoogleIdentity {
   name: string;
 }
 
-function client(env: Env): OAuth2Client {
+/** The OAuth client, with the callback on the site's origin (the same at both ends of a sign-in). */
+function client(env: Env, origin: string): OAuth2Client {
   return new OAuth2Client(
     env.GOOGLE_CLIENT_ID,
     env.GOOGLE_CLIENT_SECRET,
-    `${env.PUBLIC_ORIGIN}/auth/google/callback`,
+    `${origin}/auth/google/callback`,
   );
 }
 
 /** Starts the authorization-code flow with PKCE: the URL to send the browser to, with its state and verifier. */
-export function startSignIn(env: Env): { url: URL; state: string; verifier: string } {
+export function startSignIn(
+  env: Env,
+  origin: string,
+): { url: URL; state: string; verifier: string } {
   const state = generateState();
   const verifier = generateCodeVerifier();
-  const url = client(env).createAuthorizationURLWithPKCE(
+  const url = client(env, origin).createAuthorizationURLWithPKCE(
     env.GOOGLE_AUTH_URL,
     state,
     CodeChallengeMethod.S256,
@@ -48,9 +52,10 @@ export async function finishSignIn(
   env: Env,
   code: string,
   verifier: string,
+  origin: string,
 ): Promise<GoogleIdentity | null> {
   try {
-    const tokens = await client(env).validateAuthorizationCode(
+    const tokens = await client(env, origin).validateAuthorizationCode(
       env.GOOGLE_TOKEN_URL,
       code,
       verifier,
