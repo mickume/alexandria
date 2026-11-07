@@ -705,3 +705,62 @@ invalid line (`line 57: not-a-url`) and every duplicate
 Both answer `404 {"error": "not_found"}` for an id that is not one of the
 user's imports.
 
+## MCP server
+
+`POST /mcp` is a Model Context Protocol server over the Streamable HTTP
+transport, for agents. It is stateless: every request is answered on its
+own, as JSON (`Content-Type: application/json`), with no session id; send
+`Accept: application/json, text/event-stream` as the transport requires.
+`GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`.
+
+Only a personal access token authenticates it:
+`Authorization: Bearer <secret>`. A missing, unknown or revoked token, or a
+session cookie alone, is `401 {"error": "unauthorized"}` with
+`WWW-Authenticate: Bearer`, before any message is read. Every `/mcp` request
+counts once against the user's 600 requests a minute shared with the API
+(`429 {"error": "rate_limited"}` with `Retry-After`), however many API
+operations its tool performs.
+
+The server is named `alexandria`, offers tools only, and its instructions
+tell an agent that Alexandria is the owner's private library of web links and
+to try `search_links` before `add_link` to avoid duplicates.
+
+### Tools
+
+Each tool performs the equivalent API request(s) as the token's user, so it
+answers with the same shapes, errors and limits, and records a use exactly
+where the API does. A success carries the API's JSON body as
+`structuredContent` and as one text content item; a refusal is a tool result
+with `isError: true` and the API's error envelope (`error`, `message`, and
+`field` where the API gives one), never a JSON-RPC error. Arguments that do
+not fit a tool's input schema are
+`{"error": "invalid_arguments", "field": <the argument>, "message"}`; an
+unexpected failure is
+`{"error": "internal_error", "message": "something went wrong, try again"}`.
+
+| Tool | Arguments | Does |
+|---|---|---|
+| `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
+| `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included; no use |
+| `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
+| `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |
+| `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |
+| `add_to_workspace` | `link_id`, `workspace` | `POST /api/v1/workspaces/{id}/links` with `{link_id}`: at the bottom |
+| `pin_link` | `link_id` | `POST /api/v1/links/{id}/pin` without a position (`pin_limit` at 30) |
+| `archive_link` | `link_id` | `POST /api/v1/links/{id}/archive` |
+| `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
+
+A `workspace` argument is a workspace's id or its name, compared ignoring
+case; one that names no workspace of the user is
+`{"error": "not_found", "message"}`, and no workspace is created. `add_link`
+checks its arguments before it stores anything: tags are trimmed and
+lower-cased, and each must be a single word or a hyphenated phrase (at most
+20), else `{"error": "invalid_arguments", "field": "tags", "message"}`. Its
+`url` is refused as `POST /api/v1/links` refuses it (`invalid_url` with the
+input as `url`, `library_full`), with nothing stored.
+
+`get_link_content` with `format: "html"` for a PDF link is
+`{"error": "not_html", "message": "this link is a PDF; use format text"}`, and
+for a link with nothing stored (pending, unreachable, not a web page)
+`{"error": "no_content", "message"}`; neither records a use.
+

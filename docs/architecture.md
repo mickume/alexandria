@@ -245,6 +245,25 @@ its first 500,000 characters, replacing what was indexed before, and nothing
 when a fetch stores no text. The migration indexed the links and texts stored
 before it.
 
+## MCP server
+
+`/mcp` (`mcp/server.ts`) serves the Model Context Protocol over Streamable
+HTTP with the official SDK (`@modelcontextprotocol/sdk`). Every POST builds a
+new `McpServer` and a `WebStandardStreamableHTTPServerTransport` (no session
+id generator, JSON responses) bound to the request's user; nothing is kept
+between requests. `requireToken` (`auth/middleware.ts`) accepts only a bearer
+token, and the API's `rateLimit` counts the request once.
+
+The tools (`mcp/tools.ts`) do no work of their own: each sends the equivalent
+requests to the API sub-application in the same Worker, as the agent's user.
+Those requests are `Request` objects the Worker creates and records in
+`internalRequests` with their user; `requireAuth` takes the user from there
+and `rateLimit` does not count them. So a tool's shapes, errors, limits and
+use recording are the API's by construction. The server registers the tools
+with `registerTool` (for `tools/list`) and handles `tools/call` itself, so
+that argument errors and unexpected failures are tool errors in the API's
+envelope.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

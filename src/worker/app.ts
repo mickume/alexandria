@@ -12,6 +12,7 @@ import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
 import { importRoutes } from './imports/routes';
 import { linkRoutes } from './links/routes';
+import { mcpRoutes } from './mcp/server';
 import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
 import { workspaceRoutes } from './workspaces/routes';
 
@@ -45,7 +46,9 @@ function createApi(): Hono<AppEnv> {
 /** Builds the application: the API under /api/v1/, the sign-in routes and the website's pages. */
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-  app.route('/api/v1', createApi());
+  const api = createApi();
+  app.route('/api/v1', api);
+  app.route('/mcp', mcpRoutes(api));
   app.route('/auth', authRoutes);
   app.route('/about', aboutRoutes);
   app.get('*', servePage);

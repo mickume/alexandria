@@ -37,16 +37,35 @@ function sameOrigin(c: Context<AppEnv>): boolean {
 }
 
 /**
+ * The requests the Worker makes to its own API on behalf of an
+ * authenticated user (the MCP server's tools), with that user. Only code in
+ * the Worker holds these Request objects, so no client can pass as one.
+ */
+export const internalRequests = new WeakMap<Request, AuthUser>();
+
+/** The user of a personal access token in the Authorization header, or null. */
+async function tokenUser(c: Context<AppEnv>, authorization: string): Promise<AuthUser | null> {
+  const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+  return match?.[1] ? await useToken(c.env.DB, match[1]) : null;
+}
+
+/**
  * Authenticates every request under /api/v1/: a bearer token (a personal
  * access token) or the session cookie. Anything else is answered 401 before the route runs. A change
- * authenticated by the cookie must come from PUBLIC_ORIGIN.
+ * authenticated by the cookie must come from PUBLIC_ORIGIN. The Worker's own
+ * internal requests carry their user already.
  */
 export const requireAuth: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(async (c, next) => {
+  const internal = internalRequests.get(c.req.raw);
+  if (internal) {
+    c.set('user', internal);
+    c.set('via', 'token');
+    return next();
+  }
   const authorization = c.req.header('Authorization');
   if (authorization !== undefined) {
     // A bearer token is the credential of scripts and apps: no cookie, no Origin check.
-    const match = /^Bearer\s+(\S+)$/i.exec(authorization);
-    const user = match?.[1] ? await useToken(c.env.DB, match[1]) : null;
+    const user = await tokenUser(c, authorization);
     if (!user) return unauthorized(c);
     c.set('user', user);
     c.set('via', 'token');
@@ -58,6 +77,23 @@ export const requireAuth: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(a
     return refusal(c, 403, 'forbidden_origin');
   c.set('user', user);
   c.set('via', 'session');
+  await next();
+});
+
+/**
+ * Authenticates the MCP endpoint: a personal access token as a bearer token,
+ * and nothing else (a session cookie alone is refused). A missing, unknown or
+ * revoked token is answered 401 with 'WWW-Authenticate: Bearer'.
+ */
+export const requireToken: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(async (c, next) => {
+  const authorization = c.req.header('Authorization');
+  const user = authorization !== undefined ? await tokenUser(c, authorization) : null;
+  if (!user) {
+    c.header('WWW-Authenticate', 'Bearer');
+    return unauthorized(c);
+  }
+  c.set('user', user);
+  c.set('via', 'token');
   await next();
 });
 

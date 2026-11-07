@@ -80,6 +80,8 @@
 - [worker/links/store](worker/links/store.md)
 - [worker/links/stream](worker/links/stream.md)
 - [worker/links/use](worker/links/use.md)
+- [worker/mcp/server](worker/mcp/server.md)
+- [worker/mcp/tools](worker/mcp/tools.md)
 - [worker/search/query](worker/search/query.md)
 - [worker/search/routes](worker/search/routes.md)
 - [worker/search/search](worker/search/search.md)
