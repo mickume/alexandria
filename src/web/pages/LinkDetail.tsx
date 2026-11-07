@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { links, openUrl, type Link, type LinkEvent } from '../api';
+import { RefreshButton } from '../components/LinkCard';
 import { formatDate } from '../format';
 
 const EVENT_LABELS: Record<string, string> = { use: 'Opened' };
@@ -42,6 +43,9 @@ export function LinkDetail({ id }: { id: string }) {
         <span>Added {formatDate(link.added_at)}</span> ·{' '}
         <span>{link.use_count === 1 ? 'used once' : `used ${link.use_count} times`}</span>
       </p>
+      <div className="card-actions">
+        <RefreshButton link={link} />
+      </div>
       <h2 id="history-heading">History</h2>
       <ul className="history" aria-label="History">
         {history.map((event, i) => (

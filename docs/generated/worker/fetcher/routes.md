@@ -10,6 +10,14 @@ The public page the fetcher's User-Agent points site operators at.
 
 ***
 
+### REFRESH\_INTERVAL\_MS
+
+> `const` **REFRESH\_INTERVAL\_MS**: `number`
+
+The least time between two refreshes of one link.
+
+***
+
 ### snapshotRoutes
 
 > `const` **snapshotRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>

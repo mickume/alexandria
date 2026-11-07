@@ -3,7 +3,7 @@
   "spec_id": "02",
   "spec_name": "fetch_and_snapshot",
   "schema_version": 3,
-  "updated_at": "2026-11-07T16:25:21Z",
+  "updated_at": "2026-11-07T16:28:12Z",
   "tasks": [
     {
       "id": 1,
@@ -31,7 +31,7 @@
     },
     {
       "id": 7,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 8,

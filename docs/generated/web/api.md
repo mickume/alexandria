@@ -424,6 +424,20 @@ A personal access token as listed.
 
 `Promise`\<[`Link`](#link)\>
 
+##### refresh
+
+> **refresh**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"queued"`; \}\>
+
 ##### remove
 
 > **remove**: (`id`, `__namedParameters`) => `Promise`\<`void`\>

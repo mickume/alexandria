@@ -238,3 +238,14 @@ its scripts never run. For a PDF: the stored file, `application/pdf`,
 
 Deleting a link (`DELETE /api/v1/links/{id}`) also deletes its stored copies,
 its text and its fetch events.
+
+#### `POST /api/v1/links/{id}/refresh`
+
+Fetches the link again in the background: `202 {"status": "queued"}`. When
+the fetch succeeds it replaces the snapshot, reader view and fetched
+metadata, sets the link `active` and clears its reason and notes; when it
+fails, the link keeps everything it had and its history gains a failed fetch
+event (a refresh is not retried). At most one refresh per link per 10
+minutes: a second one is
+`429 {"error": "refreshed_recently", "message": "already refreshed recently"}`
+with `Retry-After` in seconds.

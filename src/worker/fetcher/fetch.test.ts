@@ -441,3 +441,118 @@ describe('a link’s fetch history', () => {
     ]);
   });
 });
+
+describe('refreshing a link', () => {
+  it.each(['an active link whose page changed', 'an unreachable link whose site is back'])(
+    'takes a new copy of %s',
+    async (label) => {
+      const url = 'https://changing.example/';
+      const user = await signIn();
+      const origin = new FakeOrigin();
+      let id: string;
+      if (label.startsWith('an active')) {
+        origin.page(url, blogArticle);
+        ({ id } = await addAndFetch(user, url));
+      } else {
+        [id = ''] = await seedLinks(user, [{ url, state: 'unreachable' }]);
+        await env.DB.prepare(
+          "UPDATE links SET state_reason = 'timed out', fetch_attempts = 3 WHERE id = ?",
+        )
+          .bind(id)
+          .run();
+      }
+      const changed = blogArticle.replace('The first reason', 'A newer reason');
+      origin.page(url, changed);
+      const sent = recordFetchQueue();
+      const t = '2026-10-02T12:00:00.000Z';
+      setNow(t);
+      const r = await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session });
+      expect(r.status).toBe(202);
+      expect(r.json).toEqual({ status: 'queued' });
+      expect(sent).toEqual([
+        { body: { user_id: user.id, link_id: id, refresh: true }, delaySeconds: undefined },
+      ]);
+      await deliverFetches([sent[0]!.body]);
+      const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+      expect(l).toMatchObject({ state: 'active', state_reason: null, fetched_at: t });
+      const snapshot = await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`);
+      expect(await snapshot?.text()).toBe(changed);
+    },
+  );
+
+  it('is refused within 10 minutes of the previous refresh', async () => {
+    const user = await signIn();
+    const [id = ''] = await seedLinks(user, [{ url: 'https://often.example/' }]);
+    const sent = recordFetchQueue();
+    const t = Date.parse('2026-10-03T08:00:00.000Z');
+    setNow(t);
+    expect((await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session })).status).toBe(
+      202,
+    );
+    setNow(t + 4 * 60_000);
+    const r = await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session });
+    expect(r.status).toBe(429);
+    expect(r.json).toEqual({ error: 'refreshed_recently', message: 'already refreshed recently' });
+    expect(r.headers.get('Retry-After')).toBe('360');
+    expect(sent).toHaveLength(1);
+    setNow(t + 10 * 60_000);
+    expect((await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session })).status).toBe(
+      202,
+    );
+  });
+
+  it('keeps everything the link had when the refresh fails', async () => {
+    const url = 'https://steady.example/';
+    const origin = new FakeOrigin().page(url, blogArticle);
+    const user = await signIn();
+    const { id } = await addAndFetch(user, url);
+    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
+    origin.status(url, 500);
+    const sent = recordFetchQueue();
+    await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session });
+    await deliverFetches([sent[0]!.body]);
+    const after = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
+    expect({ ...after, refresh_requested_at: null, updated_at: null }).toEqual({
+      ...before,
+      refresh_requested_at: null,
+      updated_at: null,
+    });
+    expect(await (await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`))?.text()).toBe(
+      blogArticle,
+    );
+    const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
+    expect(history.json.items[0]).toMatchObject({
+      kind: 'fetch',
+      outcome: 'failed',
+      reason: 'HTTP 500',
+    });
+    expect(sent).toHaveLength(1);
+  });
+});
+
+describe('an unreachable link', () => {
+  it('stays in the stream and can be opened, pinned, unpinned, refreshed and deleted', async () => {
+    const url = 'https://gone-away.example/';
+    new FakeOrigin().fail(url, 'connect ECONNREFUSED');
+    const user = await signIn();
+    const { id, sent } = await addAndFetch(user, url);
+    await deliverFetches([sent[1]!.body]);
+    await deliverFetches([sent[2]!.body]);
+    expect((await api('GET', `/api/v1/links/${id}`, { as: user.session })).json.state).toBe(
+      'unreachable',
+    );
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    expect(stream.json.items.map((l: { id: string }) => l.id)).toContain(id);
+    for (const [method, path, status] of [
+      ['GET', 'open', 302],
+      ['POST', 'pin', 200],
+      ['DELETE', 'pin', 200],
+      ['POST', 'refresh', 202],
+    ] as const) {
+      expect((await api(method, `/api/v1/links/${id}/${path}`, { as: user.session })).status).toBe(
+        status,
+      );
+    }
+    expect((await api('DELETE', `/api/v1/links/${id}`, { as: user.session })).status).toBe(204);
+  }, 15_000);
+});

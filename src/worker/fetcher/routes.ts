@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { notFound } from '../api/errors';
+import { now } from '../clock';
 import type { AppEnv } from '../env';
 import { getLink, type LinkRow } from '../links/store';
 import { recordUse } from '../links/use';
@@ -119,4 +120,32 @@ snapshotRoutes.get('/:id/snapshot', async (c) => {
     });
   }
   return new Response(object.body, { headers: SNAPSHOT_HEADERS });
+});
+
+/** The least time between two refreshes of one link. */
+export const REFRESH_INTERVAL_MS = 10 * 60_000;
+
+snapshotRoutes.post('/:id/refresh', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const at = now();
+  // One statement claims the refresh only when the window has passed, so two
+  // requests at once cannot both get through.
+  const claimed = await c.env.DB.prepare(
+    `UPDATE links SET refresh_requested_at = ?1
+     WHERE id = ?2 AND user_id = ?3
+       AND (refresh_requested_at IS NULL OR refresh_requested_at <= ?4)
+     RETURNING id`,
+  )
+    .bind(at.toISOString(), id, userId, new Date(at.getTime() - REFRESH_INTERVAL_MS).toISOString())
+    .first();
+  if (!claimed) {
+    const link = await getLink(c.env.DB, userId, id);
+    if (!link) return notFound(c);
+    const since = at.getTime() - Date.parse(link.refresh_requested_at ?? '');
+    c.header('Retry-After', String(Math.max(1, Math.ceil((REFRESH_INTERVAL_MS - since) / 1000))));
+    return c.json({ error: 'refreshed_recently', message: 'already refreshed recently' }, 429);
+  }
+  await c.env.FETCH_QUEUE.send({ user_id: userId, link_id: id, refresh: true });
+  return c.json({ status: 'queued' }, 202);
 });

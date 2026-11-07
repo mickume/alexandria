@@ -85,13 +85,19 @@ export class FakeApi {
   };
 }
 
+/** Makes the website's requests reach `api`. */
+export function installFakeApi(api: FakeApi): FakeApi {
+  globalThis.fetch = api.fetch as typeof fetch;
+  return api;
+}
+
 /** Renders the website at `path` (with its query string) against `api`. */
 export function renderPage(
   path: string,
   api: FakeApi = new FakeApi(),
 ): RenderResult & { api: FakeApi } {
   window.history.replaceState(null, '', path);
-  globalThis.fetch = api.fetch as typeof fetch;
+  installFakeApi(api);
   return { ...render(<App />), api };
 }
 

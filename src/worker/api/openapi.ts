@@ -259,6 +259,24 @@ export const operations: Operation[] = [
     },
   },
   {
+    method: 'post',
+    path: '/links/{id}/refresh',
+    operationId: 'refreshLink',
+    summary: 'Fetch the link again, replacing its stored copy; at most once per 10 minutes',
+    responses: {
+      202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
+      429: {
+        ...error('refreshed_recently: "already refreshed recently", or rate_limited'),
+        headers: {
+          'Retry-After': {
+            description: 'Seconds until a refresh is allowed',
+            schema: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+  {
     method: 'delete',
     path: '/links/{id}',
     operationId: 'deleteLink',
