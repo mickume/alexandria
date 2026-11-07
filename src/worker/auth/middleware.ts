@@ -4,6 +4,7 @@ import { createMiddleware } from 'hono/factory';
 import { refusal, unauthorized } from '../api/errors';
 import type { AppEnv, AuthUser } from '../env';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, useSession } from './sessions';
+import { useToken } from './tokens';
 
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -36,15 +37,20 @@ function sameOrigin(c: Context<AppEnv>): boolean {
 }
 
 /**
- * Authenticates every request under /api/v1/: a bearer token or the session
- * cookie. Anything else is answered 401 before the route runs. A change
+ * Authenticates every request under /api/v1/: a bearer token (a personal
+ * access token) or the session cookie. Anything else is answered 401 before the route runs. A change
  * authenticated by the cookie must come from PUBLIC_ORIGIN.
  */
 export const requireAuth: MiddlewareHandler<AppEnv> = createMiddleware<AppEnv>(async (c, next) => {
   const authorization = c.req.header('Authorization');
   if (authorization !== undefined) {
-    // Personal access tokens are recognised from the tokens module.
-    return unauthorized(c);
+    // A bearer token is the credential of scripts and apps: no cookie, no Origin check.
+    const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+    const user = match?.[1] ? await useToken(c.env.DB, match[1]) : null;
+    if (!user) return unauthorized(c);
+    c.set('user', user);
+    c.set('via', 'token');
+    return next();
   }
   const user = await sessionUser(c);
   if (!user) return unauthorized(c);

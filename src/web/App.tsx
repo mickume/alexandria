@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
 
 /** The current path of the page, following history navigation. */
@@ -69,9 +70,7 @@ function Layout({ children }: { children: ReactNode }) {
 export function App() {
   const path = usePath();
   if (path === '/signin') return <SignIn />;
-  return (
-    <Layout>
-      <p>{path}</p>
-    </Layout>
-  );
+  let page: ReactNode = <p>{path}</p>;
+  if (path === '/settings') page = <Settings />;
+  return <Layout>{page}</Layout>;
 }

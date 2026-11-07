@@ -6,8 +6,8 @@
 
 > `const` **requireAuth**: `MiddlewareHandler`\<[`AppEnv`](../env.md#appenv)\>
 
-Authenticates every request under /api/v1/: a bearer token or the session
-cookie. Anything else is answered 401 before the route runs. A change
+Authenticates every request under /api/v1/: a bearer token (a personal
+access token) or the session cookie. Anything else is answered 401 before the route runs. A change
 authenticated by the cookie must come from PUBLIC_ORIGIN.
 
 ***

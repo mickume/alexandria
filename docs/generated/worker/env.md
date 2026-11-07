@@ -24,7 +24,7 @@ The authenticated user, set by the authentication middleware.
 
 ###### via
 
-> **via**: `"session"` \| `"token"`
+> **via**: `"token"` \| `"session"`
 
 How the request was authenticated.
 

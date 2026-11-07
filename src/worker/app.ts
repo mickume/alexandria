@@ -3,7 +3,7 @@ import { notFound } from './api/errors';
 import { openApiDocument } from './api/openapi';
 import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
-import { authRoutes } from './auth/routes';
+import { authRoutes, tokenRoutes } from './auth/routes';
 import type { AppEnv } from './env';
 
 /** The JSON API under /api/v1/; every route needs an authenticated user. */
@@ -15,6 +15,7 @@ function createApi(): Hono<AppEnv> {
     return c.json({ email, name });
   });
   api.get('/openapi.json', (c) => c.json(openApiDocument()));
+  api.route('/tokens', tokenRoutes);
   api.all('*', notFound);
   return api;
 }

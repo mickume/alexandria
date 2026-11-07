@@ -68,3 +68,30 @@ from the account.
 ### `GET /api/v1/openapi.json`
 
 The OpenAPI 3.1 document: `200`, `application/json`.
+
+### Personal access tokens
+
+A token authenticates API requests as its user with the same rights as a
+session: `Authorization: Bearer alx_…`. Its secret is shown once, at creation,
+and stored only as its SHA-256 hash. A user holds at most 20 unrevoked tokens.
+Every request with a token records its `last_used_at`.
+
+#### `POST /api/v1/tokens`
+
+Body `{"name": "<1 to 100 characters>"}` (trimmed).
+
+- `201 {"id", "name", "created_at", "last_used_at": null, "secret": "alx_…"}`
+- `400 {"error": "invalid_name", "field": "name", "message"}` for a missing,
+  empty, whitespace-only or too long name
+- `403 {"error": "not_allowed", "message"}` when the user's address is no
+  longer on `ALLOWED_EMAILS` (existing tokens keep working until revoked)
+- `409 {"error": "token_limit", "message": "token limit reached"}`
+
+#### `GET /api/v1/tokens`
+
+The unrevoked tokens, newest first, never with their secrets:
+`200 {"items": [{"id", "name", "created_at", "last_used_at"}]}`.
+
+#### `DELETE /api/v1/tokens/{id}`
+
+Revokes the token: `204`. From the next request on it is refused with `401`.

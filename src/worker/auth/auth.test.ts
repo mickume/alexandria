@@ -29,7 +29,7 @@ function google(double: GoogleDouble): { forms: URLSearchParams[]; idToken: () =
   const forms: URLSearchParams[] = [];
   let lastIdToken = '';
   onOutbound(GOOGLE, async (request) => {
-    forms.push(new URLSearchParams(await request.text()));
+    forms.push(new URLSearchParams(new TextDecoder().decode(await request.arrayBuffer())));
     if (double.failWith) {
       return Response.json({ error: 'invalid_grant' }, { status: double.failWith });
     }

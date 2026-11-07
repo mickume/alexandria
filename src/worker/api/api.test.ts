@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance } from '../clock';
-import { api, setNow, signIn } from '../test/helpers';
+import { api, count, createToken, setNow, signIn } from '../test/helpers';
 
 describe('the current user', () => {
   it('is the email and the display name, and nothing else', async () => {
@@ -26,14 +26,18 @@ describe('an unknown path under /api/v1/', () => {
 describe('the rate limit', () => {
   it('allows 600 requests a minute per user across credentials, then refuses until the minute ends', async () => {
     setNow(Date.parse('2026-05-01T10:00:00.000Z'));
-    const first = await signIn('owner@example.test');
-    const second = await signIn('owner@example.test');
+    const owner = await signIn('owner@example.test');
+    const token = await createToken(owner);
     const other = await signIn('other@example.test', 'Other');
     for (let i = 0; i < 600; i++) {
-      const r = await api('GET', '/api/v1/me', { as: i % 2 ? first.session : second.session });
+      const r = await api(
+        'GET',
+        '/api/v1/me',
+        i % 2 ? { as: owner.session } : { bearer: token.secret },
+      );
       expect(r.status).toBe(200);
     }
-    const refused = await api('GET', '/api/v1/me', { as: first.session });
+    const refused = await api('GET', '/api/v1/me', { as: owner.session });
     expect(refused.status).toBe(429);
     expect(refused.json).toEqual({ error: 'rate_limited' });
     const retryAfter = Number(refused.headers.get('Retry-After'));
@@ -43,6 +47,34 @@ describe('the rate limit', () => {
 
     expect((await api('GET', '/api/v1/me', { as: other.session })).status).toBe(200);
     advance(60_000);
-    expect((await api('GET', '/api/v1/me', { as: second.session })).status).toBe(200);
+    expect((await api('GET', '/api/v1/me', { bearer: token.secret })).status).toBe(200);
   });
+});
+
+describe('a request body', () => {
+  it.each([
+    {
+      path: '/api/v1/tokens',
+      body: 'not json',
+      error: 'invalid_json',
+      field: null,
+      table: 'tokens',
+    },
+    {
+      path: '/api/v1/tokens',
+      body: { name: 5 },
+      error: 'invalid_name',
+      field: 'name',
+      table: 'tokens',
+    },
+  ])(
+    'that is not acceptable for POST $path is refused with $error',
+    async ({ path, body, error, field, table }) => {
+      const user = await signIn();
+      const r = await api('POST', path, { as: user.session, body });
+      expect(r.status).toBe(400);
+      expect(r.json).toEqual({ error, field, message: expect.any(String) });
+      expect(await count(table)).toBe(0);
+    },
+  );
 });

@@ -84,25 +84,15 @@ The current user.
 
 Every documented operation. Routes add theirs as they are implemented.
 
-## Functions
-
-### document()
-
-> **document**(...`ops`): `void`
-
-Adds operations to the document.
-
-#### Parameters
-
-##### ops
-
-...[`Operation`](#operation)[]
-
-#### Returns
-
-`void`
-
 ***
+
+### Token
+
+> `const` **Token**: `ZodObject`\<\{ `created_at`: `ZodString`; `id`: `ZodString`; `last_used_at`: `ZodNullable`\<`ZodString`\>; `name`: `ZodString`; \}, `$strict`\>
+
+A personal access token, as listed.
+
+## Functions
 
 ### findOperation()
 

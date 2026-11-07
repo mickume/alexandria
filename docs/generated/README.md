@@ -2,8 +2,11 @@
 
 ## Modules
 
+- [web/api](web/api.md)
 - [web/App](web/App.md)
+- [web/format](web/format.md)
 - [web/main](web/main.md)
+- [web/pages/Settings](web/pages/Settings.md)
 - [web/pages/SignIn](web/pages/SignIn.md)
 - [worker](worker.md)
 - [worker/api/errors](worker/api/errors.md)
@@ -17,6 +20,7 @@
 - [worker/auth/middleware](worker/auth/middleware.md)
 - [worker/auth/routes](worker/auth/routes.md)
 - [worker/auth/sessions](worker/auth/sessions.md)
+- [worker/auth/tokens](worker/auth/tokens.md)
 - [worker/clock](worker/clock.md)
 - [worker/env](worker/env.md)
 - [worker/links/normalize](worker/links/normalize.md)

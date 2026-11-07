@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { limitReached, notFound, readJson, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
 import { isAllowed } from './allowlist';
 import { finishSignIn, startSignIn } from './google';
 import { requireSameOrigin } from './middleware';
+import { createToken, listTokens, revokeToken, TOKEN_NAME_MAX, validTokenName } from './tokens';
 import {
   createSession,
   deleteSession,
@@ -68,4 +70,37 @@ authRoutes.post('/signout', requireSameOrigin, async (c) => {
   if (session) await deleteSession(c.env.DB, session);
   deleteCookie(c, SESSION_COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'Lax' });
   return c.redirect('/signin', 302);
+});
+
+/** Personal access tokens, under /api/v1/tokens. */
+export const tokenRoutes = new Hono<AppEnv>();
+
+tokenRoutes.post('/', async (c) => {
+  const parsed = await readJson(c);
+  if (!parsed.ok) return parsed.response;
+  const user = c.get('user');
+  if (!isAllowed(c.env, user.email)) {
+    return refusal(c, 403, 'not_allowed', 'this address may no longer create tokens');
+  }
+  const name = validTokenName(parsed.body.name);
+  if (name === null) {
+    return validationError(
+      c,
+      'invalid_name',
+      'name',
+      `a name of 1 to ${TOKEN_NAME_MAX} characters is required`,
+    );
+  }
+  const token = await createToken(c.env.DB, user.id, name);
+  if (!token) return limitReached(c, 'token_limit', 'token limit reached');
+  return c.json(token, 201);
+});
+
+tokenRoutes.get('/', async (c) => {
+  return c.json({ items: await listTokens(c.env.DB, c.get('user').id) });
+});
+
+tokenRoutes.delete('/:id', async (c) => {
+  const revoked = await revokeToken(c.env.DB, c.get('user').id, c.req.param('id'));
+  return revoked ? c.body(null, 204) : notFound(c);
 });

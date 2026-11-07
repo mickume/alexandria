@@ -39,6 +39,14 @@ export const ErrorBody = z.looseObject({
 /** The current user. */
 export const Me = z.strictObject({ email: z.string(), name: z.string() });
 
+/** A personal access token, as listed. */
+export const Token = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable(),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 /** The answers any authenticated operation may give, added to each. */
@@ -84,12 +92,39 @@ export const operations: Operation[] = [
       },
     },
   },
+  {
+    method: 'post',
+    path: '/tokens',
+    operationId: 'createToken',
+    summary: 'Create a personal access token; its secret is returned this once',
+    body: z.object({ name: z.string().min(1).max(100) }),
+    responses: {
+      201: {
+        description: 'The token with its secret (alx_…), never shown again',
+        schema: Token.extend({ secret: z.string() }),
+      },
+      400: error('invalid_json, or invalid_name: a name of 1 to 100 characters is required'),
+      403: error('not_allowed: the address has left the allow-list; or forbidden_origin'),
+      409: error('token_limit: 20 unrevoked tokens already, "token limit reached"'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/tokens',
+    operationId: 'listTokens',
+    summary: 'The unrevoked tokens, newest first, without their secrets',
+    responses: {
+      200: { description: 'The tokens', schema: z.strictObject({ items: z.array(Token) }) },
+    },
+  },
+  {
+    method: 'delete',
+    path: '/tokens/{id}',
+    operationId: 'revokeToken',
+    summary: 'Revoke a token; it authenticates nothing from the next request on',
+    responses: { 204: { description: 'Revoked' } },
+  },
 ];
-
-/** Adds operations to the document. */
-export function document(...ops: Operation[]): void {
-  operations.push(...ops);
-}
 
 function jsonSchema(schema: z.ZodType): object {
   const { $schema: _ignored, ...rest } = z.toJSONSchema(schema, {
