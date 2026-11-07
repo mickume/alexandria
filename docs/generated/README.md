@@ -34,6 +34,7 @@
 - [worker/enrich/providers](worker/enrich/providers.md)
 - [worker/enrich/queue](worker/enrich/queue.md)
 - [worker/enrich/routes](worker/enrich/routes.md)
+- [worker/enrich/throttle](worker/enrich/throttle.md)
 - [worker/enrich/vocabulary](worker/enrich/vocabulary.md)
 - [worker/env](worker/env.md)
 - [worker/fetcher/fetch](worker/fetcher/fetch.md)

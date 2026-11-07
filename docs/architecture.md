@@ -126,6 +126,17 @@ user's vocabulary (`enrich/vocabulary.ts`), and stores summary, topic and
 tags (`topics`, `tags`, `link_tags`). Links are read through the
 `link_views` view, which adds the topic's name and the tags in order.
 
+### The background throttle
+
+Background enrichment ("enrich all", and package 07's imports) goes through
+`enrich/throttle.ts`: `scheduleThrottled` reserves a user's slots 3 seconds
+apart (at most 20 a minute), starting at the user's next free slot
+(`users.throttle_next_at`) or now, in one statement so concurrent calls never
+share a slot; users are independent. `sendThrottled` sends each message with
+its slot and the delay to it, at most the queue's 12 hours; a message that
+arrives before its slot is sent again for the time left instead of being
+processed. A single pasted link is not throttled.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

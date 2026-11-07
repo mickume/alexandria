@@ -4,6 +4,7 @@ import { getLink, type LinkRow } from '../links/store';
 import { buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, type AiSettings } from './keys';
 import { enrichWith } from './providers';
+import { deferIfEarly } from './throttle';
 import { listVocabulary, resolveTags, resolveTopic } from './vocabulary';
 
 /** Notes that mean a link has nothing to enrich. */
@@ -84,6 +85,7 @@ async function promptFor(env: Env, link: LinkRow): Promise<string> {
 
 /** Enriches one link with its user's own key and model. */
 async function processEnrichment(env: Env, message: Message<EnrichMessage>): Promise<void> {
+  if (await deferIfEarly(env, message.body)) return message.ack();
   const { user_id, link_id } = message.body;
   const link = await getLink(env.DB, user_id, link_id);
   if (!link) return message.ack();
