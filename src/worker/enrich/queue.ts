@@ -2,7 +2,7 @@ import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
 import { getLink, type LinkRow } from '../links/store';
 import { buildPrompt, normalizeResult, type Enrichment } from './enrich';
-import { decryptKey, getAiSettings, type AiSettings } from './keys';
+import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
 import { deferIfEarly } from './throttle';
 import { listVocabulary, resolveTags, resolveTopic } from './vocabulary';
@@ -94,12 +94,22 @@ async function processEnrichment(env: Env, message: Message<EnrichMessage>): Pro
     await setEnrichmentStatus(env.DB, link, 'no_key');
     return message.ack();
   }
+  if (settings.status === 'rejected') {
+    // Enrichment is paused until the owner replaces the key.
+    await setEnrichmentStatus(env.DB, link, 'waiting_for_key');
+    return message.ack();
+  }
   const apiKey = await decryptKey(env, settings.ciphertext, settings.iv, user_id);
   const outcome = await enrichWith(
     env,
     { provider: settings.provider, apiKey, model: settings.model },
     await promptFor(env, link),
   );
+  if (!outcome.ok && outcome.kind === 'rejected') {
+    await markKeyRejected(env.DB, user_id, outcome.message);
+    await setEnrichmentStatus(env.DB, link, 'waiting_for_key');
+    return message.ack();
+  }
   const result = outcome.ok ? normalizeResult(outcome.value) : null;
   if (result) {
     await storeEnrichment(env, link, result);

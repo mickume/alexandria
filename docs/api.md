@@ -321,6 +321,13 @@ rejection.
 - `502 {"error": "provider_unavailable", "message"}` when the provider cannot
   be reached, answers 5xx, or does not answer within 60 seconds
 
+When the provider later answers an enrichment with HTTP 401, 402 or 403 (a
+revoked key, no credit), the key's `status` becomes `rejected` with the
+provider's message in `rejected_message`, the user's enrichment pauses, and
+links reaching enrichment wait as `waiting_for_key`. Saving a key the
+provider accepts lifts the pause; the waiting links are enriched by
+`POST /api/v1/links/enrich-unenriched`.
+
 #### `DELETE /api/v1/settings/ai`
 
 Forgets the provider, model and key: `204`. Later links are not enriched.

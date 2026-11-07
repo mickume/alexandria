@@ -195,3 +195,39 @@ describe('enriching all unenriched links from the settings page', () => {
     expect(screen.queryByRole('button', { name: /Enrich all/ })).toBeNull();
   });
 });
+
+describe('a rejected AI key on the settings page', () => {
+  const settings = (status: string, message: string | null) => ({
+    configured: true,
+    provider: 'anthropic',
+    model: 'claude-opus-5-5',
+    key_last4: '1234',
+    status,
+    rejected_message: message,
+    unenriched_count: 0,
+  });
+
+  it('is reported once, beside Replace and Remove', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', {
+        status: 200,
+        body: settings('rejected', 'insufficient credits'),
+      }),
+    );
+    expect(
+      await screen.findAllByText('your AI key was rejected: insufficient credits'),
+    ).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Replace' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeTruthy();
+  });
+
+  it('is not reported while the key is verified', async () => {
+    renderPage(
+      '/settings',
+      fakeApi().on('GET', '/api/v1/settings/ai', { status: 200, body: settings('verified', null) }),
+    );
+    await screen.findByText('…1234');
+    expect(screen.queryByText(/your AI key was rejected/)).toBeNull();
+  });
+});

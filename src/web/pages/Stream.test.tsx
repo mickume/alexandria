@@ -347,3 +347,36 @@ describe('the banner of a library without an AI key', () => {
       expect(card.textContent).not.toContain('add an AI key');
   });
 });
+
+describe('the stream with a rejected AI key', () => {
+  it('carries no rejection message on any card', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/settings/ai', {
+        status: 200,
+        body: {
+          configured: true,
+          provider: 'anthropic',
+          model: 'm',
+          key_last4: '1234',
+          status: 'rejected',
+          rejected_message: 'insufficient credits',
+          unenriched_count: 2,
+        },
+      })
+      .on('GET', '/api/v1/links', {
+        status: 200,
+        body: {
+          items: makeLinks(2).map((l) => ({
+            ...l,
+            state: 'active',
+            enrichment_status: 'waiting_for_key',
+          })),
+          next_cursor: null,
+        },
+      });
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 0' });
+    await waitFor(() => expect(api.sent('GET', '/api/v1/settings/ai')).toHaveLength(1));
+    expect(screen.queryByText(/rejected/)).toBeNull();
+  });
+});

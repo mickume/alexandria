@@ -75,6 +75,11 @@ export function AiKeySection() {
       </p>
       {settings.configured && (
         <div className="panel">
+          {settings.status === 'rejected' && (
+            <p className="notice" role="alert">
+              your AI key was rejected: {settings.rejected_message ?? 'no reason given'}
+            </p>
+          )}
           <p>
             {settings.provider === 'anthropic' ? 'Anthropic' : 'OpenRouter'} · {settings.model} ·{' '}
             <code>…{settings.key_last4}</code>

@@ -552,3 +552,75 @@ describe('re-running an enrichment', () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe('a key the provider starts rejecting', () => {
+  it.each([
+    { status: 401, message: 'invalid x-api-key' },
+    { status: 402, message: 'insufficient credits' },
+    { status: 403, message: 'permission denied' },
+  ])(
+    'is marked rejected on a $status, and the link waits for a key',
+    async ({ status, message }) => {
+      new FakeOrigin().page(ARTICLE, blogArticle);
+      const ai = new FakeAi();
+      const user = await signIn();
+      await saveKey(user);
+      const enrich = recordEnrichQueue();
+      const { id } = await addAndFetch(user, ARTICLE);
+      ai.status(status, message, { testsToo: false });
+      const sent = recordEnrichQueue();
+      await deliverEnrichments([enrich[0]!.body]);
+      const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
+      expect(settings).toMatchObject({ status: 'rejected', rejected_message: message });
+      expect((await link(user, id)).enrichment_status).toBe('waiting_for_key');
+      expect(sent).toEqual([]);
+    },
+  );
+
+  it('leaves every link reaching enrichment waiting, without calling the provider', async () => {
+    new FakeOrigin()
+      .page('https://w1.example/', blogArticle)
+      .page('https://w2.example/', blogArticle);
+    const ai = new FakeAi();
+    const user = await signIn();
+    await saveKey(user);
+    await env.DB.prepare(
+      "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'no credit' WHERE id = ?",
+    )
+      .bind(user.id)
+      .run();
+    const before = ai.requests.length;
+    const one = await addFetchAndEnrich(user, 'https://w1.example/');
+    const two = await addFetchAndEnrich(user, 'https://w2.example/');
+    // A message already queued before the rejection reaches the worker too.
+    await deliverEnrichments([{ user_id: user.id, link_id: one.id, attempt: 1 }]);
+    for (const id of [one.id, two.id])
+      expect((await link(user, id)).enrichment_status).toBe('waiting_for_key');
+    expect(ai.requests.length).toBe(before);
+  });
+
+  it('is replaced by a key the provider accepts, which lifts the pause and leaves the waiting links waiting', async () => {
+    new FakeOrigin()
+      .page('https://waiting.example/', blogArticle)
+      .page('https://fresh.example/', blogArticle);
+    new FakeAi();
+    const user = await signIn();
+    await saveKey(user);
+    await env.DB.prepare(
+      "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'no credit' WHERE id = ?",
+    )
+      .bind(user.id)
+      .run();
+    const waiting = await addFetchAndEnrich(user, 'https://waiting.example/');
+    await saveKey(user, { provider: 'anthropic', api_key: 'sk-ant-newkey9999' });
+    const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
+    expect(settings).toMatchObject({
+      status: 'verified',
+      rejected_message: null,
+      unenriched_count: 1,
+    });
+    const fresh = await addFetchAndEnrich(user, 'https://fresh.example/');
+    expect((await link(user, fresh.id)).enrichment_status).toBe('enriched');
+    expect((await link(user, waiting.id)).enrichment_status).toBe('waiting_for_key');
+  });
+});
