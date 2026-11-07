@@ -5,6 +5,7 @@
 - [web/api](web/api.md)
 - [web/App](web/App.md)
 - [web/components/AddLinks](web/components/AddLinks.md)
+- [web/components/CheckButton](web/components/CheckButton.md)
 - [web/components/EditableField](web/components/EditableField.md)
 - [web/components/LinkCard](web/components/LinkCard.md)
 - [web/components/Markdown](web/components/Markdown.md)

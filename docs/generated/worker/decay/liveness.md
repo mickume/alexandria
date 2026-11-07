@@ -36,6 +36,14 @@ How long one liveness request may take.
 
 ***
 
+### checkRoutes
+
+> `const` **checkRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
+
+Checking one link on demand, under /api/v1/links.
+
+***
+
 ### DEAD\_AFTER
 
 > `const` **DEAD\_AFTER**: `3` = `3`
@@ -49,6 +57,14 @@ Consecutive failed weekly checks that make a link dead.
 > `const` **ENQUEUE\_WINDOW\_MS**: `number`
 
 A link enqueued less than this long ago is not enqueued again.
+
+***
+
+### MANUAL\_CHECK\_INTERVAL\_MS
+
+> `const` **MANUAL\_CHECK\_INTERVAL\_MS**: `number`
+
+The least time between two on-demand checks of one link.
 
 ## Functions
 

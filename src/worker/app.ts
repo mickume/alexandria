@@ -5,6 +5,7 @@ import { rateLimit } from './api/ratelimit';
 import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes, tokenRoutes } from './auth/routes';
 import { archiveLinkRoutes, archiveRoutes } from './decay/archive';
+import { checkRoutes } from './decay/liveness';
 import { decaySettingsRoutes } from './decay/routes';
 import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
 import type { AppEnv } from './env';
@@ -26,6 +27,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/settings', decaySettingsRoutes);
   api.route('/links', enrichLinkRoutes);
   api.route('/links', archiveLinkRoutes);
+  api.route('/links', checkRoutes);
   api.route('/links', snapshotRoutes);
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);

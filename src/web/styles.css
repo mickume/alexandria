@@ -571,3 +571,7 @@ select {
   color: var(--accent);
   font-weight: 600;
 }
+
+.dead {
+  color: var(--danger);
+}

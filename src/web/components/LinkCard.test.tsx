@@ -287,3 +287,25 @@ describe('a card’s decay', () => {
     expect(card.querySelector('.sticky-label')?.textContent ?? null).toBe(sticky ? 'sticky' : null);
   });
 });
+
+describe('a dead link’s card', () => {
+  it.each([
+    {
+      label: 'a dead link',
+      overrides: {
+        dead_since: '2027-03-01T10:00:00.000Z',
+        last_check_result: 'could not connect',
+        has_snapshot: true,
+      },
+      dead: true,
+    },
+    { label: 'a live link', overrides: { has_snapshot: true }, dead: false },
+  ])('shows $label as it is', ({ overrides, dead }) => {
+    const l = makeLink({ id: 'gone', title: 'Gone Site', state: 'active', ...overrides });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    const title = screen.getByRole('link', { name: 'Gone Site' });
+    expect(getComputedStyle(title).textDecoration.includes('line-through')).toBe(dead);
+    expect(screen.queryByText('dead since 2027-03-01 (could not connect)') !== null).toBe(dead);
+    expect(screen.getByRole('link', { name: 'Read' })).toBeTruthy();
+  });
+});

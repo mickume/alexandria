@@ -561,6 +561,33 @@ export const operations: Operation[] = [
   },
   {
     method: 'post',
+    path: '/links/{id}/check',
+    operationId: 'checkLink',
+    summary: 'Check now that the link’s address answers; a pass clears its dead mark',
+    responses: {
+      200: {
+        description: 'The check’s outcome and the link',
+        schema: z.strictObject({
+          passed: z.boolean(),
+          result: z.string(),
+          checked_at: z.string(),
+          link: LinkWithNote,
+        }),
+      },
+      409: error('link_archived: "archived links are not checked"'),
+      429: {
+        ...error('checked_recently: "already checked recently", or rate_limited'),
+        headers: {
+          'Retry-After': {
+            description: 'Seconds until a check is allowed',
+            schema: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+  {
+    method: 'post',
     path: '/links/{id}/enrich',
     operationId: 'enrichLink',
     summary: 'Run the enrichment of the link again, at once',

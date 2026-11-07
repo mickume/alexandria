@@ -493,3 +493,24 @@ The archived links, most recently archived first, each with `archived_at` and
 Brings an archived link back: `active`, `last_used_at` now (a boost, not a
 use: the use count stays), no archive date. `200 <link>`, or
 `409 {"error": "not_archived", "message": "this link is not archived"}`.
+
+### Liveness
+
+Every kept link (active, dormant or pinned, not archived) is checked weekly:
+HEAD, then a headers-only GET when the HEAD fails, 10 seconds each, at most 5
+redirects, never more than one request per second to one host. A final 2xx
+passes. Three failed weekly checks in a row set `dead_since`; a later pass
+clears it. `last_checked_at` and `last_check_result` ("HTTP 200", "could not
+connect", "timed out", …) say how the last check went. A dead link keeps its
+snapshot and reader view and decays like any other.
+
+#### `POST /api/v1/links/{id}/check`
+
+Checks the link now:
+`200 {"passed": <boolean>, "result", "checked_at", "link": <link>}`. A pass
+clears `dead_since` and the failure count; a failure is stored as the last
+result but does not count towards the three. At most one per link per 10
+minutes:
+`429 {"error": "checked_recently", "message": "already checked recently"}`
+with `Retry-After`. An archived link:
+`409 {"error": "link_archived", "message": "archived links are not checked"}`.

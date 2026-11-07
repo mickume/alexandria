@@ -728,6 +728,20 @@ A workspace on its own, with its note.
 
 `Promise`\<[`Changes`](#changes)\>
 
+##### check
+
+> **check**: (`id`) => `Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
+
 ##### edit
 
 > **edit**: (`id`, `fields`) => `Promise`\<[`Link`](#link)\>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FakeOrigin } from '../test/origin';
 import { api, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
 
 const T = Date.parse('2027-06-01T12:00:00.000Z');
@@ -156,5 +157,30 @@ describe('restoring a link', () => {
     expect(
       await env.DB.prepare('SELECT state, last_used_at FROM links WHERE id = ?').bind(id).first(),
     ).toEqual(before);
+  });
+});
+
+describe('another user’s link', () => {
+  it('is answered as one that does not exist by archive, restore and check', async () => {
+    setNow(T);
+    const a = await signIn('a@example.test', 'A');
+    const b = await signIn('b@example.test', 'B');
+    const [link = ''] = await seedLinks(b, [{ url: 'https://b-only.example/', state: 'archived' }]);
+    const origin = new FakeOrigin().byMethod('https://b-only.example/', {
+      HEAD: () => new Response(null, { status: 200 }),
+    });
+    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first();
+    for (const action of ['archive', 'restore', 'check']) {
+      const r = await api('POST', `/api/v1/links/${link}/${action}`, { as: a.session });
+      const unknown = await api('POST', `/api/v1/links/${crypto.randomUUID()}/${action}`, {
+        as: a.session,
+      });
+      expect([r.status, r.json], action).toEqual([404, { error: 'not_found' }]);
+      expect([unknown.status, unknown.json]).toEqual([404, { error: 'not_found' }]);
+    }
+    expect(await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first()).toEqual(
+      before,
+    );
+    expect(origin.log).toEqual([]);
   });
 });

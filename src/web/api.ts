@@ -169,6 +169,11 @@ export const links = {
     id: string,
     fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>> & { note?: string },
   ) => request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  check: (id: string) =>
+    request<{ passed: boolean; result: string; checked_at: string; link: Link }>(
+      'POST',
+      `/links/${encodeURIComponent(id)}/check`,
+    ),
   archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
   restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
   archived: () => request<Page<Link>>('GET', '/archive').then((p) => p.items),

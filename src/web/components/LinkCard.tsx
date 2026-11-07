@@ -134,6 +134,12 @@ function CardMeta({ link }: { link: Link }) {
         </span>
       ))}
       {link.state === 'dormant' && <span className="decay-note">{link.decay_note}</span>}
+      {link.dead_since && (
+        <span className="dead">
+          dead since {link.dead_since.slice(0, 10)}
+          {link.last_check_result ? ` (${link.last_check_result})` : ''}
+        </span>
+      )}
       {link.sticky && <span className="sticky-label">sticky</span>}
     </div>
   );
@@ -193,7 +199,11 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         {link.favicon_url && (
           <img className="favicon" src={link.favicon_url} alt="" width={16} height={16} />
         )}
-        <a className="card-title" href={open}>
+        <a
+          className="card-title"
+          href={open}
+          style={link.dead_since ? { textDecoration: 'line-through' } : undefined}
+        >
           {link.title}
         </a>
       </div>

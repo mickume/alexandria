@@ -1,7 +1,9 @@
+import { Hono } from 'hono';
+import { limitReached, notFound } from '../api/errors';
 import { now } from '../clock';
-import type { Env, LivenessMessage } from '../env';
+import type { AppEnv, Env, LivenessMessage } from '../env';
 import { requestFollowing } from '../fetcher/fetch';
-import { getLink, type LinkRow } from '../links/store';
+import { getLink, toFullView, type LinkRow } from '../links/store';
 
 /** How long one liveness request may take. */
 export const CHECK_TIMEOUT_MS = 10_000;
@@ -149,3 +151,56 @@ export async function enqueueDueChecks(env: Env): Promise<void> {
     await env.LIVENESS_QUEUE.sendBatch(messages.slice(i, i + 100));
   }
 }
+
+/** The least time between two on-demand checks of one link. */
+export const MANUAL_CHECK_INTERVAL_MS = 10 * 60_000;
+
+/** Checking one link on demand, under /api/v1/links. */
+export const checkRoutes = new Hono<AppEnv>();
+
+checkRoutes.post('/:id/check', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const link = await getLink(c.env.DB, userId, id);
+  if (!link) return notFound(c);
+  if (link.state === 'archived')
+    return limitReached(c, 'link_archived', 'archived links are not checked');
+  const t = now();
+  const claimed = await c.env.DB.prepare(
+    `UPDATE links SET last_manual_check_at = ?1 WHERE id = ?2 AND user_id = ?3
+       AND (last_manual_check_at IS NULL OR last_manual_check_at <= ?4) RETURNING id`,
+  )
+    .bind(
+      t.toISOString(),
+      id,
+      userId,
+      new Date(t.getTime() - MANUAL_CHECK_INTERVAL_MS).toISOString(),
+    )
+    .first();
+  if (!claimed) {
+    const since = t.getTime() - Date.parse(link.last_manual_check_at ?? '');
+    c.header(
+      'Retry-After',
+      String(Math.max(1, Math.ceil((MANUAL_CHECK_INTERVAL_MS - since) / 1000))),
+    );
+    return c.json({ error: 'checked_recently', message: 'already checked recently' }, 429);
+  }
+  const outcome = await checkLink(c.env, link.url);
+  const at = now().toISOString();
+  // An on-demand check counts only when it passes: three quick clicks cannot kill a link.
+  await c.env.DB.prepare(
+    `UPDATE links SET last_checked_at = ?1, last_check_result = ?2, updated_at = ?1,
+       liveness_failures = CASE WHEN ?3 THEN 0 ELSE liveness_failures END,
+       dead_since = CASE WHEN ?3 THEN NULL ELSE dead_since END
+     WHERE id = ?4 AND user_id = ?5`,
+  )
+    .bind(at, outcome.result, outcome.passed ? 1 : 0, id, userId)
+    .run();
+  const updated = await getLink(c.env.DB, userId, id);
+  return c.json({
+    passed: outcome.passed,
+    result: outcome.result,
+    checked_at: at,
+    link: toFullView(updated!),
+  });
+});

@@ -387,3 +387,89 @@ function failingBatches(db: D1Database): D1Database {
     },
   });
 }
+
+describe('checking a link on demand', () => {
+  it.each([
+    {
+      label: 'a pass',
+      answer: 'pass',
+      before: { failures: 3, dead: true },
+      after: { liveness_failures: 0, dead_since: null },
+      passed: true,
+      result: 'HTTP 200',
+    },
+    {
+      label: 'a failure',
+      answer: 'fail',
+      before: { failures: 1, dead: false },
+      after: { liveness_failures: 1, last_check_result: 'HTTP 503' },
+      passed: false,
+      result: 'HTTP 503',
+    },
+  ])(
+    'answers with $label and counts only a pass',
+    async ({ answer, before, after, passed, result }) => {
+      setNow(T);
+      const user = await signIn();
+      const id = await seedChecked(user, { checkedDaysAgo: 2, url: 'https://ondemand.example/' });
+      await env.DB.prepare('UPDATE links SET liveness_failures = ?, dead_since = ? WHERE id = ?')
+        .bind(before.failures, before.dead ? new Date(T - DAY).toISOString() : null, id)
+        .run();
+      const origin = new FakeOrigin();
+      if (answer === 'pass')
+        origin.byMethod('https://ondemand.example/', {
+          HEAD: () => new Response(null, { status: 200 }),
+        });
+      else origin.status('https://ondemand.example/', 503);
+      const r = await api('POST', `/api/v1/links/${id}/check`, { as: user.session });
+      expect(r.status).toBe(200);
+      expect(r.json).toMatchObject({ passed, result, checked_at: new Date(T).toISOString() });
+      expect(r.json.link.id).toBe(id);
+      expect(await liveness(id)).toMatchObject(after);
+    },
+  );
+
+  it('is refused within 10 minutes of the previous on-demand check of the link', async () => {
+    setNow(T);
+    const user = await signIn();
+    const one = await seedChecked(user, { checkedDaysAgo: 2, url: 'https://often.example/' });
+    const two = await seedChecked(user, { checkedDaysAgo: 2, url: 'https://other-often.example/' });
+    const origin = new FakeOrigin()
+      .byMethod('https://often.example/', { HEAD: () => new Response(null, { status: 200 }) })
+      .byMethod('https://other-often.example/', {
+        HEAD: () => new Response(null, { status: 200 }),
+      });
+    expect((await api('POST', `/api/v1/links/${one}/check`, { as: user.session })).status).toBe(
+      200,
+    );
+    setNow(T + 4 * 60_000);
+    const r = await api('POST', `/api/v1/links/${one}/check`, { as: user.session });
+    expect(r.status).toBe(429);
+    expect(r.json).toEqual({ error: 'checked_recently', message: 'already checked recently' });
+    expect(r.headers.get('Retry-After')).toBe('360');
+    expect(origin.log.filter((q) => q.url === 'https://often.example/')).toHaveLength(1);
+    expect((await api('POST', `/api/v1/links/${two}/check`, { as: user.session })).status).toBe(
+      200,
+    );
+    setNow(T + 10 * 60_000);
+    expect((await api('POST', `/api/v1/links/${one}/check`, { as: user.session })).status).toBe(
+      200,
+    );
+  }, 15_000);
+
+  it('is refused for an archived link', async () => {
+    setNow(T);
+    const user = await signIn();
+    const id = await seedChecked(user, {
+      state: 'archived',
+      url: 'https://archived-check.example/',
+    });
+    const origin = new FakeOrigin().byMethod('https://archived-check.example/', {
+      HEAD: () => new Response(null, { status: 200 }),
+    });
+    const r = await api('POST', `/api/v1/links/${id}/check`, { as: user.session });
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error: 'link_archived', message: 'archived links are not checked' });
+    expect(origin.log).toEqual([]);
+  });
+});
