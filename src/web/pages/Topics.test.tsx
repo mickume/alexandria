@@ -37,6 +37,10 @@ describe('the Topics page', () => {
     expect(window.location.pathname + window.location.search).toBe(
       '/search?q=topic%3A%22web%20development%22',
     );
+    await act(async () => undefined);
+    expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=topic%3A%22web%20development%22',
+    ]);
   });
 
   it('follows the cursor until every topic is listed', async () => {

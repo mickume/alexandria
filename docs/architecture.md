@@ -54,7 +54,11 @@ account and checks the PKCE verifier as Google does.
   `main.tsx` mounts `App.tsx`, which picks the page for the current path:
   `pages/SignIn`, `pages/Stream` (the add input, the cards, infinite scroll,
   pinning by drag, deleting with undo), `pages/LinkDetail` and
-  `pages/Settings` (tokens). `api.ts` is the client of the API, `format.ts`
+  `pages/Settings` (tokens), `pages/Search` (the results of the search box,
+  `components/SearchBox`, which every page's header carries and which owns the
+  `/` and Escape keys), and `pages/Topics` and `pages/Tags`
+  (`components/VocabularyList`). `App.tsx` follows the path and the query
+  string. `api.ts` is the client of the API, `format.ts`
   formats dates. `styles.css` holds the whole visual design: one system
   typeface, light and dark from `prefers-color-scheme`.
 

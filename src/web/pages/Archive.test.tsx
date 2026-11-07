@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeApi, makeLink, renderPage } from '../test/helpers';
 
@@ -49,5 +49,37 @@ describe('the Archive page', () => {
     expect(screen.queryByRole('article', { name: 'Alpha' })).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(1);
+  });
+
+  it('searches only archived links and shows the results on the Archive page', async () => {
+    vi.useFakeTimers();
+    const archived = makeLink({ id: 'k', title: 'Kiwi farming', state: 'archived' });
+    const api = new FakeApi()
+      .on('GET', '/api/v1/archive', {
+        status: 200,
+        body: {
+          items: [makeLink({ id: 'o', title: 'Other', state: 'archived' })],
+          next_cursor: null,
+        },
+      })
+      .on('GET', '/api/v1/search', {
+        status: 200,
+        body: { items: [{ link: archived, snippet: [] }], workspaces: [], next_cursor: null },
+      });
+    renderPage('/archive', api);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('article', { name: 'Other' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
+      target: { value: 'kiwi' },
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=kiwi%20state%3Aarchived',
+    ]);
+    expect(window.location.pathname).toBe('/archive');
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('heading', { name: 'Archive' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Kiwi farming' })).toBeTruthy();
+    expect(screen.queryByRole('article', { name: 'Other' })).toBeNull();
   });
 });

@@ -307,3 +307,28 @@ export function filterQuery(name: 'topic' | 'tag', value: string): string {
 export function searchPath(q: string): string {
   return `/search?q=${encodeURIComponent(q)}`;
 }
+
+/** A piece of a snippet: text, and whether it is a matched word. */
+export interface Segment {
+  text: string;
+  match: boolean;
+}
+
+/** One page of a search's results. */
+export interface SearchResults {
+  items: { link: Link; snippet: Segment[] }[];
+  workspaces: { id: string; name: string; snippet: Segment[] }[];
+  next_cursor: string | null;
+}
+
+/** Searches the library: free words and prefix filters, one page at a time. */
+export function search(q: string, cursor?: string | null): Promise<SearchResults> {
+  const after = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+  return request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}${after}`);
+}
+
+/** The prefix filters of a query, each as written: tag:x, topic:"web development", … */
+export function activeFilters(q: string): string[] {
+  const terms = q.match(/[^\s"]*"[^"]*"\S*|\S+/g) ?? [];
+  return terms.filter((t) => /^(tag|topic|host|state|in|is):("[^"]*"|[^"\s]+)$/i.test(t));
+}

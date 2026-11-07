@@ -34,6 +34,10 @@ describe('the Tags page', () => {
     ]);
     await act(async () => screen.getByRole('link', { name: 'cloudflare' }).click());
     expect(window.location.pathname + window.location.search).toBe('/search?q=tag%3Acloudflare');
+    await act(async () => undefined);
+    expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=tag%3Acloudflare',
+    ]);
   });
 
   it('says so when there are no tags yet', async () => {
