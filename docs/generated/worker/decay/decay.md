@@ -2,6 +2,30 @@
 
 ## Variables
 
+### decayHooks
+
+> `const` **decayHooks**: `object` = `{}`
+
+Test seams of the evaluation, as the clock is one.
+
+#### Type Declaration
+
+##### afterSelect?
+
+> `optional` **afterSelect?**: (`userId`) => `Promise`\<`void`\>
+
+###### Parameters
+
+###### userId
+
+`string`
+
+###### Returns
+
+`Promise`\<`void`\>
+
+***
+
 ### STICKY
 
 > `const` **STICKY**: "(\\n  (SELECT COUNT(\*) FROM link\_uses u WHERE u.link\_id = l.id) \>= 5\\n  AND (SELECT COUNT(DISTINCT substr(u.at, 1, 10)) FROM link\_uses u WHERE u.link\_id = l.id) \>= 5\\n)"
@@ -45,7 +69,10 @@ archived.
 
 > **evaluateDecay**(`env`, `userId`): `Promise`\<`void`\>
 
-Evaluates decay for one user at the current time, in one transaction.
+Evaluates decay for one user at the current time: dormancy, archiving and
+removal, and the user's last_decay_at, all in one transaction, so that an
+evaluation that fails changes nothing. The stored objects of the removed
+links are deleted after the transaction.
 
 #### Parameters
 

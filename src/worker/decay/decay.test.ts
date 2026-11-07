@@ -1,4 +1,11 @@
+import {
+  createExecutionContext,
+  createScheduledController,
+  waitOnExecutionContext,
+} from 'cloudflare:test';
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import worker from '../index';
 import {
   api,
   createToken,
@@ -9,7 +16,7 @@ import {
   type ApiOptions,
   type TestUser,
 } from '../test/helpers';
-import { evaluateDecay } from './decay';
+import { decayHooks, evaluateDecay } from './decay';
 
 const DEFAULTS = { dormant_days: 60, archive_days: 120, remove_days: 180 };
 
@@ -326,5 +333,330 @@ describe('why a link is in its state', () => {
     ]) {
       expect(field in link).toBe(true);
     }
+  });
+});
+
+/** Runs the Worker's scheduled handler as the hourly Cron Trigger would. */
+async function runScheduled(): Promise<void> {
+  const ctx = createExecutionContext();
+  await worker.scheduled?.(createScheduledController({ cron: '0 * * * *' }), env, ctx);
+  await waitOnExecutionContext(ctx);
+}
+
+async function linkRow(id: string) {
+  return env.DB.prepare('SELECT state, archived_at FROM links WHERE id = ?')
+    .bind(id)
+    .first<{ state: string; archived_at: string | null }>();
+}
+
+describe('archiving by decay', () => {
+  it.each([
+    { label: 'active, unused 120 days', days: 120, opts: {}, expected: 'archived' },
+    {
+      label: 'dormant, unused 130 days',
+      days: 130,
+      opts: { state: 'dormant' },
+      expected: 'archived',
+    },
+    {
+      label: 'unreachable, unused 125 days',
+      days: 125,
+      opts: { state: 'unreachable' },
+      expected: 'archived',
+    },
+    {
+      label: 'pending, unused 119 days',
+      days: 119,
+      opts: { state: 'pending' },
+      expected: 'pending',
+    },
+    {
+      label: 'pinned dormant, unused 400 days',
+      days: 400,
+      opts: { state: 'dormant', pinned: true },
+      expected: 'dormant',
+    },
+    {
+      label: 'dormant in a workspace, unused 400 days',
+      days: 400,
+      opts: { state: 'dormant', member: true },
+      expected: 'dormant',
+    },
+    { label: 'dead, unused 120 days', days: 120, opts: { dead: true }, expected: 'archived' },
+    { label: 'dead, unused 30 days', days: 30, opts: { dead: true }, expected: 'active' },
+  ])('leaves a link $label $expected', async ({ days, opts, expected }) => {
+    setNow(T);
+    const user = await signIn();
+    const id = await seedAged(user, days, opts);
+    if ('dead' in opts)
+      await env.DB.prepare('UPDATE links SET dead_since = ? WHERE id = ?')
+        .bind(new Date(T - 30 * DAY).toISOString(), id)
+        .run();
+    await evaluateDecay(env, user.id);
+    const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
+    expect(link.state).toBe(expected);
+    const inStream = (await api('GET', '/api/v1/links?limit=100', await as(user))).json.items.some(
+      (l: { id: string }) => l.id === id,
+    );
+    const inArchive =
+      (await api('GET', '/api/v1/archive', await as(user))).json.items?.some(
+        (l: { id: string }) => l.id === id,
+      ) ?? false;
+    if (expected === 'archived') {
+      expect(link.archived_at).toBe(new Date(T).toISOString());
+      expect(link.removal_at).toBe(new Date(T + 180 * DAY).toISOString());
+      expect([inStream, inArchive]).toEqual([false, true]);
+    } else {
+      expect(link.archived_at).toBeNull();
+      expect(inStream).toBe(true);
+    }
+  });
+
+  it('applies each user’s own thresholds', async () => {
+    setNow(T);
+    const user = await signIn();
+    await api(
+      'PUT',
+      '/api/v1/settings/decay',
+      await as(user, { body: { dormant_days: 7, archive_days: 14, remove_days: 7 } }),
+    );
+    const dormant = await seedAged(user, 8);
+    const archived = await seedAged(user, 15);
+    const old = await seedAged(user, 400, { state: 'archived' });
+    await env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?')
+      .bind(new Date(T - 8 * DAY).toISOString(), old)
+      .run();
+    const other = await signIn('other@example.test', 'Other');
+    const othersLink = await seedAged(other, 15);
+    await evaluateDecay(env, user.id);
+    await evaluateDecay(env, other.id);
+    expect((await linkRow(dormant))?.state).toBe('dormant');
+    expect((await linkRow(archived))?.state).toBe('archived');
+    expect(await linkRow(old)).toBeNull();
+    expect((await linkRow(othersLink))?.state).toBe('active');
+  });
+});
+
+describe('removal by decay', () => {
+  it('deletes a link archived remove_days ago with everything it had, and keeps one a day short', async () => {
+    setNow(T);
+    const user = await signIn();
+    const gone = await seedAged(user, 400, { state: 'archived', member: true });
+    const kept = await seedAged(user, 400, { state: 'archived' });
+    await env.DB.batch([
+      env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?').bind(
+        new Date(T - 180 * DAY).toISOString(),
+        gone,
+      ),
+      env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?').bind(
+        new Date(T - 179 * DAY).toISOString(),
+        kept,
+      ),
+      env.DB.prepare('INSERT INTO link_uses (link_id, user_id, at) VALUES (?, ?, ?)').bind(
+        gone,
+        user.id,
+        '2026-01-01T00:00:00.000Z',
+      ),
+      env.DB.prepare('INSERT INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)').bind(
+        gone,
+        user.id,
+        'text',
+      ),
+    ]);
+    for (const id of [gone, kept])
+      await env.SNAPSHOTS.put(`u/${user.id}/l/${id}/snapshot`, '<html>stored</html>');
+    await evaluateDecay(env, user.id);
+    expect((await api('GET', `/api/v1/links/${gone}`, await as(user))).status).toBe(404);
+    expect((await env.SNAPSHOTS.list({ prefix: `u/${user.id}/l/${gone}/` })).objects).toEqual([]);
+    for (const table of [
+      'links',
+      'link_uses',
+      'link_texts',
+      'link_events',
+      'link_tags',
+      'workspace_links',
+    ]) {
+      const column = table === 'links' ? 'id' : 'link_id';
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`)
+        .bind(gone)
+        .first<{ n: number }>();
+      expect(row?.n, table).toBe(0);
+    }
+    expect((await linkRow(kept))?.state).toBe('archived');
+    expect((await env.SNAPSHOTS.list({ prefix: `u/${user.id}/l/${kept}/` })).objects).toHaveLength(
+      1,
+    );
+    const archive = (await api('GET', '/api/v1/archive', await as(user))).json.items.map(
+      (l: { id: string }) => l.id,
+    );
+    expect(archive).toEqual([kept]);
+  });
+});
+
+describe('one evaluation', () => {
+  it('leaves every link in the state the rules give, and a second run changes nothing', async () => {
+    setNow(T);
+    const user = await signIn();
+    const config = fc.record({
+      state: fc.constantFrom('pending', 'active', 'unreachable', 'dormant', 'archived'),
+      unused: fc.integer({ min: 0, max: 1000 }),
+      archivedDays: fc.integer({ min: 0, max: 400 }),
+      sticky: fc.boolean(),
+      pinned: fc.boolean(),
+      member: fc.boolean(),
+      dead: fc.boolean(),
+    });
+    const thresholds = fc
+      .tuple(
+        fc.integer({ min: 7, max: 3649 }),
+        fc.integer({ min: 1, max: 3643 }),
+        fc.integer({ min: 7, max: 3650 }),
+      )
+      .map(([dormant, gap, remove]) => ({
+        dormant,
+        archive: Math.min(3650, dormant + gap),
+        remove,
+      }));
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(config, { minLength: 1, maxLength: 5 }),
+        thresholds,
+        async (links, t) => {
+          await env.DB.prepare('DELETE FROM links WHERE user_id = ?').bind(user.id).run();
+          await env.DB.prepare(
+            'UPDATE users SET dormant_days = ?, archive_days = ?, remove_days = ? WHERE id = ?',
+          )
+            .bind(t.dormant, t.archive, t.remove, user.id)
+            .run();
+          const ids: string[] = [];
+          for (const l of links) {
+            const id = await seedAged(user, l.unused, {
+              state: l.state,
+              pinned: l.pinned && l.state !== 'archived',
+              member: l.member,
+            });
+            const statements = [
+              env.DB.prepare('UPDATE links SET archived_at = ?, dead_since = ? WHERE id = ?').bind(
+                l.state === 'archived' ? new Date(T - l.archivedDays * DAY).toISOString() : null,
+                l.dead ? new Date(T - DAY).toISOString() : null,
+                id,
+              ),
+            ];
+            if (l.sticky) {
+              for (let d = 0; d < 5; d++) {
+                statements.push(
+                  env.DB.prepare(
+                    'INSERT INTO link_uses (link_id, user_id, at) VALUES (?, ?, ?)',
+                  ).bind(id, user.id, new Date(T - (l.unused + d) * DAY).toISOString()),
+                );
+              }
+            }
+            await env.DB.batch(statements);
+            ids.push(id);
+          }
+          await evaluateDecay(env, user.id);
+          const after = await Promise.all(ids.map((id) => linkRow(id)));
+          links.forEach((l, i) => {
+            const pinned = l.pinned && l.state !== 'archived';
+            let expected: string | null;
+            if (l.state === 'archived') expected = l.archivedDays >= t.remove ? null : 'archived';
+            else if (l.unused >= t.archive && !l.sticky && !pinned && !l.member)
+              expected = 'archived';
+            else if (l.state === 'dormant' && l.sticky) expected = 'active';
+            else if (l.state === 'active' && l.unused >= t.dormant && !l.sticky)
+              expected = 'dormant';
+            else expected = l.state;
+            expect(after[i]?.state ?? null).toBe(expected);
+          });
+          await evaluateDecay(env, user.id);
+          expect(await Promise.all(ids.map((id) => linkRow(id)))).toEqual(after);
+        },
+      ),
+      { numRuns: 40 },
+    );
+  });
+
+  it('leaves a link boosted after selection as the boost left it', async () => {
+    setNow(T);
+    const user = await signIn();
+    const id = await seedAged(user, 130);
+    const auth = await as(user);
+    decayHooks.afterSelect = async () => {
+      await api('GET', `/api/v1/links/${id}/open`, auth);
+    };
+    try {
+      await evaluateDecay(env, user.id);
+    } finally {
+      decayHooks.afterSelect = undefined;
+    }
+    expect(await linkRow(id)).toEqual({ state: 'active', archived_at: null });
+    const stream = (await api('GET', '/api/v1/links', auth)).json.items.map(
+      (l: { id: string }) => l.id,
+    );
+    expect(stream).toContain(id);
+  });
+});
+
+describe('the hourly run', () => {
+  it('leaves a user whose evaluation fails as it was and evaluates them at the next run', async () => {
+    setNow(T);
+    const a = await signIn('a@example.test', 'A');
+    const b = await signIn('b@example.test', 'B');
+    const aLink = await seedAged(a, 130);
+    const bLink = await seedAged(b, 130);
+    decayHooks.afterSelect = async (userId) => {
+      if (userId === a.id) throw new Error('evaluation failed');
+    };
+    try {
+      await runScheduled();
+    } finally {
+      decayHooks.afterSelect = undefined;
+    }
+    expect((await linkRow(aLink))?.state).toBe('active');
+    expect((await linkRow(bLink))?.state).toBe('archived');
+    setNow(T + 3_600_000);
+    await runScheduled();
+    expect((await linkRow(aLink))?.state).toBe('archived');
+  });
+
+  it('evaluates exactly the users not evaluated in the last 20 hours', async () => {
+    setNow(T);
+    const users = [
+      await signIn('u19@example.test', 'U19'),
+      await signIn('u20@example.test', 'U20'),
+      await signIn('never@example.test', 'Never'),
+    ];
+    const linksOf = await Promise.all(users.map((u) => seedAged(u, 130)));
+    await env.DB.batch([
+      env.DB.prepare('UPDATE users SET last_decay_at = ? WHERE id = ?').bind(
+        new Date(T - 19 * 3_600_000).toISOString(),
+        users[0]!.id,
+      ),
+      env.DB.prepare('UPDATE users SET last_decay_at = ? WHERE id = ?').bind(
+        new Date(T - 20 * 3_600_000).toISOString(),
+        users[1]!.id,
+      ),
+    ]);
+    await runScheduled();
+    expect(await Promise.all(linksOf.map(async (id) => (await linkRow(id))?.state))).toEqual([
+      'active',
+      'archived',
+      'archived',
+    ]);
+    const times = await Promise.all(
+      users.map(
+        async (u) =>
+          (
+            await env.DB.prepare('SELECT last_decay_at FROM users WHERE id = ?')
+              .bind(u.id)
+              .first<{ last_decay_at: string }>()
+          )?.last_decay_at,
+      ),
+    );
+    expect(times).toEqual([
+      new Date(T - 19 * 3_600_000).toISOString(),
+      new Date(T).toISOString(),
+      new Date(T).toISOString(),
+    ]);
   });
 });

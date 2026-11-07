@@ -139,6 +139,29 @@ its slot and the delay to it, at most the queue's 12 hours; a message that
 arrives before its slot is sent again for the time left instead of being
 processed. A single pasted link is not throttled.
 
+## Decay
+
+Every hour a Cron Trigger (`0 * * * *`) runs the Worker's `scheduled` handler
+(`decay/cron.ts`). It evaluates decay for every user whose last completed
+evaluation (`users.last_decay_at`) started 20 hours or more ago, one user at a
+time. One user's evaluation (`decay/decay.ts`) is a single D1 transaction of
+set-based statements, each carrying its own conditions, so a link boosted
+meanwhile keeps what the boost gave it and a failed evaluation changes
+nothing (that user is evaluated again at the next run):
+
+- a sticky dormant link (at least 5 uses on 5 UTC days) becomes `active`;
+- an `active` link unused for `dormant_days` that is not sticky becomes
+  `dormant` (pinned and workspace links too);
+- a link unused for `archive_days` that is neither sticky, pinned nor in a
+  workspace is `archived` (`archived_at` set; it leaves the stream);
+- an archived link archived `remove_days` ago is removed with everything
+  `DELETE /api/v1/links/{id}` removes, its stored R2 objects deleted after the
+  transaction;
+- `last_decay_at` is set.
+
+A use, a re-paste or a restore makes a dormant link active in its own
+request. `decay/note.ts` gives every link its `decay_note`.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

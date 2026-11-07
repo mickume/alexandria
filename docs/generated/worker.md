@@ -52,6 +52,28 @@
 
 `Promise`\<`void`\>
 
+##### scheduled()
+
+> **scheduled**(`_controller`, `env`, `ctx`): `void`
+
+###### Parameters
+
+###### \_controller
+
+`ScheduledController`
+
+###### env
+
+[`Env`](worker/env.md#env)
+
+###### ctx
+
+`ExecutionContext`\<`unknown`\>
+
+###### Returns
+
+`void`
+
 ## References
 
 ### HostGate

@@ -1,4 +1,5 @@
 import { app } from './app';
+import { runScheduled } from './decay/cron';
 import { handleEnrichBatch } from './enrich/queue';
 import type { EnrichMessage, Env, FetchMessage } from './env';
 import { handleFetchBatch } from './fetcher/queue';
@@ -8,6 +9,9 @@ export { HostGate } from './fetcher/hostgate';
 export default {
   fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
+  },
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(runScheduled(env));
   },
   queue(batch, env, ctx) {
     if (batch.queue === 'alexandria-enrich') {

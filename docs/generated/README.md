@@ -36,6 +36,8 @@
 - [worker/auth/sessions](worker/auth/sessions.md)
 - [worker/auth/tokens](worker/auth/tokens.md)
 - [worker/clock](worker/clock.md)
+- [worker/decay/archive](worker/decay/archive.md)
+- [worker/decay/cron](worker/decay/cron.md)
 - [worker/decay/decay](worker/decay/decay.md)
 - [worker/decay/note](worker/decay/note.md)
 - [worker/decay/routes](worker/decay/routes.md)
