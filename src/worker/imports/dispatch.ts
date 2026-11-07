@@ -2,6 +2,7 @@
  * The import dispatcher: sends imported links to the fetch worker in file
  * order, at most 20 a minute per user, sharing that budget with 'enrich all'.
  */
+import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import { THROTTLE_SPACING_MS } from '../enrich/throttle';
 import type { Env, FetchMessage } from '../env';
@@ -84,6 +85,7 @@ function nextWaiting(db: D1Database, userId: string, limit: number) {
  * user's 'enrich all' starts no job within the next minute.
  */
 export async function dispatchImports(env: Env, userId: string): Promise<number> {
+  if (!(await accountActive(env.DB, userId))) return 0;
   const t = now().getTime();
   const at = new Date(t).toISOString();
   let left = await budget(env.DB, userId, t);
@@ -129,7 +131,8 @@ async function usersWaiting(db: D1Database): Promise<string[]> {
   const rows = await db
     .prepare(
       `SELECT DISTINCT i.user_id FROM import_links il JOIN imports i ON i.id = il.import_id
-       WHERE il.dispatched_at IS NULL`,
+       JOIN users u ON u.id = i.user_id
+       WHERE il.dispatched_at IS NULL AND u.deletion_requested_at IS NULL`,
     )
     .all<{ user_id: string }>();
   return rows.results.map((r) => r.user_id);

@@ -294,6 +294,13 @@ retried and continues with what remains; a run for an account that is gone
 `*/5 * * * *` Cron Trigger (`account/sweep.ts`) runs the job for every account
 marked more than 5 minutes ago, so that a lost message cannot stop a deletion.
 
+Nothing in the background writes for an account once it is marked:
+`accountActive` is checked by the fetch consumer (before fetching and again
+before writing), the enrichment consumer, the import dispatcher and the
+liveness consumer (before checking and before recording), and the hourly
+decay evaluation and the liveness enqueue select only accounts not marked.
+Their messages are acknowledged, not retried.
+
 ## Test layers
 
 | Layer                       | Where                     | Runs in                                           | What it proves                                                      |

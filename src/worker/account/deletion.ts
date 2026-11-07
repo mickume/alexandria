@@ -6,6 +6,19 @@ import { now } from '../clock';
 import type { AccountMessage, AppEnv, Env } from '../env';
 
 /**
+ * Whether background work may run for this account: it exists and is not
+ * marked for deletion. Fetch, enrichment, import, liveness and decay work
+ * for any other account writes nothing and calls no one.
+ */
+export async function accountActive(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 FROM users WHERE id = ? AND deletion_requested_at IS NULL')
+    .bind(userId)
+    .first();
+  return row !== null;
+}
+
+/**
  * Whether the account with this email is marked for deletion: a sign-in for
  * it is refused until the deletion job has removed it.
  */

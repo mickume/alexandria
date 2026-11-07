@@ -6,9 +6,14 @@ import {
   count,
   createToken,
   deliverAccount,
+  deliverEnrichments,
+  deliverFetches,
+  deliverLiveness,
   env,
   recordAccountQueue,
+  recordEnrichQueue,
   recordFetchQueue,
+  recordLivenessQueue,
   seedLinks,
   setNow,
   signIn,
@@ -16,6 +21,11 @@ import {
 } from '../test/helpers';
 import { googleSignIn } from '../test/google';
 import { deletionHooks } from './deletion';
+import { FakeAi } from '../test/ai';
+import { FakeOrigin } from '../test/origin';
+import { blogArticle } from '../fetcher/fixtures/pages';
+import { dispatchAllImports, dispatchImports } from '../imports/dispatch';
+import { runScheduled } from '../decay/cron';
 
 /** A user with two sessions, three tokens, an AI key and links. */
 async function owner(): Promise<TestUser> {
@@ -444,5 +454,92 @@ describe('the deletion job', () => {
     expect(await count('links', 'user_id = ?', a.id)).toBe(0);
     expect(await count('users', 'id = ?', c.id)).toBe(1);
     expect(await count('links', 'user_id = ?', c.id)).toBe(1);
+  });
+});
+
+/** The total rows of every table but the rate limit, which the test's own requests move. */
+async function allRows(): Promise<number> {
+  let total = 0;
+  for (const t of await referencingTables()) {
+    if (t.name === 'rate_limits') continue;
+    total += await count(t.name);
+  }
+  return total + (await count('users')) + (await count('imports'));
+}
+
+describe('background work for a deleted account', () => {
+  it.each([
+    'a fetch of its pending link',
+    'an enrichment of its unenriched link',
+    'the next step of its import',
+    "the hourly cron's decay and liveness",
+    'a liveness check of its link',
+    'a fetch of a link that no longer exists',
+  ])('%s writes nothing and calls no one', async (work) => {
+    const t = '2026-11-07T10:00:00.000Z';
+    setNow(t);
+    const a = await signIn('owner@example.test');
+    const origin = new FakeOrigin();
+    for (const host of ['pending', 'unenriched', 'due', 'import1']) {
+      origin.page(`https://${host}.example/`, blogArticle);
+    }
+    const ai = new FakeAi();
+    const [pending, unenriched, due] = await seedLinks(a, [
+      { url: 'https://pending.example/' },
+      { url: 'https://unenriched.example/', state: 'active' },
+      { url: 'https://due.example/', state: 'active', lastUsedAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    await env.DB.prepare(
+      `UPDATE users SET ai_provider = 'anthropic', ai_model = 'claude', ai_key_status = 'verified' WHERE id = ?`,
+    )
+      .bind(a.id)
+      .run();
+    const fetches = recordFetchQueue();
+    const imported = await api('POST', '/api/v1/imports', {
+      as: a.session,
+      body: new TextEncoder().encode(
+        Array.from({ length: 30 }, (_, i) => `https://import${i}.example/`).join('\n'),
+      ),
+      headers: { 'Content-Type': 'text/plain' },
+    });
+    expect(imported.status).toBe(201);
+    await env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
+      .bind(t, a.id)
+      .run();
+    const fetchesBefore = fetches.length;
+    const enrich = recordEnrichQueue();
+    const liveness = recordLivenessQueue();
+    const rows = await allRows();
+    const aRows = await rowsOf(a.id, await linkIdsOf(a.id));
+    const objects = await objectsOf(a.id);
+    const calls = origin.log.length + ai.requests.length;
+    let delivery: { acked: string[]; retried: string[] } | null = null;
+    if (work === 'a fetch of its pending link') {
+      delivery = await deliverFetches([{ user_id: a.id, link_id: pending! }]);
+    } else if (work === 'an enrichment of its unenriched link') {
+      delivery = await deliverEnrichments([{ user_id: a.id, link_id: unenriched!, attempt: 1 }]);
+    } else if (work === 'the next step of its import') {
+      setNow(Date.parse(t) + 120_000);
+      await dispatchImports(env, a.id);
+      await dispatchAllImports(env);
+    } else if (work === "the hourly cron's decay and liveness") {
+      setNow('2027-06-01T00:00:00.000Z');
+      await runScheduled(env);
+    } else if (work === 'a liveness check of its link') {
+      delivery = await deliverLiveness([{ user_id: a.id, link_id: due! }]);
+    } else {
+      delivery = await deliverFetches([{ user_id: a.id, link_id: 'gone-link' }]);
+    }
+    expect(await allRows()).toBe(rows);
+    expect(await rowsOf(a.id, await linkIdsOf(a.id))).toEqual(aRows);
+    expect(await objectsOf(a.id)).toEqual(objects);
+    expect(origin.log.length + ai.requests.length).toBe(calls);
+    expect(fetches.length).toBe(fetchesBefore);
+    expect(enrich).toEqual([]);
+    expect(liveness).toEqual([]);
+    if (delivery) {
+      expect(delivery.retried).toEqual([]);
+      expect(delivery.acked).toEqual(['m0']);
+    }
   });
 });

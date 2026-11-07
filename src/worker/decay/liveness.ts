@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { limitReached, notFound } from '../api/errors';
+import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import type { AppEnv, Env, LivenessMessage } from '../env';
 import { requestFollowing } from '../fetcher/fetch';
@@ -108,12 +109,19 @@ export async function handleLivenessBatch(
   for (const message of batch.messages) {
     try {
       const t = now();
-      const link = await getLink(env.DB, message.body.user_id, message.body.link_id);
+      const active = await accountActive(env.DB, message.body.user_id);
+      const link = active
+        ? await getLink(env.DB, message.body.user_id, message.body.link_id)
+        : null;
       if (!link || !isDue(link, t.getTime())) {
         message.ack();
         continue;
       }
       const outcome = await checkLink(env, link.url);
+      if (!(await accountActive(env.DB, link.user_id))) {
+        message.ack();
+        continue;
+      }
       await recordCheck(env, link, outcome, now().toISOString());
       message.ack();
     } catch (err) {
@@ -134,7 +142,8 @@ export async function enqueueDueChecks(env: Env): Promise<void> {
   const due = await env.DB.prepare(
     `UPDATE links SET check_enqueued_at = ?1 WHERE id IN (
        SELECT id FROM links
-       WHERE state <> 'archived' AND (state IN ('active', 'dormant') OR pin_position IS NOT NULL)
+       WHERE user_id IN (SELECT id FROM users WHERE deletion_requested_at IS NULL)
+         AND state <> 'archived' AND (state IN ('active', 'dormant') OR pin_position IS NOT NULL)
          AND COALESCE(last_checked_at, added_at) <= ?2
          AND (check_enqueued_at IS NULL OR check_enqueued_at <= ?3)
        LIMIT 1000)
