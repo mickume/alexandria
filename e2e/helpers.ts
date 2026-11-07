@@ -49,3 +49,43 @@ export function d1<T = Record<string, unknown>>(sql: string): T[] {
   const parsed = JSON.parse(out) as { results: T[] }[];
   return parsed.flatMap((r) => r.results);
 }
+
+/** The body of an object in the local R2 bucket that `make e2e`'s wrangler dev serves, or null. */
+export function r2Object(key: string): Buffer | null {
+  try {
+    return execFileSync(
+      'npx',
+      [
+        'wrangler',
+        'r2',
+        'object',
+        'get',
+        `alexandria-snapshots/${key}`,
+        '--local',
+        '--persist-to',
+        '.wrangler/e2e',
+        '-c',
+        'dist/alexandria/wrangler.json',
+        '--pipe',
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** The fake origin of e2e/fake-origin.ts. */
+export const fakeOrigin = {
+  url: 'http://localhost:8791',
+  async goOffline(): Promise<void> {
+    await fetch(`${this.url}/__offline`, { method: 'POST' });
+  },
+  async goOnline(): Promise<void> {
+    await fetch(`${this.url}/__online`, { method: 'POST' });
+  },
+  async requestsSince(t: number): Promise<number> {
+    const log = (await (await fetch(`${this.url}/__log`)).json()) as { at: number }[];
+    return log.filter((r) => r.at >= t).length;
+  },
+};

@@ -63,7 +63,12 @@ const server = createServer((req, res) => {
   }
   log.push({ target, at: Date.now() });
   if (offline) return void req.socket.destroy();
-  const page = pages[target];
+  // Every page under https://news.example/ is the article.
+  const page =
+    pages[target] ??
+    (target.startsWith('https://news.example/')
+      ? pages['https://news.example/article']
+      : undefined);
   if (!page) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return void res.end('not found');
