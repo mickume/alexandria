@@ -3,7 +3,10 @@
  * signed-in users, tokens, seeded links and the clock.
  */
 import { env, SELF } from 'cloudflare:test';
+import { sha256Hex } from '../auth/crypto';
 import { setNow as setClock } from '../clock';
+
+export { sha256Hex };
 
 export { env };
 
@@ -77,12 +80,6 @@ export async function count(table: string, where = '1 = 1', ...params: unknown[]
     .bind(...params)
     .first<{ n: number }>();
   return row?.n ?? 0;
-}
-
-/** The SHA-256 hash of a secret, hex-encoded, as sessions and tokens are stored. */
-export async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 function randomSecret(): string {

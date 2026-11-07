@@ -19,7 +19,26 @@ browser ──► Worker (src/worker/index.ts)
   request to the Hono application built in `app.ts`. `env.ts` declares the
   bindings and variables, `clock.ts` the injectable clock. Feature code lives
   in one directory per area: `links/` (normalisation, the link store, the
-  stream), `auth/` and `api/` as they are added.
+  stream), `auth/` (sign-in, sessions) and `api/` as they are added.
+
+## Sign-in
+
+`GET /auth/google` starts Google's OAuth 2.0 authorization-code flow with PKCE
+(`auth/google.ts`, through `arctic`), keeping the state and the code verifier
+in ten-minute HttpOnly cookies scoped to `/auth/`. `GET /auth/google/callback`
+checks the state against its cookie, exchanges the code with the verifier,
+reads the email and display name from the ID token and drops every token
+Google returned. The email is checked against `ALLOWED_EMAILS` at that moment
+(`auth/allowlist.ts`); an address not on it is sent to `/signin?error=private`
+and nothing is stored, any other failure to `/signin?error=failed`. On success
+the user is created or their display name updated, and a session is created
+(`auth/sessions.ts`) whose identifier is stored only as its SHA-256 hash; the
+identifier goes to the browser in the `alexandria_session` cookie (HttpOnly,
+Secure, SameSite=Lax, 30 days).
+
+The end-to-end tests point `GOOGLE_AUTH_URL` and `GOOGLE_TOKEN_URL` at
+`e2e/fake-google.ts`, a local fake provider that signs in one configured
+account and checks the PKCE verifier as Google does.
 - **The website** (`src/web/`): a React single-page application built by Vite.
   `main.tsx` mounts `App.tsx`, which picks the page for the current path.
   `styles.css` holds the whole visual design.

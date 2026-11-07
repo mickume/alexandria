@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SignIn } from './pages/SignIn';
 
 /** The current path of the page, following history navigation. */
 export function usePath(): string {
@@ -20,6 +21,7 @@ export function navigate(path: string): void {
 /** The website: one page per path. */
 export function App() {
   const path = usePath();
+  if (path === '/signin') return <SignIn />;
   return (
     <main className="page">
       <h1>Alexandria</h1>

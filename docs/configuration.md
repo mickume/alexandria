@@ -32,3 +32,8 @@ for local development.
 
 `make` keeps wrangler's logs in `.wrangler/logs` (`WRANGLER_LOG_PATH`) and turns
 its telemetry off (`WRANGLER_SEND_METRICS=false`).
+
+## End-to-end tests
+
+`e2e/fake-google.ts` signs in `FAKE_GOOGLE_EMAIL` (default `owner@example.test`)
+named `FAKE_GOOGLE_NAME` (default `Ada Owner`).

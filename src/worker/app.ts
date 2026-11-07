@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import { authRoutes } from './auth/routes';
 import type { AppEnv } from './env';
 
 /** Builds the application: the API under /api/v1/, the sign-in routes and the website's pages. */
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  app.route('/auth', authRoutes);
   app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
   return app;
 }

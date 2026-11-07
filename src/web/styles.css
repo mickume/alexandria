@@ -74,3 +74,37 @@ a:hover {
   margin: 0 auto;
   padding: calc(var(--space) * 1.5) var(--space) calc(var(--space) * 4);
 }
+
+.button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.button:hover {
+  text-decoration: none;
+  border-color: var(--muted);
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.notice {
+  color: var(--danger);
+}
+
+.signin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space);
+  padding-top: 20vh;
+}
