@@ -1,3 +1,4 @@
+import type { Conditions } from '../search/query';
 import type { LinkRow } from './store';
 
 /**
@@ -20,43 +21,47 @@ function cursorAt(row: LinkRow): StreamCursor {
     : { s: 'u', l: row.last_used_at, i: row.id };
 }
 
+/** The stream's own restriction: every link but the archived ones. */
+export const NOT_ARCHIVED: Conditions = { sql: ["l.state <> 'archived'"], params: [] };
+
 /**
- * One page of the user's stream: the links that are not archived, the pinned
- * ones first by pin position, then the rest by last use, newest first, with
- * the id breaking ties. Returns the page and the cursor of the next one, if any.
+ * One page of the user's stream: the links that satisfy `where` (by default,
+ * those not archived), the pinned ones first by pin position, then the rest
+ * by last use, newest first, with the id breaking ties. Returns the page and
+ * the cursor of the next one, if any.
  */
 export async function listStream(
   db: D1Database,
   userId: string,
   limit: number,
   after: StreamCursor | null,
+  where: Conditions = NOT_ARCHIVED,
 ): Promise<{ items: LinkRow[]; next: StreamCursor | null }> {
   const rows: LinkRow[] = [];
+  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
   if (!after || after.s === 'p') {
     const pinned = await db
       .prepare(
-        `SELECT * FROM link_views
-         WHERE user_id = ? AND pin_position IS NOT NULL AND state <> 'archived' AND pin_position > ?
-         ORDER BY pin_position LIMIT ?`,
+        `SELECT * FROM link_views l
+         WHERE l.user_id = ? AND l.pin_position IS NOT NULL AND l.pin_position > ? ${conditions}
+         ORDER BY l.pin_position LIMIT ?`,
       )
-      .bind(userId, after?.p ?? 0, limit + 1)
+      .bind(userId, after?.p ?? 0, ...where.params, limit + 1)
       .all<LinkRow>();
     rows.push(...pinned.results);
   }
   if (rows.length <= limit) {
     const keyset =
-      after?.s === 'u' ? 'AND (last_used_at < ?3 OR (last_used_at = ?3 AND id < ?4))' : '';
+      after?.s === 'u' ? 'AND (l.last_used_at < ? OR (l.last_used_at = ? AND l.id < ?))' : '';
     const statement = db.prepare(
-      `SELECT * FROM link_views
-       WHERE user_id = ?1 AND pin_position IS NULL AND state <> 'archived' ${keyset}
-       ORDER BY last_used_at DESC, id DESC LIMIT ?2`,
+      `SELECT * FROM link_views l
+       WHERE l.user_id = ? AND l.pin_position IS NULL ${conditions} ${keyset}
+       ORDER BY l.last_used_at DESC, l.id DESC LIMIT ?`,
     );
-    const need = limit + 1 - rows.length;
-    const rest = await (
-      after?.s === 'u'
-        ? statement.bind(userId, need, after.l, after.i)
-        : statement.bind(userId, need)
-    ).all<LinkRow>();
+    const keys = after?.s === 'u' ? [after.l, after.l, after.i] : [];
+    const rest = await statement
+      .bind(userId, ...where.params, ...keys, limit + 1 - rows.length)
+      .all<LinkRow>();
     rows.push(...rest.results);
   }
   const items = rows.slice(0, limit);

@@ -1,11 +1,17 @@
 import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
-import { buildPrompt, normalizeResult, type Enrichment } from './enrich';
+import { applyAliases, buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
 import { deferIfEarly } from './throttle';
-import { listVocabulary, resolveTags, resolveTopic } from './vocabulary';
+import {
+  listAliases,
+  listVocabulary,
+  resolveTags,
+  resolveTopic,
+  setTagsStatements,
+} from './vocabulary';
 
 /** Notes that mean a link has nothing to enrich. */
 const NOTHING_TO_ENRICH = [/^not a web page/, /^no text in this PDF$/, /^PDF too large to store/];
@@ -49,7 +55,9 @@ export async function afterFetch(
 }
 
 /** Stores an enrichment on the link: summary, topic, tags, time and status. */
-async function storeEnrichment(env: Env, link: LinkRow, result: Enrichment): Promise<void> {
+async function storeEnrichment(env: Env, link: LinkRow, proposed: Enrichment): Promise<void> {
+  // A former name the provider proposes lands on its survivor.
+  const result = applyAliases(proposed, await listAliases(env.DB, link.user_id));
   // The owner's edits win: an edited field keeps the owner's value.
   const edited = new Set(parseStrings(link.edited_fields));
   const topicId = edited.has('topic')
@@ -70,16 +78,7 @@ async function storeEnrichment(env: Env, link: LinkRow, result: Enrichment): Pro
       link.id,
       link.user_id,
     ),
-    ...(tagIds
-      ? [
-          env.DB.prepare('DELETE FROM link_tags WHERE link_id = ?').bind(link.id),
-          ...tagIds.map((tagId, i) =>
-            env.DB.prepare(
-              'INSERT INTO link_tags (link_id, tag_id, position) SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?',
-            ).bind(tagId, i, link.id, link.user_id),
-          ),
-        ]
-      : []),
+    ...(tagIds ? setTagsStatements(env.DB, link.user_id, link.id, tagIds) : []),
   ]);
 }
 

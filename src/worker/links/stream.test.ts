@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { api, seedLinks, signIn } from '../test/helpers';
+import { api, FILTER_TABLE, seedFilterLinks, seedLinks, signIn } from '../test/helpers';
 
 type Item = { id: string };
 const ids = (items: Item[]) => items.map((i) => i.id);
@@ -91,5 +91,81 @@ describe('the stream', () => {
     const r = await api('GET', `/api/v1/links?${q}`, { as: user.session });
     expect(r.status).toBe(400);
     expect(r.json).toEqual({ error, field, message: expect.any(String) });
+  });
+});
+
+describe('the filtered link list', () => {
+  /** A query's filters as query parameters: tag:a in:"x y" becomes tag=a&in=x%20y. */
+  const asParams = (query: string) =>
+    query
+      .match(/\w+:("[^"]*"|\S+)/g)!
+      .map((f) => {
+        const [name, ...rest] = f.split(':');
+        return `${name}=${encodeURIComponent(rest.join(':').replace(/^"|"$/g, ''))}`;
+      })
+      .join('&');
+
+  it.each(FILTER_TABLE)('%s lists what the search lists, in stream order', async (query) => {
+    const user = await signIn();
+    await seedFilterLinks(user);
+    const listed = await api('GET', `/api/v1/links?${asParams(query)}`, { as: user.session });
+    expect(listed.status).toBe(200);
+    const searched = await api('GET', `/api/v1/search?q=${encodeURIComponent(query)}`, {
+      as: user.session,
+    });
+    expect(ids(listed.json.items)).toEqual(
+      searched.json.items.map((i: { link: Item }) => i.link.id),
+    );
+  });
+
+  it('pages a filtered list with the shared cursor, every match once', async () => {
+    const user = await signIn();
+    const links = await seedFilterLinks(user);
+    const extra = await seedLinks(
+      user,
+      Array.from({ length: 3 }, (_, i) => ({ url: `https://more${i}.example/` })),
+    );
+    for (const id of extra) {
+      await api('PATCH', `/api/v1/links/${id}`, {
+        as: user.session,
+        body: { tags: ['cloudflare'] },
+      });
+    }
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { json: { items: Item[]; next_cursor: string | null } } = await api(
+        'GET',
+        `/api/v1/links?tag=cloudflare&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        { as: user.session },
+      );
+      seen.push(...ids(page.json.items));
+      cursor = page.json.next_cursor;
+    } while (cursor);
+    expect(seen.sort()).toEqual([links.a, links.b, ...extra].sort());
+  });
+
+  it('applies state and repeated parameters together', async () => {
+    const user = await signIn();
+    const [active, archived] = await seedLinks(user, [
+      { url: 'https://a.example/', state: 'active' },
+      { url: 'https://x.example/', state: 'archived' },
+    ]);
+    const list = async (params: string) =>
+      ids((await api('GET', `/api/v1/links?${params}`, { as: user.session })).json.items);
+    expect(await list('state=archived')).toEqual([archived]);
+    expect((await list('state=any')).sort()).toEqual([active, archived].sort());
+    expect(await list('state=any&state=active')).toEqual([active]);
+  });
+
+  it.each([
+    ['state=gone', 'state'],
+    ['is=starred', 'is'],
+    ['state=', 'state'],
+  ])('refuses %s, naming the parameter', async (params, field) => {
+    const user = await signIn();
+    const r = await api('GET', `/api/v1/links?${params}`, { as: user.session });
+    expect(r.status).toBe(400);
+    expect(r.json).toMatchObject({ error: 'invalid_filter', field });
   });
 });

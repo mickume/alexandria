@@ -206,6 +206,13 @@ breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
 While the library is unchanged, following the cursors returns every link
 once.
 
+The filters of the search (below) narrow the list as query parameters, in
+the same stream order: `tag`, `topic`, `host`, `state`, `in` and `is`, each
+with the meaning of its prefix filter; repeated parameters all apply
+(`?tag=cloudflare&tag=queues`). A `state` other than pending, active,
+unreachable, dormant, archived or any, or an `is` other than pinned or dead,
+is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
+
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
 every link that is not archived and changed at or after that time (every
 write to a link sets its `updated_at`), oldest change first, with the
@@ -514,3 +521,117 @@ minutes:
 `429 {"error": "checked_recently", "message": "already checked recently"}`
 with `Retry-After`. An archived link:
 `409 {"error": "link_archived", "message": "archived links are not checked"}`.
+
+### Search
+
+#### `GET /api/v1/search`
+
+Searches the library: `?q=<query>`, at most 200 characters, with `limit` (1
+to 100, default 50) and `cursor` as every list takes them.
+
+A query is free words and prefix filters. Every free word must match, as the
+start of a word, case- and accent-insensitively (`cloud` finds "Cloudflare",
+`cafe` finds "Café"), in the link's title, summary, tags, topic, host,
+original URL, note or reader-view text. Quotes and the full-text engine's
+operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
+plain text. Archived links are left out.
+
+```json
+{
+  "items": [
+    {
+      "link": { "id": "…", "title": "Cloudflare Queues explained", "…": "…" },
+      "snippet": [
+        { "text": "Cloudflare ", "match": false },
+        { "text": "Queues", "match": true },
+        { "text": " explained", "match": false }
+      ]
+    }
+  ],
+  "workspaces": [{ "id": "…", "name": "Kitchen remodel", "snippet": [] }],
+  "next_cursor": null
+}
+```
+
+Results are ordered by relevance, with the fields weighted title 10, tags and
+topic 5, summary 3, host, original URL and note 2, reader text 1; equally
+relevant links put pinned links first (by position), then the more recently
+used. Each result's `snippet` is a passage of at most 32 words from the field
+that matched best, split into segments with the matched words marked; it is
+text, never HTML. The first page also lists, in `workspaces`, the workspaces
+whose name, description or note holds every free word; later pages have
+`[]`.
+
+An empty or blank query answers with the stream, exactly as
+`GET /api/v1/links` lists it, each snippet `[]`.
+
+Prefix filters narrow the results; each is a name, a colon and one word or
+a double-quoted phrase (`topic:"web development"`), names in any case, and
+every filter given applies:
+
+| Filter | Keeps the links |
+|---|---|
+| `tag:<name>` | with that tag, ignoring case |
+| `topic:<name>` | with that topic, ignoring case |
+| `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
+| `in:<workspace>` | in the workspace with that name, ignoring case |
+| `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
+| `state:<state>` | in that state: `pending`, `active`, `unreachable` or `dormant`; `archived` keeps only archived links, `any` every state |
+
+Without a `state:` filter archived links are left out. Any other `word:` is
+a free word. A query of filters only lists the matching links in stream
+order, each snippet `[]`, with the stream's cursor.
+
+Errors: `400 {"error": "query_too_long", "field": "q"}`, and
+`400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;
+`invalid_limit`, `invalid_cursor`.
+
+### Topics and tags
+
+The topics and tags enrichment and the owner's edits give links. A topic or
+tag whose last link loses it (by an edit, a merge, decay's removal or a
+deletion) is deleted: it is neither listed nor offered to enrichment again.
+
+#### `GET /api/v1/topics`
+
+Every topic that has a link, with the number of its links in any state
+(archived included) and the added date of its newest link, newest first:
+`200 {"items": [{"id", "name", "count", "newest_added_at"}], "next_cursor"}`,
+with `limit` (1 to 100, default 50) and `cursor`.
+
+#### `GET /api/v1/tags`
+
+The same for tags.
+
+#### `PATCH /api/v1/topics/{id}` and `PATCH /api/v1/tags/{id}`
+
+Renames a topic or tag: `{"name": "<new name>"}`. Every link carrying it shows
+the new name, and the old name becomes an alias of it (see below).
+`200 {"id", "name", "count"}`.
+
+A tag name is lower-cased and must be 1 to 50 characters of letters and digits
+in hyphen-joined words (`web-dev`); a topic name is trimmed, its spaces
+collapsed, and must be 1 to 100 characters. Otherwise
+`400 {"error": "invalid_name", "field": "name", "message"}`. A name another
+topic (or tag) of the user has, ignoring case, is
+`409 {"error": "name_taken", "message": "another tag is named javascript: merge this tag into it instead"}`
+and nothing changes. Renaming to the same name answers 200.
+
+#### `POST /api/v1/topics/{id}/merge` and `POST /api/v1/tags/{id}/merge`
+
+Merges a topic or tag into another: `{"into": "<the id of the survivor>"}`.
+Every link of the source gets the survivor (a link never carries a tag
+twice), the source is deleted, and its name and its aliases become aliases
+of the survivor, all at once. `200 {"id", "name", "count"}` of the survivor.
+A missing `into`, or the source itself, is
+`400 {"error": "invalid_merge", "field": "into", "message"}`; a source or
+`into` that is not one of the user's is `404 {"error": "not_found"}`.
+
+#### Aliases
+
+A renamed or merged-away name is an alias of its survivor. When enrichment's
+provider proposes a topic or tag that is an alias, ignoring case, the link
+gets the survivor and no topic or tag with the old name is created. The
+provider is only ever shown current names. A current name wins over an alias
+of the same name.
+

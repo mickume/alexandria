@@ -5,7 +5,11 @@
  * 'sk-ant-test-1234' and any OpenRouter key starting 'sk-or-', and answers an
  * enrichment with a fixed result that a test can switch.
  *
- * Control: POST /__answer {summary, tags, topic}, GET /__log, GET /health.
+ * An enrichment whose request holds a registered marker is answered with that
+ * marker's result instead (the last registered marker that matches wins).
+ *
+ * Control: POST /__answer {summary, tags, topic}, POST /__answer_when
+ * {contains, result}, GET /__log, GET /health.
  * Run with: node e2e/fake-ai.ts <port>
  */
 import { createServer, type IncomingMessage } from 'node:http';
@@ -23,6 +27,14 @@ let answer: Result = {
   tags: ['links', 'library', 'reading'],
   topic: 'Reading',
 };
+
+/** The answers for requests holding a marker, newest first. */
+const answersWhen: { contains: string; result: Result }[] = [];
+
+/** The answer to an enrichment request with this body. */
+function answerFor(body: string): Result {
+  return answersWhen.find((a) => body.includes(a.contains))?.result ?? answer;
+}
 
 /** Every provider request: when, which provider, its key header and its body. */
 const log: { at: number; provider: string; auth: string; body: string; enrichment: boolean }[] = [];
@@ -50,6 +62,11 @@ const server = createServer(async (req, res) => {
     answer = JSON.parse(await readBody(req)) as Result;
     return send(200, answer);
   }
+  if (url.pathname === '/__answer_when' && req.method === 'POST') {
+    const rule = JSON.parse(await readBody(req)) as { contains: string; result: Result };
+    answersWhen.unshift(rule);
+    return send(200, rule);
+  }
 
   const body = await readBody(req);
   const parsed = JSON.parse(body || '{}') as Record<string, unknown>;
@@ -69,7 +86,14 @@ const server = createServer(async (req, res) => {
       role: 'assistant',
       model: parsed.model,
       content: enrichment
-        ? [{ type: 'tool_use', id: 'toolu_fake', name: 'record_enrichment', input: answer }]
+        ? [
+            {
+              type: 'tool_use',
+              id: 'toolu_fake',
+              name: 'record_enrichment',
+              input: answerFor(body),
+            },
+          ]
         : [{ type: 'text', text: 'ok' }],
       stop_reason: enrichment ? 'tool_use' : 'end_turn',
       stop_sequence: null,
@@ -91,7 +115,10 @@ const server = createServer(async (req, res) => {
         {
           index: 0,
           finish_reason: 'stop',
-          message: { role: 'assistant', content: enrichment ? JSON.stringify(answer) : 'ok' },
+          message: {
+            role: 'assistant',
+            content: enrichment ? JSON.stringify(answerFor(body)) : 'ok',
+          },
         },
       ],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },

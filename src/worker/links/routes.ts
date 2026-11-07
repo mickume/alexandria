@@ -5,6 +5,7 @@ import type { AppEnv, Env } from '../env';
 import { now } from '../clock';
 import { applyEdit, parseEdit } from '../enrich/edits';
 import { deleteLinkObjects } from '../fetcher/snapshots';
+import { filterConditions, filtersFromParams } from '../search/query';
 import { checkNote } from '../workspaces/notes';
 import { normalizeUrl } from './normalize';
 import {
@@ -131,7 +132,10 @@ linkRoutes.get('/', async (c) => {
       );
     }
   }
-  const page = await listStream(c.env.DB, c.get('user').id, limit, after);
+  const parsed = filtersFromParams((name) => c.req.queries(name));
+  if (!parsed.ok) return validationError(c, 'invalid_filter', parsed.field, parsed.message);
+  const where = filterConditions(parsed.filters);
+  const page = await listStream(c.env.DB, c.get('user').id, limit, after, where);
   return c.json({
     items: page.items.map(toView),
     next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,

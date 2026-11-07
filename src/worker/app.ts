@@ -11,6 +11,7 @@ import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
 import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
 import { linkRoutes } from './links/routes';
+import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
 import { workspaceRoutes } from './workspaces/routes';
 
 /** The JSON API under /api/v1/; every route needs an authenticated user. */
@@ -32,6 +33,9 @@ function createApi(): Hono<AppEnv> {
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);
   api.route('/archive', archiveRoutes);
+  api.route('/search', searchRoutes);
+  api.route('/topics', topicRoutes);
+  api.route('/tags', tagRoutes);
   api.all('*', notFound);
   return api;
 }

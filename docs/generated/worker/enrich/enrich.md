@@ -2,6 +2,22 @@
 
 ## Interfaces
 
+### Aliases
+
+The user's aliases: each former name's key (nameKey) with the name of its survivor.
+
+#### Properties
+
+##### tags
+
+> **tags**: `Map`\<`string`, `string`\>
+
+##### topics
+
+> **topics**: `Map`\<`string`, `string`\>
+
+***
+
 ### Enrichment
 
 An enrichment, normalised: what is stored on a link.
@@ -85,6 +101,29 @@ The most words a summary keeps.
 The fewest and the most tags an enrichment keeps.
 
 ## Functions
+
+### applyAliases()
+
+> **applyAliases**(`result`, `aliases`): [`Enrichment`](#enrichment)
+
+An enrichment result with every topic or tag that is an alias replaced by
+its survivor, compared ignoring case; tags that become repeats are dropped.
+
+#### Parameters
+
+##### result
+
+[`Enrichment`](#enrichment)
+
+##### aliases
+
+[`Aliases`](#aliases)
+
+#### Returns
+
+[`Enrichment`](#enrichment)
+
+***
 
 ### buildPrompt()
 

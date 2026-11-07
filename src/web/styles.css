@@ -111,6 +111,7 @@ a:hover {
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space);
@@ -121,6 +122,7 @@ a:hover {
 
 .nav nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space);
 }
@@ -574,4 +576,92 @@ select {
 
 .dead {
   color: var(--danger);
+}
+
+.vocabulary table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vocabulary th,
+.vocabulary td {
+  padding: calc(var(--space) / 2) 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.vocabulary th {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.vocabulary .count {
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vocabulary th:nth-child(2) {
+  text-align: right;
+}
+
+.vocabulary .actions {
+  text-align: right;
+}
+
+.vocabulary .actions button + button {
+  margin-left: var(--space);
+}
+
+.vocabulary form {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--space) / 2);
+}
+
+.vocabulary input,
+.vocabulary select {
+  max-width: 12rem;
+}
+
+.search {
+  flex: 1 1 10rem;
+  margin: 0;
+}
+
+.search input {
+  width: 100%;
+}
+
+.snippet {
+  margin: calc(var(--space) / -2) 0 var(--space);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.snippet mark {
+  background: none;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.results,
+.workspace-results,
+.filter-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.workspace-results li {
+  padding: var(--space) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) / 2);
 }

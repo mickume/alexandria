@@ -3,7 +3,10 @@
  * The Worker's fetcher sends every request here (ORIGIN_PROXY_URL) with the
  * real target in X-Alexandria-Target. It serves an article at
  * https://news.example/article and a PDF titled 'On Links' at
- * https://papers.example/on-links.pdf, logs every request, and can be taken
+ * https://papers.example/on-links.pdf, a page about Cloudflare Queues at
+ * https://docs.example/queues and one about Apache Kafka at
+ * https://blog.example/kafka, and at https://code.example/<slug> a page whose
+ * text holds 'marker-<slug>'. It logs every request, and can be taken
  * offline, after which it refuses every connection.
  *
  * Control: POST /__offline, POST /__online, GET /__log (JSON), GET /health.
@@ -33,8 +36,39 @@ const article = `<!doctype html>
 </body>
 </html>`;
 
+/** A page with one article: its title as headline, then `text` and filler paragraphs. */
+function articlePage(title: string, text: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head><title>${title}</title></head>
+<body>
+  <article>
+    <h1>${title}</h1>
+    <p>${text}</p>
+    <p>${'More paragraphs follow so that the reader view keeps the article whole. '.repeat(6)}</p>
+  </article>
+</body>
+</html>`;
+}
+
+const HTML = 'text/html; charset=utf-8';
+
 const pages: Record<string, { type: string; body: string | Uint8Array }> = {
-  'https://news.example/article': { type: 'text/html; charset=utf-8', body: article },
+  'https://news.example/article': { type: HTML, body: article },
+  'https://docs.example/queues': {
+    type: HTML,
+    body: articlePage(
+      'Cloudflare Queues explained',
+      'Cloudflare Queues deliver messages between Workers with guaranteed delivery and batching.',
+    ),
+  },
+  'https://blog.example/kafka': {
+    type: HTML,
+    body: articlePage(
+      'Apache Kafka in practice',
+      'Apache Kafka keeps an ordered log of records that consumers read at their own pace.',
+    ),
+  },
   'https://papers.example/on-links.pdf': { type: 'application/pdf', body: paperPdf('On Links') },
 };
 
@@ -64,8 +98,15 @@ const server = createServer((req, res) => {
   log.push({ target, at: Date.now() });
   if (offline) return void req.socket.destroy();
   // Every page under https://news.example/ is the article.
+  const code = /^https:\/\/code\.example\/([\w-]+)$/.exec(target);
   const page =
     pages[target] ??
+    (code
+      ? {
+          type: HTML,
+          body: articlePage(`Code ${code[1]}`, `A page about code, marker-${code[1]}, to enrich.`),
+        }
+      : undefined) ??
     (target.startsWith('https://news.example/')
       ? pages['https://news.example/article']
       : undefined);

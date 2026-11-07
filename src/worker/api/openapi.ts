@@ -120,6 +120,45 @@ export const WorkspaceSummary = z.strictObject({
 /** A workspace on its own, with its note. */
 export const Workspace = WorkspaceSummary.extend({ note: z.string() });
 
+/** The link list's filters, with the meaning of the search's prefix filters; each may repeat. */
+const FILTER_PARAMETERS: Operation['query'] = {
+  tag: { description: 'Links with this tag (ignoring case)', schema: z.string() },
+  topic: { description: 'Links with this topic (ignoring case)', schema: z.string() },
+  host: { description: 'Links on this host or a subdomain of it', schema: z.string() },
+  state: {
+    description:
+      'pending, active, unreachable, dormant, archived or any; without it, archived links are left out',
+    schema: z.string(),
+  },
+  in: { description: 'Links in the workspace with this name (ignoring case)', schema: z.string() },
+  is: { description: 'pinned or dead', schema: z.string() },
+};
+
+/** A snippet: the passage of the best-matching text, matched words marked. */
+const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
+
+/** A topic or tag as listed. */
+const VocabularyItem = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  count: z.number().int(),
+  newest_added_at: z.string(),
+});
+
+/** A topic or tag after a rename or merge. */
+const VocabularyEntry = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  count: z.number().int(),
+});
+
+/** The answer of a search. */
+export const SearchResults = z.strictObject({
+  items: z.array(z.strictObject({ link: Link, snippet: Snippet })),
+  workspaces: z.array(z.strictObject({ id: z.string(), name: z.string(), snippet: Snippet })),
+  next_cursor: z.string().nullable(),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
@@ -249,6 +288,78 @@ export const operations: Operation[] = [
       400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
     },
   },
+  {
+    method: 'get',
+    path: '/search',
+    operationId: 'search',
+    summary:
+      'Search the links (and on the first page the workspaces); without free words, the stream',
+    query: {
+      q: {
+        description:
+          'Free words and the filters tag:, topic:, host:, state:, in: and is:, at most 200 characters',
+        schema: z.string(),
+      },
+      limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description:
+          'One page of results, most relevant first, each with its snippet as text segments',
+        schema: SearchResults,
+      },
+      400: error('query_too_long, invalid_filter (field q), invalid_limit or invalid_cursor'),
+    },
+  },
+  ...(['topics', 'tags'] as const).map((kind): Operation => ({
+    method: 'get',
+    path: `/${kind}`,
+    operationId: kind === 'topics' ? 'listTopics' : 'listTags',
+    summary: `The ${kind} that have a link, with their counts, newest link first`,
+    query: {
+      limit: { description: 'Items per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: `One page of ${kind}: the number of links in any state and the newest link's added date`,
+        schema: z.strictObject({
+          items: z.array(VocabularyItem),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  })),
+  ...(['topics', 'tags'] as const).flatMap((kind): Operation[] => {
+    const one = kind === 'topics' ? 'Topic' : 'Tag';
+    return [
+      {
+        method: 'patch',
+        path: `/${kind}/{id}`,
+        operationId: `rename${one}`,
+        summary: `Rename a ${one.toLowerCase()}; the old name becomes an alias of it`,
+        body: z.object({ name: z.string() }),
+        responses: {
+          200: { description: `The renamed ${one.toLowerCase()}`, schema: VocabularyEntry },
+          400: error('invalid_json or invalid_name (field name)'),
+          409: error('name_taken: another one has the name; merge instead'),
+        },
+      },
+      {
+        method: 'post',
+        path: `/${kind}/{id}/merge`,
+        operationId: `merge${one}`,
+        summary: `Merge a ${one.toLowerCase()} into another, which keeps every link`,
+        body: z.object({ into: z.string() }),
+        responses: {
+          200: { description: 'The survivor', schema: VocabularyEntry },
+          400: error('invalid_json, or invalid_merge (field into): into missing or the source'),
+        },
+      },
+    ];
+  }),
   {
     method: 'get',
     path: '/archive',
@@ -484,6 +595,7 @@ export const operations: Operation[] = [
           'Instead of a page: the links changed since this time (a server_time), oldest change first',
         schema: z.string(),
       },
+      ...FILTER_PARAMETERS,
     },
     responses: {
       200: {
@@ -494,7 +606,9 @@ export const operations: Operation[] = [
           z.strictObject({ items: z.array(Link), server_time: z.string() }),
         ]),
       },
-      400: error('invalid_limit, invalid_cursor or invalid_changed_since'),
+      400: error(
+        'invalid_limit, invalid_cursor, invalid_changed_since, or invalid_filter naming the parameter',
+      ),
     },
   },
   {

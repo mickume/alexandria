@@ -470,6 +470,62 @@ A link's stored reader view.
 
 ***
 
+### SearchResults
+
+One page of a search's results.
+
+#### Properties
+
+##### items
+
+> **items**: `object`[]
+
+###### link
+
+> **link**: [`Link`](#link)
+
+###### snippet
+
+> **snippet**: [`Segment`](#segment)[]
+
+##### next\_cursor
+
+> **next\_cursor**: `string` \| `null`
+
+##### workspaces
+
+> **workspaces**: `object`[]
+
+###### id
+
+> **id**: `string`
+
+###### name
+
+> **name**: `string`
+
+###### snippet
+
+> **snippet**: [`Segment`](#segment)[]
+
+***
+
+### Segment
+
+A piece of a snippet: text, and whether it is a matched word.
+
+#### Properties
+
+##### match
+
+> **match**: `boolean`
+
+##### text
+
+> **text**: `string`
+
+***
+
 ### Thresholds
 
 The decay thresholds, in days.
@@ -511,6 +567,30 @@ A personal access token as listed.
 ##### name
 
 > **name**: `string`
+
+***
+
+### VocabularyItem
+
+A topic or tag as listed, with its number of links.
+
+#### Properties
+
+##### count
+
+> **count**: `number`
+
+##### id
+
+> **id**: `string`
+
+##### name
+
+> **name**: `string`
+
+##### newest\_added\_at
+
+> **newest\_added\_at**: `string`
 
 ***
 
@@ -569,6 +649,14 @@ A member of a workspace: a link with its position.
 ##### position
 
 > **position**: `number`
+
+***
+
+### VocabularyKind
+
+> **VocabularyKind** = `"topics"` \| `"tags"`
+
+Topics or tags.
 
 ***
 
@@ -958,6 +1046,74 @@ Deletes a link for good; a link already gone counts as deleted.
 
 ***
 
+### vocabulary
+
+> `const` **vocabulary**: `object`
+
+#### Type Declaration
+
+##### listAll
+
+> **listAll**: (`kind`) => `Promise`\<[`VocabularyItem`](#vocabularyitem)[]\>
+
+Every topic or tag with a link, newest first, following the cursor to the end.
+
+###### Parameters
+
+###### kind
+
+[`VocabularyKind`](#vocabularykind)
+
+###### Returns
+
+`Promise`\<[`VocabularyItem`](#vocabularyitem)[]\>
+
+##### merge
+
+> **merge**: (`kind`, `id`, `into`) => `Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
+
+###### Parameters
+
+###### kind
+
+[`VocabularyKind`](#vocabularykind)
+
+###### id
+
+`string`
+
+###### into
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
+
+##### rename
+
+> **rename**: (`kind`, `id`, `name`) => `Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
+
+###### Parameters
+
+###### kind
+
+[`VocabularyKind`](#vocabularykind)
+
+###### id
+
+`string`
+
+###### name
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
+
+***
+
 ### workspaces
 
 > `const` **workspaces**: `object`
@@ -1098,6 +1254,46 @@ Deletes a link for good; a link already gone counts as deleted.
 
 ## Functions
 
+### activeFilters()
+
+> **activeFilters**(`q`): `string`[]
+
+The prefix filters of a query, each as written: tag:x, topic:"web development", …
+
+#### Parameters
+
+##### q
+
+`string`
+
+#### Returns
+
+`string`[]
+
+***
+
+### filterQuery()
+
+> **filterQuery**(`name`, `value`): `string`
+
+The search query of a topic or tag filter, quoting a name that holds a space.
+
+#### Parameters
+
+##### name
+
+`"topic"` \| `"tag"`
+
+##### value
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
 ### openUrl()
 
 > **openUrl**(`id`): `string`
@@ -1149,6 +1345,46 @@ Sends a request to the API and returns its parsed JSON body (undefined for 204).
 #### Returns
 
 `Promise`\<`T`\>
+
+***
+
+### search()
+
+> **search**(`q`, `cursor?`): `Promise`\<[`SearchResults`](#searchresults)\>
+
+Searches the library: free words and prefix filters, one page at a time.
+
+#### Parameters
+
+##### q
+
+`string`
+
+##### cursor?
+
+`string` \| `null`
+
+#### Returns
+
+`Promise`\<[`SearchResults`](#searchresults)\>
+
+***
+
+### searchPath()
+
+> **searchPath**(`q`): `string`
+
+The website's address of a search.
+
+#### Parameters
+
+##### q
+
+`string`
+
+#### Returns
+
+`string`
 
 ***
 

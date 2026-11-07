@@ -1,0 +1,115 @@
+import { useEffect, useRef, useState } from 'react';
+import { navigate, queryOf, type Location } from '../App';
+import { searchPath } from '../api';
+
+/** How long the box waits after the last keystroke before it searches. */
+export const SEARCH_DELAY_MS = 200;
+/** The longest query. */
+export const QUERY_MAX = 200;
+
+/** Whether keys typed at `target` are text: an input, a text area, a select or editable content. */
+function isTextField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
+}
+
+/** The address a query leads to from `location`: the Archive page keeps its own search. */
+function addressOf(location: Location, query: string): string {
+  if (location.path === '/archive') {
+    return query ? `/archive?q=${encodeURIComponent(query)}` : '/archive';
+  }
+  return query ? searchPath(query) : '/';
+}
+
+/** The page a location's search box shows the query of: the results page and the Archive page. */
+function showsQuery(location: Location): boolean {
+  return location.path === '/search' || location.path === '/archive';
+}
+
+/**
+ * The search box in the header of every page. It searches 200 ms after the
+ * last keystroke, at /search?q= (on the Archive page, within the archive);
+ * an emptied box returns to the stream. '/' typed outside a text field
+ * focuses it; Escape in it clears it, returns to the page the search started
+ * from and focuses the page's main region. No other key is a shortcut.
+ */
+export function SearchBox({ location }: { location: Location }) {
+  const [value, setValue] = useState(() => (showsQuery(location) ? queryOf(location) : ''));
+  const input = useRef<HTMLInputElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The page the current search started from. */
+  const origin = useRef<string | null>(null);
+
+  // A page reached otherwise (a link, history) shows its own query, or none.
+  const [shown, setShown] = useState(location);
+  if (shown !== location) {
+    setShown(location);
+    setValue(showsQuery(location) ? queryOf(location) : '');
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || isTextField(e.target)) return;
+      e.preventDefault();
+      input.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  function search(query: string) {
+    const here = window.location.pathname + window.location.search;
+    const target = addressOf(location, query.trim() ? query : '');
+    if (target === here) return;
+    if (location.path !== '/search' && location.path !== '/archive') origin.current = here;
+    // Typing on the results page refines the search rather than adding history.
+    navigate(target, { replace: location.path === '/search' && target.startsWith('/search') });
+  }
+
+  function onChange(query: string) {
+    setValue(query);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => search(query), SEARCH_DELAY_MS);
+  }
+
+  function onEscape() {
+    if (timer.current) clearTimeout(timer.current);
+    setValue('');
+    const back = location.path === '/archive' ? '/archive' : (origin.current ?? '/');
+    origin.current = null;
+    if (back !== window.location.pathname + window.location.search) navigate(back);
+    document.querySelector<HTMLElement>('main')?.focus();
+  }
+
+  return (
+    <form className="search" role="search" onSubmit={(e) => e.preventDefault()}>
+      <input
+        ref={input}
+        type="search"
+        aria-label="Search"
+        placeholder="Search"
+        maxLength={QUERY_MAX}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onEscape();
+          }
+        }}
+      />
+    </form>
+  );
+}
