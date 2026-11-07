@@ -2,6 +2,7 @@ import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
 import { afterFetch } from '../enrich/queue';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
+import { indexReaderTextStatement } from '../search/search';
 import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { extractMetadata } from './html';
 import { readPdf } from './pdf';
@@ -154,6 +155,7 @@ async function writeFetched(
         `INSERT INTO link_texts (link_id, user_id, text)
          SELECT id, user_id, ?1 FROM links WHERE id = ?2 AND user_id = ?3 AND ?1 IS NOT NULL`,
       ).bind(fetched.text, link.id, link.user_id),
+      indexReaderTextStatement(env.DB, link.id, fetched.text),
       eventStatement(env, link, at, 'ok', result.status, null),
     ]);
     if (!update?.meta.changes) {

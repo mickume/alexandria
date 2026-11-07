@@ -1,0 +1,70 @@
+-- Search: a full-text index of every link, kept current by triggers.
+
+-- The FTS5 rowid of each link's index row; links have text ids.
+CREATE TABLE link_search_keys (
+  id INTEGER PRIMARY KEY,
+  link_id TEXT NOT NULL UNIQUE
+);
+
+-- One row per link. owner holds 'u' and the user's id without hyphens, one
+-- term every query must match. It comes last, so that a snippet's column is
+-- never chosen for it.
+CREATE VIRTUAL TABLE link_search USING fts5(
+  title, tags, topic, summary, host, original_url, note, reader_text, owner,
+  link_id UNINDEXED,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE INDEX links_topic ON links (topic_id);
+
+CREATE TRIGGER link_search_insert AFTER INSERT ON links BEGIN
+  INSERT INTO link_search_keys (link_id) VALUES (new.id);
+  INSERT INTO link_search (rowid, title, tags, topic, summary, host, original_url, note, reader_text, owner, link_id)
+  VALUES ((SELECT id FROM link_search_keys WHERE link_id = new.id), new.title, COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = new.id), ''), COALESCE((SELECT name FROM topics WHERE id = new.topic_id), ''),
+    COALESCE(new.summary, ''), new.host, new.original_url, new.note, '',
+    'u' || replace(new.user_id, '-', ''), new.id);
+END;
+
+CREATE TRIGGER link_search_update AFTER UPDATE OF title, summary, host, original_url, note, topic_id ON links
+WHEN new.title IS NOT old.title OR new.summary IS NOT old.summary OR new.host IS NOT old.host
+  OR new.original_url IS NOT old.original_url OR new.note IS NOT old.note OR new.topic_id IS NOT old.topic_id
+BEGIN
+  UPDATE link_search SET title = new.title, topic = COALESCE((SELECT name FROM topics WHERE id = new.topic_id), ''), summary = COALESCE(new.summary, ''),
+    host = new.host, original_url = new.original_url, note = new.note
+  WHERE rowid = (SELECT id FROM link_search_keys WHERE link_id = new.id);
+END;
+
+CREATE TRIGGER link_search_delete AFTER DELETE ON links BEGIN
+  DELETE FROM link_search WHERE rowid = (SELECT id FROM link_search_keys WHERE link_id = old.id);
+  DELETE FROM link_search_keys WHERE link_id = old.id;
+END;
+
+CREATE TRIGGER link_search_tag_added AFTER INSERT ON link_tags BEGIN
+  UPDATE link_search SET tags = COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = new.link_id), '') WHERE rowid = (SELECT id FROM link_search_keys WHERE link_id = new.link_id);
+END;
+
+CREATE TRIGGER link_search_tag_removed AFTER DELETE ON link_tags BEGIN
+  UPDATE link_search SET tags = COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = old.link_id), '') WHERE rowid = (SELECT id FROM link_search_keys WHERE link_id = old.link_id);
+END;
+
+CREATE TRIGGER link_search_topic_renamed AFTER UPDATE OF name ON topics
+WHEN new.name IS NOT old.name
+BEGIN
+  UPDATE link_search SET topic = new.name
+  WHERE rowid IN (SELECT k.id FROM links l JOIN link_search_keys k ON k.link_id = l.id WHERE l.topic_id = new.id);
+END;
+
+CREATE TRIGGER link_search_tag_renamed AFTER UPDATE OF name ON tags
+WHEN new.name IS NOT old.name
+BEGIN
+  UPDATE link_search SET tags = COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = link_search.link_id), '')
+  WHERE rowid IN (SELECT k.id FROM link_tags lt JOIN link_search_keys k ON k.link_id = lt.link_id WHERE lt.tag_id = new.id);
+END;
+
+-- The links stored before this migration, with the reader text already fetched.
+INSERT INTO link_search_keys (link_id) SELECT id FROM links;
+INSERT INTO link_search (rowid, title, tags, topic, summary, host, original_url, note, reader_text, owner, link_id)
+SELECT k.id, l.title, COALESCE((SELECT group_concat(t.name, ' ') FROM link_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.link_id = l.id), ''), COALESCE((SELECT name FROM topics WHERE id = l.topic_id), ''), COALESCE(l.summary, ''), l.host,
+  l.original_url, l.note, COALESCE((SELECT substr(text, 1, 500000) FROM link_texts WHERE link_id = l.id), ''),
+  'u' || replace(l.user_id, '-', ''), l.id
+FROM links l JOIN link_search_keys k ON k.link_id = l.id;

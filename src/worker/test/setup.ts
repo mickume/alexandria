@@ -23,7 +23,9 @@ beforeAll(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
   const rows = await env.DB.prepare(
     `SELECT name FROM sqlite_master WHERE type = 'table'
-       AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'`,
+       AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'
+       -- A full-text index's shadow tables are emptied with the index itself.
+       AND sql NOT LIKE 'CREATE TABLE ''%'`,
   ).all<{ name: string }>();
   tables = rows.results.map((r) => r.name);
   installOutbound();

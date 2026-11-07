@@ -72,6 +72,8 @@ account and checks the PKCE verifier as Google does.
 | `workspaces` | per user: name (unique ignoring case through `name_key`), description, Markdown note |
 | `workspace_links` | the members of each workspace, at positions 1..n |
 | `rate_limits` | requests per user per minute |
+| `link_search` | the FTS5 full-text index: one row per link (see Search) |
+| `link_search_keys` | the index row id of each link |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
@@ -177,6 +179,32 @@ the failure count resets and `dead_since` clears. Any other answer counts one
 failure; the third in a row sets `dead_since`. A failure of Alexandria's own
 (the host gate unavailable, a write failing) is thrown: the message is
 retried and nothing on the link changes.
+
+## Search
+
+`link_search` (`migrations/0006_search_index.sql`) is an FTS5 table with the
+`unicode61` tokenizer removing diacritics. It holds one row per link with the
+columns `title`, `tags` (the tag names, space-separated), `topic`, `summary`,
+`host`, `original_url`, `note` and `reader_text`, then `owner`, the term `u`
+followed by the user's id without hyphens, and the link's id, unindexed.
+Every query matches the owner term, so the full-text match itself cannot
+return another user's link. Links have text ids, so `link_search_keys` gives
+each link the integer row id of its index row, which every write looks up.
+
+Triggers keep the index current, so no writer can forget it:
+
+- a link inserted gets its row; a link deleted (by the API or by decay's
+  removal) loses it;
+- a change to a link's title, summary, host, original URL, note or topic
+  rewrites those columns (only when one of them really changed);
+- a `link_tags` row inserted or deleted rewrites the link's `tags`;
+- renaming a topic or a tag rewrites the rows of the links that carry it.
+
+The reader-view text is written by the fetch worker in the batch that stores
+it in `link_texts` (`search/search.ts`, `indexReaderTextStatement`): at most
+its first 500,000 characters, replacing what was indexed before, and nothing
+when a fetch stores no text. The migration indexed the links and texts stored
+before it.
 
 ## Test layers
 
