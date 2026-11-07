@@ -60,7 +60,11 @@ account and checks the PKCE verifier as Google does.
   (`components/VocabularyList`). `App.tsx` follows the path and the query
   string. `api.ts` is the client of the API, `format.ts`
   formats dates. `styles.css` holds the whole visual design: one system
-  typeface, light and dark from `prefers-color-scheme`.
+  typeface, a soft canvas with the navigation in a sidebar (a row of pills
+  on narrow screens) beside a white rounded panel holding the top bar and
+  the page, link cards in a responsive grid, pill controls and one warm
+  accent; light and dark from `prefers-color-scheme`. `components/Icon.tsx`
+  draws the navigation's line icons and Alexandria's mark.
 
 ## Data
 

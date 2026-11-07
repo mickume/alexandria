@@ -1,0 +1,54 @@
+/** The line icons of the navigation and the search box: 24-unit paths, stroked in the text colour. */
+const PATHS = {
+  stream: ['M4 6h16', 'M4 12h16', 'M4 18h10'],
+  workspaces: ['M12 3 3 8l9 5 9-5-9-5Z', 'm3 13 9 5 9-5', 'm3 17.5 9 5 9-5'],
+  topics: ['M9 4 7 20', 'M17 4l-2 16', 'M4 9h16', 'M3 15h16'],
+  tags: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9-9-9Z', 'M8 7.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0Z'],
+  archive: ['M3 4h18v4H3z', 'M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8', 'M10 12h4'],
+  settings: ['M4 7h10', 'M18 7h2', 'M4 17h4', 'M12 17h8', 'M16 5v4', 'M10 15v4'],
+  signout: ['M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4', 'M10 16l-4-4 4-4', 'M6 12h10'],
+  search: ['M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Z', 'm20 20-4.5-4.5'],
+  home: ['M4 11 12 4l8 7', 'M6 9.5V20h12V9.5'],
+} as const;
+
+export type IconName = keyof typeof PATHS;
+
+/** A decorative icon: hidden from assistive technology, which reads the label beside it. */
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+  return (
+    <svg
+      className="icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {PATHS[name].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
+/** Alexandria's mark: an open book in a rounded square of the accent colour. */
+export function Mark({ size = 28 }: { size?: number }) {
+  return (
+    <svg className="mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="9" fill="var(--accent)" />
+      <path
+        d="M8 10.5c3-1.2 5.7-1 8 .8 2.3-1.8 5-2 8-.8v11c-3-1.2-5.7-1-8 .8-2.3-1.8-5-2-8-.8v-11Z"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M16 11.3v11" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}

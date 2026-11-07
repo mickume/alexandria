@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { navigate, queryOf, type Location } from '../App';
 import { searchPath } from '../api';
+import { Icon } from './Icon';
 
 /** How long the box waits after the last keystroke before it searches. */
 export const SEARCH_DELAY_MS = 200;
@@ -95,6 +96,7 @@ export function SearchBox({ location }: { location: Location }) {
 
   return (
     <form className="search" role="search" onSubmit={(e) => e.preventDefault()}>
+      <Icon name="search" size={16} />
       <input
         ref={input}
         type="search"
@@ -110,6 +112,7 @@ export function SearchBox({ location }: { location: Location }) {
           }
         }}
       />
+      <kbd aria-hidden="true">/</kbd>
     </form>
   );
 }

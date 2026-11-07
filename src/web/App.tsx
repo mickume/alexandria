@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Archive } from './pages/Archive';
 import { LinkDetail } from './pages/LinkDetail';
+import { Icon, Mark, type IconName } from './components/Icon';
 import { SearchBox } from './components/SearchBox';
 import { Read, Snapshot } from './pages/Read';
 import { Search } from './pages/Search';
@@ -53,15 +54,19 @@ export function Link({
   to,
   children,
   className,
+  current = false,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
+  /** Marks the link as the page being shown. */
+  current?: boolean;
 }) {
   return (
     <a
       href={to}
       className={className}
+      aria-current={current ? 'page' : undefined}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
@@ -73,32 +78,93 @@ export function Link({
   );
 }
 
-/** The frame of every signed-in page: the navigation, the search box and the page's content. */
-function Layout({ location, children }: { location: Location; children: ReactNode }) {
+/** The sections of the navigation, by path. */
+const SECTIONS: { to: string; label: string; icon: IconName }[] = [
+  { to: '/', label: 'Stream', icon: 'stream' },
+  { to: '/workspaces', label: 'Workspaces', icon: 'workspaces' },
+  { to: '/topics', label: 'Topics', icon: 'topics' },
+  { to: '/tags', label: 'Tags', icon: 'tags' },
+  { to: '/archive', label: 'Archive', icon: 'archive' },
+];
+
+/** The section a path belongs to, for the breadcrumb and the active navigation item. */
+function sectionOf(path: string): string {
+  if (path === '/settings') return 'Settings';
+  if (path === '/search') return 'Search';
+  if (path.startsWith('/links/')) return 'Link';
+  const match = SECTIONS.filter((s) => s.to !== '/' && path.startsWith(s.to));
+  return match[0]?.label ?? 'Stream';
+}
+
+/** One item of the navigation, marked as the current page when it is. */
+function NavItem({
+  to,
+  icon,
+  current,
+  children,
+}: {
+  to: string;
+  icon: IconName;
+  current: boolean;
+  children: ReactNode;
+}) {
   return (
-    <>
-      <header className="nav">
+    <Link to={to} className={current ? 'nav-item current' : 'nav-item'} current={current}>
+      <Icon name={icon} />
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * The frame of every signed-in page: the sidebar with the navigation, and
+ * beside it the top bar (where you are, and the search box) over the page.
+ */
+function Layout({ location, children }: { location: Location; children: ReactNode }) {
+  const section = sectionOf(location.path);
+  return (
+    <div className="shell">
+      <aside className="sidebar">
         <Link to="/" className="brand">
-          Alexandria
+          <Mark />
+          <span>Alexandria</span>
         </Link>
-        <SearchBox location={location} />
-        <nav>
-          <Link to="/workspaces">Workspaces</Link>
-          <Link to="/topics">Topics</Link>
-          <Link to="/tags">Tags</Link>
-          <Link to="/archive">Archive</Link>
-          <Link to="/settings">Settings</Link>
+        <nav className="nav">
+          <p className="nav-group">Library</p>
+          {SECTIONS.map((s) => (
+            <NavItem key={s.to} to={s.to} icon={s.icon} current={section === s.label}>
+              {s.label}
+            </NavItem>
+          ))}
+          <p className="nav-group">Account</p>
+          <NavItem to="/settings" icon="settings" current={section === 'Settings'}>
+            Settings
+          </NavItem>
           <form method="post" action="/auth/signout">
-            <button type="submit" className="link-button">
+            <button type="submit" className="nav-item">
+              <Icon name="signout" />
               Sign out
             </button>
           </form>
         </nav>
-      </header>
-      <main className="page" tabIndex={-1}>
-        {children}
-      </main>
-    </>
+      </aside>
+      <div className="content">
+        <header className="topbar">
+          <p className="crumbs">
+            <Icon name="home" size={16} />
+            <span className="muted">Alexandria</span>
+            <span className="muted" aria-hidden="true">
+              /
+            </span>
+            <span>{section}</span>
+          </p>
+          <SearchBox location={location} />
+        </header>
+        <main className="page" tabIndex={-1}>
+          {children}
+        </main>
+      </div>
+    </div>
   );
 }
 
