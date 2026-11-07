@@ -84,7 +84,12 @@ export const Link = z.strictObject({
     .describe('Why the link has or has not a summary; null before its first fetch'),
   enrichment_reason: z.string().nullable(),
   edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
+  note_preview: z.string().nullable().describe('The note’s first line as plain text'),
+  workspaces: z.array(z.strictObject({ id: z.string(), name: z.string() })),
 });
+
+/** A link read on its own, with its whole note. */
+export const LinkWithNote = Link.extend({ note: z.string() });
 
 /** The AI settings, never with the key beyond its last 4 characters. */
 const AiSettingsView = z.strictObject({
@@ -435,7 +440,7 @@ export const operations: Operation[] = [
     path: '/links/{id}',
     operationId: 'getLink',
     summary: 'One link',
-    responses: { 200: { description: 'The link', schema: Link } },
+    responses: { 200: { description: 'The link, with its note', schema: LinkWithNote } },
   },
   {
     method: 'get',
@@ -513,10 +518,13 @@ export const operations: Operation[] = [
       summary: z.string().max(2000).optional(),
       tags: z.array(z.string()).max(20).optional(),
       topic: z.string().min(1).max(100).optional(),
+      note: z.string().optional().describe('Markdown, at most 20,000 characters; empty clears it'),
     }),
     responses: {
-      200: { description: 'The link, with edited_fields', schema: Link },
-      400: error('invalid_json, invalid_title, invalid_summary, invalid_tags or invalid_topic'),
+      200: { description: 'The link, with edited_fields and its note', schema: LinkWithNote },
+      400: error(
+        'invalid_json, invalid_title, invalid_summary, invalid_tags, invalid_topic, invalid_note or note_too_long',
+      ),
     },
   },
   {

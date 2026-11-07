@@ -428,3 +428,20 @@ workspace it was in.
 
 Another user's workspace answers `404 {"error": "not_found"}`, as an unknown
 one does.
+
+### Notes
+
+A workspace and a link each carry one Markdown note of at most 20,000
+characters (Unicode code points), stored exactly as written; an empty note
+clears it. Set it with `PATCH /api/v1/workspaces/{id}` or
+`PATCH /api/v1/links/{id}` and `{"note": "…"}`; nothing else changes.
+`400 {"error": "note_too_long", "field": "note", "message": "note too long (20,000 characters)"}`,
+or `400 {"error": "invalid_note", …}` for a value that is not text.
+
+Links in lists (the stream, the change feed, a workspace's links) carry
+`note_preview` (the note's first non-empty line without Markdown heading or
+list markers and raw HTML, cut to 200 characters, or null) and `workspaces`
+(`[{"id", "name"}]` by name); only `GET /api/v1/links/{id}` and the answer of
+`PATCH /api/v1/links/{id}` carry the whole `note`. The website renders notes
+as Markdown and removes raw HTML, scripts, event handlers and every URL that
+is not http, https or mailto.

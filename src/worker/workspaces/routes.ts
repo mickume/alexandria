@@ -3,6 +3,7 @@ import { limitReached, notFound, readJson, validationError } from '../api/errors
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
+import { checkNote } from './notes';
 import {
   addMember,
   createWorkspace,
@@ -117,7 +118,17 @@ workspaceRoutes.patch('/:id', async (c) => {
   if (!parsed.ok) return parsed.response;
   const fields = parseFields(c, parsed.body, { nameRequired: false });
   if (fields instanceof Response) return fields;
-  return answer(c, await updateWorkspace(c.env.DB, userId, c.req.param('id'), fields), 200);
+  let note: string | undefined;
+  if ('note' in parsed.body) {
+    const check = checkNote(parsed.body.note);
+    if (!check.ok) return validationError(c, check.error, 'note', check.message);
+    note = check.note;
+  }
+  return answer(
+    c,
+    await updateWorkspace(c.env.DB, userId, c.req.param('id'), { ...fields, note }),
+    200,
+  );
 });
 
 workspaceRoutes.delete('/:id', async (c) => {

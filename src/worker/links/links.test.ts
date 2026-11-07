@@ -40,6 +40,8 @@ describe('adding a link', () => {
         enrichment_status: null,
         enrichment_reason: null,
         edited_fields: [],
+        note_preview: null,
+        workspaces: [],
       },
     });
   });
@@ -255,6 +257,9 @@ describe('reading a link', () => {
       enrichment_status: null,
       enrichment_reason: null,
       edited_fields: [],
+      note_preview: null,
+      workspaces: [],
+      note: '',
     });
   });
 });
