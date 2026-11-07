@@ -54,19 +54,26 @@ The `scheduled` handler tells them apart by `controller.cron`.
 
 ## Deploying
 
-`npm run deploy` (`scripts/deploy.sh`) deploys from a fresh checkout with
-`CLOUDFLARE_API_TOKEN` set (and `CLOUDFLARE_ACCOUNT_ID` when the token cannot
-list its accounts). It builds the website and the Worker (`vite build`, which
-writes the deployable configuration to `dist/alexandria/wrangler.json`),
-creates the four queues and the R2 bucket when they do not exist, applies the
-D1 migrations, and deploys; the D1 database `alexandria` is created by the
-first deploy, and the migrations follow it then. Every step is a no-op when
-there is nothing to do, so it is also the command to deploy every change.
+Two ways deploy the same Worker:
 
-`npx wrangler deploy` on its own does not work from a fresh checkout: the
-root `wrangler.jsonc` is the source the Vite plugin builds from, and only the
-built configuration names the assets directory. With Workers Builds, set the
-deploy command to `npm run deploy` and leave the build command empty.
+- **Workers Builds, or a plain `npx wrangler deploy`.** `wrangler.jsonc` has a
+  custom build, `scripts/build.sh`: it builds the website into `dist/client`
+  and, inside Workers Builds (`WORKERS_CI=1`), gets the account ready with
+  `scripts/provision.sh`. Wrangler then bundles the Worker itself. The default
+  Workers Builds settings (no build command, deploy command
+  `npx wrangler deploy`, and `npx wrangler versions upload` for other
+  branches) work as they are.
+- **`npm run deploy`** (`scripts/deploy.sh`) from a checkout, with
+  `CLOUDFLARE_API_TOKEN` set (and `CLOUDFLARE_ACCOUNT_ID` when the token cannot
+  list its accounts): builds with Vite, runs `scripts/provision.sh`, and deploys
+  the Worker bundle Vite built (`dist/alexandria/`).
+
+`scripts/provision.sh` checks that the token can manage D1, Queues and R2 (and
+names the permissions it lacks), creates the D1 database `alexandria`, the
+four queues and the R2 bucket when they do not exist, and applies the D1
+migrations, before the deploy. Every step is a no-op when there is nothing to
+do. The token needs Account > Workers Scripts, D1, Queues and Workers R2
+Storage, each Edit.
 
 Set the per-deployment settings once (above), with the secrets below, and add
 `<PUBLIC_ORIGIN>/auth/google/callback` as an authorised redirect URI of the
