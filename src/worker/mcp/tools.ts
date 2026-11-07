@@ -204,18 +204,6 @@ const workspace = z
   .min(1)
   .describe('A workspace of the owner: its id, or its name (case is ignored)');
 
-/** A tool whose behaviour is not built yet: it answers an internal error. */
-function pending(name: string, description: string, input: z.ZodObject): Tool {
-  return {
-    name,
-    description,
-    input,
-    run() {
-      throw new Error(`${name} is not built yet`);
-    },
-  };
-}
-
 /** Every tool the MCP server offers. */
 export const TOOLS: Tool[] = [
   {
@@ -254,21 +242,41 @@ export const TOOLS: Tool[] = [
     input: z.object({ id: linkId, format: z.enum(['text', 'html']).describe('text or html') }),
     run: getLinkContent,
   },
-  pending('list_workspaces', 'Every workspace of the owner, with its link count.', z.object({})),
-  pending(
-    'add_to_workspace',
-    'Add a link to the bottom of a workspace.',
-    z.object({ link_id: linkId, workspace }),
-  ),
-  pending(
-    'pin_link',
-    'Pin a link at the bottom of the pinned section, at the top of the stream.',
-    z.object({ link_id: linkId }),
-  ),
-  pending(
-    'archive_link',
-    'Archive a link: it leaves the stream and waits on the Archive page.',
-    z.object({ link_id: linkId }),
-  ),
+  {
+    name: 'list_workspaces',
+    description: 'Every workspace of the owner, with its description and link count.',
+    input: z.object({}),
+    run: (ctx) => allWorkspaces(ctx),
+  },
+  {
+    name: 'add_to_workspace',
+    description: 'Add a link to the bottom of a workspace.',
+    input: z.object({ link_id: linkId, workspace }),
+    async run(ctx, args: { link_id: string; workspace: string }) {
+      const id = await resolveWorkspace(ctx, args.workspace);
+      if (id === null) return NO_WORKSPACE;
+      return outcomeOf(
+        await ctx.call('POST', `/workspaces/${id}/links`, { link_id: args.link_id }),
+      );
+    },
+  },
+  {
+    name: 'pin_link',
+    description: 'Pin a link at the bottom of the pinned section, at the top of the stream.',
+    input: z.object({ link_id: linkId }),
+    async run(ctx, args: { link_id: string }) {
+      return outcomeOf(await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/pin`));
+    },
+  },
+  {
+    name: 'archive_link',
+    description: 'Archive a link: it leaves the stream and waits on the Archive page.',
+    input: z.object({ link_id: linkId }),
+    async run(ctx, args: { link_id: string }) {
+      return outcomeOf(
+        await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/archive`),
+      );
+    },
+  },
   listRecent,
 ];

@@ -744,6 +744,10 @@ unexpected failure is
 | `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included; no use |
 | `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
 | `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |
+| `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |
+| `add_to_workspace` | `link_id`, `workspace` | `POST /api/v1/workspaces/{id}/links` with `{link_id}`: at the bottom |
+| `pin_link` | `link_id` | `POST /api/v1/links/{id}/pin` without a position (`pin_limit` at 30) |
+| `archive_link` | `link_id` | `POST /api/v1/links/{id}/archive` |
 | `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
 
 A `workspace` argument is a workspace's id or its name, compared ignoring

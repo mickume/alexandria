@@ -543,3 +543,153 @@ describe('get_link and get_link_content', () => {
     expect(await useOf(id!)).toEqual(before);
   });
 });
+
+describe('workspaces, pins and the archive', () => {
+  it.each([0, 3, 150])(
+    'list_workspaces returns all %i workspaces',
+    { timeout: 60_000 },
+    async (n) => {
+      const a = await agent();
+      for (let i = 0; i < n; i++)
+        await createWorkspace(a, `Workspace ${String(i).padStart(3, '0')}`);
+      const r = await mcpTool(a.secret, 'list_workspaces', {});
+      const pages: unknown[] = [];
+      let cursor: string | null = null;
+      do {
+        const page: { json: { items: unknown[]; next_cursor: string | null } } = await api(
+          'GET',
+          `/api/v1/workspaces${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+          { as: a.session },
+        );
+        pages.push(...page.json.items);
+        cursor = page.json.next_cursor;
+      } while (cursor);
+      expect(r.isError).toBeFalsy();
+      expect(r.structuredContent).toEqual({ items: pages });
+      expect(pages).toHaveLength(n);
+    },
+  );
+
+  it.each(['id', 'Research', 'RESEARCH'])(
+    'add_to_workspace files a link by the workspace’s %s',
+    async (form) => {
+      const a = await agent();
+      const research = await createWorkspace(a, 'Research');
+      const [first, link] = await seedLinks(a, [
+        { url: 'https://first.example' },
+        { url: 'https://second.example' },
+      ]);
+      await api('POST', `/api/v1/workspaces/${research}/links`, {
+        as: a.session,
+        body: { link_id: first },
+      });
+      const workspace = form === 'id' ? research : form;
+      const r = await mcpTool(a.secret, 'add_to_workspace', { link_id: link, workspace });
+      expect(r.isError).toBeFalsy();
+      expect(r.structuredContent).toEqual({ workspace_id: research, link_id: link, position: 2 });
+      expect(await workspaceLinks(a, research)).toEqual([first, link]);
+      const again = await mcpTool(a.secret, 'add_to_workspace', { link_id: link, workspace });
+      const direct = await api('POST', `/api/v1/workspaces/${research}/links`, {
+        as: a.session,
+        body: { link_id: link },
+      });
+      expect(again.structuredContent).toEqual(direct.json);
+      expect(await workspaceLinks(a, research)).toEqual([first, link]);
+    },
+  );
+
+  it.each([
+    'an unknown link',
+    "another user's link",
+    'an unknown workspace',
+    "another user's workspace",
+  ])('add_to_workspace refuses %s', async (target) => {
+    const a = await agent();
+    const b = await agent('other@example.test');
+    const mine = await createWorkspace(a, 'Mine');
+    const theirs = await createWorkspace(b, 'Theirs');
+    const [link] = await seedLinks(a, [{ url: 'https://mine.example' }]);
+    const [theirLink] = await seedLinks(b, [{ url: 'https://theirs.example' }]);
+    const args = {
+      'an unknown link': { link_id: 'no-such-link', workspace: mine },
+      "another user's link": { link_id: theirLink, workspace: mine },
+      'an unknown workspace': { link_id: link, workspace: 'Nowhere' },
+      "another user's workspace": { link_id: link, workspace: theirs },
+    }[target];
+    const r = await mcpTool(a.secret, 'add_to_workspace', args);
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent.error).toBe('not_found');
+    expect(await workspaceLinks(a, mine)).toEqual([]);
+    expect(await workspaceLinks(b, theirs)).toEqual([]);
+  });
+
+  it('pin_link pins at the bottom of the pinned section', async () => {
+    const a = await agent();
+    const [x, y] = await seedLinks(a, [{ url: 'https://a.example' }, { url: 'https://b.example' }]);
+    await api('POST', `/api/v1/links/${x}/pin`, { as: a.session });
+    const r = await mcpTool(a.secret, 'pin_link', { link_id: y });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toMatchObject({ id: y, pinned: true, pin_position: 2 });
+    const stream = await api('GET', '/api/v1/links', { as: a.session });
+    expect(stream.json.items.slice(0, 2).map((l: { id: string }) => l.id)).toEqual([x, y]);
+  });
+
+  it('pin_link refuses a 31st pin', async () => {
+    const a = await agent();
+    const ids = await seedLinks(
+      a,
+      Array.from({ length: 31 }, (_, i) => ({
+        url: `https://p${i}.example`,
+        pinPosition: i < 30 ? i + 1 : null,
+      })),
+    );
+    const r = await mcpTool(a.secret, 'pin_link', { link_id: ids[30] });
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent).toEqual({ error: 'pin_limit', message: 'unpin something first' });
+    const positions = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM links WHERE user_id = ? AND pin_position IS NOT NULL',
+    )
+      .bind(a.id)
+      .first<{ n: number }>();
+    expect(positions?.n).toBe(30);
+  });
+
+  it.each(['active', 'pinned', 'archived'])(
+    'archive_link answers for a %s link as POST /api/v1/links/{id}/archive does',
+    async (state) => {
+      setNow('2026-11-07T10:00:00.000Z');
+      const a = await agent();
+      const [link, twin] = await seedLinks(a, [
+        {
+          url: 'https://link.example',
+          state: state === 'archived' ? 'archived' : 'active',
+          pinPosition: state === 'pinned' ? 1 : null,
+        },
+        {
+          url: 'https://twin.example',
+          state: state === 'archived' ? 'archived' : 'active',
+          pinPosition: state === 'pinned' ? 2 : null,
+        },
+      ]);
+      const r = await mcpTool(a.secret, 'archive_link', { link_id: link });
+      const direct = await api('POST', `/api/v1/links/${twin}/archive`, { as: a.session });
+      expect(Boolean(r.isError)).toBe(direct.status >= 400);
+      const meaning = (body: Record<string, unknown>) => ({
+        keys: Object.keys(body).sort(),
+        state: body.state,
+        pinned: body.pinned,
+        archived_at: body.archived_at,
+        error: body.error,
+        message: body.message,
+      });
+      expect(meaning(r.structuredContent)).toEqual(meaning(direct.json));
+      if (state === 'active') {
+        expect(r.structuredContent.state).toBe('archived');
+        const stream = await api('GET', '/api/v1/links', { as: a.session });
+        expect(stream.json.items.map((l: { id: string }) => l.id)).not.toContain(link);
+        const archive = await api('GET', '/api/v1/archive', { as: a.session });
+        expect(archive.json.items.map((l: { id: string }) => l.id)).toContain(link);
+      }
+    },
+  );
+});
