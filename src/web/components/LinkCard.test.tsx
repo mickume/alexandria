@@ -162,3 +162,55 @@ describe('a card whose enrichment failed', () => {
     expect(screen.getByText('queued for enrichment')).toBeTruthy();
   });
 });
+
+describe('adding a link to a workspace from its card', () => {
+  it('offers the workspaces, marks those holding the link, and adds it to another', async () => {
+    const api = installFakeApi(
+      new FakeApi()
+        .on('GET', '/api/v1/workspaces', {
+          status: 200,
+          body: {
+            items: [
+              {
+                id: 'A',
+                name: 'A',
+                description: '',
+                link_count: 1,
+                created_at: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'b',
+                name: 'b',
+                description: '',
+                link_count: 0,
+                created_at: '2026-01-01T00:00:00.000Z',
+              },
+            ],
+            next_cursor: null,
+          },
+        })
+        .on('POST', '/api/v1/workspaces/b/links', {
+          status: 201,
+          body: { workspace_id: 'b', link_id: 'in-a', position: 1 },
+        }),
+    );
+    const l = makeLink({ id: 'in-a', state: 'active', workspaces: [{ id: 'A', name: 'A' }] });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
+    const a = await screen.findByRole('menuitemcheckbox', { name: 'A' });
+    expect(a.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'b' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    await act(async () => screen.getByRole('menuitemcheckbox', { name: 'b' }).click());
+    expect(api.sent('POST', '/api/v1/workspaces/b/links')).toHaveLength(1);
+    expect(api.sent('POST', '/api/v1/workspaces/b/links')[0]?.body).toEqual({ link_id: 'in-a' });
+    const chips = screen
+      .getAllByRole('link')
+      .filter((x) => x.getAttribute('href')?.startsWith('/workspaces/'));
+    expect(chips.map((c) => c.textContent)).toEqual(['A', 'b']);
+    await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
+    await act(async () => (await screen.findByRole('menuitemcheckbox', { name: 'A' })).click());
+    expect(api.sent('POST')).toHaveLength(1);
+  });
+});

@@ -84,6 +84,22 @@ A refresh of the card's link was accepted.
 
 `void`
 
+##### onRemoveFromWorkspace?
+
+> `optional` **onRemoveFromWorkspace?**: (`link`) => `void`
+
+On a workspace's page: take the link out of the workspace.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
 ##### onUnpin
 
 > **onUnpin**: (`link`) => `void`

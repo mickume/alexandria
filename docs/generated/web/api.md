@@ -312,6 +312,16 @@ A link as the API shows it.
 
 > **last\_used\_at**: `string`
 
+##### note?
+
+> `optional` **note?**: `string`
+
+The whole note: only on a link read on its own.
+
+##### note\_preview
+
+> **note\_preview**: `string` \| `null`
+
 ##### notes
 
 > **notes**: `string`[]
@@ -363,6 +373,18 @@ A link as the API shows it.
 ##### use\_count
 
 > **use\_count**: `number`
+
+##### workspaces
+
+> **workspaces**: `object`[]
+
+###### id
+
+> **id**: `string`
+
+###### name
+
+> **name**: `string`
 
 ***
 
@@ -442,6 +464,34 @@ A personal access token as listed.
 
 > **name**: `string`
 
+***
+
+### WorkspaceSummary
+
+A workspace as listed.
+
+#### Properties
+
+##### created\_at
+
+> **created\_at**: `string`
+
+##### description
+
+> **description**: `string`
+
+##### id
+
+> **id**: `string`
+
+##### link\_count
+
+> **link\_count**: `number`
+
+##### name
+
+> **name**: `string`
+
 ## Type Aliases
 
 ### AiSettings
@@ -457,6 +507,34 @@ The owner's AI settings, never with the key beyond its last 4 characters.
 > **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
 
 One event of a link's history: a use, or a fetch attempt.
+
+***
+
+### Member
+
+> **Member** = [`Link`](#link) & `object`
+
+A member of a workspace: a link with its position.
+
+#### Type Declaration
+
+##### position
+
+> **position**: `number`
+
+***
+
+### Workspace
+
+> **Workspace** = [`WorkspaceSummary`](#workspacesummary) & `object`
+
+A workspace on its own, with its note.
+
+#### Type Declaration
+
+##### note
+
+> **note**: `string`
 
 ## Variables
 
@@ -749,6 +827,146 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<`void`\>
+
+***
+
+### workspaces
+
+> `const` **workspaces**: `object`
+
+#### Type Declaration
+
+##### addLink
+
+> **addLink**: (`id`, `linkId`, `position?`) => `Promise`\<\{ `position`: `number`; \}\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### linkId
+
+`string`
+
+###### position?
+
+`number`
+
+###### Returns
+
+`Promise`\<\{ `position`: `number`; \}\>
+
+##### create
+
+> **create**: (`name`) => `Promise`\<[`Workspace`](#workspace)\>
+
+###### Parameters
+
+###### name
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Workspace`](#workspace)\>
+
+##### get
+
+> **get**: (`id`) => `Promise`\<[`Workspace`](#workspace)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Workspace`](#workspace)\>
+
+##### links
+
+> **links**: (`id`) => `Promise`\<[`Member`](#member)[]\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Member`](#member)[]\>
+
+##### list
+
+> **list**: () => `Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
+
+###### Returns
+
+`Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
+
+##### remove
+
+> **remove**: (`id`) => `Promise`\<`void`\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### removeLink
+
+> **removeLink**: (`id`, `linkId`) => `Promise`\<`void`\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### linkId
+
+`string`
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### update
+
+> **update**: (`id`, `fields`) => `Promise`\<[`Workspace`](#workspace)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### fields
+
+###### description?
+
+`string`
+
+###### name?
+
+`string`
+
+###### note?
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Workspace`](#workspace)\>
 
 ## Functions
 

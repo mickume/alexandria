@@ -4,6 +4,8 @@ import { Read, Snapshot } from './pages/Read';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
 import { Stream } from './pages/Stream';
+import { WorkspacePage } from './pages/Workspace';
+import { Workspaces } from './pages/Workspaces';
 
 /** The current path of the page, following history navigation. */
 export function usePath(): string {
@@ -56,6 +58,7 @@ function Layout({ children }: { children: ReactNode }) {
           Alexandria
         </Link>
         <nav>
+          <Link to="/workspaces">Workspaces</Link>
           <Link to="/settings">Settings</Link>
           <form method="post" action="/auth/signout">
             <button type="submit" className="link-button">
@@ -76,7 +79,11 @@ export function App() {
   let page: ReactNode = <p>{path}</p>;
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
-  else if (path.startsWith('/links/')) {
+  else if (path === '/workspaces') page = <Workspaces />;
+  else if (path.startsWith('/workspaces/')) {
+    const id = decodeURIComponent(path.slice('/workspaces/'.length));
+    page = <WorkspacePage key={id} id={id} />;
+  } else if (path.startsWith('/links/')) {
     const [rawId = '', view] = path.slice('/links/'.length).split('/');
     const id = decodeURIComponent(rawId);
     if (view === 'read') page = <Read key={id} id={id} />;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, links, openUrl, type Link } from '../api';
 import { formatDate, formatWhen } from '../format';
+import { WorkspacePicker } from './WorkspacePicker';
 
 /**
  * Refresh: asks the API to fetch the link again and shows that it is
@@ -93,11 +94,14 @@ export interface CardActions {
   onDropOn?: (link: Link) => void;
   /** A refresh of the card's link was accepted. */
   onRefreshing?: (link: Link) => void;
+  /** On a workspace's page: take the link out of the workspace. */
+  onRemoveFromWorkspace?: (link: Link) => void;
 }
 
 /** One link in the stream: favicon, title, host, dates, state and actions. */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const open = openUrl(link.id);
+  const [memberOf, setMemberOf] = useState(link.workspaces);
   return (
     <article
       className={link.pinned ? 'card pinned' : 'card'}
@@ -155,6 +159,17 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           )}
         </div>
       )}
+      {memberOf.length > 0 && (
+        <ul className="workspace-chips" aria-label="Workspaces">
+          {memberOf.map((w) => (
+            <li key={w.id}>
+              <PageLink to={`/workspaces/${w.id}`} className="chip">
+                {w.name}
+              </PageLink>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="card-actions">
         <a className="link-button" href={open}>
           Open
@@ -182,6 +197,26 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           </button>
         )}
         <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
+        <WorkspacePicker
+          linkId={link.id}
+          memberOf={memberOf.map((w) => w.id)}
+          onAdded={(w) =>
+            setMemberOf((current) =>
+              [...current, { id: w.id, name: w.name }].sort((x, y) =>
+                x.name.toLowerCase().localeCompare(y.name.toLowerCase()),
+              ),
+            )
+          }
+        />
+        {actions.onRemoveFromWorkspace && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => actions.onRemoveFromWorkspace?.(link)}
+          >
+            Remove from workspace
+          </button>
+        )}
         <button type="button" className="link-button" onClick={() => actions.onDelete(link)}>
           Delete
         </button>
