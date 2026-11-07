@@ -17,6 +17,19 @@ wrangler() { npx --no-install wrangler "$@"; }
 echo "Building the website and the Worker"
 npx --no-install vite build
 
+# The token must be able to manage everything the Worker binds, or the deploy
+# stops halfway with a bare "Authentication error".
+missing=()
+wrangler d1 list >/dev/null 2>&1 || missing+=("Account > D1 > Edit")
+wrangler queues list >/dev/null 2>&1 || missing+=("Account > Queues > Edit")
+wrangler r2 bucket list >/dev/null 2>&1 || missing+=("Account > Workers R2 Storage > Edit")
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "The Cloudflare API token cannot manage what Alexandria needs. Add these permissions:" >&2
+  printf '  - %s\n' "${missing[@]}" >&2
+  echo "(with Account > Workers Scripts > Edit, and CLOUDFLARE_ACCOUNT_ID set)" >&2
+  exit 1
+fi
+
 for queue in "${QUEUES[@]}"; do
   if ! wrangler queues info "$queue" >/dev/null 2>&1; then
     echo "Creating the queue $queue"
