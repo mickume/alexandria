@@ -84,7 +84,12 @@ export const Link = z.strictObject({
     .describe('Why the link has or has not a summary; null before its first fetch'),
   enrichment_reason: z.string().nullable(),
   edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
+  note_preview: z.string().nullable().describe('The note’s first line as plain text'),
+  workspaces: z.array(z.strictObject({ id: z.string(), name: z.string() })),
 });
+
+/** A link read on its own, with its whole note. */
+export const LinkWithNote = Link.extend({ note: z.string() });
 
 /** The AI settings, never with the key beyond its last 4 characters. */
 const AiSettingsView = z.strictObject({
@@ -95,6 +100,18 @@ const AiSettingsView = z.strictObject({
   status: z.enum(['verified', 'rejected']),
   rejected_message: z.string().nullable(),
 });
+
+/** A workspace in a list. */
+export const WorkspaceSummary = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  link_count: z.number().int(),
+  created_at: z.string(),
+});
+
+/** A workspace on its own, with its note. */
+export const Workspace = WorkspaceSummary.extend({ note: z.string() });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
@@ -186,6 +203,124 @@ export const operations: Operation[] = [
     operationId: 'deleteAiSettings',
     summary: 'Forget the AI provider, model and key',
     responses: { 204: { description: 'Removed' } },
+  },
+  {
+    method: 'post',
+    path: '/workspaces',
+    operationId: 'createWorkspace',
+    summary: 'Create a workspace',
+    body: z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().max(1000).optional().describe('One paragraph, no line break'),
+    }),
+    responses: {
+      201: { description: 'The new, empty workspace', schema: Workspace },
+      400: error('invalid_json, invalid_name or invalid_description'),
+      409: error('name_taken, or workspace_limit: "workspace limit reached (200)"'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/workspaces',
+    operationId: 'listWorkspaces',
+    summary: 'The workspaces, by name ignoring case',
+    query: {
+      limit: { description: 'Workspaces per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of workspaces',
+        schema: z.strictObject({
+          items: z.array(WorkspaceSummary),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/workspaces/{id}',
+    operationId: 'getWorkspace',
+    summary: 'One workspace, with its note',
+    responses: { 200: { description: 'The workspace', schema: Workspace } },
+  },
+  {
+    method: 'patch',
+    path: '/workspaces/{id}',
+    operationId: 'updateWorkspace',
+    summary: 'Rename a workspace, change its description or its note',
+    body: z.object({
+      name: z.string().min(1).max(100).optional(),
+      description: z.string().max(1000).optional(),
+      note: z.string().optional().describe('Markdown, at most 20,000 characters; empty clears it'),
+    }),
+    responses: {
+      200: { description: 'The workspace', schema: Workspace },
+      400: error('invalid_json, invalid_name, invalid_description, invalid_note or note_too_long'),
+      409: error('name_taken'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/workspaces/{id}/links',
+    operationId: 'listWorkspaceLinks',
+    summary: 'The workspace’s links in their order, whatever their state',
+    query: {
+      limit: { description: 'Links per page, 1 to 100 (default 100)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of members, each a link with its position',
+        schema: z.strictObject({
+          items: z.array(Link.extend({ position: z.number().int() })),
+          next_cursor: z.string().nullable(),
+        }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/workspaces/{id}/links',
+    operationId: 'addWorkspaceLink',
+    summary: 'Add a link to the workspace, or move it: at the bottom, or at a 1-based position',
+    body: z.object({ link_id: z.string(), position: z.number().int().min(1).optional() }),
+    responses: {
+      200: {
+        description: 'Moved, or already a member',
+        schema: z.strictObject({
+          workspace_id: z.string(),
+          link_id: z.string(),
+          position: z.number().int(),
+        }),
+      },
+      201: {
+        description: 'Added',
+        schema: z.strictObject({
+          workspace_id: z.string(),
+          link_id: z.string(),
+          position: z.number().int(),
+        }),
+      },
+      400: error('invalid_json, invalid_link_id or invalid_position'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/workspaces/{id}/links/{linkId}',
+    operationId: 'removeWorkspaceLink',
+    summary: 'Take a link out of the workspace; the link stays in the library',
+    responses: { 204: { description: 'Removed' } },
+  },
+  {
+    method: 'delete',
+    path: '/workspaces/{id}',
+    operationId: 'deleteWorkspace',
+    summary: 'Delete a workspace and its memberships; its links stay',
+    responses: { 204: { description: 'Deleted' } },
   },
   {
     method: 'post',
@@ -305,7 +440,7 @@ export const operations: Operation[] = [
     path: '/links/{id}',
     operationId: 'getLink',
     summary: 'One link',
-    responses: { 200: { description: 'The link', schema: Link } },
+    responses: { 200: { description: 'The link, with its note', schema: LinkWithNote } },
   },
   {
     method: 'get',
@@ -383,10 +518,13 @@ export const operations: Operation[] = [
       summary: z.string().max(2000).optional(),
       tags: z.array(z.string()).max(20).optional(),
       topic: z.string().min(1).max(100).optional(),
+      note: z.string().optional().describe('Markdown, at most 20,000 characters; empty clears it'),
     }),
     responses: {
-      200: { description: 'The link, with edited_fields', schema: Link },
-      400: error('invalid_json, invalid_title, invalid_summary, invalid_tags or invalid_topic'),
+      200: { description: 'The link, with edited_fields and its note', schema: LinkWithNote },
+      400: error(
+        'invalid_json, invalid_title, invalid_summary, invalid_tags, invalid_topic, invalid_note or note_too_long',
+      ),
     },
   },
   {

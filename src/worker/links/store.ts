@@ -1,4 +1,6 @@
 import { now } from '../clock';
+import { notePreview } from '../workspaces/notes';
+import { leaveAllWorkspaces } from '../workspaces/store';
 
 /** The most links one library holds, in any state. */
 export const LIBRARY_LIMIT = 20_000;
@@ -42,6 +44,10 @@ export interface LinkRow {
   topic?: string | null;
   /** A JSON array of the tag names in order, when read through link_views. */
   tags_json?: string;
+  /** The owner's Markdown note. */
+  note: string;
+  /** A JSON array of {id, name} of the link's workspaces, when read through link_views. */
+  workspaces_json?: string;
 }
 
 /** A link as the API shows it. */
@@ -82,6 +88,12 @@ export interface LinkView {
   enrichment_reason: string | null;
   /** The fields the owner has set by hand, which automatic work never overwrites. */
   edited_fields: string[];
+  /** The note's first line as plain text, or null without a note. */
+  note_preview: string | null;
+  /** The workspaces the link is in, by name. */
+  workspaces: { id: string; name: string }[];
+  /** The whole note: only on the link read on its own. */
+  note?: string;
 }
 
 /** A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else. */
@@ -94,7 +106,26 @@ export function parseStrings(notes: string | null | undefined): string[] {
   }
 }
 
-/** The API's view of a stored link. */
+function parseWorkspaces(json: string | undefined): { id: string; name: string }[] {
+  try {
+    const parsed: unknown = JSON.parse(json ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (w): w is { id: string; name: string } =>
+            typeof w?.id === 'string' && typeof w?.name === 'string',
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The API's view of a stored link, with its whole note when read on its own. */
+export function toFullView(row: LinkRow): LinkView {
+  return { ...toView(row), note: row.note ?? '' };
+}
+
+/** The API's view of a stored link, as lists show it: with a note preview, not the note. */
 export function toView(row: LinkRow): LinkView {
   return {
     id: row.id,
@@ -125,6 +156,8 @@ export function toView(row: LinkRow): LinkView {
     enrichment_status: row.enrichment_status ?? null,
     enrichment_reason: row.enrichment_reason ?? null,
     edited_fields: parseStrings(row.edited_fields),
+    note_preview: notePreview(row.note ?? ''),
+    workspaces: parseWorkspaces(row.workspaces_json),
   };
 }
 
@@ -312,8 +345,22 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    ...leaveAllWorkspaces(db, id),
     db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
   return (results.at(-1)?.meta.changes ?? 0) > 0;
+}
+
+/** Stores the owner's note on one of their links, as given; '' clears it. */
+export async function setLinkNote(
+  db: D1Database,
+  userId: string,
+  id: string,
+  note: string,
+): Promise<void> {
+  await db
+    .prepare('UPDATE links SET note = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+    .bind(note, now().toISOString(), id, userId)
+    .run();
 }

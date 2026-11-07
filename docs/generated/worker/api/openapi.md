@@ -84,9 +84,17 @@ The body of every error answer.
 
 ### Link
 
-> `const` **Link**: `ZodObject`\<\{ `added_at`: `ZodString`; `content_kind`: `ZodNullable`\<`ZodEnum`\<\{ `html`: `"html"`; `other`: `"other"`; `pdf`: `"pdf"`; \}\>\>; `description`: `ZodNullable`\<`ZodString`\>; `edited_fields`: `ZodArray`\<`ZodString`\>; `enrichment_reason`: `ZodNullable`\<`ZodString`\>; `enrichment_status`: `ZodNullable`\<`ZodEnum`\<\{ `enriched`: `"enriched"`; `failed`: `"failed"`; `no_key`: `"no_key"`; `queued`: `"queued"`; `skipped`: `"skipped"`; `waiting_for_key`: `"waiting_for_key"`; \}\>\>; `favicon_url`: `ZodNullable`\<`ZodString`\>; `fetched_at`: `ZodNullable`\<`ZodString`\>; `final_url`: `ZodNullable`\<`ZodString`\>; `has_snapshot`: `ZodBoolean`; `host`: `ZodString`; `http_status`: `ZodNullable`\<`ZodNumber`\>; `id`: `ZodString`; `language`: `ZodNullable`\<`ZodString`\>; `last_used_at`: `ZodString`; `notes`: `ZodArray`\<`ZodString`\>; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `state_reason`: `ZodNullable`\<`ZodString`\>; `summary`: `ZodNullable`\<`ZodString`\>; `tags`: `ZodArray`\<`ZodString`\>; `title`: `ZodString`; `topic`: `ZodNullable`\<`ZodString`\>; `updated_at`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; \}, `$strict`\>
+> `const` **Link**: `ZodObject`\<\{ `added_at`: `ZodString`; `content_kind`: `ZodNullable`\<`ZodEnum`\<\{ `html`: `"html"`; `other`: `"other"`; `pdf`: `"pdf"`; \}\>\>; `description`: `ZodNullable`\<`ZodString`\>; `edited_fields`: `ZodArray`\<`ZodString`\>; `enrichment_reason`: `ZodNullable`\<`ZodString`\>; `enrichment_status`: `ZodNullable`\<`ZodEnum`\<\{ `enriched`: `"enriched"`; `failed`: `"failed"`; `no_key`: `"no_key"`; `queued`: `"queued"`; `skipped`: `"skipped"`; `waiting_for_key`: `"waiting_for_key"`; \}\>\>; `favicon_url`: `ZodNullable`\<`ZodString`\>; `fetched_at`: `ZodNullable`\<`ZodString`\>; `final_url`: `ZodNullable`\<`ZodString`\>; `has_snapshot`: `ZodBoolean`; `host`: `ZodString`; `http_status`: `ZodNullable`\<`ZodNumber`\>; `id`: `ZodString`; `language`: `ZodNullable`\<`ZodString`\>; `last_used_at`: `ZodString`; `note_preview`: `ZodNullable`\<`ZodString`\>; `notes`: `ZodArray`\<`ZodString`\>; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `state_reason`: `ZodNullable`\<`ZodString`\>; `summary`: `ZodNullable`\<`ZodString`\>; `tags`: `ZodArray`\<`ZodString`\>; `title`: `ZodString`; `topic`: `ZodNullable`\<`ZodString`\>; `updated_at`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; `workspaces`: `ZodArray`\<`ZodObject`\<\{ `id`: `ZodString`; `name`: `ZodString`; \}, `$strict`\>\>; \}, `$strict`\>
 
 A link in the user's library.
+
+***
+
+### LinkWithNote
+
+> `const` **LinkWithNote**: `ZodObject`\<\{ `added_at`: `ZodString`; `content_kind`: `ZodNullable`\<`ZodEnum`\<\{ `html`: `"html"`; `other`: `"other"`; `pdf`: `"pdf"`; \}\>\>; `description`: `ZodNullable`\<`ZodString`\>; `edited_fields`: `ZodArray`\<`ZodString`\>; `enrichment_reason`: `ZodNullable`\<`ZodString`\>; `enrichment_status`: `ZodNullable`\<`ZodEnum`\<\{ `enriched`: `"enriched"`; `failed`: `"failed"`; `no_key`: `"no_key"`; `queued`: `"queued"`; `skipped`: `"skipped"`; `waiting_for_key`: `"waiting_for_key"`; \}\>\>; `favicon_url`: `ZodNullable`\<`ZodString`\>; `fetched_at`: `ZodNullable`\<`ZodString`\>; `final_url`: `ZodNullable`\<`ZodString`\>; `has_snapshot`: `ZodBoolean`; `host`: `ZodString`; `http_status`: `ZodNullable`\<`ZodNumber`\>; `id`: `ZodString`; `language`: `ZodNullable`\<`ZodString`\>; `last_used_at`: `ZodString`; `note`: `ZodString`; `note_preview`: `ZodNullable`\<`ZodString`\>; `notes`: `ZodArray`\<`ZodString`\>; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `state`: `ZodString`; `state_reason`: `ZodNullable`\<`ZodString`\>; `summary`: `ZodNullable`\<`ZodString`\>; `tags`: `ZodArray`\<`ZodString`\>; `title`: `ZodString`; `topic`: `ZodNullable`\<`ZodString`\>; `updated_at`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; `workspaces`: `ZodArray`\<`ZodObject`\<\{ `id`: `ZodString`; `name`: `ZodString`; \}, `$strict`\>\>; \}, `$strict`\>
+
+A link read on its own, with its whole note.
 
 ***
 
@@ -111,6 +119,22 @@ Every documented operation. Routes add theirs as they are implemented.
 > `const` **Token**: `ZodObject`\<\{ `created_at`: `ZodString`; `id`: `ZodString`; `last_used_at`: `ZodNullable`\<`ZodString`\>; `name`: `ZodString`; \}, `$strict`\>
 
 A personal access token, as listed.
+
+***
+
+### Workspace
+
+> `const` **Workspace**: `ZodObject`\<\{ `created_at`: `ZodString`; `description`: `ZodString`; `id`: `ZodString`; `link_count`: `ZodNumber`; `name`: `ZodString`; `note`: `ZodString`; \}, `$strict`\>
+
+A workspace on its own, with its note.
+
+***
+
+### WorkspaceSummary
+
+> `const` **WorkspaceSummary**: `ZodObject`\<\{ `created_at`: `ZodString`; `description`: `ZodString`; `id`: `ZodString`; `link_count`: `ZodNumber`; `name`: `ZodString`; \}, `$strict`\>
+
+A workspace in a list.
 
 ## Functions
 

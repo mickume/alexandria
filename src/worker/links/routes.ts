@@ -5,6 +5,7 @@ import type { AppEnv, Env } from '../env';
 import { now } from '../clock';
 import { applyEdit, parseEdit } from '../enrich/edits';
 import { deleteLinkObjects } from '../fetcher/snapshots';
+import { checkNote } from '../workspaces/notes';
 import { normalizeUrl } from './normalize';
 import {
   addLink,
@@ -12,6 +13,8 @@ import {
   deleteLink,
   getLink,
   pinLink,
+  setLinkNote,
+  toFullView,
   toView,
   unpinLink,
   type LinkView,
@@ -137,7 +140,7 @@ linkRoutes.get('/', async (c) => {
 
 linkRoutes.get('/:id', async (c) => {
   const row = await getLink(c.env.DB, c.get('user').id, c.req.param('id'));
-  return row ? c.json(toView(row)) : notFound(c);
+  return row ? c.json(toFullView(row)) : notFound(c);
 });
 
 linkRoutes.get('/:id/open', async (c) => {
@@ -218,6 +221,12 @@ linkRoutes.patch('/:id', async (c) => {
   if (!parsed.ok) return parsed.response;
   const edit = parseEdit(parsed.body);
   if ('error' in edit) return validationError(c, edit.error, edit.field, edit.message);
-  const link = await applyEdit(c.env.DB, c.get('user').id, c.req.param('id'), edit);
-  return link ? c.json(toView(link)) : notFound(c);
+  const note = 'note' in parsed.body ? checkNote(parsed.body.note) : null;
+  if (note && !note.ok) return validationError(c, note.error, 'note', note.message);
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
+  if (note?.ok) await setLinkNote(c.env.DB, userId, id, note.note);
+  const link = await applyEdit(c.env.DB, userId, id, edit);
+  return link ? c.json(toFullView(link)) : notFound(c);
 });

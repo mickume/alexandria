@@ -84,6 +84,22 @@ A refresh of the card's link was accepted.
 
 `void`
 
+##### onRemoveFromWorkspace?
+
+> `optional` **onRemoveFromWorkspace?**: (`link`) => `void`
+
+On a workspace's page: take the link out of the workspace.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link)
+
+###### Returns
+
+`void`
+
 ##### onUnpin
 
 > **onUnpin**: (`link`) => `void`
@@ -146,3 +162,23 @@ refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 #### Returns
 
 `Element`
+
+***
+
+### WorkspaceChips()
+
+> **WorkspaceChips**(`__namedParameters`): `Element` \| `null`
+
+The workspaces a link is in, each a chip linking to the workspace's page.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### workspaces
+
+`object`[]
+
+#### Returns
+
+`Element` \| `null`

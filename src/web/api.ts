@@ -85,6 +85,10 @@ export interface Link {
     'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | null;
   enrichment_reason: string | null;
   edited_fields: string[];
+  note_preview: string | null;
+  workspaces: { id: string; name: string }[];
+  /** The whole note: only on a link read on its own. */
+  note?: string;
 }
 
 /** One page of a list. */
@@ -154,8 +158,10 @@ export const links = {
       position === undefined ? undefined : { position },
     ),
   unpin: (id: string) => request<Link>('DELETE', `/links/${encodeURIComponent(id)}/pin`),
-  edit: (id: string, fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>>) =>
-    request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
+  edit: (
+    id: string,
+    fields: Partial<Pick<Link, 'title' | 'summary' | 'tags' | 'topic'>> & { note?: string },
+  ) => request<Link>('PATCH', `/links/${encodeURIComponent(id)}`, fields),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>
@@ -189,4 +195,38 @@ export const ai = {
     request<AiSettings>('PUT', '/settings/ai', body),
   remove: () => request<void>('DELETE', '/settings/ai'),
   enrichUnenriched: () => request<{ queued: number }>('POST', '/links/enrich-unenriched'),
+};
+
+/** A workspace as listed. */
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  description: string;
+  link_count: number;
+  created_at: string;
+}
+
+/** A workspace on its own, with its note. */
+export type Workspace = WorkspaceSummary & { note: string };
+
+/** A member of a workspace: a link with its position. */
+export type Member = Link & { position: number };
+
+const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
+
+export const workspaces = {
+  list: () => request<Page<WorkspaceSummary>>('GET', '/workspaces').then((p) => p.items),
+  get: (id: string) => request<Workspace>('GET', ws(id)),
+  create: (name: string) => request<Workspace>('POST', '/workspaces', { name }),
+  update: (id: string, fields: { name?: string; description?: string; note?: string }) =>
+    request<Workspace>('PATCH', ws(id), fields),
+  remove: (id: string) => request<void>('DELETE', ws(id)),
+  links: (id: string) => request<Page<Member>>('GET', `${ws(id)}/links`).then((p) => p.items),
+  addLink: (id: string, linkId: string, position?: number) =>
+    request<{ position: number }>('POST', `${ws(id)}/links`, {
+      link_id: linkId,
+      ...(position === undefined ? {} : { position }),
+    }),
+  removeLink: (id: string, linkId: string) =>
+    request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
 };

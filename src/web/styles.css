@@ -489,3 +489,76 @@ select {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.workspace-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.picker {
+  position: relative;
+}
+
+.picker-menu {
+  position: absolute;
+  z-index: 10;
+  top: 1.5rem;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+
+.picker-item {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.picker-item.checked::after {
+  content: ' ✓';
+  color: var(--accent);
+}
+
+.workspace-list {
+  list-style: none;
+  padding: 0;
+}
+
+.workspace-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.note-editing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.member {
+  cursor: grab;
+}
+
+.note-preview {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}

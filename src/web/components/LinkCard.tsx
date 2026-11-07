@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, links, openUrl, type Link } from '../api';
 import { formatDate, formatWhen } from '../format';
+import { WorkspacePicker } from './WorkspacePicker';
 
 /**
  * Refresh: asks the API to fetch the link again and shows that it is
@@ -93,27 +94,95 @@ export interface CardActions {
   onDropOn?: (link: Link) => void;
   /** A refresh of the card's link was accepted. */
   onRefreshing?: (link: Link) => void;
+  /** On a workspace's page: take the link out of the workspace. */
+  onRemoveFromWorkspace?: (link: Link) => void;
+}
+
+/** The workspaces a link is in, each a chip linking to the workspace's page. */
+export function WorkspaceChips({ workspaces }: { workspaces: { id: string; name: string }[] }) {
+  if (workspaces.length === 0) return null;
+  return (
+    <ul className="workspace-chips" aria-label="Workspaces">
+      {workspaces.map((w) => (
+        <li key={w.id}>
+          <PageLink to={`/workspaces/${w.id}`} className="chip">
+            {w.name}
+          </PageLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** What the card says about the link: host, dates, state with its reason, and notes. */
+function CardMeta({ link }: { link: Link }) {
+  return (
+    <div className="card-meta muted">
+      <span>{link.host}</span>
+      <span>Added {formatDate(link.added_at)}</span>
+      <span>Used {formatWhen(link.last_used_at)}</span>
+      <span className={`state state-${link.state}`}>
+        {link.state === 'unreachable' && link.state_reason
+          ? `unreachable: ${link.state_reason}`
+          : link.state}
+      </span>
+      {link.notes.map((note) => (
+        <span key={note} className="note">
+          {note}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** The topic and one chip per tag. */
+function Labels({ link }: { link: Link }) {
+  if (link.tags.length === 0 && !link.topic) return null;
+  return (
+    <div className="card-labels">
+      {link.topic && <span className="topic">{link.topic}</span>}
+      {link.tags.length > 0 && (
+        <ul className="tags" aria-label="Tags">
+          {link.tags.map((tag) => (
+            <li key={tag} className="chip">
+              {tag}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Pinned cards can be dragged and dropped on: the handlers that do it. */
+function pinDragProps(link: Link, actions: CardActions) {
+  if (!link.pinned) return { draggable: false };
+  return {
+    draggable: true,
+    onDragStart: () => actions.onDragStart?.(link),
+    onDragOver: (e: DragEvent) => e.preventDefault(),
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      actions.onDropOn?.(link);
+    },
+  };
+}
+
+function byName(a: { name: string }, b: { name: string }): number {
+  return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 }
 
 /** One link in the stream: favicon, title, host, dates, state and actions. */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const open = openUrl(link.id);
+  const [memberOf, setMemberOf] = useState(link.workspaces);
   return (
     <article
       className={link.pinned ? 'card pinned' : 'card'}
       aria-label={link.title}
-      draggable={link.pinned}
-      onDragStart={link.pinned ? () => actions.onDragStart?.(link) : undefined}
-      onDragOver={link.pinned ? (e) => e.preventDefault() : undefined}
-      onDrop={
-        link.pinned
-          ? (e) => {
-              e.preventDefault();
-              actions.onDropOn?.(link);
-            }
-          : undefined
-      }
+      {...pinDragProps(link, actions)}
     >
+      {link.note_preview && <p className="note-preview">{link.note_preview}</p>}
       <div className="card-head">
         {link.favicon_url && (
           <img className="favicon" src={link.favicon_url} alt="" width={16} height={16} />
@@ -122,39 +191,13 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           {link.title}
         </a>
       </div>
-      <div className="card-meta muted">
-        <span>{link.host}</span>
-        <span>Added {formatDate(link.added_at)}</span>
-        <span>Used {formatWhen(link.last_used_at)}</span>
-        <span className={`state state-${link.state}`}>
-          {link.state === 'unreachable' && link.state_reason
-            ? `unreachable: ${link.state_reason}`
-            : link.state}
-        </span>
-        {link.notes.map((note) => (
-          <span key={note} className="note">
-            {note}
-          </span>
-        ))}
-      </div>
+      <CardMeta link={link} />
       {link.summary && <Summary text={link.summary} />}
       {link.enrichment_status === 'failed' && (
         <EnrichmentFailed link={link} onQueued={actions.onRefreshing} />
       )}
-      {(link.tags.length > 0 || link.topic) && (
-        <div className="card-labels">
-          {link.topic && <span className="topic">{link.topic}</span>}
-          {link.tags.length > 0 && (
-            <ul className="tags" aria-label="Tags">
-              {link.tags.map((tag) => (
-                <li key={tag} className="chip">
-                  {tag}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <Labels link={link} />
+      <WorkspaceChips workspaces={memberOf} />
       <div className="card-actions">
         <a className="link-button" href={open}>
           Open
@@ -172,16 +215,30 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         <PageLink to={`/links/${link.id}`} className="link-button">
           Details
         </PageLink>
-        {link.pinned ? (
-          <button type="button" className="link-button" onClick={() => actions.onUnpin(link)}>
-            Unpin
-          </button>
-        ) : (
-          <button type="button" className="link-button" onClick={() => actions.onPin(link)}>
-            Pin
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
+        >
+          {link.pinned ? 'Unpin' : 'Pin'}
+        </button>
+        <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
+        <WorkspacePicker
+          linkId={link.id}
+          memberOf={memberOf.map((w) => w.id)}
+          onAdded={(w) =>
+            setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
+          }
+        />
+        {actions.onRemoveFromWorkspace && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => actions.onRemoveFromWorkspace?.(link)}
+          >
+            Remove from workspace
           </button>
         )}
-        <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
         <button type="button" className="link-button" onClick={() => actions.onDelete(link)}>
           Delete
         </button>

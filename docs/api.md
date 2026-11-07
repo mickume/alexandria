@@ -364,3 +364,84 @@ re-runs and refreshes never overwrite it.
 - `200 <link>`
 - `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
   nothing is changed when any field is invalid.
+
+### Workspaces
+
+A workspace is a named, manually ordered collection of the owner's links,
+with a Markdown note. A link can be in any number of workspaces; deleting a
+workspace never deletes a link. A user holds at most 200 workspaces. Names
+are 1 to 100 characters (trimmed) and unique per user ignoring case; a
+description is one paragraph of at most 1,000 characters without a line
+break.
+
+A workspace is shown as `{"id", "name", "description", "note", "link_count", "created_at"}`;
+lists leave out `note`.
+
+#### `POST /api/v1/workspaces`
+
+Body `{"name", "description"?}`: `201 <workspace>` (empty note, no members).
+`400 invalid_name | invalid_description`; `409 {"error": "name_taken", "message": "a workspace with this name already exists"}`;
+`409 {"error": "workspace_limit", "message": "workspace limit reached (200)"}`.
+
+#### `GET /api/v1/workspaces`
+
+The workspaces by name ignoring case, with member counts, at most 100 per
+page: `200 {"items": [...], "next_cursor"}`.
+
+#### `GET /api/v1/workspaces/{id}`
+
+`200 <workspace>` with its note.
+
+#### `PATCH /api/v1/workspaces/{id}`
+
+Any of `name`, `description` and `note` (see Notes). The members and their
+order stay as they are. `200 <workspace>`; the same `400` and `409 name_taken`
+as on create.
+
+#### `DELETE /api/v1/workspaces/{id}`
+
+Deletes the workspace, its note and its memberships, keeping every link:
+`204`.
+
+#### `GET /api/v1/workspaces/{id}/links`
+
+The members in their order, whatever their state (archived ones included),
+each a link as in the stream plus its `position`, at most 100 per page:
+`200 {"items": [...], "next_cursor"}`.
+
+#### `POST /api/v1/workspaces/{id}/links`
+
+Body `{"link_id", "position"?}`. A new member goes to the bottom (`201`); a
+`position` (1-based; past the end means the end) places or moves the link
+there, the others keeping their order (`201` new, `200` moved); an existing
+member without a position stays (`200`). The answer is
+`{"workspace_id", "link_id", "position"}`. `400 invalid_link_id | invalid_position`;
+`404 not_found` for a link that is not the user's.
+
+#### `DELETE /api/v1/workspaces/{id}/links/{link_id}`
+
+Takes the link out of the workspace and closes the gap; the link stays:
+`204`, or `404` when it was not a member.
+
+Deleting a link (`DELETE /api/v1/links/{id}`) takes it out of every
+workspace it was in.
+
+Another user's workspace answers `404 {"error": "not_found"}`, as an unknown
+one does.
+
+### Notes
+
+A workspace and a link each carry one Markdown note of at most 20,000
+characters (Unicode code points), stored exactly as written; an empty note
+clears it. Set it with `PATCH /api/v1/workspaces/{id}` or
+`PATCH /api/v1/links/{id}` and `{"note": "…"}`; nothing else changes.
+`400 {"error": "note_too_long", "field": "note", "message": "note too long (20,000 characters)"}`,
+or `400 {"error": "invalid_note", …}` for a value that is not text.
+
+Links in lists (the stream, the change feed, a workspace's links) carry
+`note_preview` (the note's first non-empty line without Markdown heading or
+list markers and raw HTML, cut to 200 characters, or null) and `workspaces`
+(`[{"id", "name"}]` by name); only `GET /api/v1/links/{id}` and the answer of
+`PATCH /api/v1/links/{id}` carry the whole `note`. The website renders notes
+as Markdown and removes raw HTML, scripts, event handlers and every URL that
+is not http, https or mailto.

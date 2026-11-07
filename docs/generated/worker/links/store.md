@@ -78,6 +78,12 @@ A JSON array of the fields the owner has set by hand.
 
 > **last\_used\_at**: `string`
 
+##### note
+
+> **note**: `string`
+
+The owner's Markdown note.
+
 ##### notes
 
 > **notes**: `string`
@@ -147,6 +153,12 @@ The topic's name, when read through link_views.
 ##### user\_id
 
 > **user\_id**: `string`
+
+##### workspaces\_json?
+
+> `optional` **workspaces\_json?**: `string`
+
+A JSON array of {id, name} of the link's workspaces, when read through link_views.
 
 ***
 
@@ -226,6 +238,18 @@ Whether a snapshot is stored, so that Read and Snapshot can be offered.
 
 > **last\_used\_at**: `string`
 
+##### note?
+
+> `optional` **note?**: `string`
+
+The whole note: only on the link read on its own.
+
+##### note\_preview
+
+> **note\_preview**: `string` \| `null`
+
+The note's first line as plain text, or null without a note.
+
 ##### notes
 
 > **notes**: `string`[]
@@ -283,6 +307,20 @@ When the link last changed in any way.
 ##### use\_count
 
 > **use\_count**: `number`
+
+##### workspaces
+
+> **workspaces**: `object`[]
+
+The workspaces the link is in, by name.
+
+###### id
+
+> **id**: `string`
+
+###### name
+
+> **name**: `string`
 
 ***
 
@@ -494,11 +532,59 @@ past PIN_LIMIT changes nothing.
 
 ***
 
+### setLinkNote()
+
+> **setLinkNote**(`db`, `userId`, `id`, `note`): `Promise`\<`void`\>
+
+Stores the owner's note on one of their links, as given; '' clears it.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+##### note
+
+`string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### toFullView()
+
+> **toFullView**(`row`): [`LinkView`](#linkview)
+
+The API's view of a stored link, with its whole note when read on its own.
+
+#### Parameters
+
+##### row
+
+[`LinkRow`](#linkrow)
+
+#### Returns
+
+[`LinkView`](#linkview)
+
+***
+
 ### toView()
 
 > **toView**(`row`): [`LinkView`](#linkview)
 
-The API's view of a stored link.
+The API's view of a stored link, as lists show it: with a note preview, not the note.
 
 #### Parameters
 
