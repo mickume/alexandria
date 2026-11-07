@@ -264,6 +264,18 @@ A link as the API shows it.
 
 > **description**: `string` \| `null`
 
+##### edited\_fields
+
+> **edited\_fields**: `string`[]
+
+##### enrichment\_reason
+
+> **enrichment\_reason**: `string` \| `null`
+
+##### enrichment\_status
+
+> **enrichment\_status**: `"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `null`
+
 ##### favicon\_url
 
 > **favicon\_url**: `string` \| `null`
@@ -324,9 +336,21 @@ A link as the API shows it.
 
 > **state\_reason**: `string` \| `null`
 
+##### summary
+
+> **summary**: `string` \| `null`
+
+##### tags
+
+> **tags**: `string`[]
+
 ##### title
 
 > **title**: `string`
+
+##### topic
+
+> **topic**: `string` \| `null`
 
 ##### updated\_at
 

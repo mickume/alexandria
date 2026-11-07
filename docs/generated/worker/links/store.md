@@ -20,6 +20,24 @@ A link as stored.
 
 > **description**: `string` \| `null`
 
+##### edited\_fields
+
+> **edited\_fields**: `string`
+
+A JSON array of the fields the owner has set by hand.
+
+##### enriched\_at
+
+> **enriched\_at**: `string` \| `null`
+
+##### enrichment\_reason
+
+> **enrichment\_reason**: `string` \| `null`
+
+##### enrichment\_status
+
+> **enrichment\_status**: `string` \| `null`
+
 ##### favicon\_url
 
 > **favicon\_url**: `string` \| `null`
@@ -90,9 +108,29 @@ A JSON array of notes.
 
 > **state\_reason**: `string` \| `null`
 
+##### summary
+
+> **summary**: `string` \| `null`
+
+##### tags\_json?
+
+> `optional` **tags\_json?**: `string`
+
+A JSON array of the tag names in order, when read through link_views.
+
 ##### title
 
 > **title**: `string`
+
+##### topic?
+
+> `optional` **topic?**: `string` \| `null`
+
+The topic's name, when read through link_views.
+
+##### topic\_id
+
+> **topic\_id**: `string` \| `null`
 
 ##### updated\_at
 
@@ -131,6 +169,22 @@ What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fe
 ##### description
 
 > **description**: `string` \| `null`
+
+##### edited\_fields
+
+> **edited\_fields**: `string`[]
+
+The fields the owner has set by hand, which automatic work never overwrites.
+
+##### enrichment\_reason
+
+> **enrichment\_reason**: `string` \| `null`
+
+##### enrichment\_status
+
+> **enrichment\_status**: `string` \| `null`
+
+no_key, queued, enriched, failed, skipped or waiting_for_key; null before the first fetch.
 
 ##### favicon\_url
 
@@ -200,9 +254,21 @@ Short notes such as "truncated" or "not a web page (image/png)".
 
 Why the link is in its state, such as "HTTP 503" for a pending or unreachable link.
 
+##### summary
+
+> **summary**: `string` \| `null`
+
+##### tags
+
+> **tags**: `string`[]
+
 ##### title
 
 > **title**: `string`
+
+##### topic
+
+> **topic**: `string` \| `null`
 
 ##### updated\_at
 
@@ -385,6 +451,24 @@ A link's notes, parsed from their stored JSON.
 #### Parameters
 
 ##### notes
+
+`string` \| `null` \| `undefined`
+
+#### Returns
+
+`string`[]
+
+***
+
+### parseStrings()
+
+> **parseStrings**(`json`): `string`[]
+
+A stored JSON array of strings, parsed; [] for anything else.
+
+#### Parameters
+
+##### json
 
 `string` \| `null` \| `undefined`
 

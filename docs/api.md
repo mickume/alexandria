@@ -123,7 +123,13 @@ A link is shown as:
   "notes": [],
   "content_kind": null,
   "has_snapshot": false,
-  "updated_at": "2026-06-01T08:00:00.000Z"
+  "updated_at": "2026-06-01T08:00:00.000Z",
+  "summary": null,
+  "tags": [],
+  "topic": null,
+  "enrichment_status": null,
+  "enrichment_reason": null,
+  "edited_fields": []
 }
 ```
 
@@ -134,6 +140,14 @@ out", "HTTP 503", …). A fetch fills `final_url`, `http_status`, `title`,
 (`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
+
+Enrichment adds `summary` (at most 60 words), `tags` (3 to 8, lower-case,
+hyphenated) and `topic`. `enrichment_status` says where the link stands:
+`no_key` (no AI key), `queued`, `enriched`, `failed` (with
+`enrichment_reason`), `skipped` (nothing to read: not a web page, a PDF
+without text, a PDF too large), or `waiting_for_key` (the key was rejected);
+it is `null` before the first fetch. `edited_fields` lists the fields the
+owner set by hand, which enrichment and refresh never overwrite.
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`

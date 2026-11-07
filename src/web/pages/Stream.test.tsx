@@ -255,3 +255,45 @@ describe('the stream while links are being fetched', () => {
     }
   });
 });
+
+describe('the stream while links are being enriched', () => {
+  it('keeps asking for changes while a card is queued for enrichment, then shows its summary', async () => {
+    const queued = makeLink({
+      id: 'q',
+      title: 'Queued',
+      state: 'active',
+      enrichment_status: 'queued',
+      updated_at: '2026-03-05T10:00:00.000Z',
+    });
+    const api = new FakeApi().on('GET', '/api/v1/links', (req) =>
+      req.path.includes('changed_since=')
+        ? {
+            status: 200,
+            body: {
+              items: [
+                {
+                  ...queued,
+                  enrichment_status: 'enriched',
+                  summary: 'Now summarised.',
+                  updated_at: '2026-03-05T10:00:06.000Z',
+                },
+              ],
+              server_time: '2026-03-05T10:00:07.000Z',
+            },
+          }
+        : { status: 200, body: { items: [queued], next_cursor: null } },
+    );
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderPage('/', api);
+      await screen.findByRole('article', { name: 'Queued' });
+      await act(async () => vi.advanceTimersByTimeAsync(5_000));
+      expect(api.sent('GET', '/api/v1/links?changed_since=')).toHaveLength(1);
+      expect(screen.getByText('Now summarised.')).toBeTruthy();
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+      expect(api.sent('GET', '/api/v1/links?changed_since=')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

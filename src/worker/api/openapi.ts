@@ -75,6 +75,15 @@ export const Link = z.strictObject({
   content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
   has_snapshot: z.boolean(),
   updated_at: z.string().describe('When the link last changed in any way'),
+  summary: z.string().nullable(),
+  tags: z.array(z.string()),
+  topic: z.string().nullable(),
+  enrichment_status: z
+    .enum(['no_key', 'queued', 'enriched', 'failed', 'skipped', 'waiting_for_key'])
+    .nullable()
+    .describe('Why the link has or has not a summary; null before its first fetch'),
+  enrichment_reason: z.string().nullable(),
+  edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
 });
 
 /** The AI settings, never with the key beyond its last 4 characters. */

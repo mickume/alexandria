@@ -78,6 +78,13 @@ export interface Link {
   content_kind: 'html' | 'pdf' | 'other' | null;
   has_snapshot: boolean;
   updated_at: string;
+  summary: string | null;
+  tags: string[];
+  topic: string | null;
+  enrichment_status:
+    'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | null;
+  enrichment_reason: string | null;
+  edited_fields: string[];
 }
 
 /** One page of a list. */

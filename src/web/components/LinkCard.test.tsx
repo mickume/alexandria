@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Link } from '../api';
 import { FakeApi, installFakeApi, makeLink } from '../test/helpers';
@@ -116,5 +116,27 @@ describe('a card’s fetch results', () => {
       );
     }
     expect(container.querySelector('img.favicon') !== null).toBe(favicon === true);
+  });
+});
+
+describe('an enriched card', () => {
+  it('shows the summary in two lines that expand, a chip per tag, and the topic', () => {
+    const summary = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
+    const l = makeLink({
+      id: 'rich',
+      state: 'active',
+      summary,
+      tags: ['rust', 'wasm', 'performance'],
+      topic: 'Programming',
+      enrichment_status: 'enriched',
+    });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    const text = screen.getByText(summary);
+    expect(text.classList.contains('clamped')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'more' }));
+    expect(screen.getByText(summary).classList.contains('clamped')).toBe(false);
+    const chips = screen.getAllByRole('listitem').map((li) => li.textContent);
+    expect(chips).toEqual(['rust', 'wasm', 'performance']);
+    expect(screen.getByText('Programming')).toBeTruthy();
   });
 });

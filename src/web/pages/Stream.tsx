@@ -178,13 +178,15 @@ function useUndoableDelete(items: Link[], setItems: SetItems) {
 const POLL_MS = 5_000;
 
 /**
- * While any card is pending or being refreshed, asks every 5 seconds for the
+ * While any card is pending, being refreshed or queued for enrichment, asks every 5 seconds for the
  * links changed since the last server time and replaces those cards in place.
  */
 function useChangeFeed(items: Link[], setItems: SetItems) {
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set());
   const since = useRef<string | null>(null);
-  const watching = items.some((l) => l.state === 'pending') || refreshing.size > 0;
+  const watching =
+    items.some((l) => l.state === 'pending' || l.enrichment_status === 'queued') ||
+    refreshing.size > 0;
   const latest = useRef(items);
   useEffect(() => {
     latest.current = items;

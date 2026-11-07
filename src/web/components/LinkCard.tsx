@@ -39,6 +39,21 @@ export function RefreshButton({
   );
 }
 
+/** A summary shown in two lines, with a control that shows all of it. */
+function Summary({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="summary">
+      <p className={open ? 'summary-text' : 'summary-text clamped'}>{text}</p>
+      {!open && (
+        <button type="button" className="link-button" onClick={() => setOpen(true)}>
+          more
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** What a card's actions do; the stream page supplies them. */
 export interface CardActions {
   onPin: (link: Link) => void;
@@ -94,6 +109,21 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           </span>
         ))}
       </div>
+      {link.summary && <Summary text={link.summary} />}
+      {(link.tags.length > 0 || link.topic) && (
+        <div className="card-labels">
+          {link.topic && <span className="topic">{link.topic}</span>}
+          {link.tags.length > 0 && (
+            <ul className="tags" aria-label="Tags">
+              {link.tags.map((tag) => (
+                <li key={tag} className="chip">
+                  {tag}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="card-actions">
         <a className="link-button" href={open}>
           Open

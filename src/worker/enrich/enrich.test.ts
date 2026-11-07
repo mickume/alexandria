@@ -352,3 +352,32 @@ describe('a link without a key', () => {
     expect(ai.enrichments).toEqual([]);
   });
 });
+
+describe('an enriched link as the API shows it', () => {
+  it('carries its summary, tags, topic, status, reason and edited fields everywhere', async () => {
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    new FakeAi().answer({
+      summary: 'A short summary.',
+      tags: ['alpha', 'beta', 'gamma'],
+      topic: 'Letters',
+    });
+    const user = await signIn();
+    await saveKey(user);
+    const { id } = await addFetchAndEnrich(user, ARTICLE);
+    const expected = {
+      summary: 'A short summary.',
+      tags: ['alpha', 'beta', 'gamma'],
+      topic: 'Letters',
+      enrichment_status: 'enriched',
+      enrichment_reason: null,
+      edited_fields: [],
+    };
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    expect(stream.json.items.find((l: { id: string }) => l.id === id)).toMatchObject(expected);
+    expect(await link(user, id)).toMatchObject(expected);
+    const changes = await api('GET', '/api/v1/links?changed_since=2000-01-01T00:00:00.000Z', {
+      as: user.session,
+    });
+    expect(changes.json.items.find((l: { id: string }) => l.id === id)).toMatchObject(expected);
+  });
+});
