@@ -1,22 +1,10 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { FakeApi, renderPage } from '../test/helpers';
+import type { Link } from '../api';
+import { FakeApi, makeLink, renderPage } from '../test/helpers';
 
-function link(host: string, extra: Record<string, unknown> = {}) {
-  return {
-    id: `id-${host}`,
-    url: `https://${host}`,
-    original_url: `https://${host}`,
-    host,
-    title: host,
-    state: 'pending',
-    added_at: '2026-06-01T00:00:00.000Z',
-    last_used_at: '2026-06-01T00:00:00.000Z',
-    use_count: 0,
-    pinned: false,
-    pin_position: null,
-    ...extra,
-  };
+function link(host: string, extra: Partial<Link> = {}): Link {
+  return makeLink({ id: `id-${host}`, host, last_used_at: '2026-06-01T00:00:00.000Z', ...extra });
 }
 
 describe('the add input', () => {

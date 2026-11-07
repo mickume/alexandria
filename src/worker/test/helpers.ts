@@ -187,8 +187,8 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
     statements.push(
       env.DB.prepare(
         `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at,
-           last_used_at, use_count, pin_position)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_used_at, use_count, pin_position, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         id,
         user.id,
@@ -201,6 +201,7 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
         at,
         l.useCount ?? 0,
         l.pinPosition ?? null,
+        at,
       ),
     );
   });

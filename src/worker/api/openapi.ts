@@ -74,6 +74,7 @@ export const Link = z.strictObject({
   notes: z.array(z.string()).describe('Such as "truncated" or "not a web page (image/png)"'),
   content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
   has_snapshot: z.boolean(),
+  updated_at: z.string().describe('When the link last changed in any way'),
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
@@ -205,13 +206,22 @@ export const operations: Operation[] = [
     query: {
       limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+      changed_since: {
+        description:
+          'Instead of a page: the links changed since this time (a server_time), oldest change first',
+        schema: z.string(),
+      },
     },
     responses: {
       200: {
-        description: 'One page of the stream; archived links are left out',
-        schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+        description:
+          'One page of the stream (archived links left out); with changed_since, the changed links and the server time to ask from next',
+        schema: z.union([
+          z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+          z.strictObject({ items: z.array(Link), server_time: z.string() }),
+        ]),
       },
-      400: error('invalid_limit or invalid_cursor'),
+      400: error('invalid_limit, invalid_cursor or invalid_changed_since'),
     },
   },
   {

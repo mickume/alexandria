@@ -61,6 +61,8 @@ export interface LinkView {
   content_kind: string | null;
   /** Whether a snapshot is stored, so that Read and Snapshot can be offered. */
   has_snapshot: boolean;
+  /** When the link last changed in any way. */
+  updated_at: string;
 }
 
 /** A link's notes, parsed from their stored JSON. */
@@ -97,6 +99,7 @@ export function toView(row: LinkRow): LinkView {
     notes: parseNotes(row.notes),
     content_kind: row.content_kind,
     has_snapshot: row.has_snapshot === 1,
+    updated_at: row.updated_at,
   };
 }
 
@@ -123,11 +126,13 @@ function addStatement(db: D1Database, userId: string, link: NewLink, at: string,
   const host = new URL(link.url).host;
   return db
     .prepare(
-      `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6
+      `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at,
+         updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6, ?6
        WHERE (SELECT COUNT(*) FROM links WHERE user_id = ?2) < ?7
           OR EXISTS (SELECT 1 FROM links WHERE user_id = ?2 AND url = ?3)
-       ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at
+       ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at,
+         updated_at = excluded.updated_at
        RETURNING *`,
     )
     .bind(id, userId, link.url, link.original, host, at, LIBRARY_LIMIT);
@@ -179,17 +184,18 @@ export const PIN_LIMIT = 30;
 
 /** Statements that take a pinned link out of the pinned section and close the gap it leaves. */
 function unpinStatements(db: D1Database, userId: string, id: string): D1PreparedStatement[] {
+  const at = now().toISOString();
   return [
     db
       .prepare(
-        `UPDATE links SET pin_position = pin_position - 1
+        `UPDATE links SET pin_position = pin_position - 1, updated_at = ?3
          WHERE user_id = ?1 AND pin_position > (
            SELECT pin_position FROM links WHERE id = ?2 AND user_id = ?1)`,
       )
-      .bind(userId, id),
+      .bind(userId, id, at),
     db
-      .prepare('UPDATE links SET pin_position = NULL WHERE id = ? AND user_id = ?')
-      .bind(id, userId),
+      .prepare('UPDATE links SET pin_position = NULL, updated_at = ? WHERE id = ? AND user_id = ?')
+      .bind(at, id, userId),
   ];
 }
 
@@ -222,16 +228,16 @@ export async function pinLink(
     ...unpinStatements(db, userId, id),
     db
       .prepare(
-        `UPDATE links SET pin_position = pin_position + 1
+        `UPDATE links SET pin_position = pin_position + 1, updated_at = ?5
          WHERE user_id = ?1 AND pin_position >= ${target} AND ${others} < ?4`,
       )
-      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
     db
       .prepare(
-        `UPDATE links SET pin_position = ${target}
+        `UPDATE links SET pin_position = ${target}, updated_at = ?5
          WHERE id = ?2 AND user_id = ?1 AND ${others} < ?4`,
       )
-      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT),
+      .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
   ]);
   const after = await getLink(db, userId, id);
   if (!after) return { status: 'not_found' };

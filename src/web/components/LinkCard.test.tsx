@@ -1,22 +1,16 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Link } from '../api';
-import { FakeApi, installFakeApi } from '../test/helpers';
+import { FakeApi, installFakeApi, makeLink } from '../test/helpers';
 import { LinkCard } from './LinkCard';
 
-const link: Link = {
+const link: Link = makeLink({
   id: 'abc',
   url: 'https://example.com/a',
   original_url: 'https://example.com/a?utm_source=x',
   host: 'example.com',
   title: 'example.com',
-  state: 'pending',
-  added_at: '2026-03-04T10:00:00.000Z',
-  last_used_at: '2026-03-05T10:00:00.000Z',
-  use_count: 0,
-  pinned: false,
-  pin_position: null,
-};
+});
 
 const noop = () => undefined;
 

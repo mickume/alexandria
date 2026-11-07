@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv, Env } from '../env';
+import { now } from '../clock';
 import { deleteLinkObjects } from '../fetcher/snapshots';
 import { normalizeUrl } from './normalize';
 import {
@@ -15,7 +16,7 @@ import {
   type LinkView,
   type NewLink,
 } from './store';
-import { isStreamCursor, listStream } from './stream';
+import { isStreamCursor, listChanged, listStream, parseTimestamp } from './stream';
 import { isHistoryCursor, listHistory, recordUse } from './use';
 
 /** The most URLs one batch may carry. */
@@ -89,6 +90,21 @@ linkRoutes.post('/batch', async (c) => {
 });
 
 linkRoutes.get('/', async (c) => {
+  const changedSince = c.req.query('changed_since');
+  if (changedSince !== undefined) {
+    const since = parseTimestamp(changedSince);
+    if (!since) {
+      return validationError(
+        c,
+        'invalid_changed_since',
+        'changed_since',
+        'changed_since must be an ISO 8601 timestamp, such as a server_time',
+      );
+    }
+    const serverTime = now().toISOString();
+    const rows = await listChanged(c.env.DB, c.get('user').id, since);
+    return c.json({ items: rows.map(toView), server_time: serverTime });
+  }
   const limit = parseLimit(c.req.query('limit'));
   if (limit === null) {
     return validationError(

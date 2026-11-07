@@ -26,7 +26,7 @@ export async function recordUse(
   const [updated] = await db.batch<{ url: string }>([
     db
       .prepare(
-        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1
+        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1, updated_at = ?1
          WHERE id = ?2 AND user_id = ?3 RETURNING url`,
       )
       .bind(at, linkId, userId),

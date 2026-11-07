@@ -67,6 +67,17 @@ export interface Link {
   use_count: number;
   pinned: boolean;
   pin_position: number | null;
+  final_url: string | null;
+  http_status: number | null;
+  description: string | null;
+  favicon_url: string | null;
+  language: string | null;
+  fetched_at: string | null;
+  state_reason: string | null;
+  notes: string[];
+  content_kind: 'html' | 'pdf' | 'other' | null;
+  has_snapshot: boolean;
+  updated_at: string;
 }
 
 /** One page of a list. */
@@ -93,7 +104,15 @@ export function openUrl(id: string): string {
   return `/api/v1/links/${encodeURIComponent(id)}/open`;
 }
 
+/** The links changed since a server time, and the server time to ask from next. */
+export interface Changes {
+  items: Link[];
+  server_time: string;
+}
+
 export const links = {
+  changedSince: (since: string) =>
+    request<Changes>('GET', `/links?changed_since=${encodeURIComponent(since)}`),
   get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),
   history: (id: string) =>
     request<Page<LinkEvent>>('GET', `/links/${encodeURIComponent(id)}/history`),

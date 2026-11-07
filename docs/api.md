@@ -112,9 +112,28 @@ A link is shown as:
   "last_used_at": "2026-06-01T08:00:00.000Z",
   "use_count": 0,
   "pinned": false,
-  "pin_position": null
+  "pin_position": null,
+  "final_url": null,
+  "http_status": null,
+  "description": null,
+  "favicon_url": null,
+  "language": null,
+  "fetched_at": null,
+  "state_reason": null,
+  "notes": [],
+  "content_kind": null,
+  "has_snapshot": false,
+  "updated_at": "2026-06-01T08:00:00.000Z"
 }
 ```
+
+`state` is `pending` until the link's first fetch, then `active`, or
+`unreachable` after three failed attempts (`state_reason` says why: "timed
+out", "HTTP 503", …). A fetch fills `final_url`, `http_status`, `title`,
+`description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
+(`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
+web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
+limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
@@ -163,6 +182,16 @@ breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
 
 While the library is unchanged, following the cursors returns every link
 once.
+
+With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
+every link that is not archived and changed at or after that time (every
+write to a link sets its `updated_at`), oldest change first, with the
+server's time to ask from next:
+`200 {"items": [<link>], "server_time": "…"}`. A link changed in the very
+millisecond asked from may come again. A value that is not an ISO 8601
+timestamp is `400 {"error": "invalid_changed_since", "field": "changed_since", "message"}`.
+The website polls this every 5 seconds while a card is pending or
+refreshing.
 
 #### `GET /api/v1/links/{id}`
 

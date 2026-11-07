@@ -63,3 +63,39 @@ export async function listStream(
   const last = items.at(-1);
   return { items, next: rows.length > limit && last ? cursorAt(last) : null };
 }
+
+/** The most changed links one change-feed answer carries. */
+export const CHANGES_LIMIT = 500;
+
+const ISO_TIMESTAMP =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/;
+
+/** The instant an ISO 8601 timestamp names, or null when it is not one (or names no real date). */
+export function parseTimestamp(value: string): Date | null {
+  const m = ISO_TIMESTAMP.exec(value);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m.map(Number) as number[];
+  const daysInMonth = new Date(Date.UTC(y!, mo!, 0)).getUTCDate();
+  if (mo! < 1 || mo! > 12 || d! < 1 || d! > daysInMonth || h! > 23 || mi! > 59 || (s ?? 0) > 59) {
+    return null;
+  }
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? null : new Date(t);
+}
+
+/**
+ * The user's links that are not archived and changed at or after `since`,
+ * oldest change first. A link changed in the very millisecond of `since` may
+ * come again; the website replaces cards in place, so a repeat is harmless,
+ * while a missed change would leave a card pending.
+ */
+export async function listChanged(db: D1Database, userId: string, since: Date): Promise<LinkRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT * FROM links WHERE user_id = ? AND state <> 'archived' AND updated_at >= ?
+       ORDER BY updated_at, id LIMIT ?`,
+    )
+    .bind(userId, since.toISOString(), CHANGES_LIMIT)
+    .all<LinkRow>();
+  return rows.results;
+}

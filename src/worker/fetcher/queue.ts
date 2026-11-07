@@ -42,15 +42,24 @@ async function recordFailure(
   const at = now().toISOString();
   const event = eventStatement(env, link, at, 'failed', failure.status ?? null, failure.reason);
   if (message.refresh || link.state !== 'pending') {
-    await env.DB.batch([event]);
+    // The link keeps what it had; only its history and its change time move.
+    await env.DB.batch([
+      event,
+      env.DB.prepare('UPDATE links SET updated_at = ? WHERE id = ? AND user_id = ?').bind(
+        at,
+        link.id,
+        link.user_id,
+      ),
+    ]);
     return;
   }
   const attempts = link.fetch_attempts + 1;
   const state = attempts >= MAX_ATTEMPTS ? 'unreachable' : 'pending';
   await env.DB.batch([
     env.DB.prepare(
-      'UPDATE links SET state = ?, state_reason = ?, fetch_attempts = ? WHERE id = ? AND user_id = ?',
-    ).bind(state, failure.reason, attempts, link.id, link.user_id),
+      `UPDATE links SET state = ?, state_reason = ?, fetch_attempts = ?, updated_at = ?
+       WHERE id = ? AND user_id = ?`,
+    ).bind(state, failure.reason, attempts, at, link.id, link.user_id),
     event,
   ]);
   const delaySeconds = RETRY_DELAYS_SECONDS[attempts - 1];
@@ -116,7 +125,7 @@ async function writeFetched(
       env.DB.prepare(
         `UPDATE links SET state = 'active', state_reason = NULL, fetch_attempts = 0, title = ?1, final_url = ?2,
            http_status = ?3, description = ?4, favicon_url = ?5, language = ?6, fetched_at = ?7,
-           content_kind = ?8, has_snapshot = ?9, reader_empty = ?10, notes = ?11
+           content_kind = ?8, has_snapshot = ?9, reader_empty = ?10, notes = ?11, updated_at = ?7
          WHERE id = ?12 AND user_id = ?13`,
       ).bind(
         fetched.title,

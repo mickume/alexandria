@@ -556,3 +556,48 @@ describe('an unreachable link', () => {
     expect((await api('DELETE', `/api/v1/links/${id}`, { as: user.session })).status).toBe(204);
   }, 15_000);
 });
+
+describe('the stream’s change feed', () => {
+  it('lists the links changed since the server time it gave, oldest change first', async () => {
+    new FakeOrigin().page('https://feed-a.example/', blogArticle);
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    setNow('2026-10-04T10:00:00.000Z');
+    const add = (url: string) => api('POST', '/api/v1/links', { as: user.session, body: { url } });
+    const a = (await add('https://feed-a.example/')).json.link.id;
+    await add('https://feed-b.example/');
+    setNow('2026-10-04T10:00:05.000Z');
+    const r1 = await api('GET', '/api/v1/links?changed_since=2026-10-04T09:00:00.000Z', {
+      as: user.session,
+    });
+    expect(r1.json.items).toHaveLength(2);
+    expect(r1.json.server_time).toBe('2026-10-04T10:00:05.000Z');
+    setNow('2026-10-04T10:00:09.000Z');
+    await deliverFetches([sent[0]!.body]);
+    setNow('2026-10-04T10:00:10.000Z');
+    const r2 = await api('GET', `/api/v1/links?changed_since=${r1.json.server_time}`, {
+      as: user.session,
+    });
+    expect(r2.status).toBe(200);
+    expect(r2.json.items.map((l: { id: string }) => l.id)).toEqual([a]);
+    expect(r2.json.items[0]).toMatchObject({
+      state: 'active',
+      title: 'Why We Keep Links Forever',
+      updated_at: '2026-10-04T10:00:09.000Z',
+    });
+    expect(r2.json.server_time).toBe('2026-10-04T10:00:10.000Z');
+  });
+
+  it.each(['yesterday', '', '2026-13-40T00:00:00Z'])('refuses changed_since=%j', async (value) => {
+    const user = await signIn();
+    const r = await api('GET', `/api/v1/links?changed_since=${encodeURIComponent(value)}`, {
+      as: user.session,
+    });
+    expect(r.status).toBe(400);
+    expect(r.json).toEqual({
+      error: 'invalid_changed_since',
+      field: 'changed_since',
+      message: expect.any(String),
+    });
+  });
+});

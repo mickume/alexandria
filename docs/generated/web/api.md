@@ -230,6 +230,22 @@ What a batch add did to each URL.
 
 ***
 
+### Changes
+
+The links changed since a server time, and the server time to ask from next.
+
+#### Properties
+
+##### items
+
+> **items**: [`Link`](#link)[]
+
+##### server\_time
+
+> **server\_time**: `string`
+
+***
+
 ### Link
 
 A link as the API shows it.
@@ -240,17 +256,53 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### content\_kind
+
+> **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
+
+##### description
+
+> **description**: `string` \| `null`
+
+##### favicon\_url
+
+> **favicon\_url**: `string` \| `null`
+
+##### fetched\_at
+
+> **fetched\_at**: `string` \| `null`
+
+##### final\_url
+
+> **final\_url**: `string` \| `null`
+
+##### has\_snapshot
+
+> **has\_snapshot**: `boolean`
+
 ##### host
 
 > **host**: `string`
+
+##### http\_status
+
+> **http\_status**: `number` \| `null`
 
 ##### id
 
 > **id**: `string`
 
+##### language
+
+> **language**: `string` \| `null`
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+##### notes
+
+> **notes**: `string`[]
 
 ##### original\_url
 
@@ -268,9 +320,17 @@ A link as the API shows it.
 
 > **state**: `string`
 
+##### state\_reason
+
+> **state\_reason**: `string` \| `null`
+
 ##### title
 
 > **title**: `string`
+
+##### updated\_at
+
+> **updated\_at**: `string`
 
 ##### url
 
@@ -363,6 +423,20 @@ A personal access token as listed.
 ###### Returns
 
 `Promise`\<[`BatchResult`](#batchresult)\>
+
+##### changedSince
+
+> **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
+
+###### Parameters
+
+###### since
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Changes`](#changes)\>
 
 ##### get
 

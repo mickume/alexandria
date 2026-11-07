@@ -132,7 +132,7 @@ snapshotRoutes.post('/:id/refresh', async (c) => {
   // One statement claims the refresh only when the window has passed, so two
   // requests at once cannot both get through.
   const claimed = await c.env.DB.prepare(
-    `UPDATE links SET refresh_requested_at = ?1
+    `UPDATE links SET refresh_requested_at = ?1, updated_at = ?1
      WHERE id = ?2 AND user_id = ?3
        AND (refresh_requested_at IS NULL OR refresh_requested_at <= ?4)
      RETURNING id`,

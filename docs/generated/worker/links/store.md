@@ -204,6 +204,12 @@ Why the link is in its state, such as "HTTP 503" for a pending or unreachable li
 
 > **title**: `string`
 
+##### updated\_at
+
+> **updated\_at**: `string`
+
+When the link last changed in any way.
+
 ##### url
 
 > **url**: `string`

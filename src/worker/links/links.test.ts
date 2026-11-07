@@ -33,6 +33,7 @@ describe('adding a link', () => {
         notes: [],
         content_kind: null,
         has_snapshot: false,
+        updated_at: t,
       },
     });
   });
@@ -241,6 +242,7 @@ describe('reading a link', () => {
       notes: [],
       content_kind: null,
       has_snapshot: false,
+      updated_at: expect.any(String),
     });
   });
 });
