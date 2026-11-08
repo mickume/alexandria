@@ -1,9 +1,12 @@
 ---
-version: 1.0.0
+version: 1.1.0
 amendments:
   - version: 1.0.0
     date: 2026-11-07
     change: The file was adopted from the agent-fox template.
+  - version: 1.1.0
+    date: 2026-11-08
+    change: Work is committed straight to main; no feature branches or pull requests.
 ---
 # Steering Directives
 
@@ -110,6 +113,10 @@ grepping for declarations.
 
 ## Repository Specifics
 
+- **How work lands:** one person works on this repository. Commit straight to
+  `main` and push it; do not create feature branches or pull requests, and
+  never force-push `main`. Every push to `main` deploys through Cloudflare
+  Workers Builds, so `make check` must pass before the push.
 - **What it is:** a service: one Cloudflare Worker (Hono, TypeScript) with a
   D1 database, serving a JSON API under `/api/v1/` and a React website built
   with Vite. `docs/api.md`, `docs/configuration.md` and `docs/architecture.md`

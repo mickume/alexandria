@@ -96,13 +96,18 @@ make check
 
 ## Git Workflow
 
-- **Branch from `main`:** `feature/<descriptive-name>`.
-- **Never commit directly** to `main`.
+One person works on this repository, so there are no feature branches and no
+pull requests.
+
+- **Commit straight to `main`** and push it (`git push origin main`). Pull
+  first (`git pull --rebase origin main`) so the push is a fast-forward.
+- **Every push to `main` deploys** (Cloudflare Workers Builds), so run
+  `make check` before you push.
+- **Never force-push** `main` or rewrite its history.
 - **Conventional commits:** `<type>: <description>` (e.g. `feat:`, `fix:`,
   `refactor:`, `docs:`, `test:`, `chore:`).
 - **Commit discipline:** only commit files relevant to the current change.
 - **Never add `Co-Authored-By` lines.** No AI attribution in commits — ever.
-- **Feature branches are pushed to origin** — push and create a pull request, then switch back to main.
 
 ## Scope Discipline
 
@@ -137,6 +142,6 @@ A session is not complete until:
 
 1. `make check` passes (no regressions).
 2. Changes are committed with a clear conventional commit message.
-3. Changes are pushed to origin as a pull request.
+3. Changes are pushed to `main` on origin.
 4. `git status` shows a clean working tree.
 5. You provide a brief handoff note summarizing what was done and what remains.
