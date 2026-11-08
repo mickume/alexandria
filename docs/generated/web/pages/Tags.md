@@ -6,7 +6,7 @@
 
 > **Tags**(): `Element`
 
-The Tags page: every tag with its number of links, newest first.
+The Tags page: every tag with its number of links, by name.
 
 #### Returns
 

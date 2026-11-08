@@ -8,6 +8,7 @@ import {
   type VocabularyItem,
   type VocabularyKind,
 } from '../api';
+import { byName } from '../format';
 
 const FILTER: Record<VocabularyKind, 'topic' | 'tag'> = { topics: 'topic', tags: 'tag' };
 
@@ -108,7 +109,8 @@ function Row({
 
 /**
  * The Topics or Tags page: every topic or tag with its number of links,
- * newest first, each opening the search for its filter, with Rename and Merge.
+ * by name, each opening the search for its filter, with Rename and Merge; the
+ * Merge drop-down offers the others in the same order.
  */
 export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: string }) {
   const [items, setItems] = useState<VocabularyItem[] | null>(null);
@@ -118,7 +120,7 @@ export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: s
     let live = true;
     vocabulary
       .listAll(kind)
-      .then((list) => live && setItems(list))
+      .then((list) => live && setItems([...list].sort(byName)))
       .catch(() => live && setError(`could not load the ${kind}`));
     return () => {
       live = false;

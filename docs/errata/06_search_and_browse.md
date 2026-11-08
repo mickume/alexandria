@@ -49,3 +49,8 @@ the spec says, and why.
 14. **Two checks landed with the task that made them testable:** REQ-4.3's
     (filters follow pins, workspaces and the archive) with the filters in
     task 4, and REQ-5.3's search-request half with the Search page in task 7.
+15. **The Topics and Tags pages list their items alphabetically**, ignoring
+    case, and the Merge drop-down offers the others in the same order, rather
+    than newest first. The website sorts them; `GET /api/v1/topics` and
+    `GET /api/v1/tags` still return them newest first, as their cursor pages
+    by that date.

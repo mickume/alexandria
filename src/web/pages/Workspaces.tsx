@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from '../App';
 import { ApiError, workspaces, type WorkspaceSummary } from '../api';
+import { byName } from '../format';
 
 const CONFIRM_DELETE = 'Delete this workspace? Its links stay in your library.';
 
@@ -106,11 +107,7 @@ export function Workspaces() {
     setError(null);
     try {
       const w = await workspaces.create(name);
-      setList((current) =>
-        [...(current ?? []), w].sort((a, b) =>
-          a.name.toLowerCase().localeCompare(b.name.toLowerCase()),
-        ),
-      );
+      setList((current) => [...(current ?? []), w].sort(byName));
       setName('');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'could not create the workspace');
