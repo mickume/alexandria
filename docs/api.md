@@ -147,7 +147,7 @@ edited it). A fetch fills `final_url`, `http_status`, `title`,
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
-Enrichment adds `summary` (at most 60 words), `tags` (3 to 8, lower-case,
+Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
 hyphenated) and `topic`. `enrichment_status` says where the link stands:
 `no_key` (no AI key), `queued`, `enriched`, `failed` (with
 `enrichment_reason`), `skipped` (nothing to read: not a web page, a PDF

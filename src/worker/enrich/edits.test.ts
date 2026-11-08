@@ -87,6 +87,13 @@ describe('editing a link', () => {
       stored: { tags: ['zig'] },
       created: 1,
     },
+    {
+      label: 'a plural of an existing tag, taken as typed',
+      existing: { tag: 'library' },
+      edit: { tags: ['libraries'] },
+      stored: { tags: ['libraries'] },
+      created: 1,
+    },
   ])('reuses the vocabulary for $label', async ({ existing, edit, stored, created }) => {
     const user = await signIn();
     const [id = ''] = await seedLinks(user, [{ url: URL, state: 'active' }]);

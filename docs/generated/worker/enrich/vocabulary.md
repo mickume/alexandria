@@ -1,5 +1,21 @@
 # worker/enrich/vocabulary
 
+## Interfaces
+
+### ResolveOptions
+
+How names are matched to the user's vocabulary.
+
+#### Properties
+
+##### near?
+
+> `optional` **near?**: `boolean`
+
+Whether a name with no equal also reuses a near one (nearKeys: hyphens
+dropped, singular or plural). Enrichment asks for it so that the model's
+variants converge; an owner's own edit does not, so it is taken as typed.
+
 ## Variables
 
 ### PROMPT\_TAGS
@@ -41,9 +57,9 @@ name. An alias that is also a current name is left out: a current name wins.
 
 ### listVocabulary()
 
-> **listVocabulary**(`db`, `userId`): `Promise`\<\{ `tags`: `string`[]; `topics`: `string`[]; \}\>
+> **listVocabulary**(`db`, `userId`): `Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; \}\>
 
-The user's most used topic and tag names, for the provider to reuse.
+The user's most used topic and tag names with their link counts, for the provider to reuse.
 
 #### Parameters
 
@@ -57,15 +73,16 @@ The user's most used topic and tag names, for the provider to reuse.
 
 #### Returns
 
-`Promise`\<\{ `tags`: `string`[]; `topics`: `string`[]; \}\>
+`Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; \}\>
 
 ***
 
 ### resolveTags()
 
-> **resolveTags**(`db`, `userId`, `names`): `Promise`\<`string`[]\>
+> **resolveTags**(`db`, `userId`, `names`, `options?`): `Promise`\<`string`[]\>
 
-The ids of the user's tags named `names`, in order, created where there are none.
+The ids of the user's tags named `names` (or, with `near`, near names), in
+order and without repeats, created where there are none.
 
 #### Parameters
 
@@ -81,6 +98,10 @@ The ids of the user's tags named `names`, in order, created where there are none
 
 `string`[]
 
+##### options?
+
+[`ResolveOptions`](#resolveoptions) = `{}`
+
 #### Returns
 
 `Promise`\<`string`[]\>
@@ -89,9 +110,9 @@ The ids of the user's tags named `names`, in order, created where there are none
 
 ### resolveTopic()
 
-> **resolveTopic**(`db`, `userId`, `name`): `Promise`\<`string`\>
+> **resolveTopic**(`db`, `userId`, `name`, `options?`): `Promise`\<`string`\>
 
-The id of the user's topic named `name`, created when there is none.
+The id of the user's topic named `name` (or, with `near`, a near name), created when there is none.
 
 #### Parameters
 
@@ -106,6 +127,10 @@ The id of the user's topic named `name`, created when there is none.
 ##### name
 
 `string`
+
+##### options?
+
+[`ResolveOptions`](#resolveoptions) = `{}`
 
 #### Returns
 

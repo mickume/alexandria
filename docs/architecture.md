@@ -169,15 +169,26 @@ key is rejected it is `waiting_for_key`; otherwise it is `queued` and one
 handler for `alexandria-enrich`) decrypts the user's own key
 (`enrich/keys.ts`: AES-GCM under `KEY_ENCRYPTION_KEY`, the user id as
 additional data), builds the request (`enrich/enrich.ts`: instructions, title,
-host, the user's 100 most used topics and 300 most used tags, and the first
-20,000 characters of the reader text, or the title and description), asks
+host, the user's 100 most used topics and 300 most used tags, each with the
+number of links that carry it, and the first 20,000 characters of the reader
+text, or the title and description), asks
 the user's provider for a structured result (`enrich/providers.ts`: a JSON
 schema through structured outputs, `output_config.format`, with
 `@anthropic-ai/sdk`, since current models refuse a forced tool call; or a
-JSON-schema response format through OpenRouter's HTTP API), normalises it, resolves the names against the
-user's vocabulary (`enrich/vocabulary.ts`), and stores summary, topic and
+JSON-schema response format through OpenRouter's HTTP API), normalises it
+(1 to 5 tags), resolves the names against the user's vocabulary
+(`enrich/vocabulary.ts`), and stores summary, topic and
 tags (`topics`, `tags`, `link_tags`). Links are read through the
 `link_views` view, which adds the topic's name and the tags in order.
+
+Resolution keeps the vocabulary converging. A name equal to an existing one
+(ignoring case, spaces read as hyphens) reuses it, for enrichment and for the
+owner's edits alike. Enrichment also reuses a *near* name when there is no
+equal one (`nearKeys` in `enrich/enrich.ts`): the same with the hyphens
+dropped (`webdev` and `web-dev`), or with its last word made singular or
+plural (`databases` and `database`, `libraries` and `library`). A few words
+whose plural-looking form names something else (`news`, `windows`, `ios`) are
+never varied. The owner's own edits are taken as typed.
 
 ### The background throttle
 

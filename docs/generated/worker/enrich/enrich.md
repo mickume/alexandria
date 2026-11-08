@@ -54,7 +54,7 @@ What the request about one link is built from.
 
 ##### tags
 
-> **tags**: `string`[]
+> **tags**: [`VocabularyEntry`](#vocabularyentry)[]
 
 ##### text
 
@@ -68,7 +68,23 @@ The reader-view text, or '' when the reader view is empty.
 
 ##### topics
 
-> **topics**: `string`[]
+> **topics**: [`VocabularyEntry`](#vocabularyentry)[]
+
+***
+
+### VocabularyEntry
+
+A topic or tag name with the number of the user's links that carry it.
+
+#### Properties
+
+##### count
+
+> **count**: `number`
+
+##### name
+
+> **name**: `string`
 
 ## Variables
 
@@ -90,15 +106,17 @@ The most words a summary keeps.
 
 ### MAX\_TAGS
 
-> `const` **MAX\_TAGS**: `8` = `8`
+> `const` **MAX\_TAGS**: `5` = `5`
 
 ***
 
 ### MIN\_TAGS
 
-> `const` **MIN\_TAGS**: `3` = `3`
+> `const` **MIN\_TAGS**: `1` = `1`
 
-The fewest and the most tags an enrichment keeps.
+The fewest and the most tags an enrichment keeps. A low floor lets a page
+that fits one or two existing tags keep just those, rather than pushing the
+model to invent more and scatter the vocabulary.
 
 ## Functions
 
@@ -130,7 +148,8 @@ its survivor, compared ignoring case; tags that become repeats are dropped.
 > **buildPrompt**(`input`): `string`
 
 The request sent to the provider: instructions, the link's title and host,
-the user's topic and tag names, and the first 20,000 characters of the page
+the user's topic and tag names with how many links carry each, and the
+first 20,000 characters of the page
 text, or its title and description when it has none. Nothing else of the
 page or of the user.
 
@@ -164,14 +183,36 @@ The key two names are compared by: case ignored, spaces read as hyphens.
 
 ***
 
+### nearKeys()
+
+> **nearKeys**(`name`): `string`[]
+
+The keys a name is close enough to share a tag or topic with: its own key
+first (nameKey with the hyphens dropped, so "web-dev" meets "webdev"), then
+the same with its last word made singular or plural ("databases" meets
+"database", "library" meets "libraries"). Two names are near when the own
+key of one is among the keys of the other.
+
+#### Parameters
+
+##### name
+
+`string`
+
+#### Returns
+
+`string`[]
+
+***
+
 ### normalizeResult()
 
 > **normalizeResult**(`raw`): [`Enrichment`](#enrichment) \| `null`
 
 Normalises a provider's raw result: tags as normalizeTags makes them, the
-first 8 kept; the summary cut to its first 60 words. Returns null for a
-result that is unusable: not the right shape, fewer than 3 tags, or an
-empty summary or topic.
+first 5 kept; the summary cut to its first 60 words. Returns null for a
+result that is unusable: not the right shape, no tags, or an empty summary
+or topic.
 
 #### Parameters
 

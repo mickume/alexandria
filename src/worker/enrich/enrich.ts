@@ -9,9 +9,13 @@ export interface Enrichment {
 export const MAX_PROMPT_TEXT = 20_000;
 /** The most words a summary keeps. */
 export const MAX_SUMMARY_WORDS = 60;
-/** The fewest and the most tags an enrichment keeps. */
-export const MIN_TAGS = 3;
-export const MAX_TAGS = 8;
+/**
+ * The fewest and the most tags an enrichment keeps. A low floor lets a page
+ * that fits one or two existing tags keep just those, rather than pushing the
+ * model to invent more and scatter the vocabulary.
+ */
+export const MIN_TAGS = 1;
+export const MAX_TAGS = 5;
 
 /** A tag name as it is stored: lower-case, hyphens for spaces, only a-z, 0-9 and '-'. */
 export function normalizeTag(name: string): string {
@@ -25,6 +29,37 @@ export function normalizeTag(name: string): string {
 /** The key two names are compared by: case ignored, spaces read as hyphens. */
 export function nameKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+/** Words whose plural-looking form names something else, so they are never varied by number. */
+const NOT_PLURALS = new Set(['news', 'windows', 'canvas', 'ios', 'macos', 'series', 'species']);
+/** The shortest word that is varied by number, and the shortest variant kept. */
+const MIN_VARIED = 3;
+
+/** A word's likely singular and plural forms, besides itself. */
+function numberVariants(word: string): string[] {
+  if (word.length < MIN_VARIED || NOT_PLURALS.has(word)) return [];
+  const out: string[] = [];
+  if (word.endsWith('ies')) out.push(`${word.slice(0, -3)}y`);
+  if (/(s|x|z|ch|sh)es$/.test(word)) out.push(word.slice(0, -2));
+  if (word.endsWith('s') && !word.endsWith('ss')) out.push(word.slice(0, -1));
+  if (/[^aeiou]y$/.test(word)) out.push(`${word.slice(0, -1)}ies`);
+  out.push(/(s|x|z|ch|sh)$/.test(word) ? `${word}es` : `${word}s`);
+  return out.filter((v) => v.length >= MIN_VARIED && !NOT_PLURALS.has(v));
+}
+
+/**
+ * The keys a name is close enough to share a tag or topic with: its own key
+ * first (nameKey with the hyphens dropped, so "web-dev" meets "webdev"), then
+ * the same with its last word made singular or plural ("databases" meets
+ * "database", "library" meets "libraries"). Two names are near when the own
+ * key of one is among the keys of the other.
+ */
+export function nearKeys(name: string): string[] {
+  const words = nameKey(name).split('-').filter(Boolean);
+  const last = words.pop() ?? '';
+  const head = words.join('');
+  return [head + last, ...numberVariants(last).map((v) => head + v)];
 }
 
 /** Tags normalised, without empties or repeats, in their order. */
@@ -42,9 +77,9 @@ export function normalizeTags(names: string[]): string[] {
 
 /**
  * Normalises a provider's raw result: tags as normalizeTags makes them, the
- * first 8 kept; the summary cut to its first 60 words. Returns null for a
- * result that is unusable: not the right shape, fewer than 3 tags, or an
- * empty summary or topic.
+ * first 5 kept; the summary cut to its first 60 words. Returns null for a
+ * result that is unusable: not the right shape, no tags, or an empty summary
+ * or topic.
  */
 export function normalizeResult(raw: unknown): Enrichment | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -62,6 +97,12 @@ export function normalizeResult(raw: unknown): Enrichment | null {
   return { summary: cleanSummary, tags: cleanTags, topic: cleanTopic };
 }
 
+/** A topic or tag name with the number of the user's links that carry it. */
+export interface VocabularyEntry {
+  name: string;
+  count: number;
+}
+
 /** What the request about one link is built from. */
 export interface PromptInput {
   title: string;
@@ -69,13 +110,19 @@ export interface PromptInput {
   /** The reader-view text, or '' when the reader view is empty. */
   text: string;
   description: string | null;
-  topics: string[];
-  tags: string[];
+  topics: VocabularyEntry[];
+  tags: VocabularyEntry[];
+}
+
+/** Vocabulary entries as the request lists them: each name with its link count. */
+function listEntries(entries: VocabularyEntry[]): string {
+  return entries.length ? entries.map((e) => `${e.name} (${e.count})`).join(', ') : '(none)';
 }
 
 /**
  * The request sent to the provider: instructions, the link's title and host,
- * the user's topic and tag names, and the first 20,000 characters of the page
+ * the user's topic and tag names with how many links carry each, and the
+ * first 20,000 characters of the page
  * text, or its title and description when it has none. Nothing else of the
  * page or of the user.
  */
@@ -84,11 +131,13 @@ export function buildPrompt(input: PromptInput): string {
     'You file links in a personal library of web pages.',
     'From the page below, give:',
     '- summary: what the page is about, in at most 60 words;',
-    '- tags: 3 to 8 lower-case tags, each a single word or a hyphenated phrase;',
+    '- tags: 1 to 5 lower-case tags, each a single word or a hyphenated phrase;',
     '- topic: the one topic the page belongs to.',
-    'Reuse an existing topic or tag when one fits; make a new one only when none does.',
-    `Existing topics: ${input.topics.length ? input.topics.join(', ') : '(none)'}`,
-    `Existing tags: ${input.tags.length ? input.tags.join(', ') : '(none)'}`,
+    'Reuse an existing topic or tag when one fits, preferring the more used ones;',
+    'make a new one only when none does. A few tags that fit well beat many that fit loosely.',
+    'Each existing name is followed by the number of links that carry it.',
+    `Existing topics: ${listEntries(input.topics)}`,
+    `Existing tags: ${listEntries(input.tags)}`,
     '',
     `Title: ${input.title}`,
     `Host: ${input.host}`,
