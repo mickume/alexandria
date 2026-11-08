@@ -203,7 +203,9 @@ processed. A single pasted link is not throttled.
 
 ## Imports
 
-`POST /api/v1/imports` (`imports/`) reads the file (`parse.ts`), adds its new
+`POST /api/v1/imports` (`imports/`) reads the file (`parse.ts`: a text or
+Markdown file, the first `http(s)://` address of each line, other lines
+ignored), adds its new
 URLs as pending links within the request (`imports.ts`, in D1 batches of 500)
 and records the import: `imports` holds the report (and the workspace the
 links joined, if any, with how many joined it: with a workspace, each of the

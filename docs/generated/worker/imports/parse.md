@@ -4,7 +4,7 @@
 
 ### ImportLine
 
-One URL line of an import file: its 1-based line number and its first word.
+One URL line of an import file: its 1-based line number and the address found in it.
 
 #### Properties
 
@@ -42,16 +42,40 @@ The most URL lines one import may hold.
 
 ## Functions
 
+### findUrl()
+
+> **findUrl**(`line`): `string` \| `null`
+
+The first http or https address in a line, or null when it has none. The
+address runs to the first whitespace, quote, bracket, backtick or pipe;
+trailing punctuation and an unbalanced closing parenthesis are dropped, so
+that `[docs](https://a.example/x).` and `<https://a.example/x>` both give
+`https://a.example/x`.
+
+#### Parameters
+
+##### line
+
+`string`
+
+#### Returns
+
+`string` \| `null`
+
+***
+
 ### parseImportFile()
 
-> **parseImportFile**(`bytes`, `declaredType`): [`ParsedFile`](#parsedfile)
+> **parseImportFile**(`bytes`, `declaredType`, `fileName?`): [`ParsedFile`](#parsedfile)
 
-Reads an import file. Refuses a declared type other than text/plain, bytes
-that are not UTF-8, a NUL byte, markup and JSON (unsupported_file); a file
-over 2 MB or 5,000 URL lines (import_too_large); and a file with no URL line
-(no_urls). Otherwise drops a byte-order mark, splits at '\n' or '\r\n',
-skips blank lines and lines whose first non-blank character is '#', and
-takes each other line's first whitespace-separated word, with its line number.
+Reads an import file. Refuses a declared type other than text/plain or
+text/markdown (unless the file is named *.txt or *.md), bytes that are not
+UTF-8 and a NUL byte (unsupported_file); a file over 2 MB or 5,000 URL lines
+(import_too_large); and a file with no URL line (no_urls). Otherwise drops
+a byte-order mark, splits at '\n' or '\r\n', skips lines whose first
+non-blank character is '#', and takes from each other line its first http
+or https address (findUrl), with its line number. Lines without one are
+ignored.
 
 #### Parameters
 
@@ -62,6 +86,10 @@ takes each other line's first whitespace-separated word, with its line number.
 ##### declaredType
 
 `string` \| `null`
+
+##### fileName?
+
+`string` \| `null` = `null`
 
 #### Returns
 

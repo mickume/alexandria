@@ -389,9 +389,10 @@ export const operations: Operation[] = [
     path: '/imports',
     operationId: 'importLinks',
     summary:
-      'Import a plain-text file of URLs, one per line: new ones added in file order, the rest reported',
+      'Import a text or Markdown file: the first http(s) address of each line, new ones added in file order, the rest reported',
     upload: {
       'text/plain': { type: 'string', description: 'The file itself, UTF-8, at most 2 MB' },
+      'text/markdown': { type: 'string', description: 'The file itself, UTF-8, at most 2 MB' },
       'multipart/form-data': {
         type: 'object',
         properties: {
@@ -410,7 +411,7 @@ export const operations: Operation[] = [
     responses: {
       201: { description: 'The import and its report', schema: ImportReport },
       400: error(
-        'unsupported_file: "only plain-text files with one URL per line are accepted", no_urls (field file), or unknown_workspace (field workspace_id)',
+        'unsupported_file: "only text or Markdown files (.txt, .md) are accepted", no_urls (field file), or unknown_workspace (field workspace_id)',
       ),
       409: error('import_too_large: "too large: at most 5,000 URLs / 2 MB per import"'),
     },

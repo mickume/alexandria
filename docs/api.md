@@ -680,22 +680,27 @@ of the same name.
 
 #### `POST /api/v1/imports`
 
-Imports a plain-text list of URLs, one per line: the file as a `text/plain`
-body (or with no type), or as the part `file` of a `multipart/form-data`
-form. An optional workspace id, as the form part `workspace_id` or the query
+Imports the web addresses in a text or Markdown file: the file as a
+`text/plain` or `text/markdown` body (or with no type), or as the part `file`
+of a `multipart/form-data` form, where a file named `*.txt` or `*.md` is
+taken whatever its declared type. An optional workspace id, as the form part `workspace_id` or the query
 parameter `workspace_id`, adds the file's links to that workspace. The file must be UTF-8, at most 2 MB (2,097,152 bytes) and at most
 5,000 URL lines. A byte-order mark is dropped; lines end at `\n` or `\r\n`;
-blank lines and lines whose first non-blank character is `#` are skipped;
-of every other line, only the first word counts (`https://example.com some
-note` imports the URL alone).
+lines whose first non-blank character is `#` are skipped. A URL line is one
+that holds an `http://` or `https://` address anywhere; every other line is
+ignored and not reported. Only a line's first address counts. It runs to the
+first whitespace, quote, angle or square bracket, backtick or pipe, without
+trailing punctuation (`.,;:!?*_~`) or an unbalanced `)`, so Markdown such as
+`- [Docs](https://example.com/docs).`, `<https://example.com>` or
+`**https://example.com**` gives the bare address.
 
 Each URL line is normalised as `POST /api/v1/links` does. A new URL is added
 as a pending link (its host as provisional title), last used at the import
 time minus one millisecond per line, so that the stream lists the file in
 order, the first line highest, above every link used before the import (when
 a link was used within that span, the import's times start that much later). A URL already in the library, or on an earlier
-line, is a duplicate: reported, neither added nor boosted. A line the
-normaliser rejects is invalid. When the library (20,000 links) is full, the
+line, is a duplicate: reported, neither added nor boosted. An address the
+normaliser rejects (`http://localhost/x`, `https://`) is invalid. When the library (20,000 links) is full, the
 import stops at the first new URL with no room: that line and every later
 URL line are not imported.
 
@@ -721,9 +726,10 @@ stopped the import. `workspace` names the workspace the links were added to,
 by its current name, with how many of them joined it (the others were members
 already); it is `null` without one, and once that workspace is deleted. Refusals, after which nothing is imported:
 
-- `400 {"error": "unsupported_file", "field": "file", "message": "only plain-text files with one URL per line are accepted"}`:
-  a declared type other than `text/plain`, bytes that are not UTF-8, a NUL
-  byte, markup (first non-blank character `<`) or a JSON object or array;
+- `400 {"error": "unsupported_file", "field": "file", "message": "only text or Markdown files (.txt, .md) are accepted"}`:
+  a declared type other than `text/plain`, `text/markdown` or
+  `text/x-markdown` (for a form part not named `*.txt` or `*.md`), bytes that
+  are not UTF-8, or a NUL byte;
 - `409 {"error": "import_too_large", "message": "too large: at most 5,000 URLs / 2 MB per import"}`;
 - `400 {"error": "no_urls", "field": "file", "message"}`: no URL line, or a
   form without a `file` part;

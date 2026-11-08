@@ -55,7 +55,7 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (file: File) =>
         id="import-file"
         className="visually-hidden"
         type="file"
-        accept=".txt,text/plain"
+        accept=".txt,.md,text/plain,text/markdown"
         aria-label="File of URLs"
         onChange={(e) => {
           const picked = e.target.files?.[0];
@@ -74,7 +74,7 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (file: File) =>
 }
 
 /**
- * The import page: a plain-text file of URLs, dropped or picked, imported
+ * The import page: a text or Markdown file of URLs, dropped or picked, imported
  * into the library and, when one is chosen, into a workspace, which can be a
  * new one named here. The import's report and progress follow.
  */
@@ -130,8 +130,9 @@ export function Import() {
       <header className="page-head">
         <h1 id="import-heading">Import links</h1>
         <p className="lead">
-          A plain-text file with one URL per line, at most 5,000 URLs and 2 MB. Lines starting with
-          # are skipped. The links are fetched in the background, 20 a minute.
+          A text or Markdown file (.txt, .md), at most 5,000 URLs and 2 MB. Every line with an
+          http:// or https:// address is imported; other lines, and lines starting with #, are
+          ignored. The links are fetched in the background, 20 a minute.
         </p>
       </header>
       <form className="import-form" onSubmit={(e) => void start(e)}>

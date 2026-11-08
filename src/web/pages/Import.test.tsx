@@ -187,9 +187,9 @@ describe('the import page', () => {
   });
 
   it.each([
-    [400, 'unsupported_file', 'only plain-text files with one URL per line are accepted'],
+    [400, 'unsupported_file', 'only text or Markdown files (.txt, .md) are accepted'],
     [409, 'import_too_large', 'too large: at most 5,000 URLs / 2 MB per import'],
-    [400, 'no_urls', 'the file holds no URL: one URL per line is expected'],
+    [400, 'no_urls', 'the file holds no URL: no line has an http:// or https:// address'],
   ])('shows a refusal (%s %s) and no progress', async (status, error, message) => {
     renderPage('/import', importApi({ status, body: { error, field: 'file', message } }));
     pick(linksFile());
