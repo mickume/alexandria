@@ -134,8 +134,11 @@ A link is shown as:
 ```
 
 `state` is `pending` until the link's first fetch, then `active`, or
-`unreachable` after three failed attempts (`state_reason` says why: "timed
-out", "HTTP 503", …). A fetch fills `final_url`, `http_status`, `title`,
+`unreachable` after three failed attempts, or after the first when the site
+answers with a bot check (`state_reason` says why: "timed out", "HTTP 503",
+"blocked by a bot check", …). Until a fetch succeeds, `title` is the host,
+then, once an attempt fails, words read from the address (unless the owner
+edited it). A fetch fills `final_url`, `http_status`, `title`,
 `description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
 (`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
