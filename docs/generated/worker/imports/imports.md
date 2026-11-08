@@ -108,6 +108,34 @@ An import's report, as the API returns it.
 
 > **stopped\_at\_limit**: \{ `line`: `number`; \} \| `null`
 
+##### workspace
+
+> **workspace**: [`ImportWorkspace`](#importworkspace) \| `null`
+
+The workspace the links were added to, or null (none chosen, or deleted since).
+
+***
+
+### ImportWorkspace
+
+The workspace an import added its links to, and how many joined it.
+
+#### Properties
+
+##### added
+
+> **added**: `number`
+
+The file's links that became members; the others were members already.
+
+##### id
+
+> **id**: `string`
+
+##### name
+
+> **name**: `string`
+
 ## Functions
 
 ### getImport()
@@ -138,14 +166,16 @@ One of the user's imports' reports, or null when the user has no such import.
 
 ### importLines()
 
-> **importLines**(`db`, `userId`, `lines`): `Promise`\<[`ImportReport`](#importreport)\>
+> **importLines**(`db`, `userId`, `lines`, `workspace?`): `Promise`\<[`ImportReport`](#importreport)\>
 
 Adds an import's lines to the user's library and records the import:
 every new URL as a pending link, last used from the import time downwards
 one millisecond per line, so that the stream lists them in file order;
 duplicates and invalid lines reported, nothing boosted; the library limit
-stopping the import at a line. The links are not sent to the fetch worker
-here: the import's dispatcher sends them through the throttle.
+stopping the import at a line. With a workspace, every link of the file in
+the library (added or a duplicate) joins it, in file order. The links are
+not sent to the fetch worker here: the import's dispatcher sends them
+through the throttle.
 
 #### Parameters
 
@@ -160,6 +190,10 @@ here: the import's dispatcher sends them through the throttle.
 ##### lines
 
 [`ImportLine`](parse.md#importline)[]
+
+##### workspace?
+
+\{ `id`: `string`; `name`: `string`; \} \| `null` = `null`
 
 #### Returns
 

@@ -790,6 +790,62 @@ a.brand:hover span {
   font-size: var(--q-text-xs);
 }
 
+/* The import page: the drop zone, the workspace choice, then the report. */
+.import-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--q-space-4);
+  margin: var(--q-space-4) 0 var(--q-space-5);
+}
+
+.import-form select,
+.import-form .q-input {
+  max-width: 24rem;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--q-space-2);
+  padding: var(--q-space-6) var(--q-space-4);
+  border: 2px dashed var(--q-border-default);
+  border-radius: var(--q-radius-lg);
+  background: var(--q-bg-subtle);
+  text-align: center;
+  transition:
+    border-color var(--q-duration-fast) var(--q-ease),
+    background var(--q-duration-fast) var(--q-ease);
+}
+
+.dropzone .q-icon {
+  color: var(--q-fg-muted);
+}
+
+.dropzone.is-dragging {
+  border-color: var(--q-focus-color);
+  background: var(--q-accent-subtle);
+}
+
+.dropzone p {
+  margin: 0;
+}
+
+/* The file input is hidden; its label, a button, shows its focus. */
+.dropzone input:focus-visible + label {
+  outline: 2px solid var(--q-focus-color);
+  outline-offset: 2px;
+}
+
+/* The Import button at the end of the header's tabs. */
+.nav-import {
+  flex: none;
+}
+
+.nav-import[aria-current='page'] {
+  border-color: var(--q-focus-color);
+}
+
 .import-counts,
 .import-lines {
   display: flex;

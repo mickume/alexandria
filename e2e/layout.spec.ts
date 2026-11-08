@@ -21,7 +21,7 @@ test.describe('the layout of every page', () => {
   for (const width of widths) {
     test(`uses one typeface and fits ${width} px in light and dark`, async ({ page, browser }) => {
       const backgrounds: Record<string, string[]> = { light: [], dark: [] };
-      const paths = ['/', '/settings', linkPath];
+      const paths = ['/', '/settings', '/import', linkPath];
       const signedOut = await browser.newContext({ viewport: { width, height: 800 } });
       for (const scheme of schemes) {
         await page.emulateMedia({ colorScheme: scheme });

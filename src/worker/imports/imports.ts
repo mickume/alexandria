@@ -13,6 +13,14 @@ export interface ImportCounts {
   not_imported: number;
 }
 
+/** The workspace an import added its links to, and how many joined it. */
+export interface ImportWorkspace {
+  id: string;
+  name: string;
+  /** The file's links that became members; the others were members already. */
+  added: number;
+}
+
 /** An import's report, as the API returns it. */
 export interface ImportReport {
   id: string;
@@ -21,6 +29,8 @@ export interface ImportReport {
   invalid: { line: number; text: string }[];
   duplicates: { line: number; url: string }[];
   stopped_at_limit: { line: number } | null;
+  /** The workspace the links were added to, or null (none chosen, or deleted since). */
+  workspace: ImportWorkspace | null;
 }
 
 /** A new URL the import adds: its line, normalised URL and the word it came from. */
@@ -128,17 +138,52 @@ async function lastUsedBase(db: D1Database, userId: string, t: number, lastLine:
 }
 
 /**
+ * Adds the links of `urls` (the user's, by normalised URL) to the bottom of
+ * the workspace in the given order, leaving those already in it where they
+ * are; returns how many joined. Nothing is added once the workspace is gone.
+ */
+async function addToWorkspace(
+  db: D1Database,
+  userId: string,
+  workspaceId: string,
+  urls: string[],
+): Promise<number> {
+  let joined = 0;
+  for (let i = 0; i < urls.length; i += 500) {
+    const results = await db.batch(
+      urls.slice(i, i + 500).map((url) =>
+        db
+          .prepare(
+            `INSERT INTO workspace_links (workspace_id, link_id, position)
+             SELECT ?1, l.id, (SELECT COUNT(*) FROM workspace_links WHERE workspace_id = ?1) + 1
+             FROM links l
+             WHERE l.user_id = ?2 AND l.url = ?3
+               AND EXISTS (SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2)
+             ON CONFLICT (workspace_id, link_id) DO NOTHING`,
+          )
+          .bind(workspaceId, userId, url),
+      ),
+    );
+    joined += results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+  }
+  return joined;
+}
+
+/**
  * Adds an import's lines to the user's library and records the import:
  * every new URL as a pending link, last used from the import time downwards
  * one millisecond per line, so that the stream lists them in file order;
  * duplicates and invalid lines reported, nothing boosted; the library limit
- * stopping the import at a line. The links are not sent to the fetch worker
- * here: the import's dispatcher sends them through the throttle.
+ * stopping the import at a line. With a workspace, every link of the file in
+ * the library (added or a duplicate) joins it, in file order. The links are
+ * not sent to the fetch worker here: the import's dispatcher sends them
+ * through the throttle.
  */
 export async function importLines(
   db: D1Database,
   userId: string,
   lines: ImportLine[],
+  workspace: { id: string; name: string } | null = null,
 ): Promise<ImportReport> {
   const p = await plan(db, userId, lines);
   const t = now();
@@ -169,6 +214,16 @@ export async function importLines(
     });
   }
   p.duplicates.sort((a, b) => a.line - b.line);
+  let joined = 0;
+  if (workspace) {
+    const inFileOrder = [
+      ...p.additions.map((a) => ({ line: a.line, url: a.url })),
+      ...p.duplicates,
+    ].sort((a, b) => a.line - b.line);
+    joined = await addToWorkspace(db, userId, workspace.id, [
+      ...new Set(inFileOrder.map((l) => l.url)),
+    ]);
+  }
   const report: ImportReport = {
     id,
     created_at: createdAt,
@@ -182,6 +237,7 @@ export async function importLines(
     invalid: p.invalid,
     duplicates: p.duplicates,
     stopped_at_limit: p.stoppedLine === null ? null : { line: p.stoppedLine },
+    workspace: workspace && { ...workspace, added: joined },
   };
   await recordImport(db, userId, report, added);
   return report;
@@ -198,8 +254,8 @@ async function recordImport(
   await db
     .prepare(
       `INSERT INTO imports (id, user_id, created_at, url_lines, added, duplicates, invalid,
-         not_imported, invalid_lines, duplicate_lines, stopped_line)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         not_imported, invalid_lines, duplicate_lines, stopped_line, workspace_id, workspace_added)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       report.id,
@@ -213,6 +269,8 @@ async function recordImport(
       JSON.stringify(report.invalid),
       JSON.stringify(report.duplicates),
       report.stopped_at_limit?.line ?? null,
+      report.workspace?.id ?? null,
+      report.workspace?.added ?? null,
     )
     .run();
   for (let i = 0; i < added.length; i += 500) {
@@ -240,6 +298,10 @@ interface ImportRow {
   invalid_lines: string;
   duplicate_lines: string;
   stopped_line: number | null;
+  workspace_id: string | null;
+  workspace_added: number | null;
+  /** The workspace's current name; null once it is deleted. */
+  workspace_name: string | null;
 }
 
 /** One of the user's imports' reports, or null when the user has no such import. */
@@ -249,7 +311,11 @@ export async function getImport(
   id: string,
 ): Promise<ImportReport | null> {
   const row = await db
-    .prepare('SELECT * FROM imports WHERE id = ? AND user_id = ?')
+    .prepare(
+      `SELECT i.*, w.name AS workspace_name FROM imports i
+       LEFT JOIN workspaces w ON w.id = i.workspace_id AND w.user_id = i.user_id
+       WHERE i.id = ? AND i.user_id = ?`,
+    )
     .bind(id, userId)
     .first<ImportRow>();
   if (!row) return null;
@@ -266,6 +332,10 @@ export async function getImport(
     invalid: JSON.parse(row.invalid_lines) as ImportReport['invalid'],
     duplicates: JSON.parse(row.duplicate_lines) as ImportReport['duplicates'],
     stopped_at_limit: row.stopped_line === null ? null : { line: row.stopped_line },
+    workspace:
+      row.workspace_id && row.workspace_name !== null
+        ? { id: row.workspace_id, name: row.workspace_name, added: row.workspace_added ?? 0 }
+        : null,
   };
 }
 
@@ -310,6 +380,9 @@ export function reportText(report: ImportReport): string {
     `invalid: ${c.invalid}`,
     `not imported: ${c.not_imported}`,
   ];
+  if (report.workspace) {
+    out.push(`workspace: ${report.workspace.name} (${report.workspace.added} links added to it)`);
+  }
   if (report.stopped_at_limit) {
     out.push(
       '',

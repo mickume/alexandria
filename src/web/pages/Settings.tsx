@@ -5,7 +5,6 @@ import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 import { FirecrawlSection } from './FirecrawlSection';
-import { ImportSection } from './ImportSection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
 function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
@@ -136,7 +135,6 @@ export function Settings() {
       <AiKeySection />
       <FirecrawlSection />
       <DecaySection />
-      <ImportSection />
       <ExportSection />
       <DeleteAccountSection />
     </section>

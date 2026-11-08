@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from '../App';
 import { imports, type ImportProgress as Progress, type ImportReport } from '../api';
 
 /** How often the progress view asks how far the import's links are. */
@@ -30,7 +31,10 @@ function useProgress(report: ImportReport): Progress {
   return progress;
 }
 
-/** An import's report and the progress of its links, with the report to download. */
+/**
+ * An import's report and the progress of its links, with the workspace they
+ * went into and the report to download.
+ */
 export function ImportProgress({ report }: { report: ImportReport }) {
   const progress = useProgress(report);
   const c = report.counts;
@@ -41,6 +45,15 @@ export function ImportProgress({ report }: { report: ImportReport }) {
         <li>duplicates {c.duplicates}</li>
         <li>invalid {c.invalid}</li>
       </ul>
+      {report.workspace && (
+        <p>
+          Added to{' '}
+          <Link to={`/workspaces/${encodeURIComponent(report.workspace.id)}`}>
+            {report.workspace.name}
+          </Link>
+          : {report.workspace.added} {report.workspace.added === 1 ? 'link' : 'links'} new to it
+        </p>
+      )}
       {report.stopped_at_limit && (
         <p className="notice">
           library full (20,000 links): stopped at line {report.stopped_at_limit.line},{' '}

@@ -250,6 +250,18 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 
 export const workspaces = {
   list: () => request<Page<WorkspaceSummary>>('GET', '/workspaces').then((p) => p.items),
+  /** Every workspace, by name, page after page. */
+  all: async () => {
+    const all: WorkspaceSummary[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+      const page: Page<WorkspaceSummary> = await request('GET', `/workspaces?limit=100${query}`);
+      all.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return all;
+  },
   get: (id: string) => request<Workspace>('GET', ws(id)),
   create: (name: string) => request<Workspace>('POST', '/workspaces', { name }),
   update: (id: string, fields: { name?: string; description?: string; note?: string }) =>
@@ -366,6 +378,8 @@ export interface ImportReport {
   invalid: { line: number; text: string }[];
   duplicates: { line: number; url: string }[];
   stopped_at_limit: { line: number } | null;
+  /** The workspace the links were added to, and how many joined it; null without one. */
+  workspace: { id: string; name: string; added: number } | null;
 }
 
 /** Where an import's added links stand. */
@@ -377,10 +391,11 @@ export interface ImportProgress {
 }
 
 export const imports = {
-  /** Uploads a plain-text file of URLs, one per line. */
-  upload: (file: File) => {
+  /** Uploads a plain-text file of URLs, one per line, adding its links to a workspace when given one. */
+  upload: (file: File, workspaceId?: string) => {
     const form = new FormData();
     form.append('file', file);
+    if (workspaceId) form.append('workspace_id', workspaceId);
     return request<ImportReport>('POST', '/imports', form);
   },
   get: (id: string) =>

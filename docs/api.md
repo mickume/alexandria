@@ -682,7 +682,8 @@ of the same name.
 
 Imports a plain-text list of URLs, one per line: the file as a `text/plain`
 body (or with no type), or as the part `file` of a `multipart/form-data`
-form. The file must be UTF-8, at most 2 MB (2,097,152 bytes) and at most
+form. An optional workspace id, as the form part `workspace_id` or the query
+parameter `workspace_id`, adds the file's links to that workspace. The file must be UTF-8, at most 2 MB (2,097,152 bytes) and at most
 5,000 URL lines. A byte-order mark is dropped; lines end at `\n` or `\r\n`;
 blank lines and lines whose first non-blank character is `#` are skipped;
 of every other line, only the first word counts (`https://example.com some
@@ -698,6 +699,11 @@ normaliser rejects is invalid. When the library (20,000 links) is full, the
 import stops at the first new URL with no room: that line and every later
 URL line are not imported.
 
+With a workspace, every link of the file that is in the library afterwards
+(added, or a duplicate of a link already there) joins the workspace at its
+end, in file order; a link already in the workspace keeps its place. Lines
+not imported because the library was full join nothing.
+
 ```json
 {
   "id": "…",
@@ -705,19 +711,24 @@ URL line are not imported.
   "counts": { "url_lines": 400, "added": 397, "duplicates": 0, "invalid": 3, "not_imported": 0 },
   "invalid": [{ "line": 57, "text": "not-a-url" }],
   "duplicates": [{ "line": 12, "url": "https://example.com" }],
-  "stopped_at_limit": null
+  "stopped_at_limit": null,
+  "workspace": { "id": "…", "name": "Trip", "added": 397 }
 }
 ```
 
 `201` with the report; `stopped_at_limit` is `{"line": N}` when the limit
-stopped the import. Refusals, after which nothing is imported:
+stopped the import. `workspace` names the workspace the links were added to,
+by its current name, with how many of them joined it (the others were members
+already); it is `null` without one, and once that workspace is deleted. Refusals, after which nothing is imported:
 
 - `400 {"error": "unsupported_file", "field": "file", "message": "only plain-text files with one URL per line are accepted"}`:
   a declared type other than `text/plain`, bytes that are not UTF-8, a NUL
   byte, markup (first non-blank character `<`) or a JSON object or array;
 - `409 {"error": "import_too_large", "message": "too large: at most 5,000 URLs / 2 MB per import"}`;
 - `400 {"error": "no_urls", "field": "file", "message"}`: no URL line, or a
-  form without a `file` part.
+  form without a `file` part;
+- `400 {"error": "unknown_workspace", "field": "workspace_id", "message": "no such workspace"}`:
+  the workspace is not one of the user's.
 
 #### `GET /api/v1/imports/{id}`
 
@@ -740,7 +751,8 @@ The report as a downloadable file: `text/plain; charset=utf-8`,
 `Content-Disposition: attachment; filename="alexandria-import-<YYYY-MM-DD>.txt"`,
 with the import date, the counts (`added: 397`, …), the library-limit stop
 (`library full (20,000 links): stopped at line N, M lines not imported`), every
-invalid line (`line 57: not-a-url`) and every duplicate
+invalid line (`line 57: not-a-url`), the workspace
+(`workspace: Trip (397 links added to it)`) and every duplicate
 (`line 5: duplicate of https://a.example`).
 
 Both answer `404 {"error": "not_found"}` for an id that is not one of the

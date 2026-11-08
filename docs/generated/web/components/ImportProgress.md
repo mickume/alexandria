@@ -14,7 +14,8 @@ How often the progress view asks how far the import's links are.
 
 > **ImportProgress**(`__namedParameters`): `Element`
 
-An import's report and the progress of its links, with the report to download.
+An import's report and the progress of its links, with the workspace they
+went into and the report to download.
 
 #### Parameters
 

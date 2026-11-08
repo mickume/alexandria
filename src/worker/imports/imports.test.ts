@@ -626,3 +626,102 @@ describe('an import’s progress and report', () => {
     },
   );
 });
+
+describe('importing into a workspace', () => {
+  /** A workspace of `user` named `name`, holding the links of `urls` in order. */
+  async function workspaceWith(user: TestUser, name: string, urls: string[] = []) {
+    const created = await api('POST', '/api/v1/workspaces', { as: user.session, body: { name } });
+    const id = created.json.id as string;
+    for (const url of urls) {
+      const link = await linkByUrl(user, url);
+      await api('POST', `/api/v1/workspaces/${id}/links`, {
+        as: user.session,
+        body: { link_id: link!.id },
+      });
+    }
+    return id;
+  }
+
+  async function memberUrls(user: TestUser, workspaceId: string) {
+    const r = await api('GET', `/api/v1/workspaces/${workspaceId}/links`, { as: user.session });
+    return (r.json.items as { url: string }[]).map((m) => m.url);
+  }
+
+  it.each(['form part', 'query parameter'])(
+    'adds every link of the file in file order, leaving members where they are (%s)',
+    async (how) => {
+      const user = await signIn();
+      await seedLinks(user, [{ url: 'https://kept.example' }, { url: 'https://member.example' }]);
+      const id = await workspaceWith(user, 'Trip', ['https://member.example']);
+      const file = [
+        'https://new-a.example',
+        'https://kept.example',
+        'not-a-url',
+        'https://member.example',
+        'https://new-b.example',
+        'https://new-a.example',
+      ].join('\n');
+      let r;
+      if (how === 'form part') {
+        const form = new FormData();
+        form.append('file', new File([file], 'links.txt', { type: 'text/plain' }));
+        form.append('workspace_id', id);
+        r = await api('POST', '/api/v1/imports', { as: user.session, body: form });
+      } else {
+        r = await api('POST', `/api/v1/imports?workspace_id=${id}`, {
+          as: user.session,
+          body: encode(file),
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+      expect(r.status).toBe(201);
+      const workspace = { id, name: 'Trip', added: 3 };
+      expect(r.json).toMatchObject({ counts: { added: 2, duplicates: 3, invalid: 1 }, workspace });
+      expect(await memberUrls(user, id)).toEqual([
+        'https://member.example',
+        'https://new-a.example',
+        'https://kept.example',
+        'https://new-b.example',
+      ]);
+      const again = await api('GET', `/api/v1/imports/${r.json.id}`, { as: user.session });
+      expect(again.json.workspace).toEqual(workspace);
+      const text = await (
+        await api('GET', `/api/v1/imports/${r.json.id}/report`, { as: user.session })
+      ).response.text();
+      expect(text).toContain('workspace: Trip (3 links added to it)');
+    },
+  );
+
+  it('refuses a workspace that is not the user’s, importing nothing', async () => {
+    const user = await signIn();
+    const other = await signIn('other@example.test');
+    const theirs = await workspaceWith(other, 'Theirs');
+    for (const id of [theirs, 'no-such-workspace']) {
+      const r = await api('POST', `/api/v1/imports?workspace_id=${id}`, {
+        as: user.session,
+        body: encode('https://a.example'),
+        headers: { 'Content-Type': 'text/plain' },
+      });
+      expect(r).toMatchObject({
+        status: 400,
+        json: { error: 'unknown_workspace', field: 'workspace_id' },
+      });
+    }
+    expect(await counts(user)).toEqual({ links: 0, imports: 0 });
+  });
+
+  it('reports no workspace once the workspace is deleted, or when none was chosen', async () => {
+    const user = await signIn();
+    const id = await workspaceWith(user, 'Gone');
+    const into = await api('POST', `/api/v1/imports?workspace_id=${id}`, {
+      as: user.session,
+      body: encode('https://a.example'),
+      headers: { 'Content-Type': 'text/plain' },
+    });
+    const plain = await upload(user, 'https://b.example');
+    expect(plain.json.workspace).toBeNull();
+    await api('DELETE', `/api/v1/workspaces/${id}`, { as: user.session });
+    const again = await api('GET', `/api/v1/imports/${into.json.id}`, { as: user.session });
+    expect(again.json.workspace).toBeNull();
+  });
+});

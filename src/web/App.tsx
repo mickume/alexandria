@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Archive } from './pages/Archive';
+import { Import } from './pages/Import';
 import { LinkDetail } from './pages/LinkDetail';
 import { Icon, Mark, type IconName } from './components/Icon';
 import { SearchBox } from './components/SearchBox';
@@ -91,6 +92,7 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
 /** The section a path belongs to, for the breadcrumb and the current tab. */
 function sectionOf(path: string): string {
   if (path === '/search') return 'Search';
+  if (path === '/import') return 'Import';
   if (path.startsWith('/links/')) return 'Link';
   const match = SECTIONS.filter((s) => s.to !== '/' && path.startsWith(s.to));
   return match[0]?.label ?? 'Stream';
@@ -98,7 +100,8 @@ function sectionOf(path: string): string {
 
 /**
  * The frame of every signed-in page: the header (where you are, the search
- * box and signing out, over a row of tabs, one per section) above the page.
+ * box and signing out, over a row of tabs, one per section, and the Import
+ * button at its end) above the page.
  */
 function Layout({ location, children }: { location: Location; children: ReactNode }) {
   const section = sectionOf(location.path);
@@ -142,6 +145,11 @@ function Layout({ location, children }: { location: Location; children: ReactNod
               {s.label}
             </Link>
           ))}
+          <span className="q-underline-nav-spacer" />
+          <Link to="/import" className="q-btn q-btn--sm nav-import" current={section === 'Import'}>
+            <Icon name="import" />
+            Import
+          </Link>
         </nav>
       </header>
       <main className="page q-container q-container--md" tabIndex={-1}>
@@ -169,6 +177,7 @@ export function App() {
   else if (path === '/search') page = <Search query={queryOf(location)} />;
   else if (path === '/topics') page = <Topics />;
   else if (path === '/tags') page = <Tags />;
+  else if (path === '/import') page = <Import />;
   else if (path.startsWith('/workspaces/')) {
     const id = decodeURIComponent(path.slice('/workspaces/'.length));
     page = <WorkspacePage key={id} id={id} />;

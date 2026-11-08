@@ -54,7 +54,9 @@ account and checks the PKCE verifier as Google does.
   `main.tsx` mounts `App.tsx`, which picks the page for the current path:
   `pages/SignIn`, `pages/Stream` (the add input, the cards, infinite scroll,
   pinning by drag, deleting with undo), `pages/LinkDetail` and
-  `pages/Settings` (tokens), `pages/Search` (the results of the search box,
+  `pages/Settings` (tokens), `pages/Import` (the drop zone, the workspace to
+  add the links to, which can be a new one, and the import's progress,
+  reached by the Import button at the end of the header's tabs), `pages/Search` (the results of the search box,
   `components/SearchBox`, which every page's header carries and which owns the
   `/` and Escape keys), and `pages/Topics` and `pages/Tags`
   (`components/VocabularyList`). `App.tsx` follows the path and the query
@@ -192,7 +194,10 @@ processed. A single pasted link is not throttled.
 
 `POST /api/v1/imports` (`imports/`) reads the file (`parse.ts`), adds its new
 URLs as pending links within the request (`imports.ts`, in D1 batches of 500)
-and records the import: `imports` holds the report, `import_links` each added
+and records the import: `imports` holds the report (and the workspace the
+links joined, if any, with how many joined it: with a workspace, each of the
+file's links in the library is inserted into `workspace_links` at the end, in
+file order, skipping those already there), `import_links` each added
 link with its line, when it was sent to the fetch worker (`dispatched_at`)
 and whether it was skipped. The links are not sent to the fetch worker by the
 add; the import dispatcher (`dispatch.ts`) sends them:

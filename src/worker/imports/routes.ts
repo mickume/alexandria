@@ -1,6 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { notFound, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
+import { getWorkspace } from '../workspaces/store';
 import { dispatchImports } from './dispatch';
 import { getImport, importLines, importProgress, reportText } from './imports';
 import { MAX_IMPORT_BYTES, parseImportFile } from './parse';
@@ -12,14 +13,21 @@ const UNSUPPORTED_MESSAGE = 'only plain-text files with one URL per line are acc
 const TOO_LARGE_MESSAGE = 'too large: at most 5,000 URLs / 2 MB per import';
 const NO_URLS_MESSAGE = 'the file holds no URL: one URL per line is expected';
 
+/** An upload as read: the file's bytes and declared type, and the workspace asked for. */
+interface Upload {
+  bytes: Uint8Array;
+  type: string | null;
+  /** The id in the form's part 'workspace_id' or the query's workspace_id, or null. */
+  workspaceId: string | null;
+}
+
 /**
  * The uploaded file's bytes and declared type: the body of a text/plain (or
  * untyped) request, or the part 'file' of a multipart form. 'missing' for a
  * form without that part; 'too_large' when the body is over the limit.
  */
-async function readUpload(
-  c: Context<AppEnv>,
-): Promise<{ bytes: Uint8Array; type: string | null } | 'missing' | 'too_large'> {
+async function readUpload(c: Context<AppEnv>): Promise<Upload | 'missing' | 'too_large'> {
+  const fromQuery = c.req.query('workspace_id') || null;
   const declared = c.req.header('Content-Type') ?? null;
   const length = Number(c.req.header('Content-Length') ?? 0);
   // A form carries a little more than its file; anything far over the limit is refused unread.
@@ -28,9 +36,18 @@ async function readUpload(
     const form = await c.req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return 'missing';
-    return { bytes: new Uint8Array(await file.arrayBuffer()), type: file.type || null };
+    const part = form.get('workspace_id');
+    return {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      type: file.type || null,
+      workspaceId: (typeof part === 'string' && part) || fromQuery,
+    };
   }
-  return { bytes: new Uint8Array(await c.req.arrayBuffer()), type: declared };
+  return {
+    bytes: new Uint8Array(await c.req.arrayBuffer()),
+    type: declared,
+    workspaceId: fromQuery,
+  };
 }
 
 importRoutes.post('/', async (c) => {
@@ -46,7 +63,15 @@ importRoutes.post('/', async (c) => {
     return validationError(c, 'unsupported_file', 'file', UNSUPPORTED_MESSAGE);
   }
   const userId = c.get('user').id;
-  const report = await importLines(c.env.DB, userId, parsed.lines);
+  let workspace: { id: string; name: string } | null = null;
+  if (upload.workspaceId) {
+    const row = await getWorkspace(c.env.DB, userId, upload.workspaceId);
+    if (!row) {
+      return validationError(c, 'unknown_workspace', 'workspace_id', 'no such workspace');
+    }
+    workspace = { id: row.id, name: row.name };
+  }
+  const report = await importLines(c.env.DB, userId, parsed.lines, workspace);
   // The first links go to the fetch worker at once; the minute's run sends the rest.
   await dispatchImports(c.env, userId);
   return c.json(report, 201);

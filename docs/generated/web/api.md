@@ -336,6 +336,12 @@ An import's report.
 
 > **stopped\_at\_limit**: \{ `line`: `number`; \} \| `null`
 
+##### workspace
+
+> **workspace**: \{ `added`: `number`; `id`: `string`; `name`: `string`; \} \| `null`
+
+The workspace the links were added to, and how many joined it; null without one.
+
 ***
 
 ### Link
@@ -968,15 +974,19 @@ The address of an import's downloadable report.
 
 ##### upload
 
-> **upload**: (`file`) => `Promise`\<[`ImportReport`](#importreport)\>
+> **upload**: (`file`, `workspaceId?`) => `Promise`\<[`ImportReport`](#importreport)\>
 
-Uploads a plain-text file of URLs, one per line.
+Uploads a plain-text file of URLs, one per line, adding its links to a workspace when given one.
 
 ###### Parameters
 
 ###### file
 
 `File`
+
+###### workspaceId?
+
+`string`
 
 ###### Returns
 
@@ -1366,9 +1376,19 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 
 `Promise`\<\{ `position`: `number`; \}\>
 
+##### all
+
+> **all**: () => `Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
+
+Every workspace, by name, page after page.
+
+###### Returns
+
+`Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
+
 ##### create
 
-> **create**: (`name`) => `Promise`\<[`Workspace`](#workspace)\>
+> **create**: (`name`) => `Promise`\<[`Workspace`](#workspace-1)\>
 
 ###### Parameters
 
@@ -1378,11 +1398,11 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 
 ###### Returns
 
-`Promise`\<[`Workspace`](#workspace)\>
+`Promise`\<[`Workspace`](#workspace-1)\>
 
 ##### get
 
-> **get**: (`id`) => `Promise`\<[`Workspace`](#workspace)\>
+> **get**: (`id`) => `Promise`\<[`Workspace`](#workspace-1)\>
 
 ###### Parameters
 
@@ -1392,7 +1412,7 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 
 ###### Returns
 
-`Promise`\<[`Workspace`](#workspace)\>
+`Promise`\<[`Workspace`](#workspace-1)\>
 
 ##### links
 
@@ -1450,7 +1470,7 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 
 ##### update
 
-> **update**: (`id`, `fields`) => `Promise`\<[`Workspace`](#workspace)\>
+> **update**: (`id`, `fields`) => `Promise`\<[`Workspace`](#workspace-1)\>
 
 ###### Parameters
 
@@ -1474,7 +1494,7 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 
 ###### Returns
 
-`Promise`\<[`Workspace`](#workspace)\>
+`Promise`\<[`Workspace`](#workspace-1)\>
 
 ## Functions
 

@@ -177,6 +177,10 @@ const ImportReport = z.strictObject({
   invalid: z.array(z.strictObject({ line: z.number().int(), text: z.string() })),
   duplicates: z.array(z.strictObject({ line: z.number().int(), url: z.string() })),
   stopped_at_limit: z.strictObject({ line: z.number().int() }).nullable(),
+  workspace: z
+    .strictObject({ id: z.string(), name: z.string(), added: z.number().int() })
+    .nullable()
+    .describe('The workspace the links were added to, and how many joined it'),
 });
 
 /** A topic or tag as listed. */
@@ -390,14 +394,23 @@ export const operations: Operation[] = [
       'text/plain': { type: 'string', description: 'The file itself, UTF-8, at most 2 MB' },
       'multipart/form-data': {
         type: 'object',
-        properties: { file: { type: 'string', format: 'binary' } },
+        properties: {
+          file: { type: 'string', format: 'binary' },
+          workspace_id: { type: 'string', description: 'A workspace to add the file’s links to' },
+        },
         required: ['file'],
+      },
+    },
+    query: {
+      workspace_id: {
+        description: 'A workspace to add the file’s links to (or the form part workspace_id)',
+        schema: z.string(),
       },
     },
     responses: {
       201: { description: 'The import and its report', schema: ImportReport },
       400: error(
-        'unsupported_file: "only plain-text files with one URL per line are accepted", or no_urls (field file)',
+        'unsupported_file: "only plain-text files with one URL per line are accepted", no_urls (field file), or unknown_workspace (field workspace_id)',
       ),
       409: error('import_too_large: "too large: at most 5,000 URLs / 2 MB per import"'),
     },
