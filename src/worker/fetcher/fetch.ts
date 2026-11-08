@@ -36,6 +36,11 @@ export interface FetchFailed {
   reason: string;
   /** The HTTP status of a 4xx or 5xx answer. */
   status?: number;
+  /**
+   * Trying again later will not help: the site answered with a bot check,
+   * which only a browser running JavaScript can pass.
+   */
+  final?: boolean;
 }
 
 export type FetchResult = FetchOk | FetchFailed;
@@ -96,13 +101,30 @@ const CLOUDFLARE_REASONS: Record<number, string> = {
   526: 'TLS error',
 };
 
+/** The reason given for a site that answers with a bot check instead of its page. */
+export const BOT_CHECK_REASON = 'blocked by a bot check';
+
+/**
+ * Whether `response` is a bot check (Cloudflare's "Just a moment…" page, or
+ * any challenge it marks with cf-mitigated: challenge) rather than an answer
+ * of the site's own.
+ */
+export function isBotCheck(response: Response): boolean {
+  return response.headers.get('cf-mitigated')?.toLowerCase() === 'challenge';
+}
+
 /**
  * The reason for a final answer that is not a success, consuming its body:
- * an error status Cloudflare itself answers for an origin it could not reach
- * (Server: cloudflare) is named as that failure, a 530 with error 1016 as
- * 'host not found'; any other status is 'HTTP <status>'.
+ * a bot check is named as one; an error status Cloudflare itself answers for
+ * an origin it could not reach (Server: cloudflare) is named as that failure,
+ * a 530 with error 1016 as 'host not found'; any other status is
+ * 'HTTP <status>'.
  */
 export async function statusReason(response: Response): Promise<string> {
+  if (isBotCheck(response)) {
+    await response.body?.cancel();
+    return BOT_CHECK_REASON;
+  }
   const fromCloudflare = response.headers.get('Server')?.toLowerCase() === 'cloudflare';
   const named = fromCloudflare ? CLOUDFLARE_REASONS[response.status] : undefined;
   if (fromCloudflare && response.status === 530) {
@@ -275,7 +297,7 @@ export async function requestFollowing<T>(
  * Fetches the page at `url` as the fetcher does: GET with Alexandria's Accept
  * and User-Agent headers through requestFollowing. A web page is read up to
  * 5 MB and a PDF up to 50 MB; any other kind is not read; a 4xx or 5xx is a
- * failure.
+ * failure, and a final one when it is a bot check.
  */
 export async function fetchPage(
   env: Env,
@@ -288,8 +310,9 @@ export async function fetchPage(
     { method: 'GET', timeoutMs },
     async (response, finalUrl, signal) => {
       if (response.status >= 400) {
+        const final = isBotCheck(response);
         const reason = await statusReason(response);
-        return { ok: false, reason, status: response.status } as const;
+        return { ok: false, reason, status: response.status, ...(final && { final }) } as const;
       }
       return readBody(response, finalUrl, signal);
     },

@@ -16,6 +16,7 @@ import {
 } from '../test/helpers';
 import { blogArticle } from './fixtures/pages';
 import { fetchPage } from './fetch';
+import { titleFromUrl } from './queue';
 
 const ARTICLE = '<!doctype html><html><head><title>A</title></head><body><p>Hi</p></body></html>';
 
@@ -335,6 +336,14 @@ function failingDatabase(db: D1Database): D1Database {
   });
 }
 
+/** Cloudflare's "Just a moment…" page, as a site behind its bot check answers a fetcher. */
+function botCheck(): Response {
+  return new Response('<title>Just a moment...</title>', {
+    status: 403,
+    headers: { 'Content-Type': 'text/html', Server: 'cloudflare', 'cf-mitigated': 'challenge' },
+  });
+}
+
 describe('a failed first fetch', () => {
   async function pendingLink(url: string) {
     const user = await signIn();
@@ -416,6 +425,11 @@ describe('a failed first fetch', () => {
       reason: 'timed out',
     },
     { label: 'a 403', make: (o: FakeOrigin, u: string) => o.status(u, 403), reason: 'HTTP 403' },
+    {
+      label: 'a bot check',
+      make: (o: FakeOrigin, u: string) => o.serve(u, () => botCheck()),
+      reason: 'blocked by a bot check',
+    },
     { label: 'a 500', make: (o: FakeOrigin, u: string) => o.status(u, 500), reason: 'HTTP 500' },
   ])('states the reason of $label', async ({ make, reason, label }) => {
     const url = `https://${label.replace(/\W+/g, '-')}.example/`;
@@ -423,6 +437,46 @@ describe('a failed first fetch', () => {
     const r = await fetchPage(env, url, { timeoutMs: 300 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe(reason);
+  });
+
+  it('gives up at once on a bot check, titling the link from its address', async () => {
+    const url = 'https://blog.example/why-git-was-replaced-4f31eae67e00';
+    new FakeOrigin().serve(url, () => botCheck());
+    const { user, sent, id } = await pendingLink(url);
+    await deliverFetches([sent[0]!.body]);
+    const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(link).toMatchObject({
+      state: 'unreachable',
+      state_reason: 'blocked by a bot check',
+      title: 'Why git was replaced',
+    });
+    expect(sent).toHaveLength(1);
+  });
+
+  it('keeps a title the owner edited while the link was pending', async () => {
+    const url = 'https://blog.example/a-post-4f31eae67e00';
+    new FakeOrigin().status(url, 503);
+    const { user, sent, id } = await pendingLink(url);
+    await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { title: 'Mine' } });
+    await deliverFetches([sent[0]!.body]);
+    const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(link).toMatchObject({ state: 'pending', title: 'Mine' });
+  });
+
+  it.each([
+    [
+      'https://onnyunhui.medium.com/why-anthropic-replaced-git-with-scion-for-ai-coding-agents-4f31eae67e00',
+      'Why anthropic replaced git with scion for ai coding agents',
+    ],
+    ['https://x.example/blog/my_first+post.html', 'My first post'],
+    ['https://x.example/caf%C3%A9-cr%C3%A8me/', 'Café crème'],
+    ['https://x.example/v2-release-notes', 'V2 release notes'],
+    ['https://x.example/', 'x.example'],
+    ['https://x.example/p/4f31eae67e00', 'x.example'],
+    ['https://x.example/2024/05/', 'x.example'],
+    ['https://x.example/%E0%A4%A', 'x.example'],
+  ])('titles %s as %j when it cannot be fetched', (url, title) => {
+    expect(titleFromUrl(url)).toBe(title);
   });
 
   it.each([
