@@ -57,20 +57,22 @@ export function Archive({ query = '' }: { query?: string }) {
       <div className="cards">
         {items.map((link) => (
           <article key={link.id} className="card" aria-label={link.title}>
-            <div className="card-head">
-              <span className="card-title">{link.title}</span>
+            <div className="card-top">
+              <div className="card-head">
+                <span className="card-title">{link.title}</span>
+              </div>
+              <div className="card-actions">
+                <button type="button" className="link-button" onClick={() => void restore(link)}>
+                  Restore
+                </button>
+                <button type="button" className="link-button" onClick={() => deletes.remove(link)}>
+                  Delete
+                </button>
+              </div>
             </div>
             <div className="card-meta muted">
               <span>{link.host}</span>
               {link.removal_at && <span>removed on {link.removal_at.slice(0, 10)}</span>}
-            </div>
-            <div className="card-actions">
-              <button type="button" className="link-button" onClick={() => void restore(link)}>
-                Restore
-              </button>
-              <button type="button" className="link-button" onClick={() => deletes.remove(link)}>
-                Delete
-              </button>
             </div>
           </article>
         ))}

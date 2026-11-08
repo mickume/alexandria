@@ -502,7 +502,7 @@ a.chip:hover {
   font-size: 1.15rem;
 }
 
-/* The stream: the big add box, then the cards. */
+/* The stream: the big add box, then the list of links. */
 .stream {
   display: flex;
   flex-direction: column;
@@ -533,49 +533,66 @@ a.chip:hover {
   color: var(--muted);
 }
 
+/*
+ * Links are rows of a plain list, divided by hairlines: the title and its
+ * actions, a line of facts, the summary in two lines, then the labels. The
+ * row under the pointer is shaded; its actions show on hover or focus, and
+ * always on a touch screen.
+ */
 .cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
-  gap: var(--space);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
 }
 
 .card {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 1.1rem 1.15rem 0.9rem;
-  border: 1px solid var(--line);
-  border-radius: 1.1rem;
-  background: var(--bg);
-  box-shadow: var(--shadow);
+  margin: 0 -0.9rem;
+  padding: 1rem 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   transition:
-    box-shadow 150ms ease,
-    border-color 150ms ease;
+    background 120ms ease,
+    border-radius 120ms ease;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-lift);
+.card:hover,
+.card:focus-within {
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
 }
 
 .card-head {
   display: flex;
-  align-items: flex-start;
-  gap: 0.7rem;
+  flex: 1 1 18rem;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .favicon {
   flex: none;
-  width: 30px;
-  height: 30px;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--surface);
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 0.2rem;
 }
 
 .card-title {
   color: var(--fg);
-  font-weight: 600;
+  font-size: 1.12rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.35;
 }
 
@@ -592,12 +609,28 @@ a.chip:hover {
   text-decoration: none;
 }
 
+/*
+ * The facts read as one line: host · added · used · state. Every fact carries
+ * its dot in front, and the dot of the first one on each line falls in a
+ * strip on the left that is clipped away.
+ */
 .card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2rem 0.65rem;
-  margin-top: 0.6rem;
-  font-size: 0.8rem;
+  gap: 0.1rem 0;
+  margin: 0.3rem 0 0 -1rem;
+  font-size: 0.88rem;
+  clip-path: inset(-0.5rem -0.5rem -0.5rem 0.75rem);
+}
+
+.card-meta > *::before {
+  content: '·' / '';
+  display: inline-block;
+  width: 1rem;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: normal;
+  text-align: center;
 }
 
 .state {
@@ -609,11 +642,21 @@ a.chip:hover {
 }
 
 .summary {
-  margin-top: 0.55rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
   font-size: 0.92rem;
 }
 
+.summary .link-button {
+  flex: none;
+  font-size: 0.85rem;
+}
+
 .summary-text {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   color: var(--muted);
 }
@@ -631,7 +674,7 @@ a.chip:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.5rem;
-  margin-top: 0.65rem;
+  margin-top: 0.5rem;
   font-size: 0.85rem;
 }
 
@@ -652,7 +695,7 @@ a.chip:hover {
 }
 
 .workspace-chips {
-  margin-top: 0.55rem;
+  margin-top: 0.45rem;
 }
 
 .card-actions {
@@ -666,9 +709,22 @@ a.chip:hover {
 }
 
 .card .card-actions {
-  margin-top: 0.85rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--line);
+  flex: none;
+  margin: -0.15rem -0.4rem 0 auto;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  .card .card-actions {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .card:hover .card-actions,
+  .card:focus-within .card-actions,
+  .card-actions:has([aria-expanded='true']) {
+    opacity: 1;
+  }
 }
 
 .card-actions .link-button {
@@ -678,7 +734,7 @@ a.chip:hover {
 }
 
 .card-actions .link-button:hover {
-  background: var(--surface);
+  background: var(--line);
   color: var(--fg);
   text-decoration: none;
 }
@@ -696,7 +752,7 @@ a.chip:hover {
 }
 
 .card-actions .card-menu-button[aria-expanded='true'] {
-  background: var(--surface);
+  background: var(--line);
   color: var(--fg);
 }
 
@@ -748,8 +804,7 @@ a.chip:hover {
 }
 
 .card.pinned {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
   cursor: grab;
 }
 
@@ -763,7 +818,7 @@ a.chip:hover {
 }
 
 .note-preview {
-  margin: 0 0 0.55rem;
+  margin: 0 0 0.3rem;
   color: var(--muted);
   font-size: 0.88rem;
   font-style: italic;
@@ -786,7 +841,7 @@ a.chip:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
   font-size: 0.85rem;
 }
 
@@ -1047,26 +1102,28 @@ a.chip:hover {
 }
 
 .results {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
-  gap: var(--space);
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
+  border-top: 1px solid var(--line);
   list-style: none;
 }
 
+/* A result is its link's row with the matching passage under it. */
 .results li {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .results li .card {
-  flex: 1;
+  border-bottom: none;
 }
 
 .snippet {
-  margin: 0 0.35rem;
+  margin: -0.6rem 0 0;
+  padding-bottom: 1rem;
   color: var(--muted);
   font-size: 0.88rem;
 }

@@ -48,13 +48,33 @@ export function RefreshButton({
   );
 }
 
-/** A summary shown in two lines, with a control that shows all of it. */
+/**
+ * A summary shown in two lines, with a control that shows all of it. The
+ * control is left out once the text is seen to fit in the two lines; where
+ * nothing can be measured, it stays.
+ */
 function Summary({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
+  const [fits, setFits] = useState(false);
+  const paragraph = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const p = paragraph.current;
+    if (open || !p) return;
+    const measure = () => setFits(p.clientHeight > 0 && p.scrollHeight <= p.clientHeight);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(p);
+    return () => observer.disconnect();
+  }, [open, text]);
+
   return (
     <div className="summary">
-      <p className={open ? 'summary-text' : 'summary-text clamped'}>{text}</p>
-      {!open && (
+      <p ref={paragraph} className={open ? 'summary-text' : 'summary-text clamped'}>
+        {text}
+      </p>
+      {!open && !fits && (
         <button type="button" className="link-button" onClick={() => setOpen(true)}>
           more
         </button>
@@ -278,7 +298,10 @@ function byName(a: { name: string }, b: { name: string }): number {
   return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 }
 
-/** One link in the stream: favicon, title, host, dates, state and actions. */
+/**
+ * One link in the stream, as a row of a list: title and actions, then host,
+ * dates and state, the summary, and the labels.
+ */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const [memberOf, setMemberOf] = useState(link.workspaces);
   return (
@@ -290,27 +313,93 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       {...pinDragProps(link, actions)}
     >
       {link.note_preview && <p className="note-preview">{link.note_preview}</p>}
-      <div className="card-head">
-        {link.favicon_url && (
-          <img
-            className="favicon"
-            src={link.favicon_url}
-            alt=""
-            width={16}
-            height={16}
-            // A site without a usable icon shows none rather than a broken image.
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        )}
-        <SiteLink
-          link={link}
-          className="card-title"
-          style={link.dead_since ? { textDecoration: 'line-through' } : undefined}
-        >
-          {link.title}
-        </SiteLink>
+      <div className="card-top">
+        <div className="card-head">
+          {link.favicon_url && (
+            <img
+              className="favicon"
+              src={link.favicon_url}
+              alt=""
+              width={16}
+              height={16}
+              // A site without a usable icon shows none rather than a broken image.
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          )}
+          <SiteLink
+            link={link}
+            className="card-title"
+            style={link.dead_since ? { textDecoration: 'line-through' } : undefined}
+          >
+            {link.title}
+          </SiteLink>
+        </div>
+        <div className="card-actions">
+          <SiteLink link={link} className="link-button">
+            Open
+          </SiteLink>
+          {link.has_snapshot && (
+            <PageLink to={`/links/${link.id}/read`} className="link-button">
+              Read
+            </PageLink>
+          )}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
+          >
+            {link.pinned ? 'Unpin' : 'Pin'}
+          </button>
+          <CardMenu>
+            {link.has_snapshot && (
+              <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
+                Snapshot
+              </PageLink>
+            )}
+            <PageLink to={`/links/${link.id}`} className="link-button">
+              Details
+            </PageLink>
+            <span className="card-menu-item" data-keep-open>
+              <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
+            </span>
+            <span className="card-menu-item" data-keep-open>
+              <WorkspacePicker
+                linkId={link.id}
+                memberOf={memberOf.map((w) => w.id)}
+                onAdded={(w) =>
+                  setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
+                }
+              />
+            </span>
+            {actions.onRemoveFromWorkspace && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => actions.onRemoveFromWorkspace?.(link)}
+              >
+                Remove from workspace
+              </button>
+            )}
+            {actions.onArchive && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => actions.onArchive?.(link)}
+              >
+                Archive
+              </button>
+            )}
+            <button
+              type="button"
+              className="link-button danger"
+              onClick={() => actions.onDelete(link)}
+            >
+              Delete
+            </button>
+          </CardMenu>
+        </div>
       </div>
       <CardMeta link={link} />
       {link.summary && <Summary text={link.summary} />}
@@ -319,66 +408,6 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       )}
       <Labels link={link} />
       <WorkspaceChips workspaces={memberOf} />
-      <div className="card-actions">
-        <SiteLink link={link} className="link-button">
-          Open
-        </SiteLink>
-        {link.has_snapshot && (
-          <PageLink to={`/links/${link.id}/read`} className="link-button">
-            Read
-          </PageLink>
-        )}
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
-        >
-          {link.pinned ? 'Unpin' : 'Pin'}
-        </button>
-        <CardMenu>
-          {link.has_snapshot && (
-            <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
-              Snapshot
-            </PageLink>
-          )}
-          <PageLink to={`/links/${link.id}`} className="link-button">
-            Details
-          </PageLink>
-          <span className="card-menu-item" data-keep-open>
-            <RefreshButton link={link} onRefreshing={actions.onRefreshing} />
-          </span>
-          <span className="card-menu-item" data-keep-open>
-            <WorkspacePicker
-              linkId={link.id}
-              memberOf={memberOf.map((w) => w.id)}
-              onAdded={(w) =>
-                setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
-              }
-            />
-          </span>
-          {actions.onRemoveFromWorkspace && (
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => actions.onRemoveFromWorkspace?.(link)}
-            >
-              Remove from workspace
-            </button>
-          )}
-          {actions.onArchive && (
-            <button type="button" className="link-button" onClick={() => actions.onArchive?.(link)}>
-              Archive
-            </button>
-          )}
-          <button
-            type="button"
-            className="link-button danger"
-            onClick={() => actions.onDelete(link)}
-          >
-            Delete
-          </button>
-        </CardMenu>
-      </div>
     </article>
   );
 }

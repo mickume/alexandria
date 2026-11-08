@@ -42,6 +42,9 @@ test.describe.serial('workspaces', () => {
       await card.getByRole('button', { name: 'Add to workspace' }).click();
       await card.getByRole('menuitemcheckbox', { name: 'Trip to Lisbon' }).click();
       await expect(card.getByRole('link', { name: 'Trip to Lisbon' })).toBeVisible();
+      // The menu stays open to show the tick; close it, as it covers the row below.
+      await card.getByRole('button', { name: 'More actions' }).click();
+      await expect(card.getByRole('button', { name: 'Add to workspace' })).toHaveCount(0);
     }
 
     await page.goto('/workspaces');
