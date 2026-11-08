@@ -1,54 +1,74 @@
-import { nameKey, type Aliases } from './enrich';
+import { nameKey, nearKeys, type Aliases, type VocabularyEntry } from './enrich';
 
 /** How many of the user's topics and tags the provider is shown. */
 export const PROMPT_TOPICS = 100;
 export const PROMPT_TAGS = 300;
 
-/** The user's most used topic and tag names, for the provider to reuse. */
+/** The user's most used topic and tag names with their link counts, for the provider to reuse. */
 export async function listVocabulary(
   db: D1Database,
   userId: string,
-): Promise<{ topics: string[]; tags: string[] }> {
-  const [topics, tags] = await db.batch<{ name: string }>([
+): Promise<{ topics: VocabularyEntry[]; tags: VocabularyEntry[] }> {
+  const [topics, tags] = await db.batch<VocabularyEntry>([
     db
       .prepare(
-        `SELECT tp.name FROM topics tp LEFT JOIN links l ON l.topic_id = tp.id
+        `SELECT tp.name, COUNT(l.id) AS count FROM topics tp LEFT JOIN links l ON l.topic_id = tp.id
          WHERE tp.user_id = ? GROUP BY tp.id ORDER BY COUNT(l.id) DESC, tp.name LIMIT ?`,
       )
       .bind(userId, PROMPT_TOPICS),
     db
       .prepare(
-        `SELECT t.name FROM tags t LEFT JOIN link_tags lt ON lt.tag_id = t.id
+        `SELECT t.name, COUNT(lt.link_id) AS count FROM tags t LEFT JOIN link_tags lt ON lt.tag_id = t.id
          WHERE t.user_id = ? GROUP BY t.id ORDER BY COUNT(lt.link_id) DESC, t.name LIMIT ?`,
       )
       .bind(userId, PROMPT_TAGS),
   ]);
-  return {
-    topics: (topics?.results ?? []).map((r) => r.name),
-    tags: (tags?.results ?? []).map((r) => r.name),
-  };
+  return { topics: topics?.results ?? [], tags: tags?.results ?? [] };
+}
+
+/** How names are matched to the user's vocabulary. */
+export interface ResolveOptions {
+  /**
+   * Whether a name with no equal also reuses a near one (nearKeys: hyphens
+   * dropped, singular or plural). Enrichment asks for it so that the model's
+   * variants converge; an owner's own edit does not, so it is taken as typed.
+   */
+  near?: boolean;
 }
 
 /**
  * The ids of `names` in the user's `table` (topics or tags), reusing a row
- * whose name is equal ignoring case with spaces read as hyphens, and creating
- * a row for a name that has none. Ids come back in the order of `names`.
+ * whose name is equal ignoring case with spaces read as hyphens, else, with
+ * `near`, a row whose name is near; a row is created for a name that has
+ * neither. Ids come back in the order of `names`, without repeats.
  */
 async function resolve(
   db: D1Database,
   table: 'topics' | 'tags',
   userId: string,
   names: string[],
+  { near = false }: ResolveOptions = {},
 ): Promise<string[]> {
   const rows = await db
-    .prepare(`SELECT id, name FROM ${table} WHERE user_id = ?`)
+    .prepare(`SELECT id, name FROM ${table} WHERE user_id = ? ORDER BY name`)
     .bind(userId)
     .all<{ id: string; name: string }>();
   const byKey = new Map(rows.results.map((r) => [nameKey(r.name), r.id]));
+  // Each row under its own near key; the first name in order wins a shared key.
+  const byNearKey = new Map<string, string>();
+  const addNear = (name: string, id: string) => {
+    const [own = ''] = nearKeys(name);
+    if (!byNearKey.has(own)) byNearKey.set(own, id);
+  };
+  if (near) for (const r of rows.results) addNear(r.name, r.id);
+  const nearId = (name: string) => {
+    const k = nearKeys(name).find((key) => byNearKey.has(key));
+    return k === undefined ? undefined : byNearKey.get(k);
+  };
   const ids: string[] = [];
   for (const name of names) {
     const key = nameKey(name);
-    let id = byKey.get(key);
+    let id = byKey.get(key) ?? (near ? nearId(name) : undefined);
     if (!id) {
       const [, found] = await db.batch<{ id: string }>([
         db
@@ -60,21 +80,35 @@ async function resolve(
       ]);
       id = found!.results[0]!.id;
       byKey.set(key, id);
+      if (near) addNear(name, id);
     }
-    ids.push(id);
+    if (!ids.includes(id)) ids.push(id);
   }
   return ids;
 }
 
-/** The id of the user's topic named `name`, created when there is none. */
-export async function resolveTopic(db: D1Database, userId: string, name: string): Promise<string> {
-  const [id] = await resolve(db, 'topics', userId, [name]);
+/** The id of the user's topic named `name` (or, with `near`, a near name), created when there is none. */
+export async function resolveTopic(
+  db: D1Database,
+  userId: string,
+  name: string,
+  options: ResolveOptions = {},
+): Promise<string> {
+  const [id] = await resolve(db, 'topics', userId, [name], options);
   return id!;
 }
 
-/** The ids of the user's tags named `names`, in order, created where there are none. */
-export function resolveTags(db: D1Database, userId: string, names: string[]): Promise<string[]> {
-  return resolve(db, 'tags', userId, names);
+/**
+ * The ids of the user's tags named `names` (or, with `near`, near names), in
+ * order and without repeats, created where there are none.
+ */
+export function resolveTags(
+  db: D1Database,
+  userId: string,
+  names: string[],
+  options: ResolveOptions = {},
+): Promise<string[]> {
+  return resolve(db, 'tags', userId, names, options);
 }
 
 /**

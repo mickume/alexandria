@@ -108,7 +108,7 @@ The structured result asked of the model.
 
 ###### properties.tags.description
 
-> `readonly` **description**: `"3 to 8 lower-case tags: single words or hyphenated phrases."` = `'3 to 8 lower-case tags: single words or hyphenated phrases.'`
+> `readonly` **description**: `"1 to 5 lower-case tags: single words or hyphenated phrases."` = `'1 to 5 lower-case tags: single words or hyphenated phrases.'`
 
 ###### properties.tags.items
 

@@ -61,10 +61,15 @@ async function storeEnrichment(env: Env, link: LinkRow, proposed: Enrichment): P
   const result = applyAliases(proposed, await listAliases(env.DB, link.user_id));
   // The owner's edits win: an edited field keeps the owner's value.
   const edited = new Set(parseStrings(link.edited_fields));
+  // A variant of an existing name (plural, hyphen) lands on that name, so
+  // the vocabulary converges instead of collecting near-duplicates.
+  const near = { near: true };
   const topicId = edited.has('topic')
     ? link.topic_id
-    : await resolveTopic(env.DB, link.user_id, result.topic);
-  const tagIds = edited.has('tags') ? null : await resolveTags(env.DB, link.user_id, result.tags);
+    : await resolveTopic(env.DB, link.user_id, result.topic, near);
+  const tagIds = edited.has('tags')
+    ? null
+    : await resolveTags(env.DB, link.user_id, result.tags, near);
   const at = now().toISOString();
   await env.DB.batch([
     env.DB.prepare(

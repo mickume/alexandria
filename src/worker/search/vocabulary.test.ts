@@ -141,8 +141,8 @@ describe('the topics and tags lists', () => {
       expect(await names()).not.toContain('solo');
       expect(await names()).toContain('kept');
       const vocabulary = await listVocabulary(env.DB, user.id);
-      expect(vocabulary[kind].map((n) => n.toLowerCase())).not.toContain('solo');
-      expect(vocabulary[kind].map((n) => n.toLowerCase())).toContain('kept');
+      expect(vocabulary[kind].map((e) => e.name.toLowerCase())).not.toContain('solo');
+      expect(vocabulary[kind].map((e) => e.name.toLowerCase())).toContain('kept');
     });
 
     it('keeps a tag that an edit keeps', async () => {

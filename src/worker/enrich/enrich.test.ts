@@ -122,6 +122,7 @@ describe('enriching a fetched link', () => {
       existing: { tags: ['web-dev'] },
       answer: { tags: ['Web Dev', 'two', 'three'] },
       tags: ['web-dev', 'two', 'three'],
+      newTags: 2,
     },
     {
       label: 'an existing topic in another case',
@@ -132,10 +133,45 @@ describe('enriching a fetched link', () => {
     {
       label: 'a new tag',
       existing: {},
-      answer: { tags: ['rust', 'two', 'three'] },
-      tags: ['rust', 'two', 'three'],
+      answer: { tags: ['rust'] },
+      tags: ['rust'],
+      newTags: 1,
     },
-  ])('reuses the vocabulary for $label', async ({ existing, answer, tags, topic }) => {
+    {
+      label: 'an existing tag in the plural',
+      existing: { tags: ['library', 'cache'] },
+      answer: { tags: ['libraries', 'caches'] },
+      tags: ['library', 'cache'],
+      newTags: 0,
+    },
+    {
+      label: 'an existing tag in the singular and without its hyphen',
+      existing: { tags: ['design-patterns'] },
+      answer: { tags: ['design-pattern', 'designpatterns', 'go'] },
+      tags: ['design-patterns', 'go'],
+      newTags: 1,
+    },
+    {
+      label: 'two new variants of one name',
+      existing: {},
+      answer: { tags: ['box', 'boxes'] },
+      tags: ['box'],
+      newTags: 1,
+    },
+    {
+      label: 'a name that only looks like a plural',
+      existing: { tags: ['window'] },
+      answer: { tags: ['windows'] },
+      tags: ['windows'],
+      newTags: 1,
+    },
+    {
+      label: 'an existing topic in the singular',
+      existing: { topic: 'Databases' },
+      answer: { topic: 'database' },
+      topic: 'Databases',
+    },
+  ])('reuses the vocabulary for $label', async ({ existing, answer, tags, topic, newTags }) => {
     const user = await signIn();
     if (existing.tags) {
       for (const name of existing.tags) {
@@ -165,7 +201,9 @@ describe('enriching a fetched link', () => {
       expect(await topicOf(id)).toBe(topic);
       expect(await count('topics', 'user_id = ?', user.id)).toBe(topicsBefore);
     }
-    if (existing.tags) expect(await count('tags', 'user_id = ?', user.id)).toBe(tagsBefore + 2);
+    if (newTags !== undefined) {
+      expect(await count('tags', 'user_id = ?', user.id)).toBe(tagsBefore + newTags);
+    }
   });
 
   it('lists the 300 most used tags in the request', async () => {
@@ -208,6 +246,7 @@ describe('enriching a fetched link', () => {
       const name = `tag-${String(i).padStart(3, '0')}`;
       expect(body.includes(name), name).toBe(i >= 100);
     }
+    expect(body).toContain('tag-100 (1)');
   });
 
   it.each([
@@ -320,9 +359,10 @@ describe('enrichment after renames and merges', () => {
     await saveKey(user);
     await addFetchAndEnrich(user, ARTICLE);
     const body = JSON.stringify(ai.enrichments[0]!.body);
-    expect(body).toContain('javascript');
-    expect(body).toContain('Infrastructure');
-    expect(body).toContain('Operations');
+    // Each name with the number of links that carry it; the merge moved js's link.
+    expect(body).toContain('javascript (2)');
+    expect(body).toContain('Infrastructure (1)');
+    expect(body).toContain('Operations (1)');
     expect(body).not.toMatch(/\bjs\b/);
     expect(body).not.toMatch(/\bInfra\b/);
   });
@@ -358,7 +398,12 @@ describe('a provider’s result', () => {
         topic: 'T',
         tags: ['Rust', 'rust', 'Web Assembly', 'C++', '', 'a', 'b', 'c', 'd', 'e', 'f'],
       },
-      tags: ['rust', 'web-assembly', 'c', 'a', 'b', 'd', 'e', 'f'],
+      tags: ['rust', 'web-assembly', 'c', 'a', 'b'],
+    },
+    {
+      label: 'a single tag',
+      input: { summary: 'S.', topic: 'T', tags: ['rust'] },
+      tags: ['rust'],
     },
     {
       label: 'a summary of 75 words',
@@ -529,8 +574,8 @@ describe('a failed enrichment', () => {
     { label: 'a refusal', make: (ai: FakeAi) => ai.refusal() },
     { label: 'no answer in time', make: (ai: FakeAi) => ai.stall() },
     {
-      label: 'a result with 2 tags',
-      make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['a', 'b'], topic: 'T' }),
+      label: 'a result without tags',
+      make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['++', ''], topic: 'T' }),
     },
   ])(
     'after $label keeps the link usable, marks it failed and retries once in 10 minutes',

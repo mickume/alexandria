@@ -41,7 +41,7 @@ export const RESULT_SCHEMA = {
     tags: {
       type: 'array',
       items: { type: 'string' },
-      description: '3 to 8 lower-case tags: single words or hyphenated phrases.',
+      description: '1 to 5 lower-case tags: single words or hyphenated phrases.',
     },
     topic: { type: 'string', description: 'The one topic the page belongs to.' },
   },

@@ -29,3 +29,15 @@ spec says, and why.
 7. **PATH-1's end-to-end check pastes `https://news.example/enriched`**
    rather than `https://example.com/article`, which spec 01's sign-in path
    relies on staying unfetched.
+8. **An enrichment keeps 1 to 5 tags, not 3 to 8.** A floor of 3 pushed the
+   model to invent tags once the good fits were used, which left many tags
+   on one or two links. A result is unusable only when it has no tags; the
+   first 5 are kept.
+9. **The request lists each topic and tag with its link count**
+   (`machine-learning (42)`) and asks the model to prefer the more used ones,
+   so that it can tell an established name from a one-off.
+10. **Enrichment reuses near names, not only equal ones.** A proposed topic
+    or tag with no equal name reuses one that matches with the hyphens dropped
+    or with its last word made singular or plural (`nearKeys`), so `databases`
+    lands on `database` and `webdev` on `web-dev`. The owner's own edits still
+    match equal names only.
