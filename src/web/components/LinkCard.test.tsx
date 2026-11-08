@@ -14,15 +14,71 @@ const link: Link = makeLink({
 
 const noop = () => undefined;
 
-describe('a link card', () => {
-  it('opens the link through the open endpoint, from its title and its Open action', () => {
-    render(<LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
-    expect(screen.getByRole('link', { name: 'example.com' }).getAttribute('href')).toBe(
-      '/api/v1/links/abc/open',
+/** Opens the card's More actions menu, where the less frequent actions are. */
+async function moreActions() {
+  await act(async () => screen.getByRole('button', { name: 'More actions' }).click());
+}
+
+describe('a card’s links to the site', () => {
+  it('open the site in a new tab from the title, the address and Open', () => {
+    const l = makeLink({ id: 'abc', host: 'example.com', title: 'An Article' });
+    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    for (const name of ['An Article', 'example.com', 'Open']) {
+      const a = screen.getByRole('link', { name });
+      expect(a.getAttribute('href'), name).toBe('/api/v1/links/abc/open');
+      expect(a.getAttribute('target'), name).toBe('_blank');
+      expect(a.getAttribute('rel'), name).toContain('noopener');
+    }
+  });
+});
+
+describe('a card’s More actions menu', () => {
+  const stored = makeLink({ id: 'abc', state: 'active', has_snapshot: true, title: 'Stored' });
+  const actions = { onPin: noop, onUnpin: noop, onDelete: noop, onArchive: noop };
+
+  it('keeps Open, Read and Pin on the card and the rest behind it', async () => {
+    render(<LinkCard link={stored} actions={actions} />);
+    expect(screen.getByRole('link', { name: 'Open' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Read' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeTruthy();
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    for (const name of ['Refresh', 'Add to workspace', 'Archive', 'Delete']) {
+      expect(screen.queryByRole('button', { name }), name).toBeNull();
+    }
+    expect(screen.queryByRole('link', { name: 'Details' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Snapshot' })).toBeNull();
+
+    await moreActions();
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    for (const name of ['Refresh', 'Add to workspace', 'Archive', 'Delete']) {
+      expect(screen.getByRole('button', { name }), name).toBeTruthy();
+    }
+    expect(screen.getByRole('link', { name: 'Details' }).getAttribute('href')).toBe('/links/abc');
+    expect(screen.getByRole('link', { name: 'Snapshot' }).getAttribute('href')).toBe(
+      '/links/abc/snapshot',
     );
-    expect(screen.getByRole('link', { name: 'Open' }).getAttribute('href')).toBe(
-      '/api/v1/links/abc/open',
-    );
+  });
+
+  it('closes on Escape, giving the focus back to its button, and on a click elsewhere', async () => {
+    render(<LinkCard link={stored} actions={actions} />);
+    await moreActions();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Delete' }), { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More actions' }));
+
+    await moreActions();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('closes once an action is chosen', async () => {
+    let archived = 0;
+    render(<LinkCard link={stored} actions={{ ...actions, onArchive: () => (archived += 1) }} />);
+    await moreActions();
+    await act(async () => screen.getByRole('button', { name: 'Archive' }).click());
+    expect(archived).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
   });
 });
 
@@ -37,6 +93,7 @@ describe('refreshing from a card', () => {
     const { unmount } = render(
       <LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
     );
+    await moreActions();
     await act(async () => screen.getByRole('button', { name: 'Refresh' }).click());
     expect(api.sent('POST', '/api/v1/links/abc/refresh')).toHaveLength(1);
     expect(screen.getByText('refreshing…')).toBeTruthy();
@@ -50,6 +107,7 @@ describe('refreshing from a card', () => {
       }),
     );
     render(<LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    await moreActions();
     await act(async () => screen.getByRole('button', { name: 'Refresh' }).click());
     expect(await screen.findByText('already refreshed recently')).toBeTruthy();
   });
@@ -100,12 +158,13 @@ describe('a card’s fetch results', () => {
       texts: ['no text in this PDF'],
       read: true,
     },
-  ])('shows $label as it is', ({ link: l, texts, read, favicon }) => {
+  ])('shows $label as it is', async ({ link: l, texts, read, favicon }) => {
     const { container } = render(
       <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
     );
     for (const text of texts) expect(screen.getByText(text)).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Read' }) !== null).toBe(read);
+    await moreActions();
     expect(screen.queryByRole('link', { name: 'Snapshot' }) !== null).toBe(read);
     if (read) {
       expect(screen.getByRole('link', { name: 'Read' }).getAttribute('href')).toBe(
@@ -196,6 +255,7 @@ describe('adding a link to a workspace from its card', () => {
     );
     const l = makeLink({ id: 'in-a', state: 'active', workspaces: [{ id: 'A', name: 'A' }] });
     render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    await moreActions();
     await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
     const a = await screen.findByRole('menuitemcheckbox', { name: 'A' });
     expect(a.getAttribute('aria-checked')).toBe('true');

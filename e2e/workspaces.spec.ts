@@ -38,6 +38,7 @@ test.describe.serial('workspaces', () => {
     await page.goto('/');
     for (const id of [first!, second!]) {
       const card = cardOf(page, id);
+      await card.getByRole('button', { name: 'More actions' }).click();
       await card.getByRole('button', { name: 'Add to workspace' }).click();
       await card.getByRole('menuitemcheckbox', { name: 'Trip to Lisbon' }).click();
       await expect(card.getByRole('link', { name: 'Trip to Lisbon' })).toBeVisible();

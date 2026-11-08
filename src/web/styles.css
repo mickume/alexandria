@@ -579,6 +579,14 @@ a.chip:hover {
   line-height: 1.35;
 }
 
+.card-host {
+  color: inherit;
+}
+
+.card-host:hover {
+  color: var(--accent);
+}
+
 .card-title:hover {
   color: var(--accent);
   text-decoration: none;
@@ -673,6 +681,70 @@ a.chip:hover {
   background: var(--surface);
   color: var(--fg);
   text-decoration: none;
+}
+
+/* The ⋯ menu: the less frequent actions of a card, in a panel under its button. */
+.card-menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.card-actions .card-menu-button {
+  padding: 0.1rem 0.6rem;
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.card-actions .card-menu-button[aria-expanded='true'] {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.card-menu-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 12rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  box-shadow: var(--shadow-lift);
+}
+
+.card-menu-panel .link-button,
+.card-menu-item,
+.card-menu-item .picker {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.card-menu-panel .link-button {
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.55rem;
+  color: var(--fg);
+  text-align: left;
+}
+
+.card-menu-item .muted,
+.card-menu-item .notice {
+  padding: 0 0.65rem 0.35rem;
+}
+
+.card-menu-panel .link-button.danger {
+  color: var(--danger);
+}
+
+.card-menu-panel .picker-menu {
+  position: static;
+  min-width: 0;
+  margin: 0.1rem 0 0.3rem 0.65rem;
+  box-shadow: none;
 }
 
 .card.pinned {
