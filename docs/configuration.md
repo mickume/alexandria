@@ -20,13 +20,14 @@ as variables in the dashboard; `keep_vars` keeps those across deploys), and in
 | `GOOGLE_AUTH_URL`  | `wrangler.jsonc`            | Google's authorization endpoint, `https://accounts.google.com/o/oauth2/v2/auth`. Changed only to run against a local fake provider in tests. |
 | `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
 | `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
+| `FIRECRAWL_API_URL` | `wrangler.jsonc` | Firecrawl's API base URL, `https://api.firecrawl.dev`, used for pages behind a bot check when the owner stored a Firecrawl key; changed only for tests. |
 
 ## Secrets
 
 | Name                   | Meaning                                                                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `GOOGLE_CLIENT_SECRET` | The OAuth 2.0 client secret of the Google Cloud project. Set with `wrangler secret put GOOGLE_CLIENT_SECRET`, or in `.dev.vars` locally. |
-| `KEY_ENCRYPTION_KEY` | Any long random string. The owners' AI keys are encrypted with AES-256-GCM under a key derived from it (its SHA-256), with each user's id bound as additional data. Changing it makes every stored AI key unreadable: owners then enter their keys again. |
+| `KEY_ENCRYPTION_KEY` | Any long random string. The owners' AI and Firecrawl keys are encrypted with AES-256-GCM under a key derived from it (its SHA-256), with each user's id bound as additional data. Changing it makes every stored key unreadable: owners then enter their keys again. |
 
 ## Bindings
 

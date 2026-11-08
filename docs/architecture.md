@@ -143,6 +143,15 @@ its address (`titleFromUrl` in `fetcher/queue.ts`), unless the owner edited
 the title; a failed refresh changes nothing but the history. Every
 attempt is a `link_events` row.
 
+A page behind a bot check can still be fetched through Firecrawl
+(`fetcher/firecrawl.ts`, [ADR 04](adr/04-fetch-pages-behind-a-bot-check-through-firecrawl.md))
+when its owner stored their own Firecrawl key, encrypted like the AI key. After
+a direct fetch meets a bot check, the consumer sends the address to Firecrawl
+(`POST {FIRECRAWL_API_URL}/v2/scrape` for the page's raw HTML) and stores the
+answer as it would a direct fetch's, with the note "fetched through
+Firecrawl". Firecrawl refusing the key marks it rejected; Firecrawl being
+unavailable leaves the fetch to its retries. No other page goes to Firecrawl.
+
 Read and Snapshot (`fetcher/routes.ts`) serve only what is stored, to the
 owner alone, and record a use. The stream keeps cards current by polling
 `GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or

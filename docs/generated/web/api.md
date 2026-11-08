@@ -722,6 +722,14 @@ The owner's AI settings, never with the key beyond its last 4 characters.
 
 ***
 
+### FirecrawlSettings
+
+> **FirecrawlSettings** = \{ `configured`: `true`; `key_last4`: `string`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; \} \| \{ `configured`: `false`; \}
+
+The owner's Firecrawl key, never beyond its last 4 characters.
+
+***
+
 ### LinkEvent
 
 > **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
@@ -881,6 +889,44 @@ Deletes the account, confirmed by its email typed by the owner.
 ###### Returns
 
 `Promise`\<[`Thresholds`](#thresholds)\>
+
+***
+
+### firecrawl
+
+> `const` **firecrawl**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: () => `Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
+
+###### Returns
+
+`Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
+
+##### remove
+
+> **remove**: () => `Promise`\<`void`\>
+
+###### Returns
+
+`Promise`\<`void`\>
+
+##### save
+
+> **save**: (`apiKey`) => `Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
+
+###### Parameters
+
+###### apiKey
+
+`string`
+
+###### Returns
+
+`Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
 
 ***
 

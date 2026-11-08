@@ -162,6 +162,85 @@ describe('the AI key section of the settings page', () => {
   });
 });
 
+describe('the Firecrawl section of the settings page', () => {
+  function firecrawlApi(stored: Record<string, unknown> = { configured: false }): FakeApi {
+    return fakeApi()
+      .on('GET', '/api/v1/settings/firecrawl', () => ({ status: 200, body: stored }))
+      .on('PUT', '/api/v1/settings/firecrawl', (req) => {
+        const key = (req.body as { api_key: string }).api_key;
+        stored = {
+          configured: true,
+          key_last4: key.slice(-4),
+          status: 'verified',
+          rejected_message: null,
+        };
+        return { status: 200, body: stored };
+      })
+      .on('DELETE', '/api/v1/settings/firecrawl', () => {
+        stored = { configured: false };
+        return { status: 204 };
+      });
+  }
+
+  it('saves a key, shows it verified by its last 4 characters, and removes it', async () => {
+    const api = firecrawlApi();
+    renderPage('/settings', api);
+    fireEvent.change(await screen.findByLabelText('Firecrawl API key'), {
+      target: { value: 'fc-wxyz9876' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Firecrawl key' }));
+    });
+    expect(api.sent('PUT', '/api/v1/settings/firecrawl')[0]?.body).toEqual({
+      api_key: 'fc-wxyz9876',
+    });
+    expect(await screen.findByText('…9876')).toBeTruthy();
+    expect((screen.getByLabelText('Firecrawl API key') as HTMLInputElement).value).toBe('');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Firecrawl key' }));
+    });
+    expect(api.sent('DELETE', '/api/v1/settings/firecrawl')).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByText('…9876')).toBeNull());
+  });
+
+  it.each([
+    {
+      label: 'Firecrawl’s message when it refuses a new key',
+      stored: { configured: false },
+      put: {
+        status: 400,
+        body: { error: 'key_rejected', field: 'api_key', message: 'Unauthorized: Invalid token' },
+      },
+      text: 'Unauthorized: Invalid token',
+    },
+    {
+      label: 'that the stored key was rejected, and why',
+      stored: {
+        configured: true,
+        key_last4: '9876',
+        status: 'rejected',
+        rejected_message: 'Insufficient credits',
+      },
+      put: null,
+      text: 'your Firecrawl key was rejected: Insufficient credits',
+    },
+  ])('shows $label', async ({ stored, put, text }) => {
+    const api = firecrawlApi(stored);
+    if (put) api.on('PUT', '/api/v1/settings/firecrawl', put);
+    renderPage('/settings', api);
+    if (put) {
+      fireEvent.change(await screen.findByLabelText('Firecrawl API key'), {
+        target: { value: 'fc-bad' },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Save Firecrawl key' }));
+      });
+    }
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+});
+
 describe('enriching all unenriched links from the settings page', () => {
   const verified = (unenriched_count: number) => ({
     configured: true,

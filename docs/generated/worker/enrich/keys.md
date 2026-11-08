@@ -80,7 +80,7 @@ Forgets the user's provider, model and key.
 
 > **decryptKey**(`env`, `ciphertext`, `iv`, `userId`): `Promise`\<`string`\>
 
-Decrypts a user's AI key; throws when it was sealed for another user or under another secret.
+Decrypts a user's API key; throws when it was sealed for another user or under another secret.
 
 #### Parameters
 
@@ -110,9 +110,9 @@ Decrypts a user's AI key; throws when it was sealed for another user or under an
 
 > **encryptKey**(`env`, `key`, `userId`): `Promise`\<\{ `ciphertext`: `string`; `iv`: `string`; \}\>
 
-Encrypts a user's AI key with AES-GCM under KEY_ENCRYPTION_KEY, with a fresh
-IV and the user's id as additional data, so that a ciphertext copied to
-another user's row does not decrypt.
+Encrypts a user's API key (for an AI provider or Firecrawl) with AES-GCM
+under KEY_ENCRYPTION_KEY, with a fresh IV and the user's id as additional
+data, so that a ciphertext copied to another user's row does not decrypt.
 
 #### Parameters
 

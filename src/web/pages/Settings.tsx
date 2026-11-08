@@ -4,6 +4,7 @@ import { formatDate } from '../format';
 import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
 import { DeleteAccountSection } from './DeleteAccountSection';
+import { FirecrawlSection } from './FirecrawlSection';
 import { ImportSection } from './ImportSection';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
@@ -133,6 +134,7 @@ export function Settings() {
       </ul>
       {list?.length === 0 && <p className="muted">No tokens yet.</p>}
       <AiKeySection />
+      <FirecrawlSection />
       <DecaySection />
       <ImportSection />
       <ExportSection />

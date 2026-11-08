@@ -36,6 +36,8 @@ export interface Env {
   ANTHROPIC_BASE_URL: string;
   /** OpenRouter's API base URL; configurable so tests can run a local fake. */
   OPENROUTER_BASE_URL: string;
+  /** Firecrawl's API base URL; configurable so tests can run a local fake. */
+  FIRECRAWL_API_URL: string;
 }
 
 /** A run of the deletion job of one account marked for deletion. */

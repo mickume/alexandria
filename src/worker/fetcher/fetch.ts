@@ -28,6 +28,8 @@ export interface FetchOk {
   truncated: boolean;
   /** A PDF longer than PDF_LIMIT, of which nothing is kept. */
   tooLarge: boolean;
+  /** Set when the page came through the owner's Firecrawl key instead of a direct fetch. */
+  via?: 'firecrawl';
 }
 
 /** A fetch that failed, with the reason shown on the link. */
