@@ -46,3 +46,17 @@ says, and why.
 9. **The OpenAPI document gained request bodies that are not JSON** (`upload`)
    and responses with a non-JSON media type, for the upload and the report
    file.
+10. **Any text or Markdown file is read line by line for web addresses.**
+    The spec takes the first word of every non-comment line and reports the
+    words that are not URLs as invalid, and refuses markup and JSON. Files
+    kept by hand (notes, Markdown reading lists) mix addresses with prose, so
+    a URL line is now one that holds an `http://` or `https://` address
+    anywhere; its first address is taken, stripped of Markdown wrapping and
+    trailing punctuation, and every other line is ignored without being
+    reported. Only an address the normaliser rejects is invalid. The upload
+    may be `text/plain`, `text/markdown` or `text/x-markdown`, or any form
+    part named `*.txt` or `*.md`; the markup and JSON refusals are gone, as a
+    Markdown file may start with HTML. The refusal messages are now "only
+    text or Markdown files (.txt, .md) are accepted" and "the file holds no
+    URL: no line has an http:// or https:// address" (superseding item 8's
+    message).

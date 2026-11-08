@@ -33,9 +33,14 @@ function upload(user: TestUser, file: string | Uint8Array, type: string | null =
 }
 
 /** Uploads `file` as the part 'file' of a multipart form. */
-function uploadForm(user: TestUser, file: string | Uint8Array | null, type = 'text/plain') {
+function uploadForm(
+  user: TestUser,
+  file: string | Uint8Array | null,
+  type = 'text/plain',
+  name = 'links.txt',
+) {
   const form = new FormData();
-  if (file !== null) form.append('file', new File([file as BlobPart], 'links.txt', { type }));
+  if (file !== null) form.append('file', new File([file as BlobPart], name, { type }));
   return api('POST', '/api/v1/imports', { as: user.session, body: form });
 }
 
@@ -70,15 +75,43 @@ describe('parseImportFile', () => {
     ],
     ['  https://c.example\tx', [{ line: 1, url: 'https://c.example' }]],
     ['https://d.example\n', [{ line: 1, url: 'https://d.example' }]],
+    [
+      'Reading list\nnot a url\nexample.com\nftp://e.example\nsee https://f.example/x here',
+      [{ line: 5, url: 'https://f.example/x' }],
+    ],
+    [
+      [
+        '<p align="center">My links</p>',
+        '## Rust',
+        'The [book](https://rust.example/book "The Book"), read it.',
+        '- <https://a.example/x>, see also',
+        '* **HTTPS://b.example/p_(q)**',
+        '> Quote: https://c.example/q?x=1.',
+        '| [y](https://d.example/y) | https://e.example/ |',
+        '`http://f.example/code`',
+      ].join('\n'),
+      [
+        { line: 3, url: 'https://rust.example/book' },
+        { line: 4, url: 'https://a.example/x' },
+        { line: 5, url: 'HTTPS://b.example/p_(q)' },
+        { line: 6, url: 'https://c.example/q?x=1' },
+        { line: 7, url: 'https://d.example/y' },
+        { line: 8, url: 'http://f.example/code' },
+      ],
+    ],
   ])('reads %j', (text, lines) => {
     expect(parseImportFile(encode(text), 'text/plain')).toEqual({ ok: true, lines });
   });
 
-  it('accepts an absent type and text/plain with a charset', () => {
-    expect(parseImportFile(encode('https://a.example'), null)).toMatchObject({ ok: true });
-    expect(parseImportFile(encode('https://a.example'), 'text/plain; charset=utf-8')).toMatchObject(
-      { ok: true },
-    );
+  it.each([
+    [null, null],
+    ['text/plain; charset=utf-8', null],
+    ['text/markdown', null],
+    ['text/x-markdown', null],
+    ['application/octet-stream', 'links.md'],
+    ['application/octet-stream', 'LINKS.TXT'],
+  ])('accepts the type %s with the name %s', (type, name) => {
+    expect(parseImportFile(encode('https://a.example'), type, name)).toMatchObject({ ok: true });
   });
 });
 
@@ -86,15 +119,12 @@ describe('POST /api/v1/imports refuses', () => {
   const UNSUPPORTED = {
     error: 'unsupported_file',
     field: 'file',
-    message: 'only plain-text files with one URL per line are accepted',
+    message: 'only text or Markdown files (.txt, .md) are accepted',
   };
 
   const unsupported: [string, () => string | Uint8Array, string, boolean][] = [
     ['an HTML file', () => '<!doctype html><a href="https://a.example">a</a>', 'text/html', false],
-    ['HTML declared as text', () => '<html><body>', 'text/plain', false],
-    ['XML declared as text', () => '<?xml version="1.0"?>', 'text/plain', false],
     ['a JSON file', () => '["https://a.example"]', 'application/json', false],
-    ['a JSON object declared as text', () => '{"urls": []}', 'text/plain', false],
     ['a part of type image/png', () => 'https://a.example', 'image/png', true],
     ['bytes that are not UTF-8', () => new Uint8Array([0xc3, 0x28]), 'text/plain', false],
     ['a NUL byte', () => 'https://a.example\u0000', 'text/plain', false],
@@ -103,7 +133,9 @@ describe('POST /api/v1/imports refuses', () => {
   it.each(unsupported)('%s', async (_case, file, type, multipart) => {
     const user = await signIn();
     const before = await counts(user);
-    const r = multipart ? await uploadForm(user, file(), type) : await upload(user, file(), type);
+    const r = multipart
+      ? await uploadForm(user, file(), type, 'cat.png')
+      : await upload(user, file(), type);
     expect(r.status).toBe(400);
     expect(r.json).toEqual(UNSUPPORTED);
     expect(await counts(user)).toEqual(before);
@@ -146,14 +178,17 @@ describe('POST /api/v1/imports refuses', () => {
     });
   });
 
-  it.each(['', '\n\n', '# only a comment\n'])('a file without a URL line: %j', async (text) => {
-    const user = await signIn();
-    const before = await counts(user);
-    const r = await upload(user, text);
-    expect(r.status).toBe(400);
-    expect(r.json).toMatchObject({ error: 'no_urls', field: 'file' });
-    expect(await counts(user)).toEqual(before);
-  });
+  it.each(['', '\n\n', '# only a comment\n', '# https://a.example\nnot a url\nexample.com\n'])(
+    'a file without a URL line: %j',
+    async (text) => {
+      const user = await signIn();
+      const before = await counts(user);
+      const r = await upload(user, text);
+      expect(r.status).toBe(400);
+      expect(r.json).toMatchObject({ error: 'no_urls', field: 'file' });
+      expect(await counts(user)).toEqual(before);
+    },
+  );
 
   it('a form without a file part', async () => {
     const user = await signIn();
@@ -225,19 +260,31 @@ describe('POST /api/v1/imports adds', () => {
     });
   });
 
-  it('reports invalid lines with their numbers and text', async () => {
+  it('reports invalid addresses with their line numbers, ignoring lines without one', async () => {
     const user = await signIn();
     const r = await upload(
       user,
-      'https://a.example\nnot-a-url\njavascript:alert(1)\nhttp://localhost/x\nhttps://b.example',
+      'https://a.example\nnot-a-url\njavascript:alert(1)\nhttp://localhost/x\nhttps://\nhttps://b.example',
     );
-    expect(r.json.counts).toMatchObject({ invalid: 3, added: 2 });
+    expect(r.json.counts).toMatchObject({ url_lines: 4, invalid: 2, added: 2 });
     expect(r.json.invalid).toEqual([
-      { line: 2, text: 'not-a-url' },
-      { line: 3, text: 'javascript:alert(1)' },
       { line: 4, text: 'http://localhost/x' },
+      { line: 5, text: 'https://' },
     ]);
     expect(await count('links', 'user_id = ?', user.id)).toBe(2);
+  });
+
+  it('takes a Markdown file named .md whatever its declared type', async () => {
+    const user = await signIn();
+    const r = await uploadForm(
+      user,
+      '# Links\n\n- [A](https://a.example/)\n- [B](https://b.example/page)\n',
+      'application/octet-stream',
+      'links.md',
+    );
+    expect(r.status).toBe(201);
+    expect(r.json.counts).toMatchObject({ url_lines: 2, added: 2 });
+    expect(await linkByUrl(user, 'https://b.example/page')).not.toBeNull();
   });
 
   it('puts the added links in file order at the top of the stream', async () => {
@@ -351,7 +398,7 @@ describe('POST /api/v1/imports adds', () => {
         if (kind === 5) return '# a comment';
         return '';
       });
-      if (!lines.some((l) => l && !l.startsWith('#'))) lines.push('https://one.example/');
+      if (!lines.some((l) => /^https?:\/\//i.test(l))) lines.push('https://one.example/');
       const before = await count('links', 'user_id = ?', user.id);
       const r = await upload(user, lines.join('\n'));
       expect(r.status).toBe(201);
@@ -567,11 +614,11 @@ describe('an import’s progress and report', () => {
     const file = [
       'https://n1.example',
       'https://n2.example',
-      'not-a-url',
+      'http://localhost/x',
       'https://n3.example',
       'https://a.example',
       'https://n4.example',
-      'ftp://nope.example',
+      'https://nope',
       'https://n5.example',
       'https://n6.example',
       'https://n7.example',
@@ -588,8 +635,8 @@ describe('an import’s progress and report', () => {
       'added: 7',
       'duplicates: 1',
       'invalid: 2',
-      'line 3: not-a-url',
-      'line 7: ftp://nope.example',
+      'line 3: http://localhost/x',
+      'line 7: https://nope',
       'line 5: duplicate of https://a.example',
     ]) {
       expect(text).toContain(expected);
@@ -656,7 +703,7 @@ describe('importing into a workspace', () => {
       const file = [
         'https://new-a.example',
         'https://kept.example',
-        'not-a-url',
+        'http://10.0.0.1/',
         'https://member.example',
         'https://new-b.example',
         'https://new-a.example',

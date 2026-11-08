@@ -976,7 +976,7 @@ The address of an import's downloadable report.
 
 > **upload**: (`file`, `workspaceId?`) => `Promise`\<[`ImportReport`](#importreport)\>
 
-Uploads a plain-text file of URLs, one per line, adding its links to a workspace when given one.
+Uploads a text or Markdown file of URLs, one per line that holds one, adding its links to a workspace when given one.
 
 ###### Parameters
 

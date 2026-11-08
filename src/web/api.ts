@@ -391,7 +391,7 @@ export interface ImportProgress {
 }
 
 export const imports = {
-  /** Uploads a plain-text file of URLs, one per line, adding its links to a workspace when given one. */
+  /** Uploads a text or Markdown file of URLs, one per line that holds one, adding its links to a workspace when given one. */
   upload: (file: File, workspaceId?: string) => {
     const form = new FormData();
     form.append('file', file);

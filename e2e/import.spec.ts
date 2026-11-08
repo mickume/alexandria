@@ -3,8 +3,8 @@ import { expect, test } from '@playwright/test';
 import { d1, saveAiKey, signIn } from './helpers';
 
 const MALFORMED: Record<number, string> = {
-  57: 'not-a-url',
-  211: 'javascript:alert(1)',
+  57: 'https://localhost/a',
+  211: 'http://192.168.0.1/x',
   399: 'http://localhost/x',
 };
 

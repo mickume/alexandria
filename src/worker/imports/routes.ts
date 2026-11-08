@@ -9,21 +9,23 @@ import { MAX_IMPORT_BYTES, parseImportFile } from './parse';
 /** The import routes, under /api/v1/imports. */
 export const importRoutes = new Hono<AppEnv>();
 
-const UNSUPPORTED_MESSAGE = 'only plain-text files with one URL per line are accepted';
+const UNSUPPORTED_MESSAGE = 'only text or Markdown files (.txt, .md) are accepted';
 const TOO_LARGE_MESSAGE = 'too large: at most 5,000 URLs / 2 MB per import';
-const NO_URLS_MESSAGE = 'the file holds no URL: one URL per line is expected';
+const NO_URLS_MESSAGE = 'the file holds no URL: no line has an http:// or https:// address';
 
-/** An upload as read: the file's bytes and declared type, and the workspace asked for. */
+/** An upload as read: the file's bytes, declared type and name, and the workspace asked for. */
 interface Upload {
   bytes: Uint8Array;
   type: string | null;
+  /** The file name a form gave, or null for a bare body. */
+  name: string | null;
   /** The id in the form's part 'workspace_id' or the query's workspace_id, or null. */
   workspaceId: string | null;
 }
 
 /**
- * The uploaded file's bytes and declared type: the body of a text/plain (or
- * untyped) request, or the part 'file' of a multipart form. 'missing' for a
+ * The uploaded file's bytes, declared type and name: the body of a request,
+ * or the part 'file' of a multipart form. 'missing' for a
  * form without that part; 'too_large' when the body is over the limit.
  */
 async function readUpload(c: Context<AppEnv>): Promise<Upload | 'missing' | 'too_large'> {
@@ -40,12 +42,14 @@ async function readUpload(c: Context<AppEnv>): Promise<Upload | 'missing' | 'too
     return {
       bytes: new Uint8Array(await file.arrayBuffer()),
       type: file.type || null,
+      name: file.name || null,
       workspaceId: (typeof part === 'string' && part) || fromQuery,
     };
   }
   return {
     bytes: new Uint8Array(await c.req.arrayBuffer()),
     type: declared,
+    name: null,
     workspaceId: fromQuery,
   };
 }
@@ -54,7 +58,7 @@ importRoutes.post('/', async (c) => {
   const upload = await readUpload(c);
   if (upload === 'too_large') return refusal(c, 409, 'import_too_large', TOO_LARGE_MESSAGE);
   if (upload === 'missing') return validationError(c, 'no_urls', 'file', NO_URLS_MESSAGE);
-  const parsed = parseImportFile(upload.bytes, upload.type);
+  const parsed = parseImportFile(upload.bytes, upload.type, upload.name);
   if (!parsed.ok) {
     if (parsed.error === 'import_too_large') {
       return refusal(c, 409, 'import_too_large', TOO_LARGE_MESSAGE);

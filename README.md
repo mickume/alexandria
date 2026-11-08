@@ -57,13 +57,14 @@ search started from.
 ## Import
 
 The **Import** button at the end of the header's tabs opens the import page.
-Drop a plain-text file with one URL per line on it, or pick one (at most 5,000
+Drop a text or Markdown file (`.txt`, `.md`) on it, or pick one (at most 5,000
 URLs and 2 MB), and choose a workspace to add the links to, or name a new one.
-Blank lines and lines starting with `#` are skipped, and
-anything after the first space on a line is ignored. New URLs join the stream
+Every line that holds an `http://` or `https://` address is imported (its
+first address, Markdown link syntax and trailing punctuation removed); all
+other lines, and lines starting with `#`, are ignored. New URLs join the stream
 in file order, the first line highest; URLs already in the library are
-reported as duplicates and left as they are, and malformed lines are listed
-with their line numbers. The links are then fetched and enriched in the
+reported as duplicates and left as they are, and addresses that cannot be
+imported (such as `http://localhost/x`) are listed with their line numbers. The links are then fetched and enriched in the
 background, 20 a minute, and the report can be downloaded. With a workspace,
 every link of the file joins it in file order (links already in it keep their
 place). Scripts can do the same with `POST /api/v1/imports` (see
