@@ -68,9 +68,26 @@ every link of the file joins it in file order (links already in it keep their
 place). Scripts can do the same with `POST /api/v1/imports` (see
 [docs/api.md](docs/api.md)).
 
+## Agents (MCP)
+
+Alexandria serves a Model Context Protocol server at `/mcp`, so that an AI
+agent can search the library, read what it holds and file new links as you.
+Create a personal access token under **Settings**, then add the server to
+your client, for example Claude Code:
+
+```sh
+claude mcp add --transport http alexandria https://<your-site>/mcp \
+  --header "Authorization: Bearer alx_…"
+```
+
+[docs/mcp.md](docs/mcp.md) covers the other clients (Claude Desktop, Cursor,
+VS Code, Codex), checking the connection, the tools, and an example prompt
+that tells an agent what Alexandria is and how to use it.
+
 ## Documentation
 
 - [docs/api.md](docs/api.md): the HTTP API
+- [docs/mcp.md](docs/mcp.md): connecting an AI agent through the MCP server
 - [docs/configuration.md](docs/configuration.md): variables, secrets and bindings
 - [docs/architecture.md](docs/architecture.md): how it is put together
 - [docs/cli.md](docs/cli.md): there is no CLI
