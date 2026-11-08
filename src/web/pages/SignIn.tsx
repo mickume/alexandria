@@ -15,20 +15,24 @@ export function SignIn() {
   return (
     <main className="signin">
       <div className="signin-card">
-        <Mark size={40} />
+        <Mark size={48} />
         <h1>Alexandria</h1>
-        <p className="lead">
-          Your links, <span className="soft">kept and found again.</span>
-        </p>
-        {deleted && <p role="status">Your account and all its data are being deleted.</p>}
+        <p className="lead">Your links, kept and found again.</p>
+        {deleted && (
+          <p className="q-flash" role="status">
+            Your account and all its data are being deleted.
+          </p>
+        )}
         {message && (
-          <p className="notice" role="alert">
+          <p className="notice q-flash q-flash--danger" role="alert">
             {message}
           </p>
         )}
-        <a className="button primary" href="/auth/google">
-          Sign in with Google
-        </a>
+        <div className="signin-box q-box q-box-body">
+          <a className="q-btn q-btn--primary q-btn--block" href="/auth/google">
+            Sign in with Google
+          </a>
+        </div>
       </div>
     </main>
   );

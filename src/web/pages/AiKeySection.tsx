@@ -63,7 +63,7 @@ function KeyForm({
         value={model}
         onChange={(e) => setModel(e.target.value)}
       />
-      <button type="submit" className="button primary">
+      <button type="submit" className="q-btn q-btn--primary">
         Save key
       </button>
     </form>
@@ -121,7 +121,7 @@ export function AiKeySection() {
         else works and links are simply not enriched.
       </p>
       {settings.configured && (
-        <div className="panel">
+        <div className="panel q-box q-box-body">
           {settings.status === 'rejected' && (
             <p className="notice" role="alert">
               your AI key was rejected: {settings.rejected_message ?? 'no reason given'}
@@ -134,17 +134,17 @@ export function AiKeySection() {
           <div className="actions">
             <button
               type="button"
-              className="button"
+              className="q-btn"
               onClick={() => document.getElementById('ai-key')?.focus()}
             >
               Replace
             </button>
-            <button type="button" className="button" onClick={() => void remove()}>
+            <button type="button" className="q-btn" onClick={() => void remove()}>
               Remove
             </button>
           </div>
           {settings.status === 'verified' && settings.unenriched_count > 0 && (
-            <button type="button" className="button primary" onClick={() => void enrichAll()}>
+            <button type="button" className="q-btn q-btn--primary" onClick={() => void enrichAll()}>
               Enrich all unenriched links ({settings.unenriched_count})
             </button>
           )}

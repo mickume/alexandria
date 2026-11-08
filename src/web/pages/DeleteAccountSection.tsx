@@ -61,7 +61,7 @@ export function DeleteAccountSection() {
       />
       <button
         type="button"
-        className="button danger"
+        className="q-btn q-btn--danger"
         disabled={!matches(typed, email) || busy}
         onClick={() => void remove()}
       >

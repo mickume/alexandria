@@ -4,7 +4,7 @@
 
 ### exportResponse()
 
-> **exportResponse**(`env`, `user`): `Response`
+> **exportResponse**(`env`, `user`, `origin`): `Response`
 
 The export as a download: the user's email and name, every link (its API
 representation with its content URLs), workspaces, topics and tags, and
@@ -21,6 +21,10 @@ Nothing else of the user is in it: no settings, key, token, session or import.
 ##### user
 
 [`AuthUser`](../env.md#authuser)
+
+##### origin
+
+`string`
 
 #### Returns
 

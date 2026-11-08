@@ -18,9 +18,9 @@ import { useUndoableDelete } from './Stream';
 function WorkspaceResults({ workspaces }: { workspaces: SearchResults['workspaces'] }) {
   if (workspaces.length === 0) return null;
   return (
-    <ul className="workspace-results" aria-label="Matching workspaces">
+    <ul className="workspace-results q-box" aria-label="Matching workspaces">
       {workspaces.map((w) => (
-        <li key={w.id}>
+        <li key={w.id} className="q-box-row">
           <PageLink to={`/workspaces/${w.id}`}>{w.name}</PageLink>
           <Snippet segments={w.snippet} />
         </li>
@@ -33,12 +33,12 @@ function WorkspaceResults({ workspaces }: { workspaces: SearchResults['workspace
 function NothingFound({ query }: { query: string }) {
   const filters = activeFilters(query);
   return (
-    <div className="nothing-found">
+    <div className="nothing-found q-blankslate">
       <p className="muted">nothing found for {query.trim()}</p>
       {filters.length > 0 && (
         <ul className="filter-chips" aria-label="Active filters">
           {filters.map((f) => (
-            <li key={f} className="chip">
+            <li key={f} className="q-topic">
               {f}
             </li>
           ))}
@@ -136,7 +136,7 @@ export function Search({ query }: { query: string }) {
         ))}
       </ul>
       {found?.next && (
-        <button type="button" className="button" onClick={() => void more()}>
+        <button type="button" className="q-btn" onClick={() => void more()}>
           More results
         </button>
       )}

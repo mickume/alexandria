@@ -34,7 +34,7 @@ export function NoteEditor({
         {note ? <Markdown source={note} /> : <p className="muted">No note yet.</p>}
         <button
           type="button"
-          className="link-button"
+          className="q-btn-link"
           onClick={() => {
             setText(note);
             setEditing(true);
@@ -55,10 +55,10 @@ export function NoteEditor({
         </p>
       )}
       <div className="actions">
-        <button type="button" className="button primary" onClick={() => void save()}>
+        <button type="button" className="q-btn q-btn--primary" onClick={() => void save()}>
           Save note
         </button>
-        <button type="button" className="button" onClick={() => setEditing(false)}>
+        <button type="button" className="q-btn" onClick={() => setEditing(false)}>
           Cancel
         </button>
       </div>

@@ -48,15 +48,15 @@ function Row({
       <td>
         <PageLink to={searchPath(filterQuery(FILTER[kind], item.name))}>{item.name}</PageLink>
       </td>
-      <td className="count">{item.count}</td>
+      <td className="count q-table-number">{item.count}</td>
       <td className="actions">
         {mode === 'idle' && (
           <>
-            <button type="button" className="link-button" onClick={() => setMode('rename')}>
+            <button type="button" className="q-btn-link" onClick={() => setMode('rename')}>
               Rename
             </button>
             {others.length > 0 && (
-              <button type="button" className="link-button" onClick={() => setMode('merge')}>
+              <button type="button" className="q-btn-link" onClick={() => setMode('merge')}>
                 Merge
               </button>
             )}
@@ -76,7 +76,7 @@ function Row({
               onChange={(e) => setName(e.target.value)}
             />
             <button type="submit">Save</button>
-            <button type="button" className="link-button" onClick={() => setMode('idle')}>
+            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
               Cancel
             </button>
           </form>
@@ -96,7 +96,7 @@ function Row({
               ))}
             </select>
             <button type="submit">Merge into it</button>
-            <button type="button" className="link-button" onClick={() => setMode('idle')}>
+            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
               Cancel
             </button>
           </form>
@@ -137,7 +137,7 @@ export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: s
       )}
       {items && items.length === 0 && <p className="muted">No {kind} yet.</p>}
       {items && items.length > 0 && (
-        <table>
+        <table className="q-table">
           <thead>
             <tr>
               <th scope="col">Name</th>

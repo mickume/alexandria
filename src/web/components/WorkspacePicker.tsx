@@ -45,14 +45,14 @@ export function WorkspacePicker({
     <span className="picker">
       <button
         type="button"
-        className="link-button"
+        className="q-btn-link"
         aria-haspopup="menu"
         onClick={() => void toggle()}
       >
         Add to workspace
       </button>
       {open && (
-        <span className="picker-menu" role="menu">
+        <span className="picker-menu q-overlay q-menu" role="menu">
           {(list ?? []).map((w) => {
             const inIt = memberOf.includes(w.id);
             return (
@@ -61,7 +61,7 @@ export function WorkspacePicker({
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={inIt}
-                className={inIt ? 'picker-item checked' : 'picker-item'}
+                className="q-menu-item"
                 onClick={() => void choose(w)}
               >
                 {w.name}

@@ -59,14 +59,22 @@ account and checks the PKCE verifier as Google does.
   `/` and Escape keys), and `pages/Topics` and `pages/Tags`
   (`components/VocabularyList`). `App.tsx` follows the path and the query
   string. `api.ts` is the client of the API, `format.ts`
-  formats dates. `styles.css` holds the whole visual design: one system
-  typeface, a soft canvas with the navigation in a sidebar (a row of pills
-  on narrow screens) beside a white rounded panel holding the top bar and
-  the page, links as rows of a plain list divided by hairlines (title and
-  actions, a line of facts, a two-line summary, labels; no thumbnails, the
-  actions showing on hover or focus), pill controls and one warm
-  accent; light and dark from `prefers-color-scheme`. `components/Icon.tsx`
-  draws the navigation's line icons and Alexandria's mark.
+  formats dates. The look comes from **Quire**, the reusable design
+  language in `src/design/` ([ADR 03](adr/03-adopt-a-reusable-design-language.md)):
+  `quire.css` loads its tokens, base styles and `q-` components into cascade
+  layers, and `main.tsx` imports it before `styles.css`, which holds only
+  Alexandria's own layout and parts, written with Quire's tokens. Every page
+  sits under a light header: the mark and a breadcrumb (Alexandria / the
+  section), the search box and a sign-out button, over a row of underlined
+  tabs (Stream, Workspaces, Topics, Tags, Archive, Settings) that scrolls
+  sideways on a phone. Page titles are light headings over a hairline. Links
+  are the rows of one bordered box (title and actions, a line of facts, a
+  two-line summary, the topic as an outlined label and the tags as blue pills;
+  no thumbnails, the actions showing on hover or focus). Buttons have 6px
+  corners, with green for the main action and red for destructive ones; the
+  account's deletion sits in a red-bordered box. Light and dark follow
+  `prefers-color-scheme`. `components/Icon.tsx` draws the 16 px line icons
+  and Alexandria's mark.
   `components/LinkCard` shows one link: its title, its site address and
   Open open the site in a new tab, through `/api/v1/links/{id}/open` so the
   visit counts as a use. Open, Read (when a copy is stored) and Pin stay on

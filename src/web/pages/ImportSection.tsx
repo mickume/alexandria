@@ -39,7 +39,7 @@ export function ImportSection() {
           accept=".txt,text/plain"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
-        <button type="submit" className="button primary" disabled={!file || busy}>
+        <button type="submit" className="q-btn q-btn--primary" disabled={!file || busy}>
           Import
         </button>
       </form>

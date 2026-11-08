@@ -10,6 +10,7 @@ import {
 import { Link as PageLink } from '../App';
 import { ApiError, links, openUrl, type Link } from '../api';
 import { formatDate, formatWhen } from '../format';
+import { Icon } from './Icon';
 import { WorkspacePicker } from './WorkspacePicker';
 
 /**
@@ -36,7 +37,7 @@ export function RefreshButton({
   }
   return (
     <>
-      <button type="button" className="link-button" onClick={() => void refresh()}>
+      <button type="button" className="q-btn-link" onClick={() => void refresh()}>
         Refresh
       </button>
       {status && (
@@ -75,7 +76,7 @@ function Summary({ text }: { text: string }) {
         {text}
       </p>
       {!open && !fits && (
-        <button type="button" className="link-button" onClick={() => setOpen(true)}>
+        <button type="button" className="q-btn-link" onClick={() => setOpen(true)}>
           more
         </button>
       )}
@@ -103,7 +104,7 @@ function EnrichmentFailed({ link, onQueued }: { link: Link; onQueued?: (link: Li
           {status}
         </span>
       ) : (
-        <button type="button" className="link-button" onClick={() => void rerun()}>
+        <button type="button" className="q-btn-link" onClick={() => void rerun()}>
           re-run enrichment
         </button>
       )}
@@ -135,7 +136,7 @@ export function WorkspaceChips({ workspaces }: { workspaces: { id: string; name:
     <ul className="workspace-chips" aria-label="Workspaces">
       {workspaces.map((w) => (
         <li key={w.id}>
-          <PageLink to={`/workspaces/${w.id}`} className="chip">
+          <PageLink to={`/workspaces/${w.id}`} className="q-label">
             {w.name}
           </PageLink>
         </li>
@@ -206,18 +207,18 @@ function CardMenu({ children }: { children: ReactNode }) {
       <button
         ref={trigger}
         type="button"
-        className="link-button card-menu-button"
+        className="q-btn q-btn--sm q-btn--invisible q-btn--icon card-menu-button"
         aria-label="More actions"
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
       >
-        ⋯
+        <Icon name="more" />
       </button>
       {open && (
         <div
           id={id}
-          className="card-menu-panel"
+          className="card-menu-panel q-overlay q-menu"
           onClick={(e) => {
             const chosen = (e.target as Element).closest('a, button');
             if (chosen && !chosen.closest('[data-keep-open]')) setOpen(false);
@@ -266,11 +267,11 @@ function Labels({ link }: { link: Link }) {
   if (link.tags.length === 0 && !link.topic) return null;
   return (
     <div className="card-labels">
-      {link.topic && <span className="topic">{link.topic}</span>}
+      {link.topic && <span className="topic q-label">{link.topic}</span>}
       {link.tags.length > 0 && (
         <ul className="tags" aria-label="Tags">
           {link.tags.map((tag) => (
-            <li key={tag} className="chip">
+            <li key={tag} className="q-topic">
               {tag}
             </li>
           ))}
@@ -337,28 +338,28 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           </SiteLink>
         </div>
         <div className="card-actions">
-          <SiteLink link={link} className="link-button">
+          <SiteLink link={link} className="q-btn q-btn--sm q-btn--invisible">
             Open
           </SiteLink>
           {link.has_snapshot && (
-            <PageLink to={`/links/${link.id}/read`} className="link-button">
+            <PageLink to={`/links/${link.id}/read`} className="q-btn q-btn--sm q-btn--invisible">
               Read
             </PageLink>
           )}
           <button
             type="button"
-            className="link-button"
+            className="q-btn q-btn--sm q-btn--invisible"
             onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
           >
             {link.pinned ? 'Unpin' : 'Pin'}
           </button>
           <CardMenu>
             {link.has_snapshot && (
-              <PageLink to={`/links/${link.id}/snapshot`} className="link-button">
+              <PageLink to={`/links/${link.id}/snapshot`} className="q-menu-item">
                 Snapshot
               </PageLink>
             )}
-            <PageLink to={`/links/${link.id}`} className="link-button">
+            <PageLink to={`/links/${link.id}`} className="q-menu-item">
               Details
             </PageLink>
             <span className="card-menu-item" data-keep-open>
@@ -376,7 +377,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             {actions.onRemoveFromWorkspace && (
               <button
                 type="button"
-                className="link-button"
+                className="q-menu-item"
                 onClick={() => actions.onRemoveFromWorkspace?.(link)}
               >
                 Remove from workspace
@@ -385,7 +386,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             {actions.onArchive && (
               <button
                 type="button"
-                className="link-button"
+                className="q-menu-item"
                 onClick={() => actions.onArchive?.(link)}
               >
                 Archive
@@ -393,7 +394,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             )}
             <button
               type="button"
-              className="link-button danger"
+              className="q-menu-item q-menu-item--danger"
               onClick={() => actions.onDelete(link)}
             >
               Delete

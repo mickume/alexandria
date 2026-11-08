@@ -20,7 +20,7 @@ What a sign-in keeps from Google: the email and the display name, nothing else.
 
 ### finishSignIn()
 
-> **finishSignIn**(`env`, `code`, `verifier`): `Promise`\<[`GoogleIdentity`](#googleidentity) \| `null`\>
+> **finishSignIn**(`env`, `code`, `verifier`, `origin`): `Promise`\<[`GoogleIdentity`](#googleidentity) \| `null`\>
 
 Exchanges an authorization code for the signed-in identity. The ID token
 comes straight from Google's token endpoint over TLS, so its claims are read
@@ -41,6 +41,10 @@ Returns null when the exchange is refused or the identity is unusable.
 
 `string`
 
+##### origin
+
+`string`
+
 #### Returns
 
 `Promise`\<[`GoogleIdentity`](#googleidentity) \| `null`\>
@@ -49,7 +53,7 @@ Returns null when the exchange is refused or the identity is unusable.
 
 ### startSignIn()
 
-> **startSignIn**(`env`): `object`
+> **startSignIn**(`env`, `origin`): `object`
 
 Starts the authorization-code flow with PKCE: the URL to send the browser to, with its state and verifier.
 
@@ -58,6 +62,10 @@ Starts the authorization-code flow with PKCE: the URL to send the browser to, wi
 ##### env
 
 [`Env`](../env.md#env)
+
+##### origin
+
+`string`
 
 #### Returns
 
