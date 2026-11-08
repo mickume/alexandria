@@ -2,6 +2,32 @@
 
 ## Functions
 
+### byName()
+
+> **byName**(`a`, `b`): `number`
+
+Orders things by name, alphabetically and ignoring case.
+
+#### Parameters
+
+##### a
+
+###### name
+
+`string`
+
+##### b
+
+###### name
+
+`string`
+
+#### Returns
+
+`number`
+
+***
+
 ### formatDate()
 
 > **formatDate**(`iso`): `string`

@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, links, openUrl, type Link } from '../api';
-import { formatDate, formatWhen } from '../format';
+import { byName, formatDate, formatWhen } from '../format';
 import { Icon } from './Icon';
 import { WorkspacePicker } from './WorkspacePicker';
 
@@ -293,10 +293,6 @@ function pinDragProps(link: Link, actions: CardActions) {
       actions.onDropOn?.(link);
     },
   };
-}
-
-function byName(a: { name: string }, b: { name: string }): number {
-  return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 }
 
 /**

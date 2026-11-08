@@ -5,6 +5,7 @@ import { FakeApi, renderPage } from '../test/helpers';
 const topics = [
   { id: 't1', name: 'web development', count: 3, newest_added_at: '2026-03-02T00:00:00.000Z' },
   { id: 't2', name: 'cooking', count: 1, newest_added_at: '2026-03-01T00:00:00.000Z' },
+  { id: 't3', name: 'Astronomy', count: 2, newest_added_at: '2026-02-01T00:00:00.000Z' },
 ];
 
 /** The rows of the list, each as [name, count]. */
@@ -21,7 +22,7 @@ function rows(): string[][] {
 }
 
 describe('the Topics page', () => {
-  it('lists every topic with its count in order, each opening its search', async () => {
+  it('lists every topic with its count by name, each opening its search', async () => {
     const api = new FakeApi().on('GET', '/api/v1/topics', {
       status: 200,
       body: { items: topics, next_cursor: null },
@@ -30,8 +31,9 @@ describe('the Topics page', () => {
     expect(await screen.findByRole('heading', { name: 'Topics' })).toBeTruthy();
     await screen.findByRole('link', { name: 'web development' });
     expect(rows()).toEqual([
-      ['web development', '3'],
+      ['Astronomy', '2'],
       ['cooking', '1'],
+      ['web development', '3'],
     ]);
     await act(async () => screen.getByRole('link', { name: 'web development' }).click());
     expect(window.location.pathname + window.location.search).toBe(
@@ -51,7 +53,24 @@ describe('the Topics page', () => {
     );
     renderPage('/topics', api);
     await screen.findByRole('link', { name: 'cooking' });
-    expect(rows().map(([name]) => name)).toEqual(['web development', 'cooking']);
+    expect(rows().map(([name]) => name)).toEqual(['cooking', 'web development']);
+  });
+
+  it('offers the other topics to merge into by name', async () => {
+    const api = new FakeApi().on('GET', '/api/v1/topics', {
+      status: 200,
+      body: { items: topics, next_cursor: null },
+    });
+    renderPage('/topics', api);
+    const row = (await screen.findByRole('link', { name: 'cooking' })).closest('tr')!;
+    await act(async () => within(row).getByRole('button', { name: 'Merge' }).click());
+    const select = within(row).getByRole('combobox', { name: 'Merge into' });
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Astronomy', 'web development']);
+    expect(select).toHaveProperty('value', 't3');
   });
 
   it('is reached from the navigation', async () => {

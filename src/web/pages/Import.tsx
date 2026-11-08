@@ -2,13 +2,10 @@ import { useEffect, useState, type DragEvent, type FormEvent } from 'react';
 import { ApiError, imports, workspaces, type ImportReport, type WorkspaceSummary } from '../api';
 import { Icon } from '../components/Icon';
 import { ImportProgress } from '../components/ImportProgress';
+import { byName } from '../format';
 
 /** The workspace choice that asks for a new workspace. */
 const NEW_WORKSPACE = 'new';
-
-function byName(a: { name: string }, b: { name: string }): number {
-  return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-}
 
 /** A file's size as people read it: "820 B", "14 KB", "1.2 MB". */
 function formatSize(bytes: number): string {

@@ -22,3 +22,8 @@ export function formatWhen(iso: string, now: number = Date.now()): string {
   if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
   return formatDate(iso);
 }
+
+/** Orders things by name, alphabetically and ignoring case. */
+export function byName(a: { name: string }, b: { name: string }): number {
+  return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+}

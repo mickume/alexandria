@@ -6,7 +6,7 @@
 
 > **Topics**(): `Element`
 
-The Topics page: every topic with its number of links, newest first.
+The Topics page: every topic with its number of links, by name.
 
 #### Returns
 
