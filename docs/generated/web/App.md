@@ -50,6 +50,12 @@ A link within the website, followed without a reload.
 
 `string`
 
+###### current?
+
+`boolean` = `false`
+
+Marks the link as the page being shown.
+
 ###### to
 
 `string`

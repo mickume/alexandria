@@ -86,6 +86,14 @@ What a response turned out to be.
 
 ## Variables
 
+### DNS\_QUERY\_URL
+
+> `const` **DNS\_QUERY\_URL**: `"https://cloudflare-dns.com/dns-query"` = `'https://cloudflare-dns.com/dns-query'`
+
+The DNS-over-HTTPS endpoint (JSON) that tells an unknown host from a bad certificate.
+
+***
+
 ### FETCH\_TIMEOUT\_MS
 
 > `const` **FETCH\_TIMEOUT\_MS**: `15000` = `15_000`
@@ -192,3 +200,24 @@ Alexandria's own (the host gate) is thrown, not turned into a reason.
 #### Returns
 
 `Promise`\<[`FetchFailed`](#fetchfailed) \| `T`\>
+
+***
+
+### statusReason()
+
+> **statusReason**(`response`): `Promise`\<`string`\>
+
+The reason for a final answer that is not a success, consuming its body:
+an error status Cloudflare itself answers for an origin it could not reach
+(Server: cloudflare) is named as that failure, a 530 with error 1016 as
+'host not found'; any other status is 'HTTP <status>'.
+
+#### Parameters
+
+##### response
+
+`Response`
+
+#### Returns
+
+`Promise`\<`string`\>

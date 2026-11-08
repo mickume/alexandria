@@ -149,7 +149,7 @@ and its deletion job queued; the session cookie is cleared.
 
 ### runDeletion()
 
-> **runDeletion**(`env`, `userId`): `Promise`\<`"skipped"` \| `"done"` \| `"more"`\>
+> **runDeletion**(`env`, `userId`): `Promise`\<`"skipped"` \| `"more"` \| `"done"`\>
 
 One run of an account's deletion job: one batch of its stored objects, then
 one batch from each table holding its rows (rows referencing its links
@@ -170,4 +170,4 @@ with this id (already removed, or never marked).
 
 #### Returns
 
-`Promise`\<`"skipped"` \| `"done"` \| `"more"`\>
+`Promise`\<`"skipped"` \| `"more"` \| `"done"`\>

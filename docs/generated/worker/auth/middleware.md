@@ -18,7 +18,7 @@ the Worker holds these Request objects, so no client can pass as one.
 
 Authenticates every request under /api/v1/: a bearer token (a personal
 access token) or the session cookie. Anything else is answered 401 before the route runs. A change
-authenticated by the cookie must come from PUBLIC_ORIGIN. The Worker's own
+authenticated by the cookie must come from the site's own origin. The Worker's own
 internal requests carry their user already.
 
 ***

@@ -148,9 +148,10 @@ The structured result asked of the model.
 
 > **enrichWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a structured {summary, tags, topic}: a forced
-tool call through Anthropic's Messages API, a JSON-schema response format
-through OpenRouter's chat completions. The value is the model's raw object.
+Asks the user's provider for a structured {summary, tags, topic}: a JSON
+schema through structured outputs (output_config.format) of Anthropic's
+Messages API, and through the response format of OpenRouter's chat
+completions. The value is the model's raw object.
 
 #### Parameters
 

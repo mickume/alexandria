@@ -136,7 +136,8 @@ On a workspace's page: take the link out of the workspace.
 
 > **LinkCard**(`__namedParameters`): `Element`
 
-One link in the stream: favicon, title, host, dates, state and actions.
+One link in the stream, as a row of a list: title and actions, then host,
+dates and state, the summary, and the labels.
 
 #### Parameters
 

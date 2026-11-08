@@ -234,11 +234,11 @@ OpenRouter's API base URL; configurable so tests can run a local fake.
 
 End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target.
 
-##### PUBLIC\_ORIGIN
+##### PUBLIC\_ORIGIN?
 
-> **PUBLIC\_ORIGIN**: `string`
+> `optional` **PUBLIC\_ORIGIN?**: `string`
 
-The site's own origin, such as https://alexandria.example.com.
+The site's own origin, such as https://alexandria.example.com; unset, the origin requests reach.
 
 ##### SNAPSHOTS
 
