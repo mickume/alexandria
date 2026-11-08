@@ -22,7 +22,7 @@ export function CheckButton({ link, onChecked }: { link: Link; onChecked?: (link
   }
   return (
     <>
-      <button type="button" className="link-button" onClick={() => void check()}>
+      <button type="button" className="q-btn-link" onClick={() => void check()}>
         Check now
       </button>
       {status && (

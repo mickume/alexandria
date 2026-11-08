@@ -10,20 +10,20 @@ import { ImportSection } from './ImportSection';
 function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="panel" role="status">
+    <div className="panel q-box q-box-body" role="status">
       <p>Copy this secret now. It will not be shown again.</p>
       <code className="secret">{secret}</code>
       <div className="actions">
         <button
           type="button"
-          className="button"
+          className="q-btn"
           onClick={() => {
             void navigator.clipboard?.writeText(secret).then(() => setCopied(true));
           }}
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
-        <button type="button" className="button" onClick={onDone}>
+        <button type="button" className="q-btn" onClick={onDone}>
           Done
         </button>
       </div>
@@ -40,7 +40,7 @@ function ExportSection() {
         Your whole library as one JSON file: every link, workspace, topic and tag, with the
         addresses of each link’s stored copies.
       </p>
-      <a className="button" href="/api/v1/export" download>
+      <a className="q-btn" href="/api/v1/export" download>
         Export library
       </a>
     </section>
@@ -105,7 +105,7 @@ export function Settings() {
           required
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="button primary">
+        <button type="submit" className="q-btn q-btn--primary">
           Create token
         </button>
       </form>
@@ -115,9 +115,9 @@ export function Settings() {
         </p>
       )}
       {secret && <NewSecret secret={secret} onDone={() => setSecret(null)} />}
-      <ul className="token-list">
+      <ul className="token-list q-box">
         {(list ?? []).map((t) => (
-          <li key={t.id} aria-label={t.name}>
+          <li key={t.id} className="q-box-row" aria-label={t.name}>
             <div>
               <strong>{t.name}</strong>
               <div className="muted">
@@ -125,7 +125,7 @@ export function Settings() {
                 {t.last_used_at ? formatDate(t.last_used_at) : 'never'}
               </div>
             </div>
-            <button type="button" className="button" onClick={() => void revoke(t.id)}>
+            <button type="button" className="q-btn" onClick={() => void revoke(t.id)}>
               Revoke
             </button>
           </li>

@@ -41,7 +41,7 @@ function WorkspaceRow({
   }
 
   return (
-    <li className="workspace-row">
+    <li className="workspace-row q-box-row">
       {renaming ? (
         <form className="inline-form" onSubmit={rename}>
           <label htmlFor={`rename-${workspace.id}`} className="visually-hidden">
@@ -53,7 +53,7 @@ function WorkspaceRow({
             maxLength={100}
             onChange={(e) => setName(e.target.value)}
           />
-          <button type="submit" className="button primary">
+          <button type="submit" className="q-btn q-btn--primary">
             Save
           </button>
         </form>
@@ -65,7 +65,7 @@ function WorkspaceRow({
       <span className="actions">
         <button
           type="button"
-          className="link-button"
+          className="q-btn-link"
           aria-label={`Rename ${workspace.name}`}
           onClick={() => setRenaming(true)}
         >
@@ -73,7 +73,7 @@ function WorkspaceRow({
         </button>
         <button
           type="button"
-          className="link-button"
+          className="q-btn-link"
           aria-label={`Delete ${workspace.name}`}
           onClick={() => void remove()}
         >
@@ -129,7 +129,7 @@ export function Workspaces() {
           required
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="button primary">
+        <button type="submit" className="q-btn q-btn--primary">
           Create
         </button>
       </form>
@@ -138,7 +138,7 @@ export function Workspaces() {
           {error}
         </p>
       )}
-      <ul className="workspace-list">
+      <ul className="workspace-list q-box">
         {(list ?? []).map((w) => (
           <WorkspaceRow
             key={w.id}

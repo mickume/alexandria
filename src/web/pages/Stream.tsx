@@ -9,6 +9,7 @@ import {
 import { Link as PageLink } from '../App';
 import { ai, ApiError, links as linksApi, type Link, type Page } from '../api';
 import { AddLinks } from '../components/AddLinks';
+import { Icon } from '../components/Icon';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { Toast } from '../components/Toast';
 
@@ -239,7 +240,8 @@ function NoKeyBanner() {
   }, []);
   if (!show) return null;
   return (
-    <PageLink to="/settings" className="banner">
+    <PageLink to="/settings" className="banner q-flash">
+      <Icon name="info" />
       not enriched: add an AI key in settings
     </PageLink>
   );
@@ -309,7 +311,7 @@ export function Stream() {
         ))}
       </div>
       {loaded && items.length === 0 && (
-        <p className="muted empty">Nothing here yet. Paste a link above to start.</p>
+        <p className="muted empty q-blankslate">Nothing here yet. Paste a link above to start.</p>
       )}
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
       <div className="toasts">

@@ -86,7 +86,7 @@ export function Snapshot({ id }: { id: string }) {
       <h1>{link.title}</h1>
       {link.content_kind === 'pdf' ? (
         <>
-          <a className="button" href={snapshotUrl(id, { download: true })}>
+          <a className="q-btn" href={snapshotUrl(id, { download: true })}>
             Download
           </a>
           <object className="snapshot-frame" data={snapshotUrl(id)} type="application/pdf">

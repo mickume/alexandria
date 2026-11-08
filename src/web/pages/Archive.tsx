@@ -62,10 +62,10 @@ export function Archive({ query = '' }: { query?: string }) {
                 <span className="card-title">{link.title}</span>
               </div>
               <div className="card-actions">
-                <button type="button" className="link-button" onClick={() => void restore(link)}>
+                <button type="button" className="q-btn-link" onClick={() => void restore(link)}>
                   Restore
                 </button>
-                <button type="button" className="link-button" onClick={() => deletes.remove(link)}>
+                <button type="button" className="q-btn-link" onClick={() => deletes.remove(link)}>
                   Delete
                 </button>
               </div>

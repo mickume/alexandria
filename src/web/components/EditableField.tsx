@@ -65,14 +65,11 @@ export function EditableField({
     <div className="field" data-testid={`field-${field}`}>
       <div className="field-head">
         <span className="muted">{label}</span>
-        {link.edited_fields.includes(field) && <span className="badge">edited</span>}
+        {link.edited_fields.includes(field) && (
+          <span className="q-label q-label--accent">edited</span>
+        )}
         {!editing && (
-          <button
-            type="button"
-            className="link-button"
-            onClick={start}
-            aria-label={`Edit ${field}`}
-          >
+          <button type="button" className="q-btn-link" onClick={start} aria-label={`Edit ${field}`}>
             Edit
           </button>
         )}
@@ -93,10 +90,10 @@ export function EditableField({
             <input id={inputId} value={value} onChange={(e) => setValue(e.target.value)} />
           )}
           <div className="actions">
-            <button type="button" className="button primary" onClick={() => void save()}>
+            <button type="button" className="q-btn q-btn--primary" onClick={() => void save()}>
               Save
             </button>
-            <button type="button" className="button" onClick={() => setEditing(false)}>
+            <button type="button" className="q-btn" onClick={() => setEditing(false)}>
               Cancel
             </button>
           </div>

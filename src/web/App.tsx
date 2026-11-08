@@ -85,85 +85,68 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '/topics', label: 'Topics', icon: 'topics' },
   { to: '/tags', label: 'Tags', icon: 'tags' },
   { to: '/archive', label: 'Archive', icon: 'archive' },
+  { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-/** The section a path belongs to, for the breadcrumb and the active navigation item. */
+/** The section a path belongs to, for the breadcrumb and the current tab. */
 function sectionOf(path: string): string {
-  if (path === '/settings') return 'Settings';
   if (path === '/search') return 'Search';
   if (path.startsWith('/links/')) return 'Link';
   const match = SECTIONS.filter((s) => s.to !== '/' && path.startsWith(s.to));
   return match[0]?.label ?? 'Stream';
 }
 
-/** One item of the navigation, marked as the current page when it is. */
-function NavItem({
-  to,
-  icon,
-  current,
-  children,
-}: {
-  to: string;
-  icon: IconName;
-  current: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <Link to={to} className={current ? 'nav-item current' : 'nav-item'} current={current}>
-      <Icon name={icon} />
-      {children}
-    </Link>
-  );
-}
-
 /**
- * The frame of every signed-in page: the sidebar with the navigation, and
- * beside it the top bar (where you are, and the search box) over the page.
+ * The frame of every signed-in page: the header (where you are, the search
+ * box and signing out, over a row of tabs, one per section) above the page.
  */
 function Layout({ location, children }: { location: Location; children: ReactNode }) {
   const section = sectionOf(location.path);
   return (
     <div className="shell">
-      <aside className="sidebar">
-        <Link to="/" className="brand">
-          <Mark />
-          <span>Alexandria</span>
-        </Link>
-        <nav className="nav">
-          <p className="nav-group">Library</p>
-          {SECTIONS.map((s) => (
-            <NavItem key={s.to} to={s.to} icon={s.icon} current={section === s.label}>
-              {s.label}
-            </NavItem>
-          ))}
-          <p className="nav-group">Account</p>
-          <NavItem to="/settings" icon="settings" current={section === 'Settings'}>
-            Settings
-          </NavItem>
-          <form method="post" action="/auth/signout">
-            <button type="submit" className="nav-item">
-              <Icon name="signout" />
-              Sign out
-            </button>
-          </form>
-        </nav>
-      </aside>
-      <div className="content">
-        <header className="topbar">
-          <p className="crumbs">
-            <Icon name="home" size={16} />
-            <span className="muted">Alexandria</span>
-            <span className="muted" aria-hidden="true">
+      <header className="q-header">
+        <div className="q-header-bar">
+          <p className="q-breadcrumb q-header-context">
+            <Link to="/" className="q-breadcrumb-item brand">
+              <Mark />
+              <span>Alexandria</span>
+            </Link>
+            <span className="q-breadcrumb-separator" aria-hidden="true">
               /
             </span>
-            <span>{section}</span>
+            <span className="q-breadcrumb-item is-current">{section}</span>
           </p>
-          <SearchBox location={location} />
-        </header>
-        <main className="page" tabIndex={-1}>
-          {children}
-        </main>
-      </div>
+          <div className="q-header-actions">
+            <SearchBox location={location} />
+            <form method="post" action="/auth/signout">
+              <button
+                type="submit"
+                className="q-btn q-btn--icon"
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <Icon name="signout" />
+              </button>
+            </form>
+          </div>
+        </div>
+        <nav className="q-underline-nav" aria-label="Sections">
+          {SECTIONS.map((s) => (
+            <Link
+              key={s.to}
+              to={s.to}
+              className="q-underline-nav-item"
+              current={section === s.label}
+            >
+              <Icon name={s.icon} />
+              {s.label}
+            </Link>
+          ))}
+        </nav>
+      </header>
+      <main className="page q-container q-container--md" tabIndex={-1}>
+        {children}
+      </main>
     </div>
   );
 }

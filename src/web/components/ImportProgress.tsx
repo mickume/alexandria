@@ -62,7 +62,7 @@ export function ImportProgress({ report }: { report: ImportReport }) {
         <li>done {progress.done}</li>
         <li>enriched {progress.enriched}</li>
       </ul>
-      <a className="link-button" href={imports.reportUrl(report.id)} download>
+      <a className="q-btn-link" href={imports.reportUrl(report.id)} download>
         Download report
       </a>
     </div>

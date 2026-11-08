@@ -33,6 +33,7 @@ src/worker/             # The Cloudflare Worker: Hono app, API, auth, links
 src/worker/test/        # Shared Worker test helpers (requests, users, outbound router)
 src/web/                # The React website (Vite)
 src/web/test/           # Shared website test helpers (renderPage, FakeApi)
+src/design/             # Quire, the reusable design language (CSS tokens and components)
 migrations/             # D1 schema migrations, applied in order
 e2e/                    # Playwright end-to-end tests and the fake Google provider
 index.html              # The website's HTML entry (Vite)

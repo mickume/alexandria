@@ -97,7 +97,7 @@ export function DecaySection() {
             {error.message}
           </p>
         )}
-        <button type="submit" className="button primary">
+        <button type="submit" className="q-btn q-btn--primary">
           Save thresholds
         </button>
         {saved && <span role="status">saved</span>}
