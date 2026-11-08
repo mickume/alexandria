@@ -833,7 +833,8 @@ it starts a new, empty library.
 transport, for agents. It is stateless: every request is answered on its
 own, as JSON (`Content-Type: application/json`), with no session id; send
 `Accept: application/json, text/event-stream` as the transport requires.
-`GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`.
+`GET /mcp` and `DELETE /mcp` answer `405` with `Allow: POST`. To connect an
+agent to it, see [mcp.md](mcp.md).
 
 Only a personal access token authenticates it:
 `Authorization: Bearer <secret>`. A missing, unknown or revoked token, or a
