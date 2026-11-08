@@ -180,6 +180,12 @@ The queue of enrichment messages, one per link to summarise, tag and file.
 
 The queue of fetch messages, one per link to fetch.
 
+##### FIRECRAWL\_API\_URL
+
+> **FIRECRAWL\_API\_URL**: `string`
+
+Firecrawl's API base URL; configurable so tests can run a local fake.
+
 ##### GOOGLE\_AUTH\_URL
 
 > **GOOGLE\_AUTH\_URL**: `string`

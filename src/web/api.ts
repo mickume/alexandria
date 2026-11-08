@@ -214,6 +214,23 @@ export const ai = {
   enrichUnenriched: () => request<{ queued: number }>('POST', '/links/enrich-unenriched'),
 };
 
+/** The owner's Firecrawl key, never beyond its last 4 characters. */
+export type FirecrawlSettings =
+  | {
+      configured: true;
+      key_last4: string;
+      status: 'verified' | 'rejected';
+      rejected_message: string | null;
+    }
+  | { configured: false };
+
+export const firecrawl = {
+  get: () => request<FirecrawlSettings>('GET', '/settings/firecrawl'),
+  save: (apiKey: string) =>
+    request<FirecrawlSettings>('PUT', '/settings/firecrawl', { api_key: apiKey }),
+  remove: () => request<void>('DELETE', '/settings/firecrawl'),
+};
+
 /** A workspace as listed. */
 export interface WorkspaceSummary {
   id: string;

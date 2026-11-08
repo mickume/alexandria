@@ -10,6 +10,7 @@ import { archiveLinkRoutes, archiveRoutes } from './decay/archive';
 import { checkRoutes } from './decay/liveness';
 import { decaySettingsRoutes } from './decay/routes';
 import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
+import { firecrawlSettingsRoutes } from './fetcher/firecrawl';
 import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
 import { importRoutes } from './imports/routes';
@@ -31,6 +32,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/tokens', tokenRoutes);
   api.route('/settings', settingsRoutes);
   api.route('/settings', decaySettingsRoutes);
+  api.route('/settings', firecrawlSettingsRoutes);
   api.route('/links', enrichLinkRoutes);
   api.route('/links', archiveLinkRoutes);
   api.route('/links', checkRoutes);

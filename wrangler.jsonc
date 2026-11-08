@@ -60,6 +60,7 @@
     // ORIGIN_PROXY_URL is left unset in production; the end-to-end tests set it.
     "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
     "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+    "FIRECRAWL_API_URL": "https://api.firecrawl.dev",
   },
   "observability": { "enabled": true },
 }

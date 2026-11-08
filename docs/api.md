@@ -136,7 +136,10 @@ A link is shown as:
 `state` is `pending` until the link's first fetch, then `active`, or
 `unreachable` after three failed attempts, or after the first when the site
 answers with a bot check (`state_reason` says why: "timed out", "HTTP 503",
-"blocked by a bot check", …). Until a fetch succeeds, `title` is the host,
+"blocked by a bot check", …; a page behind a bot check is fetched through
+Firecrawl instead when the owner stored a [Firecrawl key](#firecrawl-settings),
+and then carries the note "fetched through Firecrawl"). Until a fetch
+succeeds, `title` is the host,
 then, once an attempt fails, words read from the address (unless the owner
 edited it). A fetch fills `final_url`, `http_status`, `title`,
 `description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
@@ -383,6 +386,41 @@ re-runs and refreshes never overwrite it.
 - `200 <link>`
 - `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
   nothing is changed when any field is invalid.
+
+### Firecrawl settings
+
+Pages whose site answers with a bot check ("blocked by a bot check") can be
+fetched through Firecrawl with the owner's own key; see
+[ADR 04](adr/04-fetch-pages-behind-a-bot-check-through-firecrawl.md). Without
+a key, no page is sent to Firecrawl. The key is stored encrypted and never
+returned: the API shows only its last 4 characters.
+
+#### `GET /api/v1/settings/firecrawl`
+
+`200 {"configured": true, "key_last4", "status": "verified" | "rejected", "rejected_message": <string or null>}`,
+or `{"configured": false}` without a key.
+
+#### `PUT /api/v1/settings/firecrawl`
+
+Body `{"api_key": "…"}`. The key is stored only after Firecrawl accepts it on
+a request that costs no credits, replacing any earlier key and lifting a
+rejection.
+
+- `200` with the settings as above, `status: "verified"`
+- `400 {"error": "invalid_key", "field": "api_key", "message"}` without a key,
+  without calling Firecrawl
+- `400 {"error": "key_rejected", "field": "api_key", "message": <Firecrawl's message>}`
+- `502 {"error": "provider_unavailable", "message"}` when Firecrawl cannot be
+  reached, answers 5xx, or is rate limited
+
+When Firecrawl later refuses the key while fetching a page (HTTP 401, 402 or
+403: a revoked key, no credits left), the key's `status` becomes `rejected`
+with Firecrawl's message, and no page goes to Firecrawl until a key is saved
+again.
+
+#### `DELETE /api/v1/settings/firecrawl`
+
+Forgets the key: `204`. Pages behind a bot check stay unreachable.
 
 ### Workspaces
 

@@ -110,6 +110,13 @@ const AiSettingsView = z.strictObject({
   rejected_message: z.string().nullable(),
 });
 
+const FirecrawlSettingsView = z.strictObject({
+  configured: z.literal(true),
+  key_last4: z.string(),
+  status: z.enum(['verified', 'rejected']),
+  rejected_message: z.string().nullable(),
+});
+
 /** A workspace in a list. */
 export const WorkspaceSummary = z.strictObject({
   id: z.string(),
@@ -302,6 +309,37 @@ export const operations: Operation[] = [
     path: '/settings/ai',
     operationId: 'deleteAiSettings',
     summary: 'Forget the AI provider, model and key',
+    responses: { 204: { description: 'Removed' } },
+  },
+  {
+    method: 'get',
+    path: '/settings/firecrawl',
+    operationId: 'getFirecrawlSettings',
+    summary: 'The Firecrawl key (by its last 4 characters) used for pages behind a bot check',
+    responses: {
+      200: {
+        description: 'The settings, or configured: false without a key',
+        schema: z.union([FirecrawlSettingsView, z.strictObject({ configured: z.literal(false) })]),
+      },
+    },
+  },
+  {
+    method: 'put',
+    path: '/settings/firecrawl',
+    operationId: 'saveFirecrawlSettings',
+    summary: 'Store the Firecrawl key after a test request Firecrawl accepts',
+    body: z.object({ api_key: z.string().min(1) }),
+    responses: {
+      200: { description: 'Stored and verified', schema: FirecrawlSettingsView },
+      400: error('invalid_json, invalid_key, or key_rejected with Firecrawl’s message'),
+      502: error('provider_unavailable: Firecrawl could not be reached or did not answer'),
+    },
+  },
+  {
+    method: 'delete',
+    path: '/settings/firecrawl',
+    operationId: 'deleteFirecrawlSettings',
+    summary: 'Forget the Firecrawl key',
     responses: { 204: { description: 'Removed' } },
   },
   {

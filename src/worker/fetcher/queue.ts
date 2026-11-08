@@ -5,6 +5,7 @@ import { afterFetch } from '../enrich/queue';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
 import { indexReaderTextStatement } from '../search/search';
 import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
+import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
 import { extractMetadata } from './html';
 import { readPdf } from './pdf';
 import { capText, extractReader } from './reader';
@@ -237,7 +238,10 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
       contentKind: 'html',
       hasSnapshot: true,
       readerEmpty: reader.empty,
-      notes: result.truncated ? ['truncated'] : [],
+      notes: [
+        ...(result.via === 'firecrawl' ? [FIRECRAWL_NOTE] : []),
+        ...(result.truncated ? ['truncated'] : []),
+      ],
       text: reader.empty ? null : capText(reader.text),
     },
     objects,
@@ -317,7 +321,10 @@ async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<bo
   return storeOther(env, link, result);
 }
 
-/** Fetches one link's page and stores the result. */
+/**
+ * Fetches one link's page and stores the result. A page behind a bot check is
+ * fetched again through the owner's Firecrawl key, when they stored one.
+ */
 async function processFetch(env: Env, message: Message<FetchMessage>): Promise<void> {
   const { user_id, link_id } = message.body;
   // An account being deleted is fetched for no more.
@@ -328,7 +335,10 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     message.ack();
     return;
   }
-  const result = await fetchPage(env, link.url);
+  let result = await fetchPage(env, link.url);
+  if (!result.ok && result.final) {
+    result = await fetchThroughFirecrawl(env, user_id, link.url, result);
+  }
   // Nor is anything written for it when its deletion began during the fetch.
   if (!(await accountActive(env.DB, user_id))) return message.ack();
   try {

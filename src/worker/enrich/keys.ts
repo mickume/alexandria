@@ -24,9 +24,9 @@ async function encryptionKey(env: Env): Promise<CryptoKey> {
 }
 
 /**
- * Encrypts a user's AI key with AES-GCM under KEY_ENCRYPTION_KEY, with a fresh
- * IV and the user's id as additional data, so that a ciphertext copied to
- * another user's row does not decrypt.
+ * Encrypts a user's API key (for an AI provider or Firecrawl) with AES-GCM
+ * under KEY_ENCRYPTION_KEY, with a fresh IV and the user's id as additional
+ * data, so that a ciphertext copied to another user's row does not decrypt.
  */
 export async function encryptKey(
   env: Env,
@@ -42,7 +42,7 @@ export async function encryptKey(
   return { ciphertext: toBase64(new Uint8Array(sealed)), iv: toBase64(iv) };
 }
 
-/** Decrypts a user's AI key; throws when it was sealed for another user or under another secret. */
+/** Decrypts a user's API key; throws when it was sealed for another user or under another secret. */
 export async function decryptKey(
   env: Env,
   ciphertext: string,
