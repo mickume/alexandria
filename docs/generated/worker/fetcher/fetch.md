@@ -8,6 +8,13 @@ A fetch that failed, with the reason shown on the link.
 
 #### Properties
 
+##### final?
+
+> `optional` **final?**: `boolean`
+
+Trying again later will not help: the site answered with a bot check,
+which only a browser running JavaScript can pass.
+
 ##### ok
 
 > **ok**: `false`
@@ -86,6 +93,22 @@ What a response turned out to be.
 
 ## Variables
 
+### BOT\_CHECK\_REASON
+
+> `const` **BOT\_CHECK\_REASON**: `"blocked by a bot check"` = `'blocked by a bot check'`
+
+The reason given for a site that answers with a bot check instead of its page.
+
+***
+
+### DNS\_QUERY\_URL
+
+> `const` **DNS\_QUERY\_URL**: `"https://cloudflare-dns.com/dns-query"` = `'https://cloudflare-dns.com/dns-query'`
+
+The DNS-over-HTTPS endpoint (JSON) that tells an unknown host from a bad certificate.
+
+***
+
 ### FETCH\_TIMEOUT\_MS
 
 > `const` **FETCH\_TIMEOUT\_MS**: `15000` = `15_000`
@@ -125,7 +148,7 @@ The largest PDF that is stored.
 Fetches the page at `url` as the fetcher does: GET with Alexandria's Accept
 and User-Agent headers through requestFollowing. A web page is read up to
 5 MB and a PDF up to 50 MB; any other kind is not read; a 4xx or 5xx is a
-failure.
+failure, and a final one when it is a bot check.
 
 #### Parameters
 
@@ -146,6 +169,26 @@ failure.
 #### Returns
 
 `Promise`\<[`FetchResult`](#fetchresult)\>
+
+***
+
+### isBotCheck()
+
+> **isBotCheck**(`response`): `boolean`
+
+Whether `response` is a bot check (Cloudflare's "Just a moment…" page, or
+any challenge it marks with cf-mitigated: challenge) rather than an answer
+of the site's own.
+
+#### Parameters
+
+##### response
+
+`Response`
+
+#### Returns
+
+`boolean`
 
 ***
 
@@ -192,3 +235,25 @@ Alexandria's own (the host gate) is thrown, not turned into a reason.
 #### Returns
 
 `Promise`\<[`FetchFailed`](#fetchfailed) \| `T`\>
+
+***
+
+### statusReason()
+
+> **statusReason**(`response`): `Promise`\<`string`\>
+
+The reason for a final answer that is not a success, consuming its body:
+a bot check is named as one; an error status Cloudflare itself answers for
+an origin it could not reach (Server: cloudflare) is named as that failure,
+a 530 with error 1016 as 'host not found'; any other status is
+'HTTP <status>'.
+
+#### Parameters
+
+##### response
+
+`Response`
+
+#### Returns
+
+`Promise`\<`string`\>

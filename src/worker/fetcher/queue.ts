@@ -33,8 +33,10 @@ function eventStatement(
 /**
  * Records a failed attempt. A link still waiting for its first fetch counts
  * the attempt and is fetched again after 10 minutes, then 2 hours; after the
- * third failure it is unreachable. Any other link (a refresh) only gets the
- * event: what it had stays.
+ * third failure, or at once when trying again will not help, it is
+ * unreachable. Its title, unless edited, is read from its address, which
+ * says more than the host it shows until then. Any other link (a refresh)
+ * only gets the event: what it had stays.
  */
 async function recordFailure(
   env: Env,
@@ -56,13 +58,15 @@ async function recordFailure(
     ]);
     return;
   }
-  const attempts = link.fetch_attempts + 1;
+  const attempts = failure.final ? MAX_ATTEMPTS : link.fetch_attempts + 1;
   const state = attempts >= MAX_ATTEMPTS ? 'unreachable' : 'pending';
   await env.DB.batch([
     env.DB.prepare(
-      `UPDATE links SET state = ?, state_reason = ?, fetch_attempts = ?, updated_at = ?
-       WHERE id = ? AND user_id = ?`,
-    ).bind(state, failure.reason, attempts, at, link.id, link.user_id),
+      `UPDATE links SET state = ?1, state_reason = ?2, fetch_attempts = ?3, updated_at = ?4,
+         title = CASE WHEN EXISTS (SELECT 1 FROM json_each(edited_fields) WHERE value = 'title')
+                 THEN title ELSE ?5 END
+       WHERE id = ?6 AND user_id = ?7`,
+    ).bind(state, failure.reason, attempts, at, titleFromUrl(link.url), link.id, link.user_id),
     event,
   ]);
   const delaySeconds = RETRY_DELAYS_SECONDS[attempts - 1];
@@ -92,16 +96,43 @@ interface Fetched {
   text: string | null;
 }
 
-/** The last path segment of `url`, decoded, or its host when the path has none. */
-export function lastSegmentOrHost(url: string): string {
-  const u = new URL(url);
-  const segment = u.pathname.split('/').filter(Boolean).at(-1);
-  if (!segment) return u.host;
+/** The last path segment of `url`, decoded, or undefined when the path has none. */
+function lastSegment(url: URL): string | undefined {
+  const segment = url.pathname.split('/').filter(Boolean).at(-1);
+  if (!segment) return undefined;
   try {
     return decodeURIComponent(segment);
   } catch {
     return segment;
   }
+}
+
+/** The last path segment of `url`, decoded, or its host when the path has none. */
+export function lastSegmentOrHost(url: string): string {
+  const u = new URL(url);
+  return lastSegment(u) ?? u.host;
+}
+
+/**
+ * A title read from the words of `url`'s last path segment, for a page that
+ * could not be fetched: "/why-git-was-replaced-4f31eae67e00" reads "Why git
+ * was replaced". A file extension and a trailing id (a run of 8 or more hex
+ * digits with a digit among them) are dropped, dashes, underscores and pluses
+ * become spaces, and the first letter is capitalised. A path without a word
+ * in its last segment (an id, a date, nothing) gives the host.
+ */
+export function titleFromUrl(url: string): string {
+  const u = new URL(url);
+  const segment = lastSegment(u);
+  if (!segment) return u.host;
+  const words = segment
+    .replace(/\.[a-z0-9]{1,5}$/i, '')
+    .replace(/[-_+]+(?=[0-9a-f]*\d)[0-9a-f]{8,}$/i, '')
+    .replace(/[-_+\s]+/g, ' ')
+    .trim();
+  // A word is letters only; an id such as 4f31eae67e00 or a date is not one.
+  if (!words.split(' ').some((w) => /^\p{L}+$/u.test(w))) return u.host;
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
