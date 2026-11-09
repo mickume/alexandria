@@ -7,8 +7,9 @@
 > **Archive**(`__namedParameters`): `Element`
 
 The Archive page: the links the owner chose to keep, most recently archived
-first, dimmed, each with the day it was archived, to unarchive or delete;
-with a query (from the search box), the archived links matching it.
+first, on the stream's card (dimmed, with the day each was archived, and
+Unarchive where the stream offers Pin); with a query (from the search box),
+the archived links matching it.
 
 #### Parameters
 

@@ -307,7 +307,10 @@ and the change feed leave archived links out; searches and Ask keep them,
 and `listStream` lists them after the ranked links. Pinning one is refused,
 the weekly liveness checks skip it and the on-demand check refuses it.
 `GET /api/v1/archive` shares its paging with `GET /api/v1/expired`
-(`listByTime`).
+(`listByTime`). The Archive page (`web/pages/Archive.tsx`) shows each archived
+link on the stream's `LinkCard`, which dims it, gives its decay note
+("archived on …: kept until deleted") and offers Unarchive where other cards
+offer Pin.
 
 ### Liveness
 

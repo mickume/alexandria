@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
+import { LinkCard, type CardActions } from '../components/LinkCard';
 import { Toast } from '../components/Toast';
 import { searchInState } from './Expired';
 import { useUndoableDelete } from './Stream';
 
 /**
  * The Archive page: the links the owner chose to keep, most recently archived
- * first, dimmed, each with the day it was archived, to unarchive or delete;
- * with a query (from the search box), the archived links matching it.
+ * first, on the stream's card (dimmed, with the day each was archived, and
+ * Unarchive where the stream offers Pin); with a query (from the search box),
+ * the archived links matching it.
  */
 export function Archive({ query = '', mode }: { query?: string; mode?: SearchMode }) {
   const [items, setItems] = useState<Link[]>([]);
@@ -49,6 +51,20 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
     }
   }
 
+  /** Replaces a link's card with the link as the API now shows it. */
+  function replace(link: Link) {
+    setItems((current) => current.map((l) => (l.id === link.id ? link : l)));
+  }
+
+  // An archived link cannot be pinned, and its card offers Unarchive instead of Pin.
+  const actions: CardActions = {
+    onPin: () => undefined,
+    onUnpin: () => undefined,
+    onDelete: deletes.remove,
+    onChanged: replace,
+    onUnarchive: (link) => void unarchive(link),
+  };
+
   return (
     <section className="archive">
       <h1>Archive</h1>
@@ -64,26 +80,14 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
       {keywordOnly && <KeywordOnlyNotice />}
       <div className="cards">
         {items.map((link) => (
-          <article key={link.id} className="card archived" aria-label={link.title}>
-            <div className="card-top">
-              <div className="card-head">
-                <span className="card-title">{link.title}</span>
+          <div key={link.id}>
+            <LinkCard link={link} actions={actions} />
+            {byMeaning.has(link.id) && (
+              <div className="match-row">
+                <ByMeaning />
               </div>
-              <div className="card-actions">
-                <button type="button" className="q-btn-link" onClick={() => void unarchive(link)}>
-                  Unarchive
-                </button>
-                <button type="button" className="q-btn-link" onClick={() => deletes.remove(link)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-            <div className="card-meta muted">
-              <span>{link.host}</span>
-              {byMeaning.has(link.id) && <ByMeaning />}
-              {link.archived_at && <span>archived on {link.archived_at.slice(0, 10)}</span>}
-            </div>
-          </article>
+            )}
+          </div>
         ))}
       </div>
       {loaded && items.length === 0 && (

@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe('the Archive page', () => {
-  it('lists archived links dimmed with their archiving dates, unarchives one and deletes another after the undo window', async () => {
+  it('lists archived links on the stream’s card, dimmed with their archiving dates, unarchives one and deletes another after the undo window', async () => {
     const archived = [
       makeLink({
         id: 'b',
@@ -15,6 +15,10 @@ describe('the Archive page', () => {
         state: 'archived',
         points: null,
         archived_at: '2027-03-01T08:00:00.000Z',
+        decay_note: 'archived on 2027-03-01: kept until deleted',
+        summary: 'How bravo works.',
+        tags: ['kiwi'],
+        has_snapshot: true,
       }),
       makeLink({
         id: 'a',
@@ -22,6 +26,7 @@ describe('the Archive page', () => {
         state: 'archived',
         points: null,
         archived_at: '2027-02-01T08:00:00.000Z',
+        decay_note: 'archived on 2027-02-01: kept until deleted',
       }),
     ];
     const api = new FakeApi()
@@ -35,18 +40,22 @@ describe('the Archive page', () => {
     const rows = await screen.findAllByRole('article');
     expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Bravo', 'Alpha']);
     expect(rows.every((r) => r.classList.contains('archived'))).toBe(true);
-    expect(within(rows[0]!).getByText('archived on 2027-03-01')).toBeTruthy();
+    const bravo = within(rows[0]!);
+    expect(bravo.getByText('archived on 2027-03-01: kept until deleted')).toBeTruthy();
+    expect(bravo.getByText('How bravo works.')).toBeTruthy();
+    expect(bravo.getByRole('link', { name: 'kiwi' })).toBeTruthy();
+    expect(bravo.getByRole('link', { name: 'Read' }).getAttribute('href')).toBe('/links/b/read');
+    expect(bravo.getByRole('link', { name: 'Open' })).toBeTruthy();
+    expect(bravo.queryByRole('button', { name: 'Pin' })).toBeNull();
 
-    await act(async () => within(rows[0]!).getByRole('button', { name: 'Unarchive' }).click());
+    await act(async () => bravo.getByRole('button', { name: 'Unarchive' }).click());
     expect(api.sent('POST', '/api/v1/links/b/unarchive')).toHaveLength(1);
     expect(screen.queryByRole('article', { name: 'Bravo' })).toBeNull();
 
     vi.useFakeTimers();
-    await act(async () =>
-      within(screen.getByRole('article', { name: 'Alpha' }))
-        .getByRole('button', { name: 'Delete' })
-        .click(),
-    );
+    const alpha = within(screen.getByRole('article', { name: 'Alpha' }));
+    await act(async () => alpha.getByRole('button', { name: 'More actions' }).click());
+    await act(async () => alpha.getByRole('button', { name: 'Delete' }).click());
     expect(screen.queryByRole('article', { name: 'Alpha' })).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(1);
