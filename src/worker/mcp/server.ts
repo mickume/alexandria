@@ -16,7 +16,9 @@ export const INSTRUCTIONS =
   "Alexandria is the owner's private library of web links. Use it to find links the owner kept " +
   'and to file new ones. Try search_links before add_link, to avoid adding a link the library ' +
   'already has (the server de-duplicates anyway: adding a URL already in the library only ' +
-  'moves it to the top).';
+  'moves it to the top). To answer a question from the library, use search_passages: it ' +
+  "returns the passages of the owner's links that best match the question by meaning, each with " +
+  "its link's id, title and URL. Use get_link_content to read a whole link.";
 
 const INTERNAL_ORIGIN = 'https://alexandria.internal';
 
@@ -56,7 +58,7 @@ const INTERNAL_ERROR: Outcome = {
 };
 
 /**
- * The MCP server for one request: the nine tools registered with their
+ * The MCP server for one request: the tools registered with their
  * descriptions and input schemas, and a tools/call handler that checks the
  * arguments itself, so that every refusal is a tool error in the API's
  * envelope (invalid_arguments naming the field, or internal_error) and

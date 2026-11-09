@@ -43,12 +43,19 @@ export interface Tool {
 /** An unexpected failure: the API answered something no tool expects. */
 export class UnexpectedAnswer extends Error {}
 
-/** The outcome an API answer stands for: 2xx is success, 4xx a refusal, anything else unexpected. */
+/**
+ * The outcome an API answer stands for: 2xx is success, 4xx a refusal (and so
+ * is search_unavailable, the one 5xx the API gives on purpose), anything else
+ * unexpected.
+ */
 export function outcomeOf(answer: ApiAnswer): Outcome {
   if (answer.status >= 200 && answer.status < 300) {
     return { ok: true, body: (answer.json ?? {}) as Record<string, unknown> };
   }
-  if (answer.status >= 400 && answer.status < 500 && answer.json?.error) {
+  const refused =
+    (answer.status >= 400 && answer.status < 500) ||
+    (answer.status === 503 && answer.json?.error === 'search_unavailable');
+  if (refused && answer.json?.error) {
     return { ok: false, body: answer.json as ErrorEnvelope };
   }
   throw new UnexpectedAnswer(`the API answered ${answer.status}`);
@@ -225,6 +232,25 @@ export const TOOLS: Tool[] = [
     async run(ctx, args: { query: string; limit?: number }) {
       const q = encodeURIComponent(args.query);
       return outcomeOf(await ctx.call('GET', `/search?q=${q}&limit=${args.limit ?? 10}`));
+    },
+  },
+  {
+    name: 'search_passages',
+    description:
+      'Answer a question from the library: the passages of the owner’s links that best match it by meaning, best first, each with its link’s id, title and URL. Takes the prefix filters of search_links. Use get_link_content to read a whole link. Counts as no use.',
+    input: z.object({
+      query: z.string().min(1).describe('The question, in words'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe('How many passages, 1 to 20 (default 8)'),
+    }),
+    async run(ctx, args: { query: string; limit?: number }) {
+      const q = encodeURIComponent(args.query);
+      return outcomeOf(await ctx.call('GET', `/passages?q=${q}&limit=${args.limit ?? 8}`));
     },
   },
   {

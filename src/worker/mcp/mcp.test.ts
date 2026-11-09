@@ -3,6 +3,7 @@ import {
   api,
   count,
   createToken,
+  deliverIndexing,
   env,
   mcp,
   mcpTool,
@@ -13,6 +14,7 @@ import {
   type TestUser,
 } from '../test/helpers';
 import { indexReaderText } from '../search/search';
+import { ARTICLES, meaning, seedArticle } from '../test/meaning';
 import { readerKey, snapshotKey } from '../fetcher/snapshots';
 
 /** A signed-in user with a personal access token. */
@@ -32,6 +34,7 @@ const TOOLS = [
   'list_workspaces',
   'pin_link',
   'search_links',
+  'search_passages',
 ];
 
 describe('the MCP endpoint', () => {
@@ -51,11 +54,13 @@ describe('the MCP endpoint', () => {
     const instructions: string = r.json.result.instructions;
     expect(instructions).toMatch(/private library of web links/);
     expect(instructions.indexOf('search_links')).toBeLessThan(instructions.indexOf('add_link'));
+    expect(instructions).toMatch(/answer a question[^.]*use search_passages/);
+    expect(instructions).toMatch(/use get_link_content to read a whole link/i);
     const tokens = await api('GET', '/api/v1/tokens', { as: a.session });
     expect(tokens.json.items[0].last_used_at).toBe(t);
   });
 
-  it('lists exactly the nine tools with their arguments', async () => {
+  it('lists exactly the ten tools with their arguments', async () => {
     const a = await agent();
     const r = await mcp(a.secret, 'tools/list', {});
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,6 +77,12 @@ describe('the MCP endpoint', () => {
       expect(byName[name]!.properties.limit.type).toBe('integer');
       expect(byName[name]!.required ?? []).not.toContain('limit');
     }
+    expect(byName.search_passages!.required).toEqual(['query']);
+    expect(byName.search_passages!.properties.limit).toMatchObject({
+      type: 'integer',
+      minimum: 1,
+      maximum: 20,
+    });
   });
 
   describe('refuses a request without a valid token', () => {
@@ -451,6 +462,102 @@ async function useOf(id: string) {
     .bind(id)
     .first<{ use_count: number; last_used_at: string }>();
 }
+
+describe('search_passages', () => {
+  /** An agent whose library holds three articles, indexed. */
+  async function librarian() {
+    const a = await agent();
+    const ids: string[] = [];
+    for (const article of [ARTICLES.alarms, ARTICLES.queues, ARTICLES.tomatoes]) {
+      ids.push(await seedArticle(a, article));
+    }
+    await deliverIndexing(ids.map((link_id) => ({ user_id: a.id, link_id })));
+    return { a, ids };
+  }
+
+  it.each([
+    { name: 'a question', args: { query: 'run a task later' }, limit: 8, found: true },
+    {
+      name: 'a question with a limit',
+      args: { query: 'run a task later', limit: 1 },
+      limit: 1,
+      found: true,
+    },
+    {
+      name: 'a question with a filter',
+      args: { query: 'run a task later host:example.com' },
+      limit: 8,
+      found: true,
+    },
+    {
+      name: 'a question nothing answers',
+      args: { query: 'quarterly tax return' },
+      limit: 8,
+      found: false,
+    },
+  ])(
+    'answers $name as GET /api/v1/passages does, recording no use',
+    async ({ args, limit, found }) => {
+      const { a, ids } = await librarian();
+      const before = await uses(a);
+
+      const r = await mcpTool(a.secret, 'search_passages', args);
+
+      expect(r.isError).toBeFalsy();
+      const direct = await api(
+        'GET',
+        `/api/v1/passages?q=${encodeURIComponent(args.query)}&limit=${limit}`,
+        { as: a.session },
+      );
+      expect(r.structuredContent).toEqual(direct.json);
+      expect(JSON.parse(r.content[0]!.text)).toEqual(r.structuredContent);
+      expect(r.structuredContent.items.length > 0).toBe(found);
+      if (found) {
+        expect(r.structuredContent.items[0]).toMatchObject({
+          link_id: ids[0],
+          title: ARTICLES.alarms.title,
+          url: ARTICLES.alarms.url,
+        });
+      }
+      expect(await uses(a)).toEqual(before);
+    },
+  );
+
+  it.each([
+    { name: 'a question of filters only', query: 'tag:infra', error: 'invalid_question' },
+    { name: 'a blank question', query: '   ', error: 'invalid_question' },
+    { name: 'a question over 200 characters', query: 'x'.repeat(201), error: 'query_too_long' },
+    { name: 'a refused filter', query: 'x state:bogus', error: 'invalid_filter' },
+    { name: 'an index that fails', query: 'alarms', error: 'search_unavailable', fail: true },
+  ])('answers $name with the API’s error as a tool error', async ({ query, error, fail }) => {
+    const { a } = await librarian();
+    if (fail) meaning.fail('embed');
+
+    const r = await mcpTool(a.secret, 'search_passages', { query });
+
+    expect(r.isError).toBe(true);
+    const direct = await api('GET', `/api/v1/passages?q=${encodeURIComponent(query)}&limit=8`, {
+      as: a.session,
+    });
+    expect(direct.json.error).toBe(error);
+    expect(r.structuredContent).toEqual(direct.json);
+  });
+
+  it.each([
+    { args: { query: 'alarms', limit: 21 }, field: 'limit' },
+    { args: { query: 'alarms', limit: 0 }, field: 'limit' },
+    { args: { query: '' }, field: 'query' },
+    { args: {}, field: 'query' },
+  ])('refuses the arguments $args as invalid_arguments naming $field', async ({ args, field }) => {
+    const a = await agent();
+
+    const r = await mcpTool(a.secret, 'search_passages', args);
+
+    expect(r.isError).toBe(true);
+    expect(r.structuredContent).toMatchObject({ error: 'invalid_arguments', field });
+    expect(meaning.calls).toEqual([]);
+  });
+});
 
 describe('get_link and get_link_content', () => {
   it('get_link returns the link as GET /api/v1/links/{id} does, recording no use', async () => {

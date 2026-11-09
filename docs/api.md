@@ -903,7 +903,9 @@ operations its tool performs.
 
 The server is named `alexandria`, offers tools only, and its instructions
 tell an agent that Alexandria is the owner's private library of web links and
-to try `search_links` before `add_link` to avoid duplicates.
+to try `search_links` before `add_link` to avoid duplicates, to use
+`search_passages` to answer a question from the library, and `get_link_content`
+to read a whole link.
 
 ### Tools
 
@@ -922,6 +924,7 @@ unexpected failure is
 |---|---|---|
 | `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
 | `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included; no use |
+| `search_passages` | `query`, `limit?` (1 to 20, default 8) | `GET /api/v1/passages` with the query as given as `q`: the passages that best match it by meaning, each with its link's id, title and URL; no use. A `search_unavailable` (503) is a tool error with that envelope, not `internal_error` |
 | `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
 | `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |
 | `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |

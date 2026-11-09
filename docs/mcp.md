@@ -164,7 +164,7 @@ curl -sS https://alexandria.example.com/mcp \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
 ```
 
-A working setup answers JSON whose `result.tools` names the nine tools below.
+A working setup answers JSON whose `result.tools` names the ten tools below.
 Settings then shows the token as just used.
 
 | Answer | Meaning |
@@ -179,6 +179,7 @@ Settings then shows the token as just used.
 | Tool | What an agent uses it for |
 |---|---|
 | `search_links` | Find links by keywords, with the search box's filters: `tag:`, `topic:`, `host:`, `in:` (a workspace), `is:pinned`, `is:dead`, `state:` |
+| `search_passages` | Answer a question from the library: the passages of your links that best match it by meaning, each with its link's id, title and URL. Takes the same filters |
 | `list_recent` | The links you used most recently: the top of the stream, pinned links first |
 | `get_link` | A link's metadata: addresses, title, summary, tags, topic, state and dates |
 | `get_link_content` | The stored text of a page or PDF (`format: "text"`), or the page's snapshot HTML (`format: "html"`) |
@@ -192,13 +193,25 @@ Two behaviours are worth knowing when you direct an agent:
 
 - **Reading content counts as using the link.** `get_link_content` records a
   use, as opening the reader view does, which moves the link to the top of
-  the stream and resets its decay. `search_links`, `list_recent` and
-  `get_link` record nothing. Ask the agent to read a link's content only when
+  the stream and resets its decay. `search_links`, `search_passages`,
+  `list_recent` and `get_link` record nothing. Ask the agent to read a link's content only when
   it needs more than the summary.
 - **Adding is safe to repeat.** `add_link` with an address already in the
   library stores nothing new: it moves that link to the top (and applies the
   tags and workspace you gave). New links are fetched, summarised, tagged and
   given a topic in the background, so a link just added has no summary yet.
+
+- **`search_passages` finds by meaning, not by words.** A question such as
+  "how do I schedule background work on Cloudflare?" finds the passages of
+  links about Durable Object alarms even though they share no word with it.
+  Each item is a piece of one link's text of at most 1,500 characters, with
+  the link's `link_id`, `title` and `url` and a `score`; at most three items
+  come from one link, and a question that nothing in the library answers
+  returns no items. A link is found once it has been indexed, which takes
+  about a minute after it is saved or changed and a few hours for a large
+  library that existed before the index. If the index is unavailable the tool
+  answers `search_unavailable`: try again later, or fall back on
+  `search_links`.
 
 Tools never create workspaces or delete links; a workspace that does not
 exist is refused, and deleting stays on the website.
@@ -229,6 +242,11 @@ How to use it:
   links are left out unless you add `state:archived` or `state:any`.
   `list_recent` shows what I have been using lately. Answer with each link's
   title and URL, and say when nothing in the library matches.
+- **Asking.** For a question the library may answer ("what did I save about
+  X?", "how did that article say to do Y?"), use `search_passages` with the
+  question in plain words, and answer from the passages it returns, naming
+  each source by its title and URL. Say so when no passage answers the
+  question.
 - **Reading.** Search results and `get_link` carry the summary, which is
   usually enough. Call `get_link_content` with `format: "text"` only when you
   need the page itself (to quote it or answer a detailed question): it counts
@@ -247,7 +265,7 @@ private or internal pages into the library.
 ```
 
 Trim it to what the agent needs: an agent that should only look things up can
-be told to use only `search_links`, `get_link` and `get_link_content`, and
+be told to use only `search_links`, `search_passages`, `get_link` and `get_link_content`, and
 most clients let you turn off the other tools.
 
 ## Revoking access
