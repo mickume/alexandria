@@ -376,6 +376,23 @@ one namespace per user.
   Vectorize. With `MEANING_FAKE_URL` set (end-to-end tests only) it speaks HTTP
   to `e2e/fake-meaning.ts` instead of using the `AI` and `VECTORIZE` bindings.
 
+## Asking the library
+
+`POST /api/v1/ask` (`meaning/ask.ts`) answers a question from the owner's own
+links with the owner's own AI provider. It refuses in this order: the body, the
+question (`parseQuery` with a cap of 500 characters), the owner's key
+(`getAiSettings`: none, or marked rejected), and the index (`findPassages`
+for the 8 best passages, at most 3 a link). Then it numbers the sources from 1
+in the order of their best passage, reads each as `toView` shows it, and
+answers with a `ReadableStream` of server-sent events: `sources` first, a
+`delta` for each piece `streamAnswer` (`enrich/providers.ts`) hands on, and
+`done`. `streamAnswer` streams Anthropic through the SDK's `messages.stream` and
+OpenRouter through `POST /chat/completions` with `stream: true`, and bounds the
+whole answer by the provider timeout. The prompt gives the provider each passage
+headed by its source's number and title and the free words of the question
+(the filters only narrow the passages). Nothing about a question or an answer is
+stored, and no use of any link is recorded.
+
 ## MCP server
 
 `/mcp` (`mcp/server.ts`) serves the Model Context Protocol over Streamable

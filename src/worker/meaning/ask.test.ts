@@ -1,17 +1,64 @@
 import { describe, expect, it } from 'vitest';
 import { FakeAi } from '../test/ai';
-import { api, env, signIn, type TestUser } from '../test/helpers';
-import { meaning } from '../test/meaning';
+import { api, count, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
+import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
 import { markKeyRejected } from '../enrich/keys';
 
-/** Saves an Anthropic key the fake provider accepts. */
-async function saveKey(user: TestUser) {
+/** Saves a key the fake provider accepts, for Anthropic or OpenRouter. */
+async function saveKey(
+  user: TestUser,
+  provider: 'anthropic' | 'openrouter' = 'anthropic',
+  model?: string,
+) {
   const r = await api('PUT', '/api/v1/settings/ai', {
     as: user.session,
-    body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+    body: {
+      provider,
+      api_key: provider === 'anthropic' ? 'sk-ant-abcd1234' : 'sk-or-abcd1234',
+      ...(model ? { model } : {}),
+    },
   });
   expect(r.status).toBe(200);
 }
+
+/** One server-sent event of an answer. */
+interface AnswerEvent {
+  event: string;
+  data: Record<string, unknown>;
+}
+
+/** The events of a server-sent events body. */
+function events(text: string): AnswerEvent[] {
+  return text
+    .split('\n\n')
+    .filter((block) => block.trim())
+    .map((block) => {
+      const lines = block.split('\n');
+      const name = lines.find((l) => l.startsWith('event: '))!.slice('event: '.length);
+      const data = lines.find((l) => l.startsWith('data: '))!.slice('data: '.length);
+      return { event: name, data: JSON.parse(data) };
+    });
+}
+
+/** Seeds and indexes the articles; their ids in order. */
+async function indexed(user: TestUser, articles: Article[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const article of articles) ids.push(await seedArticle(user, article));
+  const r = await deliverIndexing(ids.map((link_id) => ({ user_id: user.id, link_id })));
+  expect(r.retried).toEqual([]);
+  return ids;
+}
+
+/** The text of the question a provider was sent: the user's message. */
+function promptOf(body: Record<string, unknown>): string {
+  const messages = body.messages as { role: string; content: string }[];
+  return messages
+    .filter((m) => m.role === 'user')
+    .map((m) => m.content)
+    .join('\n');
+}
+
+const QUESTION = 'how do I schedule background work on cloudflare';
 
 /** POST /api/v1/ask as the user. */
 function ask(user: TestUser, body: unknown) {
@@ -125,6 +172,197 @@ describe('a question that is refused before the answer streams', () => {
       error: 'search_unavailable',
       message: 'search by meaning is unavailable, try again',
     });
+    expect(ai.asks).toEqual([]);
+  });
+});
+
+describe('an answer to a question', () => {
+  it('streams the sources, then the answer piece by piece, then done', async () => {
+    const user = await signIn();
+    const ai = new FakeAi().answerText(['Use an alarm ', '[1].']);
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+
+    const r = await ask(user, { question: QUESTION });
+
+    expect(r.status).toBe(200);
+    expect(r.headers.get('Content-Type')).toMatch(/^text\/event-stream/);
+    const sent = events(await r.response.text());
+    expect(sent.map((e) => e.event)).toEqual(['sources', 'delta', 'delta', 'done']);
+    expect(
+      sent
+        .filter((e) => e.event === 'delta')
+        .map((e) => e.data.text)
+        .join(''),
+    ).toBe('Use an alarm [1].');
+    expect(sent.at(-1)!.data).toEqual({});
+    expect(ai.asks).toHaveLength(1);
+  });
+
+  it('numbers the sources from 1 in the order of their best passage, each passage headed by its number', async () => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    const [alarms, queues] = await indexed(user, [ARTICLES.alarms, ARTICLES.queues]);
+    const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items;
+    const passages = (
+      await api('GET', `/api/v1/passages?q=${encodeURIComponent(QUESTION)}`, { as: user.session })
+    ).json.items as { link_id: string }[];
+    const order = [...new Set(passages.map((p) => p.link_id))];
+    expect(order).toEqual([alarms, queues]);
+
+    const sent = events(await (await ask(user, { question: QUESTION })).response.text());
+
+    const sources = sent[0]!.data.sources as { n: number; link: { id: string } }[];
+    expect(sources.map((s) => s.n)).toEqual([1, 2]);
+    expect(sources.map((s) => s.link.id)).toEqual(order);
+    for (const source of sources) {
+      expect(source.link).toEqual(stream.find((l: { id: string }) => l.id === source.link.id));
+    }
+    const prompt = promptOf(ai.asks[0]!.body);
+    expect(prompt.indexOf('[1] Durable Object alarms')).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf('[1] Durable Object alarms')).toBeLessThan(prompt.indexOf('alarm lets'));
+    expect(prompt.indexOf('alarm lets')).toBeLessThan(
+      prompt.indexOf('[2] Cloudflare Queues explained'),
+    );
+    expect(prompt.indexOf('[2] Cloudflare Queues explained')).toBeLessThan(
+      prompt.indexOf('Queues deliver'),
+    );
+  });
+
+  it.each([
+    { provider: 'anthropic' as const, model: 'claude-test', key: 'sk-ant-abcd1234' },
+    { provider: 'openrouter' as const, model: 'test/model', key: 'sk-or-abcd1234' },
+  ])(
+    'sends $provider at most 8 passages, 3 of one link, with the owner’s key and model',
+    async ({ provider, model, key }) => {
+      const user = await signIn();
+      const ai = new FakeAi();
+      await saveKey(user, provider, model);
+      const big: Article = {
+        url: 'https://big.example/',
+        title: 'Scheduling notes',
+        text: 'Schedule a task for later. '.repeat(330),
+      };
+      const others = Array.from({ length: 6 }, (_, i): Article => ({
+        url: `https://other${i}.example/`,
+        title: `Alarm ${i} worker`,
+        text: null,
+      }));
+      await indexed(user, [big, ...others]);
+
+      const r = await ask(user, { question: 'schedule a task' });
+      const sent = events(await r.response.text());
+
+      const [request] = ai.asks;
+      expect(request!.body.model).toBe(model);
+      expect(request!.headers.get('authorization')).toContain(key);
+      const headings = promptOf(request!.body).match(/^\[\d+\] /gm) ?? [];
+      expect(headings).toHaveLength(8);
+      const perSource = new Map<string, number>();
+      for (const h of headings) perSource.set(h, (perSource.get(h) ?? 0) + 1);
+      expect(Math.max(...perSource.values())).toBeLessThanOrEqual(3);
+      // The big link’s 3 passages and 5 of the 6 others make the 8.
+      expect((sent[0]!.data.sources as unknown[]).length).toBe(6);
+    },
+  );
+
+  it('reads the passages under the question’s filters', async () => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    const [tagged] = await indexed(user, [
+      { url: 'https://a.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
+      { url: 'https://b.example/', title: 'Alarm plain', text: null },
+    ]);
+
+    const sent = events(
+      await (await ask(user, { question: 'schedule a task tag:infra' })).response.text(),
+    );
+
+    expect((sent[0]!.data.sources as { link: { id: string } }[]).map((s) => s.link.id)).toEqual([
+      tagged,
+    ]);
+    expect(promptOf(ai.asks[0]!.body)).toContain('Alarm tagged');
+    expect(promptOf(ai.asks[0]!.body)).not.toContain('Alarm plain');
+    expect(promptOf(ai.asks[0]!.body)).not.toContain('tag:infra');
+  });
+
+  it('tells the provider to answer from the passages only, citing [n], or to say nothing answers', async () => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+
+    await (await ask(user, { question: QUESTION })).response.text();
+
+    const system = String(ai.asks[0]!.body.system);
+    expect(system).toContain('only');
+    expect(system).toContain('[n]');
+    expect(system).toContain('Nothing in your library answers this.');
+    expect(promptOf(ai.asks[0]!.body)).toContain(`Question: ${QUESTION}`);
+  });
+
+  it('records no use of any source and counts as one request', async () => {
+    const user = await signIn();
+    new FakeAi();
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+    const uses = async () =>
+      (await env.DB.prepare('SELECT id, use_count, last_used_at FROM links ORDER BY id').all())
+        .results;
+    const requests = async () =>
+      (await env.DB.prepare('SELECT SUM(count) AS n FROM rate_limits WHERE user_id = ?')
+        .bind(user.id)
+        .first<{ n: number }>())!.n;
+    const before = {
+      uses: await uses(),
+      used: await count('link_uses'),
+      requests: await requests(),
+    };
+
+    await (await ask(user, { question: QUESTION })).response.text();
+
+    expect(await uses()).toEqual(before.uses);
+    expect(await count('link_uses')).toBe(before.used);
+    expect(await requests()).toBe(before.requests + 1);
+  });
+
+  it('sends the provider no passage of another user’s links, even from an index that mixes users', async () => {
+    const a = await signIn('a@example.test', 'A');
+    const b = await signIn('b@example.test', 'B');
+    const ai = new FakeAi();
+    await saveKey(a);
+    const [aLink] = await indexed(a, [
+      { ...ARTICLES.alarms, url: 'https://a.example/alarms', title: 'Alarms of A' },
+    ]);
+    await indexed(b, [
+      { ...ARTICLES.alarms, url: 'https://b.example/alarms', title: 'Alarms of B' },
+    ]);
+    meaning.ignoreNamespaces = true;
+
+    const sent = events(await (await ask(a, { question: QUESTION })).response.text());
+
+    expect((sent[0]!.data.sources as { link: { id: string } }[]).map((s) => s.link.id)).toEqual([
+      aLink,
+    ]);
+    expect(JSON.stringify(ai.asks[0]!.body)).not.toContain('Alarms of B');
+  });
+
+  it('answers that nothing answers, without calling the provider, when no passage is near enough', async () => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+
+    const r = await ask(user, { question: 'quarterly tax return' });
+
+    expect(r.status).toBe(200);
+    expect(events(await r.response.text())).toEqual([
+      { event: 'sources', data: { sources: [] } },
+      { event: 'delta', data: { text: 'Nothing in your library answers this.' } },
+      { event: 'done', data: {} },
+    ]);
     expect(ai.asks).toEqual([]);
   });
 });

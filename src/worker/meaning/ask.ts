@@ -6,14 +6,44 @@
 import { Hono } from 'hono';
 import { limitReached, readJson, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
-import { getAiSettings } from '../enrich/keys';
+import { decryptKey, getAiSettings } from '../enrich/keys';
+import { streamAnswer, type AnswerRequest } from '../enrich/providers';
+import { getLink, toView } from '../links/store';
 import { parseQuery } from '../search/query';
-import { findPassages, MeaningUnavailable } from './passages';
+import { findPassages, MeaningUnavailable, type Passage } from './passages';
 
 /** The longest question, in characters. */
 export const QUESTION_MAX = 500;
 /** How many passages an answer is written from. */
 export const ASK_PASSAGES = 8;
+
+/** The whole answer when the passages answer nothing. */
+export const NOTHING_ANSWERS = 'Nothing in your library answers this.';
+
+/** What the provider is told: to answer from the passages only, and how to cite and to give up. */
+const SYSTEM = `You answer a question from numbered passages of the user's own saved web pages, and only from them. Use no knowledge from outside the passages. Cite every statement with the number of its source as [n], for example [1]. If the passages do not answer the question, answer exactly: ${NOTHING_ANSWERS}`;
+
+/** One source of an answer: a link its passages came from, numbered from 1. */
+interface Source {
+  n: number;
+  link: ReturnType<typeof toView>;
+}
+
+/** The request to the provider: each passage headed by its source's number and title, then the question. */
+function answerRequest(
+  passages: Passage[],
+  numbers: Map<string, number>,
+  words: string[],
+): AnswerRequest {
+  const cited = passages.map((p) => `[${numbers.get(p.link_id)}] ${p.title}\n${p.passage}`);
+  return { system: SYSTEM, prompt: `${cited.join('\n\n')}\n\nQuestion: ${words.join(' ')}` };
+}
+
+const encoder = new TextEncoder();
+
+/** One server-sent event. */
+const event = (name: string, data: unknown) =>
+  encoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
 
 export const askRoutes = new Hono<AppEnv>();
 
@@ -47,12 +77,48 @@ askRoutes.post('/', async (c) => {
     );
   }
 
+  let passages: Passage[];
   try {
-    await findPassages(c.env, userId, parsed.words, parsed.filters, ASK_PASSAGES);
+    passages = await findPassages(c.env, userId, parsed.words, parsed.filters, ASK_PASSAGES);
   } catch (err) {
     if (!(err instanceof MeaningUnavailable)) throw err;
     console.error('search by meaning is unavailable', err);
     return refusal(c, 503, 'search_unavailable', 'search by meaning is unavailable, try again');
   }
-  return c.body(null, 204);
+
+  // The sources are numbered in the order of their best passage, which comes first.
+  const numbers = new Map<string, number>();
+  for (const p of passages) if (!numbers.has(p.link_id)) numbers.set(p.link_id, numbers.size + 1);
+  const sources: Source[] = [];
+  for (const [id, n] of numbers) {
+    const row = await getLink(c.env.DB, userId, id);
+    if (row) sources.push({ n, link: toView(row) });
+  }
+  const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
+  const call = { provider: settings.provider, apiKey, model: settings.model };
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        controller.enqueue(event('sources', { sources }));
+        if (passages.length === 0) {
+          controller.enqueue(event('delta', { text: NOTHING_ANSWERS }));
+          controller.enqueue(event('done', {}));
+          return;
+        }
+        const outcome = await streamAnswer(
+          c.env,
+          call,
+          answerRequest(passages, numbers, parsed.words),
+          (text) => void controller.enqueue(event('delta', { text })),
+        );
+        if (outcome.ok) controller.enqueue(event('done', {}));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache' },
+  });
 });

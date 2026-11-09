@@ -760,6 +760,25 @@ the index:
   unavailable, try again"}` when Workers AI or Vectorize fails or takes over 5
   seconds.
 
+Otherwise the answer is `200` with `Content-Type: text/event-stream`, a stream
+of events, each an `event:` line and a JSON `data:` line:
+
+1. one `sources`: `{"sources": [{"n": 1, "link": <the link as the stream lists it>}]}`,
+   one entry per link the passages came from, numbered from 1 in the order of
+   their best passage;
+2. `delta` events `{"text": "<next part of the answer>"}`, the answer citing its
+   sources as `[n]`;
+3. one `done`: `{}`.
+
+Alexandria retrieves the 8 best passages (at most 3 of one link, at most 1,500
+characters each, as `GET /api/v1/passages` would return them under the same
+filters) and sends them, each headed by its source's number and title, with the
+free words of the question to the provider. The provider is instructed to
+answer from the passages only, to cite every statement as `[n]`, and to answer
+"Nothing in your library answers this." when they do not. When no passage
+reaches the similarity threshold the provider is not called and the answer is
+`sources` with an empty list, that one `delta`, and `done`.
+
 ### Topics and tags
 
 The topics and tags enrichment and the owner's edits give links. A topic or
