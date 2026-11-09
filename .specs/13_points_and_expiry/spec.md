@@ -4,7 +4,7 @@
 
 - **Spec:** `13_points_and_expiry` (id `13`, name `points_and_expiry`)
 - **Title:** Rank links by points and let unused links expire
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-09T14:40:05Z
 - **Source:** docs/prd/03-rank-links-by-points-and-keep-chosen-links-in-an-archive.md

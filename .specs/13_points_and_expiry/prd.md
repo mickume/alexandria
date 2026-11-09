@@ -2,7 +2,7 @@
 spec_id: "13"
 spec_name: "points_and_expiry"
 title: "Rank links by points and let unused links expire"
-status: "active"
+status: "sealed"
 created_at: "2026-11-09T14:40:05Z"
 intent_hash: "6372253996e80295488123b068964b41cc39a69c76eee38e9653690658c00d2b"
 schema_version: 3
