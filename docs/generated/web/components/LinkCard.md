@@ -18,7 +18,7 @@ Archive the link by hand.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -32,7 +32,7 @@ Archive the link by hand.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -48,7 +48,7 @@ A pinned card is being dragged.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -64,7 +64,7 @@ A dragged card was dropped on this pinned card.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -78,7 +78,7 @@ A dragged card was dropped on this pinned card.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -94,7 +94,7 @@ A refresh of the card's link was accepted.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -110,7 +110,7 @@ On a workspace's page: take the link out of the workspace.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -124,7 +124,7 @@ On a workspace's page: take the link out of the workspace.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -149,7 +149,7 @@ dates and state, the summary, and the labels.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 #### Returns
 
@@ -170,7 +170,7 @@ refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### onRefreshing?
 

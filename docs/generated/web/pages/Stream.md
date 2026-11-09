@@ -26,7 +26,7 @@ or left, and a failed delete puts the card back.
 
 ##### items
 
-[`Link`](../api.md#link)[]
+[`Link`](../api.md#link-1)[]
 
 ##### setItems
 
@@ -48,7 +48,7 @@ or left, and a failed delete puts the card back.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### Returns
 
@@ -70,4 +70,4 @@ or left, and a failed delete puts the card back.
 
 ##### undoable
 
-> **undoable**: [`Link`](../api.md#link)[]
+> **undoable**: [`Link`](../api.md#link-1)[]

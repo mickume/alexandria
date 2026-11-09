@@ -2,6 +2,22 @@
 
 ## Interfaces
 
+### AnswerRequest
+
+What a streamed answer is asked: the instruction, and the passages and question.
+
+#### Properties
+
+##### prompt
+
+> **prompt**: `string`
+
+##### system
+
+> **system**: `string`
+
+***
+
 ### ProviderCall
 
 The provider and credentials one call runs with: always the user's own.
@@ -65,6 +81,14 @@ The provider could not be reached, answered 5xx, or did not answer in time.
 Any other failure: a 4xx, a rate limit, a refusal, an unusable answer.
 
 ## Variables
+
+### ANSWER\_MAX\_TOKENS
+
+> `const` **ANSWER\_MAX\_TOKENS**: `1024` = `1_024`
+
+The most tokens an answer to a question may hold.
+
+***
 
 ### PROVIDER\_TIMEOUT\_MS
 
@@ -188,6 +212,39 @@ Shortens the provider timeout, for tests; null restores the 60 seconds.
 #### Returns
 
 `void`
+
+***
+
+### streamAnswer()
+
+> **streamAnswer**(`env`, `call`, `request`, `onText`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`void`\>\>
+
+Streams the user's provider's answer to a question, handing each piece of
+text to `onText` as it arrives: through `messages.stream` of Anthropic's SDK,
+and through OpenRouter's chat completions with `stream: true`. The whole
+answer has the provider timeout, and a failure is sorted as enrichment's is.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### call
+
+[`ProviderCall`](#providercall)
+
+##### request
+
+[`AnswerRequest`](#answerrequest)
+
+##### onText
+
+(`text`) => `void` \| `Promise`\<`void`\>
+
+#### Returns
+
+`Promise`\<[`ProviderOutcome`](#provideroutcome)\<`void`\>\>
 
 ***
 

@@ -14,7 +14,7 @@
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### onChecked?
 

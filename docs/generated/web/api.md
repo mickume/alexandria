@@ -202,6 +202,22 @@ https://v8.dev/docs/stack-trace-api#customizing-stack-traces
 
 ## Interfaces
 
+### AskSource
+
+A link an answer cites, numbered from 1.
+
+#### Properties
+
+##### link
+
+> **link**: [`Link`](#link-1)
+
+##### n
+
+> **n**: `number`
+
+***
+
 ### BatchResult
 
 What a batch add did to each URL.
@@ -210,11 +226,11 @@ What a batch add did to each URL.
 
 ##### added
 
-> **added**: [`Link`](#link)[]
+> **added**: [`Link`](#link-1)[]
 
 ##### boosted
 
-> **boosted**: [`Link`](#link)[]
+> **boosted**: [`Link`](#link-1)[]
 
 ##### invalid
 
@@ -238,7 +254,7 @@ The links changed since a server time, and the server time to ask from next.
 
 ##### items
 
-> **items**: [`Link`](#link)[]
+> **items**: [`Link`](#link-1)[]
 
 ##### server\_time
 
@@ -580,7 +596,7 @@ One page of a search's results.
 
 ###### link
 
-> **link**: [`Link`](#link)
+> **link**: [`Link`](#link-1)
 
 ###### match?
 
@@ -738,6 +754,14 @@ The owner's AI settings, never with the key beyond its last 4 characters.
 
 ***
 
+### AskEvent
+
+> **AskEvent** = \{ `data`: \{ `sources`: [`AskSource`](#asksource)[]; \}; `event`: `"sources"`; \} \| \{ `data`: \{ `text`: `string`; \}; `event`: `"delta"`; \} \| \{ `data`: `Record`\<`string`, `never`\>; `event`: `"done"`; \} \| \{ `data`: \{ `error`: `string`; `message`: `string`; \}; `event`: `"error"`; \}
+
+One event of an answer: the sources first, then pieces of the answer, then done or an error.
+
+***
+
 ### FirecrawlSettings
 
 > **FirecrawlSettings** = \{ `configured`: `true`; `key_last4`: `string`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; \} \| \{ `configured`: `false`; \}
@@ -764,7 +788,7 @@ How a link of a search by meaning was found.
 
 ### Member
 
-> **Member** = [`Link`](#link) & `object`
+> **Member** = [`Link`](#link-1) & `object`
 
 A member of a workspace: a link with its position.
 
@@ -1042,7 +1066,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ##### archive
 
-> **archive**: (`id`) => `Promise`\<[`Link`](#link)\>
+> **archive**: (`id`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1052,15 +1076,15 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ##### archived
 
-> **archived**: () => `Promise`\<[`Link`](#link)[]\>
+> **archived**: () => `Promise`\<[`Link`](#link-1)[]\>
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)[]\>
+`Promise`\<[`Link`](#link-1)[]\>
 
 ##### changedSince
 
@@ -1078,7 +1102,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ##### check
 
-> **check**: (`id`) => `Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
+> **check**: (`id`) => `Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link-1); `passed`: `boolean`; `result`: `string`; \}\>
 
 ###### Parameters
 
@@ -1088,11 +1112,11 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### Returns
 
-`Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link); `passed`: `boolean`; `result`: `string`; \}\>
+`Promise`\<\{ `checked_at`: `string`; `link`: [`Link`](#link-1); `passed`: `boolean`; `result`: `string`; \}\>
 
 ##### edit
 
-> **edit**: (`id`, `fields`) => `Promise`\<[`Link`](#link)\>
+> **edit**: (`id`, `fields`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1102,11 +1126,11 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### fields
 
-`Partial`\<`Pick`\<[`Link`](#link), `"title"` \| `"summary"` \| `"tags"` \| `"topic"`\>\> & `object`
+`Partial`\<`Pick`\<[`Link`](#link-1), `"title"` \| `"summary"` \| `"tags"` \| `"topic"`\>\> & `object`
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ##### enrich
 
@@ -1124,7 +1148,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ##### get
 
-> **get**: (`id`) => `Promise`\<[`Link`](#link)\>
+> **get**: (`id`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1134,7 +1158,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ##### history
 
@@ -1152,7 +1176,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ##### list
 
-> **list**: (`cursor?`) => `Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
+> **list**: (`cursor?`) => `Promise`\<[`Page`](#page)\<[`Link`](#link-1)\>\>
 
 ###### Parameters
 
@@ -1162,11 +1186,11 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### Returns
 
-`Promise`\<[`Page`](#page)\<[`Link`](#link)\>\>
+`Promise`\<[`Page`](#page)\<[`Link`](#link-1)\>\>
 
 ##### pin
 
-> **pin**: (`id`, `position?`) => `Promise`\<[`Link`](#link)\>
+> **pin**: (`id`, `position?`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1180,7 +1204,7 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ##### reader
 
@@ -1234,7 +1258,7 @@ Deletes a link for good; a link already gone counts as deleted.
 
 ##### restore
 
-> **restore**: (`id`) => `Promise`\<[`Link`](#link)\>
+> **restore**: (`id`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1244,11 +1268,11 @@ Deletes a link for good; a link already gone counts as deleted.
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ##### unpin
 
-> **unpin**: (`id`) => `Promise`\<[`Link`](#link)\>
+> **unpin**: (`id`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 
@@ -1258,7 +1282,7 @@ Deletes a link for good; a link already gone counts as deleted.
 
 ###### Returns
 
-`Promise`\<[`Link`](#link)\>
+`Promise`\<[`Link`](#link-1)\>
 
 ***
 
@@ -1539,6 +1563,29 @@ The prefix filters of a query, each as written: tag:x, topic:"web development", 
 #### Returns
 
 `string`[]
+
+***
+
+### ask()
+
+> **ask**(`question`, `onEvent`): `Promise`\<`void`\>
+
+Asks the library a question and hands each event of the streamed answer to
+`onEvent` as it arrives. A refusal before the stream is thrown as an ApiError.
+
+#### Parameters
+
+##### question
+
+`string`
+
+##### onEvent
+
+(`event`) => `void`
+
+#### Returns
+
+`Promise`\<`void`\>
 
 ***
 

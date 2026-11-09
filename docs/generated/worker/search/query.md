@@ -117,19 +117,23 @@ named with its parameter.
 
 ### parseQuery()
 
-> **parseQuery**(`q`): [`ParsedQuery`](#parsedquery)
+> **parseQuery**(`q`, `max?`): [`ParsedQuery`](#parsedquery)
 
 Splits a query into free words and prefix filters: `tag:`, `topic:`,
 `host:`, `state:`, `in:` and `is:`, case-insensitive, each followed by one
 word or a double-quoted phrase. Every other term, another `word:value` and
-an unclosed quote included, is a free word. Refuses a query over 200
-characters, and a `state:` or `is:` value the filter does not take.
+an unclosed quote included, is a free word. Refuses a query over `max`
+characters (200 unless given), and a `state:` or `is:` value the filter does not take.
 
 #### Parameters
 
 ##### q
 
 `string`
+
+##### max?
+
+`number` = `QUERY_MAX`
 
 #### Returns
 

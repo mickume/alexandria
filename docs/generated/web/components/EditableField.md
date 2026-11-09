@@ -24,7 +24,7 @@ field and shows a refusal beside it.
 
 ###### link
 
-[`Link`](../api.md#link)
+[`Link`](../api.md#link-1)
 
 ###### onSaved
 
