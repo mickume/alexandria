@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Link } from '../api';
 import { FakeApi, installFakeApi, makeLink } from '../test/helpers';
@@ -258,6 +259,17 @@ describe('a card whose enrichment failed', () => {
 });
 
 describe('adding a link to a workspace from its card', () => {
+  /** A card whose page keeps the link as the card reports it changed. */
+  function Holder({ link: initial }: { link: Link }) {
+    const [shown, setShown] = useState(initial);
+    return (
+      <LinkCard
+        link={shown}
+        actions={{ onPin: noop, onUnpin: noop, onDelete: noop, onChanged: setShown }}
+      />
+    );
+  }
+
   it('offers the workspaces, marks those holding the link, and adds it to another', async () => {
     const api = installFakeApi(
       new FakeApi()
@@ -286,10 +298,21 @@ describe('adding a link to a workspace from its card', () => {
         .on('POST', '/api/v1/workspaces/b/links', {
           status: 201,
           body: { workspace_id: 'b', link_id: 'in-a', position: 1 },
+        })
+        .on('GET', '/api/v1/links/in-a', {
+          status: 200,
+          body: makeLink({
+            id: 'in-a',
+            state: 'active',
+            workspaces: [
+              { id: 'A', name: 'A' },
+              { id: 'b', name: 'b' },
+            ],
+          }),
         }),
     );
     const l = makeLink({ id: 'in-a', state: 'active', workspaces: [{ id: 'A', name: 'A' }] });
-    render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    render(<Holder link={l} />);
     await moreActions();
     await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
     const a = await screen.findByRole('menuitemcheckbox', { name: 'A' });

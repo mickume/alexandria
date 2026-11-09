@@ -127,6 +127,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
     onUnpin: (link) =>
       void linksApi.unpin(link.id).then(replace, () => setError('could not unpin')),
     onDelete: deletes.remove,
+    onChanged: replace,
   };
 
   return (

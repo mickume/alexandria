@@ -272,6 +272,7 @@ export function Stream() {
     onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
     onDelete: deletes.remove,
     onRefreshing: feed.markRefreshing,
+    onChanged: (link) => setItems((current) => current.map((l) => (l.id === link.id ? link : l))),
     onDragStart: (link) => {
       dragged.current = link;
     },

@@ -140,6 +140,54 @@ describe('pinning on the stream page', () => {
   });
 });
 
+describe('adding a link to a workspace on the stream page', () => {
+  it('shows the card’s decay note as the API has it once the link is in the workspace', async () => {
+    const before = makeLink({
+      id: 'l0',
+      title: 'Title 0',
+      decay_note: '60 points: expires in 60 days',
+    });
+    const after: Link = {
+      ...before,
+      workspaces: [{ id: 'w', name: 'Reading' }],
+      decay_note: 'in a workspace: never expires, 60 points',
+    };
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links', { status: 200, body: { items: [before], next_cursor: null } })
+      .on('GET', '/api/v1/workspaces', {
+        status: 200,
+        body: {
+          items: [
+            {
+              id: 'w',
+              name: 'Reading',
+              description: '',
+              link_count: 0,
+              created_at: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+          next_cursor: null,
+        },
+      })
+      .on('POST', '/api/v1/workspaces/w/links', { status: 201, body: { position: 1 } })
+      .on('GET', '/api/v1/links/l0', { status: 200, body: after });
+    renderPage('/', api);
+    const card = await screen.findByRole('article', { name: 'Title 0' });
+    expect(within(card).getByText('60 points: expires in 60 days')).toBeTruthy();
+
+    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
+    await act(async () => within(card).getByRole('button', { name: 'Add to workspace' }).click());
+    await act(async () =>
+      (await within(card).findByRole('menuitemcheckbox', { name: 'Reading' })).click(),
+    );
+
+    expect(await within(card).findByText('in a workspace: never expires, 60 points')).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'Reading' }).getAttribute('href')).toBe(
+      '/workspaces/w',
+    );
+  });
+});
+
 describe('deleting on the stream page', () => {
   async function ready(answer: Parameters<FakeApi['on']>[2] = { status: 204 }) {
     const all = makeLinks(3);

@@ -59,6 +59,8 @@ export function WorkspacePage({ id }: { id: string }) {
         .then(() => setMembers((current) => current.filter((m) => m.id !== link.id)))
         .catch(() => setError('could not remove the link, try again'));
     },
+    onChanged: (link) =>
+      setMembers((current) => current.map((m) => (m.id === link.id ? { ...m, ...link } : m))),
   };
 
   if (missing) return <p className="muted">This workspace does not exist.</p>;

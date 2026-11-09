@@ -8,6 +8,22 @@ What a card's actions do; the stream page supplies them.
 
 #### Properties
 
+##### onChanged?
+
+> `optional` **onChanged?**: (`link`) => `void`
+
+The card's link changed (it joined a workspace): the link as the API now shows it.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link-1)
+
+###### Returns
+
+`void`
+
 ##### onDelete
 
 > **onDelete**: (`link`) => `void`

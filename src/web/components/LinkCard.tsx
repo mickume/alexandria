@@ -132,6 +132,8 @@ export interface CardActions {
   onRefreshing?: (link: Link) => void;
   /** On a workspace's page: take the link out of the workspace. */
   onRemoveFromWorkspace?: (link: Link) => void;
+  /** The card's link changed (it joined a workspace): the link as the API now shows it. */
+  onChanged?: (link: Link) => void;
 }
 
 /** The workspaces a link is in, each a chip linking to the workspace's page. */
@@ -291,11 +293,11 @@ export function TagChips({ tags }: { tags: string[] }) {
 }
 
 /** The workspaces, the topic and the tags, in one row. */
-function Labels({ link, workspaces }: { link: Link; workspaces: { id: string; name: string }[] }) {
-  if (link.tags.length === 0 && !link.topic && workspaces.length === 0) return null;
+function Labels({ link }: { link: Link }) {
+  if (link.tags.length === 0 && !link.topic && link.workspaces.length === 0) return null;
   return (
     <div className="card-labels">
-      <WorkspaceChips workspaces={workspaces} />
+      <WorkspaceChips workspaces={link.workspaces} />
       {link.topic && <TopicChip topic={link.topic} />}
       {link.tags.length > 0 && <TagChips tags={link.tags} />}
     </div>
@@ -322,7 +324,18 @@ function pinDragProps(link: Link, actions: CardActions) {
  * where the site's icon would be.
  */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
-  const [memberOf, setMemberOf] = useState(link.workspaces);
+  // Joining a workspace can change the decay note, so the card shows the link as the API
+  // now has it; without it, the chips at least show the new workspace.
+  const joined = (w: { id: string; name: string }) => {
+    const local = {
+      ...link,
+      workspaces: [...link.workspaces, { id: w.id, name: w.name }].sort(byName),
+    };
+    void links.get(link.id).then(
+      (fresh) => actions.onChanged?.(fresh),
+      () => actions.onChanged?.(local),
+    );
+  };
   return (
     <article
       className={['card', link.pinned && 'pinned'].filter(Boolean).join(' ')}
@@ -390,10 +403,8 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             <span className="card-menu-item" data-keep-open>
               <WorkspacePicker
                 linkId={link.id}
-                memberOf={memberOf.map((w) => w.id)}
-                onAdded={(w) =>
-                  setMemberOf((current) => [...current, { id: w.id, name: w.name }].sort(byName))
-                }
+                memberOf={link.workspaces.map((w) => w.id)}
+                onAdded={joined}
               />
             </span>
             {actions.onRemoveFromWorkspace && (
@@ -420,7 +431,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       {link.enrichment_status === 'failed' && (
         <EnrichmentFailed link={link} onQueued={actions.onRefreshing} />
       )}
-      <Labels link={link} workspaces={memberOf} />
+      <Labels link={link} />
     </article>
   );
 }
