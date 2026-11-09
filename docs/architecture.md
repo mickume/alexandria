@@ -396,7 +396,9 @@ one namespace per user.
   note) as the question to `findPassages` with one passage a link and no
   filters, drops the link itself and returns the 5 best other links, worked out
   on each request; nothing is stored. A link not yet indexed has no first
-  passage and no related links. The detail page shows them above its history.
+  passage and no related links. The detail page shows them above its history,
+  and says so instead while they load, when there are none and when they
+  cannot be worked out.
 - **Deletion.** `deleteLink` and decay's removal delete a link's passages in the
   batch that deletes the link, and a trigger queues each passage's vector in
   `vector_deletions`; the account deletion job deletes `link_passages` like any

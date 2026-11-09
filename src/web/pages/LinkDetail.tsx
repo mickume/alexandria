@@ -19,6 +19,25 @@ function eventLabel(event: LinkEvent): string {
   return `Fetch failed: ${event.reason ?? 'unknown error'}`;
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * How long the link has left, as the API's decay note reckons it: a pinned
+ * link or one in a workspace never expires, an expired one is removed on its
+ * removal date, and any other expires once its points, a day each, run out.
+ */
+function daysLeft(link: Link, now: number = Date.now()): string {
+  const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+  if (link.state === 'expired' && link.removal_at) {
+    const left = Math.max(0, Math.ceil((Date.parse(link.removal_at) - now) / DAY_MS));
+    return `expired: removed in ${days(left)}`;
+  }
+  if (link.pinned) return 'never expires: pinned';
+  if (link.workspaces.length > 0) return 'never expires: in a workspace';
+  if (link.points <= 0) return 'expires today';
+  return `${days(link.points)} left`;
+}
+
 /** What is known about the link: its addresses, the fetch's answer, its state and notes. */
 function Facts({ link }: { link: Link }) {
   return (
@@ -62,29 +81,33 @@ function Facts({ link }: { link: Link }) {
 
 /**
  * The links nearest in meaning to this one, each opening its own detail page.
- * Left out while they load and when they cannot be worked out.
+ * The section is always there: it says so while they load, when there are
+ * none, and when they cannot be worked out.
  */
 function RelatedLinks({ id }: { id: string }) {
-  const [related, setRelated] = useState<Link[] | null>(null);
+  const [related, setRelated] = useState<Link[] | 'loading' | 'failed'>('loading');
 
   useEffect(() => {
     let live = true;
     links
       .related(id)
       .then((r) => live && setRelated(r.items))
-      .catch(() => undefined);
+      .catch(() => live && setRelated('failed'));
     return () => {
       live = false;
     };
   }, [id]);
 
-  if (!related) return null;
   return (
     <>
       <hr />
       <section aria-labelledby="related-heading">
         <h2 id="related-heading">Related links</h2>
-        {related.length === 0 ? (
+        {related === 'loading' ? (
+          <p className="muted">Looking for related links…</p>
+        ) : related === 'failed' ? (
+          <p className="muted">Related links can’t be worked out right now.</p>
+        ) : related.length === 0 ? (
           <p className="muted">Nothing in your library is near this link yet.</p>
         ) : (
           <ul className="related-links" aria-label="Related links">
@@ -256,7 +279,9 @@ export function LinkDetail({ id }: { id: string }) {
           <p className="muted">
             <span>Added {formatDate(link.added_at)}</span> ·{' '}
             {link.fetched_at && <span>fetched {formatDate(link.fetched_at)} · </span>}
-            <span>{link.use_count === 1 ? 'used once' : `used ${link.use_count} times`}</span>
+            <span>
+              {link.use_count === 1 ? 'used once' : `used ${link.use_count} times`}
+            </span> · <span>{daysLeft(link)}</span>
           </p>
           <RelatedLinks key={link.id} id={link.id} />
           <hr />

@@ -69,26 +69,70 @@ describe('the detail page’s related links', () => {
     {
       label: 'says so when there are none',
       answer: { status: 200, body: { items: [] } },
-      shown: true,
+      text: 'Nothing in your library is near this link yet.',
     },
     {
-      label: 'is left out when they cannot be worked out',
+      label: 'says so when they cannot be worked out',
       answer: { status: 503, body: { error: 'search_unavailable', message: 'x' } },
-      shown: false,
+      text: 'Related links can’t be worked out right now.',
     },
-  ])('$label', async ({ answer, shown }) => {
-    const api = page(answer);
+  ])('$label', async ({ answer, text }) => {
+    renderPage('/links/abc', page(answer));
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Related links' })).toBeTruthy();
+  });
+
+  it('says it is looking for them while they load', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links/abc', { status: 200, body: makeLink({ id: 'abc' }) })
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('GET', '/api/v1/links/abc/related', () => new Promise(() => undefined));
     renderPage('/links/abc', api);
-    await screen.findByRole('list', { name: 'History' });
-    await waitFor(() => expect(api.sent('GET', '/api/v1/links/abc/related')).toHaveLength(1));
-    if (shown) {
-      expect(
-        await screen.findByText('Nothing in your library is near this link yet.'),
-      ).toBeTruthy();
-    } else {
-      await act(async () => undefined);
-      expect(screen.queryByRole('heading', { name: 'Related links' })).toBeNull();
-    }
+    expect(await screen.findByText('Looking for related links…')).toBeTruthy();
+  });
+});
+
+describe('the detail page’s days left', () => {
+  const DAY = 86_400_000;
+  it.each([
+    { label: 'an active link', fields: { points: 12 }, text: '12 days left' },
+    { label: 'a link with one point', fields: { points: 1 }, text: '1 day left' },
+    { label: 'a link out of points', fields: { points: -2 }, text: 'expires today' },
+    {
+      label: 'a pinned link',
+      fields: { points: 5, pinned: true, pin_position: 1 },
+      text: 'never expires: pinned',
+    },
+    {
+      label: 'a link in a workspace',
+      fields: { points: 5, workspaces: [{ id: 'w', name: 'W' }] },
+      text: 'never expires: in a workspace',
+    },
+    {
+      label: 'an expired link',
+      fields: {
+        state: 'expired' as const,
+        points: -40,
+        expired_at: new Date(Date.now() - 20 * DAY).toISOString(),
+        removal_at: new Date(Date.now() + 10 * DAY).toISOString(),
+      },
+      text: 'expired: removed in 10 days',
+    },
+  ])('shows them for $label', async ({ fields, text }) => {
+    renderPage(
+      '/links/abc',
+      new FakeApi()
+        .on('GET', '/api/v1/links/abc', { status: 200, body: makeLink({ id: 'abc', ...fields }) })
+        .on('GET', '/api/v1/links/abc/history', {
+          status: 200,
+          body: { items: [], next_cursor: null },
+        })
+        .on('GET', '/api/v1/links/abc/related', { status: 200, body: { items: [] } }),
+    );
+    expect(await screen.findByText(text)).toBeTruthy();
   });
 });
 
