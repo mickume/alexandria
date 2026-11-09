@@ -22,6 +22,24 @@ A rendered note.
 
 ***
 
+### openWebLinksInNewTab()
+
+> **openWebLinksInNewTab**(`sanitiser`): `void`
+
+Makes every http or https link a sanitiser keeps open in a new tab, as a card's links do.
+
+#### Parameters
+
+##### sanitiser
+
+`DOMPurify`
+
+#### Returns
+
+`void`
+
+***
+
 ### renderNote()
 
 > **renderNote**(`source`): `string`

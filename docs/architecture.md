@@ -84,7 +84,12 @@ account and checks the PKCE verifier as Google does.
   the card; Snapshot, Details, Refresh, Add to workspace, Remove from
   workspace, Archive and Delete are behind its ⋯ More actions button, a
   disclosure that closes on Escape, on a click elsewhere and once an action
-  is chosen.
+  is chosen. Everywhere else a link appears, its address opens the same way:
+  the headline of the link's detail page and a source's title on the Ask page
+  go through the open route in a new tab (`SiteLink`), and the web links in a
+  note (`components/Markdown`) and in a Read page's article are given
+  `target="_blank"` and `rel="noopener noreferrer"` by their sanitiser
+  (`openWebLinksInNewTab`).
 
 ## Data
 

@@ -33,8 +33,19 @@ const MARKDOWN_TAGS = [
 ];
 const SAFE_URL = /^(?:https?:|mailto:)/i;
 
+/** Makes every http or https link a sanitiser keeps open in a new tab, as a card's links do. */
+export function openWebLinksInNewTab(sanitiser: ReturnType<typeof createDOMPurify>): void {
+  sanitiser.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'A' && /^https?:/i.test(node.getAttribute('href')?.trim() ?? '')) {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+}
+
 /** A sanitiser of its own, so that its URL rule does not reach other sanitising on the page. */
 const purifier = createDOMPurify(window);
+openWebLinksInNewTab(purifier);
 purifier.addHook('uponSanitizeAttribute', (_node, data) => {
   if (
     (data.attrName === 'href' || data.attrName === 'src') &&

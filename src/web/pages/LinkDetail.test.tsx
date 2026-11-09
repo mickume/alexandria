@@ -39,6 +39,26 @@ describe('the link detail page', () => {
   });
 });
 
+describe('the detail page’s headline', () => {
+  it('opens the site in a new tab, as the stream’s cards do', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links/abc', {
+        status: 200,
+        body: makeLink({ id: 'abc', title: 'An Article' }),
+      })
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      });
+    renderPage('/links/abc', api);
+    const heading = await screen.findByRole('heading', { level: 1, name: 'An Article' });
+    const a = within(heading).getByRole('link', { name: 'An Article' });
+    expect(a.getAttribute('href')).toBe('/api/v1/links/abc/open');
+    expect(a.getAttribute('target')).toBe('_blank');
+    expect(a.getAttribute('rel')).toContain('noopener');
+  });
+});
+
 describe('the detail page of a fetched link', () => {
   it('shows what the fetch found and every fetch beside the uses', async () => {
     const api = new FakeApi()

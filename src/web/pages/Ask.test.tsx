@@ -104,9 +104,10 @@ describe('the Ask page', () => {
     expect(cited.getAttribute('href')).toBe('/links/l1');
     expect(answer.textContent).toBe('Use an alarm [1].');
     const sources = within(screen.getByRole('list', { name: 'Sources' }));
-    expect(sources.getByRole('link', { name: 'Durable Object alarms' }).getAttribute('href')).toBe(
-      '/links/l1',
-    );
+    const site = sources.getByRole('link', { name: 'Durable Object alarms' });
+    expect(site.getAttribute('href')).toBe('/api/v1/links/l1/open');
+    expect(site.getAttribute('target')).toBe('_blank');
+    expect(site.getAttribute('rel')).toContain('noopener');
     expect(sources.getByText('example.com')).toBeTruthy();
   });
 

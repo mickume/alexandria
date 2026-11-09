@@ -1,7 +1,8 @@
-import DOMPurify from 'dompurify';
+import createDOMPurify from 'dompurify';
 import { useEffect, useState } from 'react';
 import { Link as PageLink } from '../App';
 import { links, snapshotUrl, type Link, type ReaderView } from '../api';
+import { openWebLinksInNewTab } from '../components/Markdown';
 
 /** Loads one value for a page, and whether it failed. */
 function useLoad<T>(load: () => Promise<T>, key: string): { value: T | null; failed: boolean } {
@@ -23,9 +24,13 @@ function useLoad<T>(load: () => Promise<T>, key: string): { value: T | null; fai
   return state;
 }
 
+/** The reader view's own sanitiser, whose web links open in a new tab. */
+const purifier = createDOMPurify(window);
+openWebLinksInNewTab(purifier);
+
 /** The reader view's HTML, sanitised again in the browser before it is shown. */
 function SafeHtml({ html }: { html: string }) {
-  const clean = DOMPurify.sanitize(html, {
+  const clean = purifier.sanitize(html, {
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed'],
     FORBID_ATTR: ['style'],
   });

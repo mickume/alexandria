@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { links, openUrl, type Link, type LinkEvent } from '../api';
+import { links, type Link, type LinkEvent } from '../api';
 import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { NoteEditor } from '../components/NoteEditor';
-import { RefreshButton, WorkspaceChips } from '../components/LinkCard';
+import { RefreshButton, SiteLink, WorkspaceChips } from '../components/LinkCard';
 import { formatDate } from '../format';
 
 /** How one history event reads: "Opened", "Fetched", or "Fetch failed: HTTP 503". */
@@ -80,7 +80,7 @@ export function LinkDetail({ id }: { id: string }) {
   return (
     <article className="detail">
       <h1>
-        <a href={openUrl(link.id)}>{link.title}</a>
+        <SiteLink link={link}>{link.title}</SiteLink>
       </h1>
       <NoteEditor
         note={link.note ?? ''}

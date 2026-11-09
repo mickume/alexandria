@@ -35,6 +35,23 @@ describe('the Read page', () => {
     expect(screen.getByText('First paragraph.')).toBeTruthy();
   });
 
+  it('opens the article’s web links in a new tab', async () => {
+    renderPage(
+      '/links/abc/read',
+      readerApi({
+        title: 'An Article',
+        byline: null,
+        html: '<p>See <a href="https://elsewhere.example/b">elsewhere</a> and <a href="#notes">notes</a>.</p>',
+        text: 'See elsewhere and notes.',
+        empty: false,
+      }),
+    );
+    const web = await screen.findByRole('link', { name: 'elsewhere' });
+    expect(web.getAttribute('target')).toBe('_blank');
+    expect(web.getAttribute('rel')).toContain('noopener');
+    expect(screen.getByRole('link', { name: 'notes' }).getAttribute('target')).toBeNull();
+  });
+
   it('offers the snapshot when nothing readable was extracted', async () => {
     renderPage(
       '/links/abc/read',

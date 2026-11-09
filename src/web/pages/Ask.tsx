@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, ask, type AskEvent, type AskSource } from '../api';
+import { SiteLink } from '../components/LinkCard';
 
 /** The longest question, in characters. */
 const QUESTION_MAX = 500;
@@ -101,7 +102,7 @@ export function Ask() {
           {sources.map((s) => (
             <li key={s.n}>
               <span className="muted">[{s.n}]</span>{' '}
-              <PageLink to={`/links/${s.link.id}`}>{s.link.title}</PageLink>{' '}
+              <SiteLink link={s.link}>{s.link.title}</SiteLink>{' '}
               <span className="muted">{s.link.host}</span>
             </li>
           ))}

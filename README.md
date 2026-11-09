@@ -70,8 +70,9 @@ The **Ask** tab, between Tags and Archive, answers a question from your own
 links. Type it (at most 500 characters, with the same filters as the search
 box if you like) and press **Ask**: the answer streams in, written by your own
 AI provider with the key saved under Settings, from the passages of your links
-that best match the question. Each `[1]`, `[2]`… in the answer links to the
-link it came from, and the links are listed under the answer. If nothing in your
+that best match the question. Each `[1]`, `[2]`… in the answer opens the detail
+page of the link it came from, and the links are listed under the answer; a
+title there opens the site in a new tab, as everywhere in Alexandria. If nothing in your
 library answers, it says so without calling the provider. Nothing is kept:
 asking again, or leaving the page, loses the answer, and asking records no use
 of the links it cites. Without a key the page asks you to add one in settings.

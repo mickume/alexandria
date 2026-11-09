@@ -146,7 +146,7 @@ export function WorkspaceChips({ workspaces }: { workspaces: { id: string; name:
 }
 
 /** A link to the site itself, through the open route so the visit counts as a use, in a new tab. */
-function SiteLink({
+export function SiteLink({
   link,
   className,
   style,

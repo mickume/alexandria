@@ -9,6 +9,14 @@ describe('a rendered note', () => {
     expect(container.querySelector('a')?.getAttribute('href')).toBe('https://a.example');
   });
 
+  it('opens a note’s web links in a new tab', () => {
+    const { container } = render(<Markdown source="[x](https://a.example) <mailto:a@b.example>" />);
+    const [web, mail] = container.querySelectorAll('a');
+    expect(web?.getAttribute('target')).toBe('_blank');
+    expect(web?.getAttribute('rel')).toContain('noopener');
+    expect(mail?.getAttribute('target')).toBeNull();
+  });
+
   it.each([
     {
       label: 'a script',

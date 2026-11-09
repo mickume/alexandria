@@ -182,6 +182,38 @@ refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 
 ***
 
+### SiteLink()
+
+> **SiteLink**(`__namedParameters`): `Element`
+
+A link to the site itself, through the open route so the visit counts as a use, in a new tab.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### children
+
+`ReactNode`
+
+###### className?
+
+`string`
+
+###### link
+
+[`Link`](../api.md#link-1)
+
+###### style?
+
+`CSSProperties`
+
+#### Returns
+
+`Element`
+
+***
+
 ### WorkspaceChips()
 
 > **WorkspaceChips**(`__namedParameters`): `Element` \| `null`
