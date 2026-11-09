@@ -255,14 +255,13 @@ function CardMeta({ link }: { link: Link }) {
           {note}
         </span>
       ))}
-      {link.state === 'dormant' && <span className="decay-note">{link.decay_note}</span>}
+      <span className="decay-note">{link.decay_note}</span>
       {link.dead_since && (
         <span className="dead">
           dead since {link.dead_since.slice(0, 10)}
           {link.last_check_result ? ` (${link.last_check_result})` : ''}
         </span>
       )}
-      {link.sticky && <span className="sticky-label">sticky</span>}
     </div>
   );
 }
@@ -324,9 +323,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
   const [memberOf, setMemberOf] = useState(link.workspaces);
   return (
     <article
-      className={['card', link.pinned && 'pinned', link.state === 'dormant' && 'dormant']
-        .filter(Boolean)
-        .join(' ')}
+      className={['card', link.pinned && 'pinned'].filter(Boolean).join(' ')}
       aria-label={link.title}
       {...pinDragProps(link, actions)}
     >

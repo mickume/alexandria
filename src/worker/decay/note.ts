@@ -3,15 +3,13 @@ import type { LinkRow } from '../links/store';
 
 const DAY_MS = 86_400_000;
 
-/** "N days" below 60 days, "N months" of 30 days from 60 days. */
-function unusedFor(days: number): string {
-  if (days < 60) return `unused for ${days} ${days === 1 ? 'day' : 'days'}`;
-  const months = Math.floor(days / 30);
-  return `unused for ${months} months`;
-}
-
 function isoDate(t: number): string {
   return new Date(t).toISOString().slice(0, 10);
+}
+
+/** "1 point" or "N points". */
+function pointsText(points: number): string {
+  return `${points} ${points === 1 ? 'point' : 'points'}`;
 }
 
 /** The start points of a user who never changed them. */
@@ -31,47 +29,48 @@ export function pointsAt(
   return startPoints + useCount - Math.max(0, Math.floor((at - Date.parse(lastUsedAt)) / DAY_MS));
 }
 
+/**
+ * Why a link stands where it does, in one sentence: when an expired link
+ * expired and will be removed; that a pinned link, or one in a workspace,
+ * never expires; otherwise its points and the days until it expires.
+ */
+function decayNote(
+  row: LinkRow,
+  points: number,
+  expiredAt: string | null,
+  removalAt: string | null,
+): string {
+  if (expiredAt && removalAt) {
+    return `expired on ${isoDate(Date.parse(expiredAt))}, removed on ${isoDate(Date.parse(removalAt))}`;
+  }
+  if (row.pin_position !== null) return `pinned: never expires, ${pointsText(points)}`;
+  if (row.workspaces_json && row.workspaces_json !== '[]') {
+    return `in a workspace: never expires, ${pointsText(points)}`;
+  }
+  if (points <= 0) return `${pointsText(points)}: expires today`;
+  return `${pointsText(points)}: expires in ${points} ${points === 1 ? 'day' : 'days'}`;
+}
+
 /** The decay fields of a link as the API shows them: points, expiry and liveness dates, and why. */
 export function decayFields(row: LinkRow) {
-  const uses = row.use_events ?? 0;
-  const days = row.use_days ?? 0;
-  const sticky = uses >= 5 && days >= 5;
   const removeDays = row.user_remove_days ?? 180;
-  const archivedAt = row.archived_at ?? null;
   const expiredAt = row.state === 'expired' ? (row.expired_at ?? null) : null;
   const removalAt = expiredAt
     ? new Date(Date.parse(expiredAt) + removeDays * DAY_MS).toISOString()
     : null;
-  const archiveRemovalAt = archivedAt
-    ? new Date(Date.parse(archivedAt) + removeDays * DAY_MS).toISOString()
-    : null;
-  const unused = unusedFor(
-    Math.max(0, Math.floor((now().getTime() - Date.parse(row.last_used_at)) / DAY_MS)),
+  const points = pointsAt(
+    row.user_start_points ?? DEFAULT_START_POINTS,
+    row.use_count,
+    row.last_used_at,
+    now().getTime(),
   );
-  let decay_note: string;
-  if (row.state === 'archived' && archivedAt && archiveRemovalAt) {
-    decay_note = `archived on ${isoDate(Date.parse(archivedAt))}, removed on ${isoDate(Date.parse(archiveRemovalAt))}`;
-  } else if (sticky) {
-    decay_note = `sticky: ${uses} uses on ${days} days, never archived`;
-  } else if (row.pin_position !== null) {
-    decay_note = `pinned: never archived, ${unused}`;
-  } else if (row.workspaces_json && row.workspaces_json !== '[]') {
-    decay_note = `in a workspace: never archived, ${unused}`;
-  } else {
-    decay_note = unused;
-  }
   return {
-    points: pointsAt(
-      row.user_start_points ?? DEFAULT_START_POINTS,
-      row.use_count,
-      row.last_used_at,
-      now().getTime(),
-    ),
+    points,
     expired_at: expiredAt,
     removal_at: removalAt,
     dead_since: row.dead_since ?? null,
     last_checked_at: row.last_checked_at ?? null,
     last_check_result: row.last_check_result ?? null,
-    decay_note,
+    decay_note: decayNote(row, points, expiredAt, removalAt),
   };
 }

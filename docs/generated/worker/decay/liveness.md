@@ -104,8 +104,8 @@ gate unavailable) is thrown, so that it never counts against the link.
 
 > **enqueueDueChecks**(`env`): `Promise`\<`void`\>
 
-Enqueues the weekly check of every link that is due: kept, active, dormant
-or pinned, last checked (or, never checked, added) 7 days ago or more, and
+Enqueues the weekly check of every link that is due: not expired, and
+active or pinned, last checked (or, never checked, added) 7 days ago or more, and
 not enqueued in the last 6 hours. The enqueue time is recorded in the same
 statement that selects the links.
 
@@ -125,7 +125,7 @@ statement that selects the links.
 
 > **handleLivenessBatch**(`batch`, `env`): `Promise`\<`void`\>
 
-The LIVENESS_QUEUE consumer. A message for a link deleted, archived or no
+The LIVENESS_QUEUE consumer. A message for a link deleted, expired or no
 longer due is dropped. Anything that fails for Alexandria's own reasons
 hands the message back to the queue and changes nothing.
 
@@ -149,7 +149,7 @@ hands the message back to the queue and changes nothing.
 
 > **isCheckable**(`link`): `boolean`
 
-Whether a link is one the weekly checks cover: kept, and active, dormant or pinned.
+Whether a link is one the weekly checks cover: not expired, and active or pinned.
 
 #### Parameters
 

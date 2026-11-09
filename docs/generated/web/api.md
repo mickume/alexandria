@@ -370,10 +370,6 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
-##### archived\_at
-
-> **archived\_at**: `string` \| `null`
-
 ##### content\_kind
 
 > **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
@@ -401,6 +397,12 @@ A link as the API shows it.
 ##### enrichment\_status
 
 > **enrichment\_status**: `"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `null`
+
+##### expired\_at
+
+> **expired\_at**: `string` \| `null`
+
+When the link expired, while it is expired.
 
 ##### favicon\_url
 
@@ -472,9 +474,17 @@ The whole note: only on a link read on its own.
 
 > **pinned**: `boolean`
 
+##### points
+
+> **points**: `number`
+
+Start points plus the use count, minus the whole days since the last use or boost.
+
 ##### removal\_at
 
 > **removal\_at**: `string` \| `null`
+
+When an expired link will be removed.
 
 ##### state
 
@@ -483,10 +493,6 @@ The whole note: only on a link read on its own.
 ##### state\_reason
 
 > **state\_reason**: `string` \| `null`
-
-##### sticky
-
-> **sticky**: `boolean`
 
 ##### summary
 
@@ -652,21 +658,17 @@ A piece of a snippet: text, and whether it is a matched word.
 
 ### Thresholds
 
-The decay thresholds, in days.
+The decay settings: the points a link starts from, and the days from expiry to removal.
 
 #### Properties
-
-##### archive\_days
-
-> **archive\_days**: `number`
-
-##### dormant\_days
-
-> **dormant\_days**: `number`
 
 ##### remove\_days
 
 > **remove\_days**: `number`
+
+##### start\_points
+
+> **start\_points**: `number`
 
 ***
 
@@ -1064,28 +1066,6 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 `Promise`\<[`BatchResult`](#batchresult)\>
 
-##### archive
-
-> **archive**: (`id`) => `Promise`\<[`Link`](#link-1)\>
-
-###### Parameters
-
-###### id
-
-`string`
-
-###### Returns
-
-`Promise`\<[`Link`](#link-1)\>
-
-##### archived
-
-> **archived**: () => `Promise`\<[`Link`](#link-1)[]\>
-
-###### Returns
-
-`Promise`\<[`Link`](#link-1)[]\>
-
 ##### changedSince
 
 > **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
@@ -1145,6 +1125,14 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 ###### Returns
 
 `Promise`\<\{ `status`: `"queued"`; \}\>
+
+##### expired
+
+> **expired**: () => `Promise`\<[`Link`](#link-1)[]\>
+
+###### Returns
+
+`Promise`\<[`Link`](#link-1)[]\>
 
 ##### get
 

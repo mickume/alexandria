@@ -43,3 +43,34 @@ test('a link unused for longer than its start points expires and the owner resto
   await page.goto('/expired');
   await expect(page.getByText('Nothing has expired.')).toBeVisible();
 });
+
+test('the stream lists a much-used link above a recently used one, each with its points', async ({
+  page,
+}) => {
+  await signIn(page);
+  const origin = new URL(page.url()).origin;
+  const add = async (url: string) =>
+    (
+      await (
+        await page.request.post('/api/v1/links', { data: { url }, headers: { Origin: origin } })
+      ).json()
+    ).link.id as string;
+  const used = await add('https://example.org/much-used');
+  const recent = await add('https://example.org/recent');
+  for (let i = 0; i < 10; i++) {
+    await page.request.get(`/api/v1/links/${used}/open`, { maxRedirects: 0 });
+  }
+  await page.request.get(`/api/v1/links/${recent}/open`, { maxRedirects: 0 });
+  d1(`UPDATE links SET last_used_at = '${daysAgo(5)}' WHERE id = '${used}'`);
+
+  await page.goto('/');
+  await expect(cardOf(page, used).getByText('65 points: expires in 65 days')).toBeVisible();
+  await expect(cardOf(page, recent).getByText('61 points: expires in 61 days')).toBeVisible();
+  // Each card's links to its address, in the order the stream lists the cards.
+  const ids = await page
+    .locator('article a[href$="/open"]')
+    .evaluateAll((links) => links.map((a) => a.getAttribute('href')));
+  const at = (id: string) => ids.findIndex((h) => h === `/api/v1/links/${id}/open`);
+  expect(at(used)).toBeGreaterThanOrEqual(0);
+  expect(at(used)).toBeLessThan(at(recent));
+});

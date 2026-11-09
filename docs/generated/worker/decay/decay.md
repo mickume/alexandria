@@ -24,26 +24,62 @@ Test seams of the evaluation, as the clock is one.
 
 `Promise`\<`void`\>
 
-***
-
-### STICKY
-
-> `const` **STICKY**: "(\\n  (SELECT COUNT(\*) FROM link\_uses u WHERE u.link\_id = l.id) \>= 5\\n  AND (SELECT COUNT(DISTINCT substr(u.at, 1, 10)) FROM link\_uses u WHERE u.link\_id = l.id) \>= 5\\n)"
-
-The SQL condition that a link `l` is sticky: at least 5 uses on at least 5 distinct UTC days.
-
 ## Functions
 
-### decayStatements()
+### epochMs()
 
-> **decayStatements**(`db`, `userId`, `t`): `Promise`\<`D1PreparedStatement`[]\>
+> **epochMs**(`column`): `string`
 
-The statements of one user's decay evaluation at time `t`, each carrying its
-own conditions so that a link boosted meanwhile is left as the boost left
-it: sticky dormant links become active again; active links unused for
-dormant_days that are not sticky become dormant; links unused for
-archive_days that are neither sticky, pinned nor in a workspace are
-archived.
+The SQL expression of a stored timestamp `column` as milliseconds since the
+epoch, in integers, so that whole days are counted exactly as pointsAt counts
+them.
+
+#### Parameters
+
+##### column
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
+### evaluateDecay()
+
+> **evaluateDecay**(`env`, `userId`): `Promise`\<`void`\>
+
+Evaluates decay for one user at the current time: expiry, removal and the
+user's last_decay_at, all in one transaction, so that an evaluation that
+fails changes nothing. The stored objects of the removed links are deleted
+after the transaction.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### userId
+
+`string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### expiryStatement()
+
+> **expiryStatement**(`db`, `userId`, `t`): `D1PreparedStatement`
+
+The statement that expires, at time `t`, every link of the user whose
+points are 0 or below, that is active, pending or unreachable, not pinned
+and in no workspace. Points reach 0 once the whole days since the last use
+reach the start points plus the use count. The statement carries its own
+conditions, so a link used or re-pasted meanwhile is left as the use left it.
 
 #### Parameters
 
@@ -61,29 +97,4 @@ archived.
 
 #### Returns
 
-`Promise`\<`D1PreparedStatement`[]\>
-
-***
-
-### evaluateDecay()
-
-> **evaluateDecay**(`env`, `userId`): `Promise`\<`void`\>
-
-Evaluates decay for one user at the current time: dormancy, archiving and
-removal, and the user's last_decay_at, all in one transaction, so that an
-evaluation that fails changes nothing. The stored objects of the removed
-links are deleted after the transaction.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### userId
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
+`D1PreparedStatement`

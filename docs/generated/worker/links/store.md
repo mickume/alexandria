@@ -50,6 +50,12 @@ A JSON array of the fields the owner has set by hand.
 
 > **enrichment\_status**: `string` \| `null`
 
+##### expired\_at
+
+> **expired\_at**: `string` \| `null`
+
+When the link expired, while it is expired.
+
 ##### favicon\_url
 
 > **favicon\_url**: `string` \| `null`
@@ -178,16 +184,6 @@ The topic's name, when read through link_views.
 
 > **use\_count**: `number`
 
-##### use\_days?
-
-> `optional` **use\_days?**: `number`
-
-##### use\_events?
-
-> `optional` **use\_events?**: `number`
-
-Read through link_views: the stored uses, and the UTC days they fall on.
-
 ##### user\_id
 
 > **user\_id**: `string`
@@ -196,7 +192,13 @@ Read through link_views: the stored uses, and the UTC days they fall on.
 
 > `optional` **user\_remove\_days?**: `number`
 
-Read through link_views: the link's user's removal threshold.
+Read through link_views: the link's user's removal delay.
+
+##### user\_start\_points?
+
+> `optional` **user\_start\_points?**: `number`
+
+Read through link_views: the link's user's start points.
 
 ##### workspaces\_json?
 
@@ -216,10 +218,6 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
-##### archived\_at
-
-> **archived\_at**: `string` \| `null`
-
 ##### content\_kind
 
 > **content\_kind**: `string` \| `null`
@@ -234,7 +232,7 @@ What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fe
 
 > **decay\_note**: `string`
 
-One sentence: the link's decay state and why.
+One sentence: the link's points and when it expires, or when it will be removed.
 
 ##### description
 
@@ -255,6 +253,12 @@ The fields the owner has set by hand, which automatic work never overwrites.
 > **enrichment\_status**: `string` \| `null`
 
 no_key, queued, enriched, failed, skipped or waiting_for_key; null before the first fetch.
+
+##### expired\_at
+
+> **expired\_at**: `string` \| `null`
+
+When the link expired, while it is expired.
 
 ##### favicon\_url
 
@@ -334,11 +338,17 @@ Short notes such as "truncated" or "not a web page (image/png)".
 
 > **pinned**: `boolean`
 
+##### points
+
+> **points**: `number`
+
+Start points plus the use count, minus the whole days since the last use or boost.
+
 ##### removal\_at
 
 > **removal\_at**: `string` \| `null`
 
-When an archived link will be removed.
+When an expired link will be removed.
 
 ##### state
 
@@ -349,12 +359,6 @@ When an archived link will be removed.
 > **state\_reason**: `string` \| `null`
 
 Why the link is in its state, such as "HTTP 503" for a pending or unreachable link.
-
-##### sticky
-
-> **sticky**: `boolean`
-
-At least 5 uses on at least 5 UTC days: never dormant or archived by decay.
 
 ##### summary
 

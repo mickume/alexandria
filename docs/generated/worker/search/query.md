@@ -79,7 +79,7 @@ The values `state:` accepts.
 The conditions that select the links satisfying every filter: a tag or
 topic with that name and the workspace with that name, ignoring case; a
 host equal to the value or ending in '.' and the value; pinned; dead.
-Archived links are left out unless a `state:` filter is given: `archived`
+Expired links are left out unless a `state:` filter is given: `expired`
 selects only them, `any` every state, another value that state.
 
 #### Parameters

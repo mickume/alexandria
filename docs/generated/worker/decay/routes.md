@@ -4,21 +4,17 @@
 
 ### Thresholds
 
-A user's decay thresholds, in days.
+A user's decay settings: the points a link starts from, and the days from expiry to removal.
 
 #### Properties
-
-##### archive\_days
-
-> **archive\_days**: `number`
-
-##### dormant\_days
-
-> **dormant\_days**: `number`
 
 ##### remove\_days
 
 > **remove\_days**: `number`
+
+##### start\_points
+
+> **start\_points**: `number`
 
 ## Variables
 
@@ -40,7 +36,7 @@ The decay settings, under /api/v1/settings.
 
 > `const` **THRESHOLD\_MIN**: `7` = `7`
 
-The bounds of every decay threshold, in days.
+The bounds of every decay setting.
 
 ## Functions
 
@@ -48,7 +44,7 @@ The bounds of every decay threshold, in days.
 
 > **getThresholds**(`db`, `userId`): `Promise`\<[`Thresholds`](#thresholds)\>
 
-The user's decay thresholds.
+The user's decay settings.
 
 #### Parameters
 

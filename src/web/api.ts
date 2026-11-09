@@ -91,7 +91,6 @@ export interface Link {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on a link read on its own. */
   note?: string;
-  sticky: boolean;
   /** Start points plus the use count, minus the whole days since the last use or boost. */
   points: number;
   /** When the link expired, while it is expired. */

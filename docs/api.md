@@ -163,10 +163,11 @@ can be negative. A use adds 1 to `use_count` and sets `last_used_at` to now; a
 re-paste sets `last_used_at` to now without a use. `expired_at` is when the
 link expired, and null while it is not expired; `removal_at` is `expired_at`
 plus the owner's `remove_days`, or null. `decay_note` is one sentence saying
-the link's decay state and why: "unused for 3 days" (in months of 30 days from 60 days),
-"sticky: 7 uses on 6 days, never archived", "pinned: never archived, unused
-for …", "in a workspace: never archived, unused for …", or "archived on
-2027-03-01, removed on 2027-08-28". A use or a re-paste of an expired link
+where the link stands: "expired on 2027-03-01, removed on 2027-08-28" for an
+expired link (whatever else holds); "pinned: never expires, -3 points" for a
+pinned link; "in a workspace: never expires, 12 points" for a link in a
+workspace; otherwise "42 points: expires in 42 days" ("1 point: expires in 1
+day"), or "0 points: expires today" at 0 points or below. A use or a re-paste of an expired link
 makes it `active` again in the same request and clears `expired_at`.
 
 Every URL that enters the library is normalised the same way: whitespace is

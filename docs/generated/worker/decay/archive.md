@@ -2,16 +2,16 @@
 
 ## Variables
 
-### archiveLinkRoutes
+### expiredRoutes
 
-> `const` **archiveLinkRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
+> `const` **expiredRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
 
-Archiving and restoring one link by hand, under /api/v1/links.
+The expired links, under /api/v1/expired.
 
 ***
 
-### archiveRoutes
+### restoreRoutes
 
-> `const` **archiveRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
+> `const` **restoreRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
 
-The archive, under /api/v1/archive.
+Restoring one expired link, under /api/v1/links.

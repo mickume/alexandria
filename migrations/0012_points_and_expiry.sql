@@ -17,8 +17,8 @@ UPDATE links SET state = 'expired', expired_at = archived_at, archived_at = NULL
 UPDATE links SET state = 'active' WHERE state = 'dormant';
 CREATE INDEX links_expired ON links (user_id, expired_at) WHERE expired_at IS NOT NULL;
 
--- A link as it is read: with its topic, tags, workspaces, use counts, and its
--- user's start points and removal delay.
+-- A link as it is read: with its topic, tags, workspaces, and its user's start
+-- points and removal delay; stickiness and its use counts are gone.
 DROP VIEW link_views;
 CREATE VIEW link_views AS
 SELECT
@@ -36,8 +36,6 @@ SELECT
        WHERE wl.link_id = l.id ORDER BY w.name_key, w.id)),
     '[]'
   ) AS workspaces_json,
-  (SELECT COUNT(*) FROM link_uses u WHERE u.link_id = l.id) AS use_events,
-  (SELECT COUNT(DISTINCT substr(u.at, 1, 10)) FROM link_uses u WHERE u.link_id = l.id) AS use_days,
   (SELECT start_points FROM users WHERE users.id = l.user_id) AS user_start_points,
   (SELECT remove_days FROM users WHERE users.id = l.user_id) AS user_remove_days
 FROM links l

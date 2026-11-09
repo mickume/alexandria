@@ -331,41 +331,23 @@ describe('a card’s note and workspaces', () => {
 
 describe('a card’s decay', () => {
   it.each([
+    { state: 'active', decay_note: '42 points: expires in 42 days' },
+    { state: 'pending', decay_note: '0 points: expires today' },
+    { state: 'active', decay_note: 'pinned: never expires, -3 points', pinned: true },
     {
-      label: 'a dormant link',
-      link: { state: 'dormant', decay_note: 'unused for 2 months' },
-      dimmed: true,
-      text: 'unused for 2 months',
-      sticky: false,
+      state: 'active',
+      decay_note: 'in a workspace: never expires, 12 points',
+      dead_since: '2027-03-01T10:00:00.000Z',
     },
-    {
-      label: 'a sticky link',
-      link: {
-        state: 'active',
-        sticky: true,
-        decay_note: 'sticky: 7 uses on 6 days, never archived',
-      },
-      dimmed: false,
-      text: null,
-      sticky: true,
-    },
-    {
-      label: 'an active link',
-      link: { state: 'active' },
-      dimmed: false,
-      text: null,
-      sticky: false,
-    },
-  ])('shows $label as it is', ({ link: overrides, dimmed, text, sticky }) => {
+  ])('shows the note "$decay_note", undimmed and without a sticky label', (overrides) => {
     const l = makeLink({ id: 'd', title: 'Decaying', ...overrides });
     const { container } = render(
       <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
     );
     const card = container.querySelector('article')!;
-    expect(card.classList.contains('dormant')).toBe(dimmed);
-    if (text) expect(card.textContent).toContain(text);
-    else expect(card.textContent).not.toContain('unused for');
-    expect(card.querySelector('.sticky-label')?.textContent ?? null).toBe(sticky ? 'sticky' : null);
+    expect(screen.getByText(overrides.decay_note)).toBeTruthy();
+    expect(card.classList.contains('dormant')).toBe(false);
+    expect(card.textContent).not.toContain('sticky');
   });
 });
 

@@ -58,9 +58,6 @@ export interface LinkRow {
   last_check_result: string | null;
   check_enqueued_at: string | null;
   last_manual_check_at: string | null;
-  /** Read through link_views: the stored uses, and the UTC days they fall on. */
-  use_events?: number;
-  use_days?: number;
   /** Read through link_views: the link's user's start points. */
   user_start_points?: number;
   /** Read through link_views: the link's user's removal delay. */
@@ -120,7 +117,7 @@ export interface LinkView {
   dead_since: string | null;
   last_checked_at: string | null;
   last_check_result: string | null;
-  /** One sentence: the link's decay state and why. */
+  /** One sentence: the link's points and when it expires, or when it will be removed. */
   decay_note: string;
 }
 

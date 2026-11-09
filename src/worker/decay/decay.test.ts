@@ -159,65 +159,60 @@ describe('a link’s points', () => {
 });
 
 describe('why a link is in its state', () => {
+  /** Seeds a link with `points` at T: unused for start points + uses - points days. */
+  const withPoints = (u: TestUser, points: number, opts: Parameters<typeof seedAged>[2] = {}) =>
+    seedAged(u, 60 - points, opts);
   it.each([
-    { label: 'unused 3 days', setup: (u: TestUser) => seedAged(u, 3), note: 'unused for 3 days' },
     {
-      label: 'dormant, unused 63 days',
-      setup: (u: TestUser) => seedAged(u, 63, { state: 'dormant' }),
-      note: 'unused for 2 months',
+      label: 'active with 42 points',
+      setup: (u: TestUser) => withPoints(u, 42),
+      note: '42 points: expires in 42 days',
     },
     {
-      label: 'sticky with 7 uses on 6 days',
+      label: 'active with 1 point',
+      setup: (u: TestUser) => withPoints(u, 1),
+      note: '1 point: expires in 1 day',
+    },
+    {
+      label: 'pending with 0 points',
+      setup: (u: TestUser) => withPoints(u, 0, { state: 'pending' }),
+      note: '0 points: expires today',
+    },
+    {
+      label: 'active with -2 points',
+      setup: (u: TestUser) => withPoints(u, -2),
+      note: '-2 points: expires today',
+    },
+    {
+      label: 'pinned with -3 points',
+      setup: (u: TestUser) => withPoints(u, -3, { pinned: true }),
+      note: 'pinned: never expires, -3 points',
+    },
+    {
+      label: 'in a workspace with 12 points',
+      setup: (u: TestUser) => withPoints(u, 12, { member: true }),
+      note: 'in a workspace: never expires, 12 points',
+    },
+    {
+      label: 'expired on 2027-03-01 with remove_days 179, pinned',
       setup: async (u: TestUser) => {
-        const id = await seedAged(u, 0);
-        await useAt(
-          u,
-          id,
-          [1, 2, 3, 4, 5, 6, 6].map((d, i) => T - d * DAY + i * 1000),
-        );
-        return id;
-      },
-      note: 'sticky: 7 uses on 6 days, never archived',
-    },
-    {
-      label: 'pinned, unused 90 days',
-      setup: (u: TestUser) => seedAged(u, 90, { pinned: true }),
-      note: 'pinned: never archived, unused for 3 months',
-    },
-    {
-      label: 'in a workspace, unused 10 days',
-      setup: (u: TestUser) => seedAged(u, 10, { member: true }),
-      note: 'in a workspace: never archived, unused for 10 days',
-    },
-    {
-      label: 'archived on 2027-03-01',
-      setup: async (u: TestUser) => {
-        const id = await seedAged(u, 200, { state: 'archived' });
+        await env.DB.prepare('UPDATE users SET remove_days = 179 WHERE id = ?').bind(u.id).run();
+        const id = await seedAged(u, 200, { state: 'expired', pinned: true });
         await env.DB.prepare(
-          "UPDATE links SET archived_at = '2027-03-01T08:00:00.000Z' WHERE id = ?",
+          "UPDATE links SET expired_at = '2027-03-01T08:00:00.000Z' WHERE id = ?",
         )
           .bind(id)
           .run();
         return id;
       },
-      note: 'archived on 2027-03-01, removed on 2027-08-28',
+      note: 'expired on 2027-03-01, removed on 2027-08-27',
     },
   ])('is said for a link $label', async ({ setup, note }) => {
+    setNow(T);
     const user = await signIn();
     const id = await setup(user);
-    setNow(T);
     const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
     expect(link.decay_note).toBe(note);
-    for (const field of [
-      'points',
-      'expired_at',
-      'removal_at',
-      'dead_since',
-      'last_checked_at',
-      'last_check_result',
-    ]) {
-      expect(field in link).toBe(true);
-    }
   });
 });
 

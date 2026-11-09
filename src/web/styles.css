@@ -549,10 +549,6 @@ a.brand:hover span {
   cursor: grab;
 }
 
-.card.dormant {
-  opacity: 0.6;
-}
-
 .note-preview {
   margin: 0 0 var(--q-space-1);
   color: var(--q-fg-muted);
@@ -566,11 +562,6 @@ a.brand:hover span {
 
 .note .q-btn-link {
   font-style: normal;
-}
-
-.sticky-label {
-  color: var(--q-accent-fg);
-  font-weight: var(--q-weight-semibold);
 }
 
 .dead {
