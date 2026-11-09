@@ -409,6 +409,20 @@ a.brand:hover span {
   margin-top: var(--q-space-2);
 }
 
+/* A card's topic and tags are links that look exactly as they would as plain labels. */
+.card-labels a:hover {
+  text-decoration: none;
+}
+
+.card-labels a.q-label:hover {
+  border-color: var(--q-border-default);
+}
+
+.card-labels a.q-topic:hover {
+  background: var(--q-accent-subtle);
+  color: var(--q-accent-fg);
+}
+
 .tags,
 .workspace-chips,
 .filter-chips {

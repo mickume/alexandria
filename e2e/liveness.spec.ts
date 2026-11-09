@@ -42,7 +42,7 @@ test('a site goes offline, is marked dead after three weekly checks, and its cop
   await expect(title).toHaveCSS('text-decoration-line', 'line-through');
   await expect(card.getByText(/dead since \d{4}-\d{2}-\d{2}/)).toBeVisible();
 
-  await card.getByRole('link', { name: 'Read' }).click();
+  await card.getByRole('link', { name: 'Read', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'An Article' })).toBeVisible();
   await expect(page.getByText('This is the first paragraph of the article')).toBeVisible();
 });

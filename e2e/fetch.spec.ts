@@ -40,7 +40,7 @@ test.describe('fetching links', () => {
     const [text] = d1<{ text: string }>(`SELECT text FROM link_texts WHERE link_id = '${id}'`);
     expect(text?.text).toContain('This is the first paragraph of the article');
 
-    await card.getByRole('link', { name: 'Read' }).click();
+    await card.getByRole('link', { name: 'Read', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'An Article' })).toBeVisible();
     await expect(page.getByText('This is the first paragraph of the article')).toBeVisible();
 
@@ -67,7 +67,7 @@ test.describe('fetching links', () => {
     await page
       .getByRole('article', { name: 'An Article' })
       .first()
-      .getByRole('link', { name: 'Read' })
+      .getByRole('link', { name: 'Read', exact: true })
       .click();
     await expect(page.getByText('This is the first paragraph of the article')).toBeVisible();
 
@@ -97,7 +97,7 @@ test.describe('fetching links', () => {
     await page.goBack();
     await page
       .getByRole('article', { name: 'On Links' })
-      .getByRole('link', { name: 'Read' })
+      .getByRole('link', { name: 'Read', exact: true })
       .click();
     await expect(page.getByText(PAPER_FIRST_SENTENCE)).toBeVisible();
   });

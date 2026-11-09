@@ -64,7 +64,8 @@ Filters narrow a search, and can be combined with words or each other:
 Archived links are left out unless a `state:` filter asks for them. The Topics
 and Tags pages list every topic and tag with its number of links, in
 alphabetical order; each opens its search, and each can be renamed or merged
-into another, chosen from a list in the same order.
+into another, chosen from a list in the same order. The topic and tags on a
+link's card open the same searches.
 
 Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the

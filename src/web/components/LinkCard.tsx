@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { Link as PageLink } from '../App';
-import { ApiError, links, openUrl, type Link } from '../api';
+import { ApiError, filterQuery, links, openUrl, searchPath, type Link } from '../api';
 import { byName, formatDate, formatWhen } from '../format';
 import { Icon } from './Icon';
 import { WorkspacePicker } from './WorkspacePicker';
@@ -262,17 +262,23 @@ function CardMeta({ link }: { link: Link }) {
   );
 }
 
-/** The topic and one chip per tag. */
+/** The topic and one chip per tag, each a link to the search for its links, as on the Topics and Tags pages. */
 function Labels({ link }: { link: Link }) {
   if (link.tags.length === 0 && !link.topic) return null;
   return (
     <div className="card-labels">
-      {link.topic && <span className="topic q-label">{link.topic}</span>}
+      {link.topic && (
+        <PageLink to={searchPath(filterQuery('topic', link.topic))} className="topic q-label">
+          {link.topic}
+        </PageLink>
+      )}
       {link.tags.length > 0 && (
         <ul className="tags" aria-label="Tags">
           {link.tags.map((tag) => (
-            <li key={tag} className="q-topic">
-              {tag}
+            <li key={tag}>
+              <PageLink to={searchPath(filterQuery('tag', tag))} className="q-topic">
+                {tag}
+              </PageLink>
             </li>
           ))}
         </ul>

@@ -198,6 +198,25 @@ describe('an enriched card', () => {
     expect(chips).toEqual(['rust', 'wasm', 'performance']);
     expect(screen.getByText('Programming')).toBeTruthy();
   });
+
+  it.each([
+    { label: 'topic', name: 'Machine learning', search: 'topic:"Machine learning"' },
+    { label: 'tag', name: 'wasm', search: 'tag:wasm' },
+  ])(
+    'opens the search for the links of its $label when the chip is clicked',
+    ({ name, search }) => {
+      const l = makeLink({ id: 'rich', tags: ['rust', 'wasm'], topic: 'Machine learning' });
+      render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+
+      const chip = screen.getByRole('link', { name });
+      expect(chip.getAttribute('href')).toBe(`/search?q=${encodeURIComponent(search)}`);
+      fireEvent.click(chip);
+
+      expect(window.location.pathname + window.location.search).toBe(
+        `/search?q=${encodeURIComponent(search)}`,
+      );
+    },
+  );
 });
 
 describe('a card whose enrichment failed', () => {
