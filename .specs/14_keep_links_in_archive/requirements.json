@@ -1,0 +1,525 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "14",
+  "spec_name": "keep_links_in_archive",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Archiving a link",
+      "rationale": "The owner needs one action that says keep this link for good.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "the owner requests POST /api/v1/links/{id}/archive for a link of theirs that is not archived",
+          "action": "set its state to archived and archived_at to the request time, clear expired_at, unpin it and close up the pin positions of the links pinned after it, keep its workspace memberships, and answer without waiting for any fetch",
+          "contract": "HTTP 200 with the link: state 'archived', archived_at the request time, expired_at null, pinned false, pin_position null, workspaces unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over the states active, pending, unreachable and expired (the expired one with expired_at set), each pinned at position 1 of 3 pinned links and in one workspace: r = POST /api/v1/links/{id}/archive; assert r.status == 200 and r.json has state 'archived', archived_at == the request time, expired_at null, pinned false, pin_position null and its one workspace; assert the other two pinned links hold positions 1 and 2"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "a link is archived",
+          "action": "send one refresh message for the link on FETCH_QUEUE, whatever the link's refresh_requested_at, and leave refresh_requested_at as it was",
+          "contract": "FETCH_QUEUE receives {user_id, link_id, refresh: true}; links.refresh_requested_at is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: seed a link whose refresh_requested_at is one minute ago; POST archive; assert the recorded FETCH_QUEUE holds exactly {user_id, link_id, refresh: true} for it and refresh_requested_at is unchanged; then POST /api/v1/links/{id}/refresh of another link still answers 202 (the archive did not count against any refresh window)"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/archive names a link that is already archived",
+          "action": "answer with the link and change nothing, queueing no fetch",
+          "contract": "HTTP 200 with the link unchanged (archived_at keeps its earlier value); no FETCH_QUEUE message",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: seed a link archived a day ago; r = POST archive; assert 200, r.json.archived_at is the earlier time, updated_at unchanged and no FETCH_QUEUE message was sent"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/archive or POST /api/v1/links/{id}/unarchive names a link that does not exist or belongs to another user",
+          "action": "answer as for a link that does not exist and change nothing",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the other user's link is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, extending 'is answered as one that does not exist by archive, restore and check' with a table over {archive, unarchive} on another user's link and on an unknown id: assert 404 not_found and the other user's link unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "unwanted",
+          "condition": "the refresh message of an archiving cannot be sent on FETCH_QUEUE",
+          "action": "keep the link archived, record a failed fetch event in its history with the reason 'refresh before archiving could not be queued', and answer with the link",
+          "contract": "HTTP 200 with the link in state 'archived'; link_events gains one fetch event with outcome 'failed' and reason 'refresh before archiving could not be queued'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: make env.FETCH_QUEUE.send throw; POST archive; assert 200 with state 'archived'; assert GET /api/v1/links/{id}/history holds {kind: 'fetch', outcome: 'failed', reason: 'refresh before archiving could not be queued'}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "The refresh after archiving",
+      "rationale": "An archived link should hold the newest copy of its page, but a dead site must not stop it from being kept.",
+      "system": "fetch worker",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "the fetch worker processes a successful refresh of an archived link",
+          "action": "replace its snapshot and reader text, hand it to enrichment as a refresh does, keep the fields the owner edited, and keep its state archived",
+          "contract": "the link keeps state 'archived' and its archived_at; has_snapshot, fetched_at and the reader text are the new fetch's",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the owner has no AI key"
+            ],
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, adding 'an archived link whose page changed' to the table of 'takes a new copy of %s' in 'refreshing a link': the link is fetched once, its title is edited by PATCH, it is archived; origin.page(url, changed); deliverFetches([the archive's refresh message]); assert the stored snapshot is the changed page, fetched_at is the delivery time, the title is still the edited one, enrichment_status is 'no_key' (afterFetch ran), and state is 'archived' with archived_at unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "unwanted",
+          "condition": "the refresh of an archived link fails",
+          "action": "keep the link archived with the snapshot, reader text and metadata it had, and record the failure in its history",
+          "contract": "state 'archived', archived_at unchanged, reader text and title unchanged; link_events gains a fetch event with outcome 'failed'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/fetcher/fetch.test.ts, extending 'keeps everything the link had when the refresh fails' with an archived link: assert state 'archived', the old reader text and title, and one failed fetch event"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Archived links are kept outside decay",
+      "rationale": "Kept means kept: neither time nor a dead site may take an archived link away.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "ubiquitous",
+          "action": "for any archived link, never make it expired and never remove it in the scheduled evaluation, whatever its last use",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, adding rows to the table of 'expiry by decay': (archived, 0 uses, 400 days unused, not pinned, in no workspace) -> archived after evaluateDecay; and to 'one evaluation': an archived link with archived_at 400 days ago is still readable after evaluateDecay with remove_days 7"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "event_driven",
+          "condition": "an archived link is used (an open, a read, a snapshot view or an MCP open)",
+          "action": "add 1 to its use_count and set its last_used_at to now, leaving its state archived",
+          "contract": "GET /api/v1/links/{id} answers state 'archived', use_count one higher and last_used_at the request time",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, a table beside 'using an expired link' over {GET /links/{id}/open, GET /links/{id}/reader, GET /links/{id}/snapshot, POST /api/v1/links with its URL}: seed an archived link with use_count 3 and a snapshot; do the request; assert state 'archived', archived_at unchanged, last_used_at the request time, and use_count 4 for the uses and 3 for the re-paste"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "the owner adds the address of an archived link again",
+          "action": "set its last_used_at to now without changing its use_count, leaving its state archived",
+          "contract": "the answer's link has state 'archived', last_used_at the request time and use_count unchanged",
+          "check": {
+            "same_as": "REQ-3.2"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "ubiquitous",
+          "action": "for any link it returns, carry archived_at (the archiving time for an archived link, null for every other link), and for an archived link carry points null, removal_at null and decay_note 'archived on <YYYY-MM-DD of archived_at>: kept until deleted'",
+          "contract": "archived_at: string | null; for state 'archived': points === null, removal_at === null, decay_note === 'archived on <date>: kept until deleted'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, adding to the table of 'why a link is in its state': (archived on 2027-03-01, pinned no) -> points null, removal_at null, decay_note 'archived on 2027-03-01: kept until deleted'; and to 'a link’s points': an active link has archived_at null"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "ubiquitous",
+          "action": "leave archived links out of the weekly liveness checks it enqueues",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, extending the table of 'is not scheduled' (a deleted link, an expired link, …) with 'an archived link' last checked 8 days ago: enqueueDueChecks; assert no liveness message for it"
+          }
+        },
+        {
+          "id": "REQ-3.6",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/check names an archived link of the owner",
+          "action": "refuse the check without making a request to the link's address",
+          "contract": "HTTP 409 with body {\"error\": \"link_archived\", \"message\": \"archived links are not checked\"}; no outbound request to the link's address",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts beside 'is refused for an expired link, without a request to its address': seed an archived link; onOutbound counts requests to its origin; POST check; assert 409 and the body; assert 0 outbound requests"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Unarchiving a link",
+      "rationale": "The owner can change their mind and put a kept link back in the stream.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the owner requests POST /api/v1/links/{id}/unarchive for an archived link of theirs",
+          "action": "make it active, clear archived_at and set its last_used_at to now without changing its use_count or pinning it",
+          "contract": "HTTP 200 with the link: state 'active', archived_at null, pinned false, last_used_at the request time, use_count unchanged, points start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts: seed an archived link with use_count 3 and start_points 60; r = POST /api/v1/links/{id}/unarchive; assert 200 with state 'active', archived_at null, pinned false, use_count 3, last_used_at the request time and points 63; assert GET /api/v1/links lists it"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/unarchive names a link of the owner that is not archived",
+          "action": "refuse the request and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"not_archived\", \"message\": \"this link is not archived\"}; the link is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over the states active, pending, unreachable and expired: POST unarchive; assert 409 and the body; assert state, last_used_at and expired_at unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Archived links out of the stream, in search and Ask",
+      "rationale": "The archive keeps links out of the way of the stream without hiding them from the owner's searches.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "ubiquitous",
+          "action": "leave archived links out of GET /api/v1/links unless its state parameter names archived or any, with or without other filter parameters, and out of the change feed",
+          "contract": "the archived link's id is absent from GET /api/v1/links (no state parameter) and from the change feed's items",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, beside 'leaves expired links out' and 'leaves expired links out of the change feed': seed an active and an archived link with tag x; assert GET /api/v1/links, GET /api/v1/links?tag=x and GET /api/v1/links?changed_since=<before> list only the active one; GET /api/v1/links?state=archived lists only the archived one and ?state=any both"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "include archived links in every keyword search, hybrid search, filters-only search and Ask that has no state: filter, and leave expired links out of them",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "a table over the listings, each extending its existing test: in src/worker/search/search.test.ts 'keeps expired links out unless state:expired or state:any asks for them'; in src/worker/search/hybrid.test.ts the meaning search; in src/worker/meaning/ask.test.ts the sources; and GET /api/v1/search?q=tag:x: seed an active, an archived and an expired link that all match; assert the archived and the active one are returned and the expired one is not"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "a search or GET /api/v1/links carries state:archived or state:any",
+          "action": "keep only the archived links for state:archived and every link for state:any",
+          "contract": "GET /api/v1/search?q=state:archived and GET /api/v1/links?state=archived list exactly the archived links; state:any lists links of every state",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/query.test.ts, adding 'archived' to 'accepts every state and is value, in any case'; and in src/worker/links/stream.test.ts, extending 'applies state and repeated parameters together' with a link of each state: GET /api/v1/search?q=state:archived lists exactly the archived links"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "event_driven",
+          "condition": "a search consists of filters alone, the topic: and tag: searches among them",
+          "action": "list the pinned links first, then the links that have points in the order of the stream, then the archived links by last_used_at descending and id descending, and list every link that does not change exactly once across the pages",
+          "contract": "items in that order; following next_cursor yields every matching link once",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, extending \"%s lists what the search lists, in stream order\" and 'pages a filtered list with the shared cursor, every match once': seed matching links with points 70, 10 and -5 and three archived links used 1, 2 and 3 days ago; GET /api/v1/search?q=tag:x with limit 2; follow next_cursor; assert the ids in the order 70, 10, -5, then the archived ones newest last use first, each once"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/pin names an archived link of the owner",
+          "action": "refuse the pin and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"link_archived\", \"message\": \"archived links cannot be pinned\"}; no pin position changes",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/pin.test.ts: seed an archived link; POST /api/v1/links/{id}/pin; assert 409 and the body; assert pin_position still null and the other pins unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "The archive list",
+      "rationale": "The Archive page and scripts need every archived link, newest first.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the owner requests GET /api/v1/archive",
+          "action": "return the owner's archived links, most recently archived first and id descending on ties, at most limit of them (1 to 100, default 50), with the cursor of the next page",
+          "contract": "HTTP 200 with body {items: Link[] each with archived_at set and removal_at null, next_cursor: string | null}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, beside 'the expired list': seed 3 archived links with distinct archived_at, an active and an expired link; GET /api/v1/archive; assert the three in order with removal_at null and archived_at set; seed 120 archived links; page with limit 100; assert 123 distinct ids and next_cursor null on the last page"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/archive carries a limit that is not an integer from 1 to 100 or a cursor this route did not issue",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_limit\", \"field\": \"limit\", ...} or {\"error\": \"invalid_cursor\", \"field\": \"cursor\", ...}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over {limit=0, limit=101, limit=x, cursor=garbage, a cursor of GET /api/v1/expired}: GET /api/v1/archive; assert 400 and the error code"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Archiving through MCP",
+      "rationale": "An agent filing links for the owner can keep one for good.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls the tool archive_link with {link_id} naming a link of the token's user",
+          "action": "archive the link as POST /api/v1/links/{id}/archive does and return the link",
+          "contract": "a tool result whose structuredContent is the archived link; tools/list includes archive_link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, in 'workspaces and pins', beside 'pin_link pins at the bottom of the pinned section': add 'archive_link' to TOOLS; seed a pinned link; r = mcpTool(secret, 'archive_link', {link_id}); assert r.isError falsy and r.structuredContent has state 'archived' and pinned false; assert tools/list names archive_link"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "unwanted",
+          "condition": "archive_link names a link that does not exist or belongs to another user",
+          "action": "return the tool error and change no link",
+          "contract": "a tool result with isError true and structuredContent {\"error\": \"not_found\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, adding archive_link to the table of 'one user, one contract' with another user's link: assert r.isError and structuredContent {error: 'not_found'}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "The Archive page",
+      "rationale": "The owner sees what they kept, and can put a link back or delete it.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Archive page at /archive",
+          "action": "list the archived links from GET /api/v1/archive, each dimmed with 'archived on <date>', an Unarchive button and Delete; send POST /api/v1/links/{id}/unarchive on Unarchive and take the link off the list",
+          "contract": "one article per archived link with the class 'archived' and 'archived on' its archived_at date; Unarchive sends POST /api/v1/links/{id}/unarchive and removes the article",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx (new), modelled on 'lists expired links with their removal dates, restores one and deletes another after the undo window' in src/web/pages/Expired.test.tsx: FakeApi answers GET /api/v1/archive with two links; renderPage('/archive'); assert both articles carry the class 'archived' and 'archived on <date>'; click Unarchive on one; assert the POST and that it is gone; delete the other after the undo window"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "event_driven",
+          "condition": "the owner searches from the Archive page's search box",
+          "action": "send the query with state:archived added and show the matching archived links on the Archive page",
+          "contract": "GET /api/v1/search receives q ending in ' state:archived'; the results are listed on /archive",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx, modelled on 'searches only expired links and shows the results on the Expired page': renderPage('/archive?q=alarms'); assert GET /api/v1/search received q 'alarms state:archived' and the results are listed"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "state_driven",
+          "condition": "the owner has no archived links and the Archive page has no query",
+          "action": "say 'Nothing is archived.'",
+          "contract": "the page shows the text 'Nothing is archived.' and no article",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx: FakeApi answers GET /api/v1/archive with no items; assert the text 'Nothing is archived.'"
+          }
+        },
+        {
+          "id": "REQ-8.4",
+          "pattern": "ubiquitous",
+          "action": "show a navigation entry named 'Archive', after 'Expired', that opens /archive",
+          "contract": "the navigation holds a link named 'Archive' with href '/archive', after the link named 'Expired'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Archive.test.tsx: renderPage('/'); assert the navigation's link 'Archive' has href '/archive' and follows the link 'Expired'; and in src/web/pages/Expired.test.tsx replace 'is in the navigation as Expired, and the Archive is gone' and 'has no Archive page any more' with the Expired entry alone"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "Archive and Unarchive on cards and on the detail page, and dimmed archived links",
+      "rationale": "The owner archives a link where they meet it, and sees at a glance which links are kept.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "event_driven",
+          "condition": "the owner chooses Archive in the More actions menu of a card that is not archived",
+          "action": "send POST /api/v1/links/{id}/archive and take the card out of the stream",
+          "contract": "one POST /api/v1/links/{id}/archive; the card is no longer in the stream",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stream.test.tsx, beside the pinning tests: FakeApi answers the archive; open a card's More actions menu; click Archive; assert the POST and that the card's article is gone"
+          }
+        },
+        {
+          "id": "REQ-9.2",
+          "pattern": "ubiquitous",
+          "action": "show every archived LinkCard with the class 'archived', with Unarchive where a card has Pin and no Archive action, and send POST /api/v1/links/{id}/unarchive on Unarchive",
+          "contract": "article.classList contains 'archived' exactly for state 'archived'; that card's buttons hold 'Unarchive' and neither 'Pin' nor 'Archive'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, in 'a card’s More actions menu': a table over an active and an archived link: the active card has Pin, and Archive in its menu, and no 'archived' class; the archived card has the class 'archived', Unarchive, no Pin and no Archive; clicking Unarchive calls the card action that sends POST /api/v1/links/{id}/unarchive"
+          }
+        },
+        {
+          "id": "REQ-9.3",
+          "pattern": "event_driven",
+          "condition": "the owner presses Archive or Unarchive in the Actions group of a link's detail page",
+          "action": "send POST /api/v1/links/{id}/archive or /unarchive and show the link as the API returns it, with Unarchive in place of Pin while it is archived",
+          "contract": "one POST to /archive or /unarchive; the Actions group then shows Unarchive and no Pin for an archived link, Archive and Pin otherwise",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/LinkDetail.test.tsx, beside the pin and unpin test of the Actions group: FakeApi answers the archive with the archived link and the unarchive with the active one; click Archive; assert the POST, that the group shows Unarchive and no Pin; click Unarchive; assert the POST and that Pin and Archive are back"
+          }
+        },
+        {
+          "id": "REQ-9.4",
+          "pattern": "ubiquitous",
+          "action": "show a source of the Ask page whose link is archived with the class 'archived'",
+          "contract": "the Sources list item of an archived link carries the class 'archived'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Ask.test.tsx, extending 'shows the answer as it streams in with a spinner, each [n] a link to its source, and lists the sources' with one archived source: assert its list item has the class 'archived' and the other has not"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner archives a link, its page is refreshed, and they unarchive it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "chooses Archive in the More actions menu of a link's card in the stream"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "makes the link archived and queues a refresh on FETCH_QUEUE"
+        },
+        {
+          "actor": "website",
+          "action": "shows the stream without the link"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the link's address from the origin site, which now serves new content, and stores the new snapshot and reader text, keeping the link archived"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the Archive page, then searches for a word of the new content"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link dimmed on the Archive page and in the search results"
+        },
+        {
+          "actor": "owner",
+          "action": "presses Unarchive on the Archive page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "makes the link active with archived_at cleared and last use now"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link in the stream"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "fetch worker",
+          "D1 database",
+          "e2e/fake-origin.ts"
+        ],
+        "setup": [
+          "wrangler dev with local D1 and queues, the owner signed in through e2e/fake-google.ts",
+          "one link added through the website at an address of the fake origin, fetched once"
+        ],
+        "end_state": [
+          "after Archive the stream has no card for the link and GET /api/v1/links/{id} answers state 'archived'",
+          "after the refresh the link's Read view shows the new content and its state is still 'archived'",
+          "the Archive page and a search for a word of the new content each show the link's article with the class 'archived'",
+          "after Unarchive the link's state is 'active', archived_at is null and the stream shows its card"
+        ],
+        "pseudocode": "in e2e/archive.spec.ts (new): add https://news.example/<slug> through the page; wait for the card's title; POST the fake origin's new control to serve a page with the text 'marker-archived' at that address; open the card's More actions and click Archive; expect cardOf(page, id) to have count 0; poll GET /api/v1/links/{id}/reader until its text contains 'marker-archived'; goto /archive and expect the article dimmed; goto /search?q=marker-archived and expect the article with class 'archived'; goto /archive, click Unarchive; goto / and expect cardOf(page, id) visible"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "An agent archives a link through MCP and the owner finds it in the Archive",
+      "steps": [
+        {
+          "actor": "agent",
+          "action": "calls the MCP tool archive_link with a link's id"
+        },
+        {
+          "actor": "MCP server",
+          "action": "calls POST /api/v1/links/{id}/archive as the token's user and returns the archived link"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the Archive page"
+        },
+        {
+          "actor": "website",
+          "action": "lists the link, dimmed, with 'archived on <date>'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "MCP server",
+          "Alexandria API",
+          "website",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev with local D1, the owner signed in through e2e/fake-google.ts, a personal access token created through the API"
+        ],
+        "end_state": [
+          "the tool result's structuredContent has state 'archived'",
+          "the Archive page lists the link's article with the class 'archived' and 'archived on' today's date"
+        ],
+        "pseudocode": "in e2e/mcp.spec.ts, a new test beside the existing tool tests: add a link through the API; call tools/call archive_link over /mcp with the token; expect structuredContent.state 'archived'; page.goto('/archive'); expect the article with class 'archived'"
+      }
+    }
+  ]
+}

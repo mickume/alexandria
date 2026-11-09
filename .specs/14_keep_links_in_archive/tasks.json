@@ -1,0 +1,263 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "14",
+  "spec_name": "keep_links_in_archive",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/decay src/worker/links src/worker/search src/worker/fetcher/fetch.test.ts src/worker/mcp src/worker/meaning/ask.test.ts src/web/pages src/web/components/LinkCard.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "13",
+      "reason": "extends points, the expired state, the stream's order and cursor, GET /api/v1/expired and the decay note"
+    },
+    {
+      "spec": "01",
+      "reason": "changes the stream, the change feed and pinning, and keeps recordUse and the re-paste for archived links"
+    },
+    {
+      "spec": "02",
+      "reason": "queues the refresh fetch of an archived link and keeps it archived when the fetch is written"
+    },
+    {
+      "spec": "03",
+      "reason": "enriches an archived link again after its refresh, keeping the owner's edits"
+    },
+    {
+      "spec": "04",
+      "reason": "archived links stay in their workspaces and are dimmed there"
+    },
+    {
+      "spec": "05",
+      "reason": "skips archived links in the weekly and on-demand liveness checks"
+    },
+    {
+      "spec": "06",
+      "reason": "adds the state:archived filter and includes archived links in searches by default"
+    },
+    {
+      "spec": "08",
+      "reason": "brings back the MCP tool archive_link with its new meaning"
+    },
+    {
+      "spec": "11",
+      "reason": "hybrid search includes archived links by default"
+    },
+    {
+      "spec": "12",
+      "reason": "Ask includes archived links among its sources"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Archive and unarchive a link through the API",
+      "criteria": [
+        "REQ-1",
+        "REQ-3.4",
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the archiving and unarchiving behaviours to src/worker/decay/archive.test.ts and the archived fields to src/worker/decay/decay.test.ts, and confirm they fail",
+        "Add POST /api/v1/links/{id}/archive beside the restore route in src/worker/decay/archive.ts: in one D1 batch set state 'archived', archived_at and updated_at to now and expired_at to null, and unpin the link with the existing unpin statements so the later pin positions close up; workspace memberships are untouched",
+        "Archive only a link that is not archived; an archived link answers 200 with the link as it is and nothing is queued; an unknown or another user's link answers 404 not_found",
+        "After the write, send {user_id, link_id, refresh: true} on FETCH_QUEUE without reading or writing refresh_requested_at; when the send throws, insert a failed fetch event with the reason 'refresh before archiving could not be queued' and still answer 200 with the link",
+        "Add POST /api/v1/links/{id}/unarchive: an archived link becomes active with archived_at null and last_used_at and updated_at now, use_count unchanged and no pin; any other state answers 409 not_archived 'this link is not archived'; an unknown or another user's link 404",
+        "Return archived_at on every link view (null unless archived); for an archived link return points null, removal_at null and decay_note 'archived on <YYYY-MM-DD>: kept until deleted'",
+        "Register the routes in src/worker/app.ts, document both and the Link fields (archived_at, points nullable) in src/worker/api/openapi.ts and docs/api.md, and widen the website's Link type in src/web/api.ts (points: number | null, archived_at, state 'archived') with links.archive and links.unarchive"
+      ],
+      "touches": [
+        "src/worker/decay/archive.ts",
+        "src/worker/decay/note.ts",
+        "src/worker/links/store.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Keep an archived link archived through its refresh",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the successful and the failed refresh of an archived link to 'refreshing a link' in src/worker/fetcher/fetch.test.ts and confirm the success case fails",
+        "Make the successful fetch write in src/worker/fetcher/queue.ts keep the state 'archived' of an archived link (and its archived_at), setting 'active' for every other link as it does today",
+        "Confirm that the failed refresh path already keeps everything the archived link had, and that afterFetch and indexing still run after a successful refresh of an archived link"
+      ],
+      "touches": [
+        "src/worker/fetcher/queue.ts",
+        "src/worker/fetcher/fetch.test.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Keep archived links outside decay and liveness checks",
+      "criteria": [
+        "REQ-3.1",
+        "REQ-3.2",
+        "REQ-3.3",
+        "REQ-3.5",
+        "REQ-3.6"
+      ],
+      "steps": [
+        "Add the archived rows to the expiry and evaluation tables of src/worker/decay/decay.test.ts, the uses and re-paste of an archived link to src/worker/links/use.test.ts, and the archived link to the scheduling and on-demand check tests of src/worker/decay/liveness.test.ts; confirm the check refusal fails",
+        "Confirm that evaluateDecay expires only active, pending and unreachable links and removes only expired ones, so an archived link is never touched, and that recordUse and the re-paste leave the state 'archived' as it is",
+        "Refuse POST /api/v1/links/{id}/check on an archived link with 409 link_archived 'archived links are not checked' before any request to its address, and keep enqueueDueChecks and isCheckable from selecting an archived link",
+        "Document the refusal in src/worker/api/openapi.ts and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/decay/liveness.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/links/use.test.ts",
+        "src/worker/decay/liveness.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Leave archived links out of the stream and in search and Ask",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the archived links to the stream, change feed, filtered list and pin tests in src/worker/links/stream.test.ts and src/worker/links/pin.test.ts, to the state tests of src/worker/search/query.test.ts and src/worker/search/search.test.ts, to src/worker/search/hybrid.test.ts and to the sources of src/worker/meaning/ask.test.ts, and confirm they fail",
+        "Accept 'archived' among the state: values (STATE_VALUES), keeping the default that leaves only expired links out of search, hybrid search, filters-only searches and Ask",
+        "Make GET /api/v1/links leave archived links out unless its state parameter names archived or any, and make listChanged leave them out",
+        "Order the links of listStream so that archived links, which have no points, come after every link with points, by last_used_at then id descending, with a cursor section of their own so that paging lists every link once; a cursor of another section or route stays invalid_cursor",
+        "Refuse POST /api/v1/links/{id}/pin of an archived link with 409 link_archived 'archived links cannot be pinned', changing no position",
+        "Update docs/api.md (state values, the stream, filters-only order, the pin refusal), src/worker/api/openapi.ts and docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/search/query.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/links/store.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/links/stream.test.ts",
+        "src/worker/links/pin.test.ts",
+        "src/worker/search/query.test.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/search/hybrid.test.ts",
+        "src/worker/meaning/ask.test.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "title": "List the archived links",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the archive list behaviours to src/worker/decay/archive.test.ts beside the expired list's, and confirm they fail",
+        "Add GET /api/v1/archive in src/worker/decay/archive.ts, modelled on GET /api/v1/expired: archived links of the user by archived_at then id descending, limit 1 to 100 default 50, a keyset cursor of its own shape so that a cursor of the expired list or the stream is refused as invalid_cursor",
+        "Register it in src/worker/app.ts, document it in src/worker/api/openapi.ts and docs/api.md, and add links.archived() to src/web/api.ts, following next_cursor as links.expired() does"
+      ],
+      "touches": [
+        "src/worker/decay/archive.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/web/api.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Archive a link through the MCP tool archive_link",
+      "criteria": [
+        "REQ-7"
+      ],
+      "steps": [
+        "Add archive_link to TOOLS and its behaviours to 'workspaces and pins' and 'one user, one contract' in src/worker/mcp/mcp.test.ts, and confirm they fail",
+        "Add the tool archive_link with input {link_id} to src/worker/mcp/tools.ts, calling POST /links/{id}/archive through ctx.call and returning outcomeOf of the answer, with the description 'Archive a link: keep it for good, out of the stream and out of decay, after one refresh of its page.'",
+        "Describe the tool in docs/mcp.md"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/mcp.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Show the archived links on an Archive page",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Write src/web/pages/Archive.test.tsx with the page's behaviours, update the navigation tests of src/web/pages/Expired.test.tsx and src/web/pages/Ask.test.tsx ('has an Ask tab between Tags and Expired') for the new entry, and confirm they fail",
+        "Add src/web/pages/Archive.tsx, modelled on src/web/pages/Expired.tsx: the archived links from links.archived(), each an article with the class 'archived', 'archived on <date>', Unarchive (links.unarchive, then off the list) and Delete with the undo window; a query searches with ' state:archived' added; with no links and no query, 'Nothing is archived.'",
+        "Route /archive to it and add the navigation entry 'Archive' after 'Expired' in src/web/App.tsx",
+        "Dim an article with the class 'archived' in src/web/styles.css (a lower opacity that keeps its text above the design language's contrast for muted text)"
+      ],
+      "touches": [
+        "src/web/pages/Archive.tsx",
+        "src/web/pages/Archive.test.tsx",
+        "src/web/pages/Expired.test.tsx",
+        "src/web/pages/Ask.test.tsx",
+        "src/web/App.tsx",
+        "src/web/styles.css"
+      ],
+      "depends_on": [
+        5
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Archive and unarchive from cards and the detail page, and dim archived links",
+      "criteria": [
+        "REQ-9"
+      ],
+      "steps": [
+        "Add the card behaviours to src/web/components/LinkCard.test.tsx, the Archive of a stream card to src/web/pages/Stream.test.tsx, the Archive and Unarchive of the detail page to src/web/pages/LinkDetail.test.tsx and the dimmed source to src/web/pages/Ask.test.tsx, and confirm they fail",
+        "Give CardActions onArchive and onUnarchive; a card that is not archived has Archive in its More actions menu; an archived card carries the class 'archived', shows Unarchive in place of Pin and has no Archive",
+        "On the stream, Archive sends links.archive and takes the card out of the list; on the Search and Workspace pages Archive and Unarchive send their request and replace the card with the link the API returns",
+        "In the detail page's Actions group, show Archive for a link that is not archived, and Unarchive in place of Pin for an archived one; each sends its request and shows the returned link",
+        "Give an Ask source whose link is archived the class 'archived'",
+        "Add to e2e/fake-origin.ts a control that sets the title and text one address serves, and write e2e/archive.spec.ts for the archive, refresh and unarchive flow and a test in e2e/mcp.spec.ts for archive_link followed by the Archive page",
+        "Run make doc and update docs/architecture.md for the archived state"
+      ],
+      "touches": [
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/Stream.tsx",
+        "src/web/pages/Stream.test.tsx",
+        "src/web/pages/Search.tsx",
+        "src/web/pages/Workspace.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/pages/LinkDetail.test.tsx",
+        "src/web/pages/Ask.tsx",
+        "src/web/pages/Ask.test.tsx",
+        "src/web/styles.css",
+        "e2e/fake-origin.ts",
+        "e2e/archive.spec.ts",
+        "e2e/mcp.spec.ts",
+        "docs/architecture.md",
+        "docs/generated"
+      ]
+    }
+  ]
+}
