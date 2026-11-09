@@ -205,6 +205,20 @@ export const SearchResults = z.strictObject({
   next_cursor: z.string().nullable(),
 });
 
+/** The answer of a request for passages. */
+export const PassageResults = z.strictObject({
+  items: z.array(
+    z.strictObject({
+      link_id: z.string(),
+      title: z.string(),
+      url: z.string().describe('The link’s original URL'),
+      passage: z.string().describe('At most 1,500 characters of the link’s indexed text'),
+      score: z.number().describe('The similarity to the question, from 0.5 up to 1'),
+    }),
+  ),
+  meaning: z.literal('used'),
+});
+
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
@@ -528,6 +542,31 @@ export const operations: Operation[] = [
         schema: SearchResults,
       },
       400: error('query_too_long, invalid_filter (field q), invalid_limit or invalid_cursor'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/passages',
+    operationId: 'passages',
+    summary: 'The passages of the links that best match a question by meaning, best first',
+    query: {
+      q: {
+        description:
+          'The question: free words, with the filters tag:, topic:, host:, state:, in: and is:, at most 200 characters',
+        schema: z.string(),
+      },
+      limit: { description: 'Passages to return, 1 to 20 (default 8)', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description:
+          'The passages scoring at least the similarity threshold, at most three of one link; none when nothing matches',
+        schema: PassageResults,
+      },
+      400: error(
+        'invalid_question (no free word), query_too_long, invalid_filter (field q) or invalid_limit',
+      ),
+      503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
     },
   },
   ...(['topics', 'tags'] as const).map((kind): Operation => ({

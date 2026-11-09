@@ -15,6 +15,7 @@ import type { AppEnv } from './env';
 import { aboutRoutes, snapshotRoutes } from './fetcher/routes';
 import { importRoutes } from './imports/routes';
 import { linkRoutes } from './links/routes';
+import { passageRoutes } from './meaning/passages';
 import { mcpRoutes } from './mcp/server';
 import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
 import { workspaceRoutes } from './workspaces/routes';
@@ -43,6 +44,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/export', exportRoutes);
   api.route('/imports', importRoutes);
   api.route('/search', searchRoutes);
+  api.route('/passages', passageRoutes);
   api.route('/topics', topicRoutes);
   api.route('/tags', tagRoutes);
   api.all('*', notFound);

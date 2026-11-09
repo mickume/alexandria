@@ -627,6 +627,57 @@ Errors: `400 {"error": "query_too_long", "field": "q"}`, and
 `400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;
 `invalid_limit`, `invalid_cursor`.
 
+### Passages
+
+#### `GET /api/v1/passages`
+
+The pieces of the owner's links that best answer a question, found by what
+they mean and not by the words they share with it. `?q=<question>`, at most
+200 characters, with `limit` (1 to 20, default 8). The question is written in
+the search query language: its free words are the question (they are joined by
+single spaces and embedded), and the prefix filters narrow the links exactly
+as in `GET /api/v1/search`, with archived links left out unless a `state:`
+filter says otherwise.
+
+```json
+{
+  "items": [
+    {
+      "link_id": "…",
+      "title": "Durable Object alarms",
+      "url": "https://example.com/durable-object-alarms",
+      "passage": "An alarm lets a Durable Object schedule a task to run later…",
+      "score": 0.7071
+    }
+  ],
+  "meaning": "used"
+}
+```
+
+Each link is cut into passages of at most 1,500 characters: its title,
+summary, topic, tags and note together, then its reader-view text up to the
+first 50,000 characters (a link with no reader-view text has only the first).
+Items are the best-matching passages, best first by `score`, the passage's
+similarity to the question; only a score of 0.5 or more is returned, so a
+question unrelated to anything in the library answers `{"items": [], "meaning":
+"used"}`. At most 3 passages of one link are returned and the rest of the
+limit goes to other links. `url` is the link's original URL. The request
+records no use of any link.
+
+A link is found by meaning once it is indexed: within about a minute of its
+reader text, title, summary, topic, tags or note being stored or changed, and
+for links that existed before the index, once the backfill has reached them
+(60 links a minute per user). Nothing shows whether a link is indexed yet. A
+deleted link's passages are gone at once.
+
+Errors: `400 {"error": "invalid_question", "field": "q", "message": "ask with
+at least one word"}` for a `q` that is absent, blank or only filters;
+`query_too_long` and `invalid_filter` (field `q`) as in search;
+`400 {"error": "invalid_limit", "field": "limit", "message": "limit must be an
+integer from 1 to 20"}`. When Workers AI or Vectorize fails or has not answered
+within 5 seconds: `503 {"error": "search_unavailable", "message": "search by
+meaning is unavailable, try again"}`.
+
 ### Topics and tags
 
 The topics and tags enrichment and the owner's edits give links. A topic or
