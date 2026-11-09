@@ -202,6 +202,18 @@ export const links = {
     } while (cursor);
     return all;
   },
+  /** Every archived link, most recently archived first, page after page. */
+  archived: async () => {
+    const all: Link[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+      const page: Page<Link> = await request('GET', `/archive?limit=100${query}`);
+      all.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return all;
+  },
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>

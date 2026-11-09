@@ -6,7 +6,7 @@ import { requireAuth, servePage } from './auth/middleware';
 import { authRoutes, tokenRoutes } from './auth/routes';
 import { requestDeletion } from './account/deletion';
 import { exportRoutes } from './account/routes';
-import { archiveLinkRoutes, expiredRoutes, restoreRoutes } from './decay/archive';
+import { archiveLinkRoutes, archiveRoutes, expiredRoutes, restoreRoutes } from './decay/archive';
 import { checkRoutes } from './decay/liveness';
 import { decaySettingsRoutes } from './decay/routes';
 import { enrichLinkRoutes, settingsRoutes } from './enrich/routes';
@@ -45,6 +45,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);
   api.route('/expired', expiredRoutes);
+  api.route('/archive', archiveRoutes);
   api.route('/export', exportRoutes);
   api.route('/imports', importRoutes);
   api.route('/search', searchRoutes);

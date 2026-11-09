@@ -570,6 +570,15 @@ nothing changes. Another user's link, or one that does not exist: `404`.
 The owner archives a link to keep it for good: it leaves the stream and decay,
 and is refreshed once.
 
+#### `GET /api/v1/archive`
+
+The owner's archived links, most recently archived first (id descending on
+ties), each with `archived_at` and `removal_at: null`. Query: `limit` (1 to
+100, default 50), `cursor`: `200 {"items": [...], "next_cursor"}`. A bad
+`limit` is `400 {"error": "invalid_limit", "field": "limit", "message"}`, and a
+cursor this route did not issue (one of the expired list among them)
+`400 {"error": "invalid_cursor", "field": "cursor", "message"}`.
+
 #### `POST /api/v1/links/{id}/archive`
 
 Archives a link in any state but `archived`, at once: `state` `archived`,

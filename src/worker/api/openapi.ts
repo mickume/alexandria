@@ -697,6 +697,23 @@ export const operations: Operation[] = [
     },
   },
   {
+    method: 'get',
+    path: '/archive',
+    operationId: 'listArchive',
+    summary: 'The archived links, most recently archived first, each with its archiving time',
+    query: {
+      limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
+      cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+    },
+    responses: {
+      200: {
+        description: 'One page of archived links (removal_at null)',
+        schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
+      },
+      400: error('invalid_limit or invalid_cursor'),
+    },
+  },
+  {
     method: 'post',
     path: '/workspaces',
     operationId: 'createWorkspace',

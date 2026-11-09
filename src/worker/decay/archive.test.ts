@@ -294,6 +294,99 @@ describe('the expired list', () => {
   });
 });
 
+/** Seeds links archived at the given times, one each. */
+async function seedArchivedAt(user: TestUser, times: number[]): Promise<string[]> {
+  const ids = await seedLinks(
+    user,
+    times.map((_, i) => ({ url: `https://archived${i}.example/`, state: 'archived' })),
+  );
+  await env.DB.batch(
+    ids.map((id, i) =>
+      env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?').bind(
+        new Date(times[i]!).toISOString(),
+        id,
+      ),
+    ),
+  );
+  return ids;
+}
+
+describe('the archive list', () => {
+  it('lists the archived links most recently archived first, without a removal date', async () => {
+    setNow(T);
+    const user = await signIn();
+    const other = await signIn('other@example.test', 'Other');
+    const [a = '', b = '', c = '', tie = ''] = await seedArchivedAt(user, [
+      T - 3_000,
+      T - 1_000,
+      T - 2_000,
+      T - 2_000,
+    ]);
+    const [active = ''] = await seedLinks(user, [
+      { url: 'https://active.example/', state: 'active' },
+    ]);
+    const [expired = ''] = await seedExpired(user, [T]);
+    await seedArchivedAt(other, [T]);
+    const r = await api('GET', '/api/v1/archive', { as: user.session });
+    expect(r.status).toBe(200);
+    const listed = r.json.items.map((l: { id: string }) => l.id);
+    expect(listed).toEqual([b, ...[c, tie].sort().reverse(), a]);
+    expect(listed).not.toContain(active);
+    expect(listed).not.toContain(expired);
+    for (const l of r.json.items) {
+      expect(l.archived_at).not.toBeNull();
+      expect(l.removal_at).toBeNull();
+    }
+    expect(r.json.next_cursor).toBeNull();
+  });
+
+  it('pages them with limit and cursor, every archived link once', async () => {
+    setNow(T);
+    const user = await signIn();
+    const ids = await seedArchivedAt(
+      user,
+      Array.from({ length: 123 }, (_, i) => T - Math.floor(i / 3) * 1000),
+    );
+    const seen: string[] = [];
+    const sizes: number[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { json: { items: { id: string }[]; next_cursor: string | null } } = await api(
+        'GET',
+        `/api/v1/archive?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        { as: user.session },
+      );
+      sizes.push(page.json.items.length);
+      seen.push(...page.json.items.map((l) => l.id));
+      cursor = page.json.next_cursor;
+    } while (cursor);
+    expect(sizes).toEqual([100, 23]);
+    expect([...seen].sort()).toEqual([...ids].sort());
+    const first = await api('GET', '/api/v1/archive', { as: user.session });
+    expect(first.json.items).toHaveLength(50);
+  });
+
+  it.each([
+    { query: 'limit=0', error: 'invalid_limit', field: 'limit' },
+    { query: 'limit=101', error: 'invalid_limit', field: 'limit' },
+    { query: 'limit=x', error: 'invalid_limit', field: 'limit' },
+    { query: 'cursor=garbage', error: 'invalid_cursor', field: 'cursor' },
+    { query: 'expired list cursor', error: 'invalid_cursor', field: 'cursor' },
+  ])('refuses $query', async ({ query, error, field }) => {
+    setNow(T);
+    const user = await signIn();
+    await seedExpired(user, [T - 1000, T - 2000]);
+    let q = query;
+    if (query === 'expired list cursor') {
+      const expired = await api('GET', '/api/v1/expired?limit=1', { as: user.session });
+      q = `cursor=${encodeURIComponent(expired.json.next_cursor)}`;
+    }
+    const r = await api('GET', `/api/v1/archive?${q}`, { as: user.session });
+    expect(r.status).toBe(400);
+    expect(r.json).toMatchObject({ error, field });
+  });
+});
+
 describe('restoring a link', () => {
   it('brings it back active to the top of the stream, without counting a use', async () => {
     setNow(T);

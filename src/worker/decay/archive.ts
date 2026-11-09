@@ -1,73 +1,94 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { limitReached, notFound, validationError } from '../api/errors';
 import { now } from '../clock';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { getLink, toFullView, toView, unpinStatements, type LinkRow } from '../links/store';
 
-/** Where a page of the expired list ends: the last link's expiry time and id. */
-interface ExpiredCursor {
-  e: string;
-  i: string;
-}
+/**
+ * Where a page of the expired list ({e, i}) or of the archive ({a, i}) ends:
+ * the last link's expiry or archiving time, and its id. The key names the
+ * list, so a cursor of one is refused by the other.
+ */
+type TimeCursor = Record<'e' | 'a', string | undefined> & { i: string };
 
-function isExpiredCursor(value: unknown): value is ExpiredCursor {
+function isTimeCursor(value: unknown, key: 'e' | 'a'): value is TimeCursor {
   const c = value as Record<string, unknown> | null;
   return (
     typeof c === 'object' &&
     c !== null &&
     Object.keys(c).length === 2 &&
-    typeof c.e === 'string' &&
+    typeof c[key] === 'string' &&
     typeof c.i === 'string'
   );
+}
+
+/**
+ * A handler listing the user's links in `state`, most recent `column` first
+ * (id descending on ties), paged with limit and a cursor keyed `key`.
+ */
+function listByTime(
+  state: 'expired' | 'archived',
+  column: 'expired_at' | 'archived_at',
+  key: 'e' | 'a',
+) {
+  return async (c: Context<AppEnv>) => {
+    const limit = parseLimit(c.req.query('limit'));
+    if (limit === null) {
+      return validationError(
+        c,
+        'invalid_limit',
+        'limit',
+        `limit must be an integer from 1 to ${MAX_LIMIT}`,
+      );
+    }
+    const raw = c.req.query('cursor');
+    let after: { t: string; i: string } | null = null;
+    if (raw !== undefined) {
+      const cursor = await decodeCursor(c.env, raw);
+      if (!isTimeCursor(cursor, key)) {
+        return validationError(
+          c,
+          'invalid_cursor',
+          'cursor',
+          'the cursor was not issued by this API',
+        );
+      }
+      after = { t: cursor[key]!, i: cursor.i };
+    }
+    const keyset = after ? `AND (${column} < ?3 OR (${column} = ?3 AND id < ?4))` : '';
+    const statement = c.env.DB.prepare(
+      `SELECT * FROM link_views WHERE user_id = ?1 AND state = '${state}' ${keyset}
+       ORDER BY ${column} DESC, id DESC LIMIT ?2`,
+    );
+    const userId = c.get('user').id;
+    const rows = await (
+      after
+        ? statement.bind(userId, limit + 1, after.t, after.i)
+        : statement.bind(userId, limit + 1)
+    ).all<LinkRow>();
+    const items = rows.results.slice(0, limit);
+    const last = items.at(-1);
+    const lastTime = last?.[column];
+    return c.json({
+      items: items.map(toView),
+      next_cursor:
+        rows.results.length > limit && last && lastTime
+          ? await encodeCursor(c.env, { [key]: lastTime, i: last.id })
+          : null,
+    });
+  };
 }
 
 /** The expired links, under /api/v1/expired. */
 export const expiredRoutes = new Hono<AppEnv>();
 
-expiredRoutes.get('/', async (c) => {
-  const limit = parseLimit(c.req.query('limit'));
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
-  let after: ExpiredCursor | null = null;
-  if (raw !== undefined) {
-    const cursor = await decodeCursor(c.env, raw);
-    if (!isExpiredCursor(cursor)) {
-      return validationError(
-        c,
-        'invalid_cursor',
-        'cursor',
-        'the cursor was not issued by this API',
-      );
-    }
-    after = cursor;
-  }
-  const keyset = after ? 'AND (expired_at < ?3 OR (expired_at = ?3 AND id < ?4))' : '';
-  const statement = c.env.DB.prepare(
-    `SELECT * FROM link_views WHERE user_id = ?1 AND state = 'expired' ${keyset}
-     ORDER BY expired_at DESC, id DESC LIMIT ?2`,
-  );
-  const userId = c.get('user').id;
-  const rows = await (
-    after ? statement.bind(userId, limit + 1, after.e, after.i) : statement.bind(userId, limit + 1)
-  ).all<LinkRow>();
-  const items = rows.results.slice(0, limit);
-  const last = items.at(-1);
-  return c.json({
-    items: items.map(toView),
-    next_cursor:
-      rows.results.length > limit && last?.expired_at
-        ? await encodeCursor(c.env, { e: last.expired_at, i: last.id })
-        : null,
-  });
-});
+expiredRoutes.get('/', listByTime('expired', 'expired_at', 'e'));
+
+/** The archived links, under /api/v1/archive. */
+export const archiveRoutes = new Hono<AppEnv>();
+
+archiveRoutes.get('/', listByTime('archived', 'archived_at', 'a'));
 
 /** Restoring one expired link, under /api/v1/links. */
 export const restoreRoutes = new Hono<AppEnv>();
