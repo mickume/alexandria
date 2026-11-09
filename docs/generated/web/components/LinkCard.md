@@ -214,6 +214,46 @@ A link to the site itself, through the open route so the visit counts as a use, 
 
 ***
 
+### TagChips()
+
+> **TagChips**(`__namedParameters`): `Element`
+
+One chip per tag, each opening the search for the tag's links, as on the Tags page.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### tags
+
+`string`[]
+
+#### Returns
+
+`Element`
+
+***
+
+### TopicChip()
+
+> **TopicChip**(`__namedParameters`): `Element`
+
+A link's topic as a chip that opens the search for the topic's links, as on the Topics page.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### topic
+
+`string`
+
+#### Returns
+
+`Element`
+
+***
+
 ### WorkspaceChips()
 
 > **WorkspaceChips**(`__namedParameters`): `Element` \| `null`

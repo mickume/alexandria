@@ -29,6 +29,7 @@ export function EditableField({
   link: Link;
   field: Field;
   onSaved: (link: Link) => void;
+  /** How the value is shown when it is not being edited; its text, or none, when this is empty. */
   children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -100,7 +101,7 @@ export function EditableField({
         </div>
       ) : (
         <div className="field-value">
-          {children ?? (asText(link, field) || <span className="muted">none</span>)}
+          {children || asText(link, field) || <span className="muted">none</span>}
         </div>
       )}
       {error && (

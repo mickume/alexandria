@@ -3,7 +3,13 @@ import { links, type Link, type LinkEvent } from '../api';
 import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { NoteEditor } from '../components/NoteEditor';
-import { RefreshButton, SiteLink, WorkspaceChips } from '../components/LinkCard';
+import {
+  RefreshButton,
+  SiteLink,
+  TagChips,
+  TopicChip,
+  WorkspaceChips,
+} from '../components/LinkCard';
 import { formatDate } from '../format';
 
 /** How one history event reads: "Opened", "Fetched", or "Fetch failed: HTTP 503". */
@@ -90,8 +96,12 @@ export function LinkDetail({ id }: { id: string }) {
       <section className="editable">
         <EditableField link={link} field="title" onSaved={setLink} />
         <EditableField link={link} field="summary" onSaved={setLink} />
-        <EditableField link={link} field="tags" onSaved={setLink} />
-        <EditableField link={link} field="topic" onSaved={setLink} />
+        <EditableField link={link} field="tags" onSaved={setLink}>
+          {link.tags.length > 0 && <TagChips tags={link.tags} />}
+        </EditableField>
+        <EditableField link={link} field="topic" onSaved={setLink}>
+          {link.topic && <TopicChip topic={link.topic} />}
+        </EditableField>
       </section>
       <Facts link={link} />
       <p className="muted">

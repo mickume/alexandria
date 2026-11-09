@@ -18,6 +18,8 @@ field and shows a refusal beside it.
 
 `ReactNode`
 
+How the value is shown when it is not being edited; its text, or none, when this is empty.
+
 ###### field
 
 `Field`

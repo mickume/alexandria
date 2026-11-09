@@ -174,6 +174,37 @@ describe('editing a link on its detail page', () => {
   });
 });
 
+describe('the topic and tags of a link on its detail page', () => {
+  it.each([
+    { label: 'topic', name: 'Machine learning', search: 'topic:"Machine learning"' },
+    { label: 'tag', name: 'wasm', search: 'tag:wasm' },
+  ])('open the search for the links of the $label when clicked', async ({ name, search }) => {
+    const link = makeLink({ id: 'abc', tags: ['rust', 'wasm'], topic: 'Machine learning' });
+    renderPage(
+      '/links/abc',
+      new FakeApi().on('GET', '/api/v1/links/abc', { status: 200, body: link }),
+    );
+
+    fireEvent.click(await screen.findByRole('link', { name }));
+
+    expect(window.location.pathname + window.location.search).toBe(
+      `/search?q=${encodeURIComponent(search)}`,
+    );
+  });
+
+  it('say none when the link has no topic or tags', async () => {
+    const link = makeLink({ id: 'abc', tags: [], topic: null });
+    renderPage(
+      '/links/abc',
+      new FakeApi().on('GET', '/api/v1/links/abc', { status: 200, body: link }),
+    );
+
+    for (const field of ['field-tags', 'field-topic']) {
+      expect(within(await screen.findByTestId(field)).getByText('none')).toBeTruthy();
+    }
+  });
+});
+
 describe('the note of a link on its detail page', () => {
   function noteApi(): FakeApi {
     let current = makeLink({

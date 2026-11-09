@@ -409,16 +409,16 @@ a.brand:hover span {
   margin-top: var(--q-space-2);
 }
 
-/* A card's topic and tags are links that look exactly as they would as plain labels. */
-.card-labels a:hover {
+/* A topic or tag chip is a link that looks exactly as it would as a plain label. */
+.label-link:hover {
   text-decoration: none;
 }
 
-.card-labels a.q-label:hover {
+.q-label.label-link:hover {
   border-color: var(--q-border-default);
 }
 
-.card-labels a.q-topic:hover {
+.q-topic.label-link:hover {
   background: var(--q-accent-subtle);
   color: var(--q-accent-fg);
 }

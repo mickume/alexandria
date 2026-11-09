@@ -262,27 +262,37 @@ function CardMeta({ link }: { link: Link }) {
   );
 }
 
-/** The topic and one chip per tag, each a link to the search for its links, as on the Topics and Tags pages. */
+/** A link's topic as a chip that opens the search for the topic's links, as on the Topics page. */
+export function TopicChip({ topic }: { topic: string }) {
+  return (
+    <PageLink to={searchPath(filterQuery('topic', topic))} className="topic q-label label-link">
+      {topic}
+    </PageLink>
+  );
+}
+
+/** One chip per tag, each opening the search for the tag's links, as on the Tags page. */
+export function TagChips({ tags }: { tags: string[] }) {
+  return (
+    <ul className="tags" aria-label="Tags">
+      {tags.map((tag) => (
+        <li key={tag}>
+          <PageLink to={searchPath(filterQuery('tag', tag))} className="q-topic label-link">
+            {tag}
+          </PageLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The topic and the tags. */
 function Labels({ link }: { link: Link }) {
   if (link.tags.length === 0 && !link.topic) return null;
   return (
     <div className="card-labels">
-      {link.topic && (
-        <PageLink to={searchPath(filterQuery('topic', link.topic))} className="topic q-label">
-          {link.topic}
-        </PageLink>
-      )}
-      {link.tags.length > 0 && (
-        <ul className="tags" aria-label="Tags">
-          {link.tags.map((tag) => (
-            <li key={tag}>
-              <PageLink to={searchPath(filterQuery('tag', tag))} className="q-topic">
-                {tag}
-              </PageLink>
-            </li>
-          ))}
-        </ul>
-      )}
+      {link.topic && <TopicChip topic={link.topic} />}
+      {link.tags.length > 0 && <TagChips tags={link.tags} />}
     </div>
   );
 }
