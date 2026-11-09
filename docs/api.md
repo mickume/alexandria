@@ -635,6 +635,47 @@ mean (see Searching by meaning below). A hybrid query of filters only, or an
 empty one, is answered as in keyword mode, with `"meaning": "used"` added and
 nothing embedded.
 
+#### Searching by meaning
+
+`mode=hybrid` with at least one free word returns the links that match the
+free words by keyword, by meaning, or both, in one ranking, so that a page
+saved as "Durable Objects alarms" is found by "scheduling work in the
+background". Meaning uses the same index as `GET /api/v1/passages`: a link is
+found by meaning when its best passage scores at least 0.5 against the free
+words, and meaning adds at most the 100 nearest such links to a query. The
+filters apply to those links as to keyword matches.
+
+```json
+{
+  "items": [
+    { "link": { "id": "…", "…": "…" }, "snippet": [{ "text": "…", "match": false }], "match": "meaning" }
+  ],
+  "workspaces": [],
+  "next_cursor": null,
+  "meaning": "used"
+}
+```
+
+- **`match`** says how the link was found: `keyword`, `meaning` or `both`. A
+  keyword or both match has the snippet keyword search gives (at most 32 words,
+  the matched words marked); a meaning match has the first at most 32 words of
+  its best passage as one segment, nothing marked.
+- **The ranking** has two tiers. First the links whose title, tags and topic
+  together hold every free word; then every other match. Within a tier links
+  are ordered by reciprocal rank fusion of their place in the keyword ranking
+  (the first 1,000 keyword matches take part) and in the meaning ranking, so a
+  strong keyword match is never below a link found by meaning alone, and a link
+  found both ways comes before one found a single way. Links of equal score are
+  ordered as keyword search orders its ties: pinned (by position), then the more
+  recently used, then by id. Every link keyword search finds is returned.
+- **Paging** is by a signed `next_cursor` of its own kind: a cursor of one mode
+  is `400 invalid_cursor` in the other. Every result appears once across the
+  pages, and the first page lists the matching workspaces, as in keyword mode.
+- **`meaning`** is `used`, or `unavailable` when Workers AI or Vectorize
+  failed or had not answered within 600 ms: the answer is then the keyword
+  results of the query, each `match: "keyword"`. A hybrid search never answers
+  5xx because of the index.
+
 ### Passages
 
 #### `GET /api/v1/passages`

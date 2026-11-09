@@ -310,6 +310,20 @@ before it.
 
 ## Search by meaning
 
+`GET /api/v1/search?mode=hybrid` (`search/hybrid.ts`, `search/routes.ts`)
+merges the keyword ranking with the links whose best passage matches by
+meaning. `hybridRanking` runs `findPassages` (up to 100 links, one passage
+each, 600 ms) beside the full keyword ranking (`keywordMatches`) and the set of
+strong keyword matches (`strongMatchIds`: every free word in title, tags and
+topic together), then orders the links in two tiers, strong matches first, each
+by reciprocal rank fusion with k = 60 over competition ranks (links of equal
+bm25 or equal similarity share a rank, so equal scores fall to the pin, last-use
+and id tie-breaks of keyword search). Past the first 1,000 keyword matches the
+keyword order is kept below the fused links of the tier. The route pages the
+whole ranking with a `{s: 'h', o}` cursor and reads snippets for the page's
+keyword matches only. If meaning is unavailable the ranking is the keyword
+matches, `meaning: "unavailable"`.
+
 Keyword search is unchanged. Beside it, every link is indexed by what it means
 ([ADR 05](adr/05-index-links-by-meaning-with-vectorize-and-workers-ai.md)):
 Workers AI embeds passages of the link's text and Vectorize holds the vectors,

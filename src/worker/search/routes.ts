@@ -6,7 +6,8 @@ import { toView, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
-import { linkMatch, matchingWorkspaces, rankedLinks } from './search';
+import { hybridRanking, passageSnippet } from './hybrid';
+import { linkMatch, matchingWorkspaces, rankedLinks, snippetsFor } from './search';
 import {
   carrierIds,
   isVocabularyCursor,
@@ -24,13 +25,14 @@ export const searchRoutes = new Hono<AppEnv>();
 
 /** Where a page of ranked results ends: the number of results before the next page. */
 interface RankCursor {
-  s: 'r';
+  /** 'r' for a keyword ranking, 'h' for a hybrid one: a cursor is refused in the other mode. */
+  s: 'r' | 'h';
   o: number;
 }
 
-function isRankCursor(value: unknown): value is RankCursor {
+function isRankCursor(value: unknown, kind: RankCursor['s'] = 'r'): value is RankCursor {
   const c = value as RankCursor | null;
-  return typeof c === 'object' && c !== null && c.s === 'r' && Number.isInteger(c.o) && c.o > 0;
+  return typeof c === 'object' && c !== null && c.s === kind && Number.isInteger(c.o) && c.o > 0;
 }
 
 function invalidCursor(c: Context<AppEnv>) {
@@ -72,6 +74,58 @@ async function streamPage(
     workspaces: [],
     next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
     ...(hybrid ? { meaning: 'used' } : {}),
+  });
+}
+
+/**
+ * A hybrid query with free words: the keyword matches and the links found by
+ * meaning in one ranking, paged by offset, each saying how it matched, and on
+ * the first page the matching workspaces.
+ */
+async function hybridPage(
+  c: Context<AppEnv>,
+  { words, filters }: { words: string[]; filters: Filters },
+  limit: number,
+  raw: string | undefined,
+) {
+  let offset = 0;
+  if (raw !== undefined) {
+    const cursor = await decodeCursor(c.env, raw);
+    if (!isRankCursor(cursor, 'h')) return invalidCursor(c);
+    offset = cursor.o;
+  }
+  const userId = c.get('user').id;
+  const ranking = await hybridRanking(c.env, userId, words, filters);
+  const page = ranking.entries.slice(offset, offset + limit);
+  const match = linkMatch(userId, words);
+  const snippets = match
+    ? await snippetsFor(
+        c.env.DB,
+        match,
+        page.filter((e) => e.match !== 'meaning').map((e) => e.id),
+      )
+    : new Map();
+  const rows = await linksInOrder(
+    c.env.DB,
+    userId,
+    page.map((e) => e.id),
+  );
+  const entries = new Map(page.map((e) => [e.id, e]));
+  return c.json({
+    items: rows.map((row) => {
+      const entry = entries.get(row.id)!;
+      const snippet =
+        entry.match === 'meaning'
+          ? [{ text: passageSnippet(entry.passage ?? ''), match: false }]
+          : (snippets.get(row.id) ?? []);
+      return { link: toView(row), snippet, match: entry.match };
+    }),
+    workspaces: offset === 0 ? await matchingWorkspaces(c.env.DB, userId, words) : [],
+    next_cursor:
+      offset + limit < ranking.entries.length
+        ? await encodeCursor(c.env, { s: 'h', o: offset + limit })
+        : null,
+    meaning: ranking.meaning,
   });
 }
 
@@ -127,7 +181,9 @@ searchRoutes.get('/', async (c) => {
   const raw = c.req.query('cursor');
   return parsed.words.length === 0
     ? streamPage(c, parsed.filters, limit, raw, mode === 'hybrid')
-    : rankedPage(c, parsed, limit, raw);
+    : mode === 'hybrid'
+      ? hybridPage(c, parsed, limit, raw)
+      : rankedPage(c, parsed, limit, raw);
 });
 
 /** GET /api/v1/topics or /api/v1/tags: the vocabulary of `kind`, newest first. */

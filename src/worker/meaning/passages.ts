@@ -33,13 +33,18 @@ export interface Passage {
 export class MeaningUnavailable extends Error {}
 
 /** The vectors nearest to the question, or MeaningUnavailable. */
-async function nearest(env: Env, userId: string, question: string): Promise<VectorMatch[]> {
+async function nearest(
+  env: Env,
+  userId: string,
+  question: string,
+  deadlineMs: number,
+): Promise<VectorMatch[]> {
   const backend = meaningBackend(env);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
       () => reject(new MeaningUnavailable('search by meaning timed out')),
-      MEANING_TIMEOUT_MS,
+      deadlineMs,
     );
   });
   const search = async () => {
@@ -71,8 +76,9 @@ interface PassageRow {
 /**
  * The passages of the user's links that best match the free words by meaning,
  * best first: those scoring at least the similarity threshold, of links
- * satisfying the filters, at most three of a link and at most `limit` in all.
- * The index is only a guide to which passages to look at: every passage
+ * satisfying the filters, at most `perLink` (three) of a link and at most
+ * `limit` in all, with `deadlineMs` (five seconds) for the embedding and the
+ * query together. The index is only a guide to which passages to look at: every passage
  * returned is read from the user's own rows, so the vector of a deleted link
  * or of another user's link is never returned. Throws MeaningUnavailable.
  */
@@ -82,8 +88,9 @@ export async function findPassages(
   words: string[],
   filters: Filters,
   limit: number,
+  { deadlineMs = MEANING_TIMEOUT_MS, perLink = PASSAGES_PER_LINK } = {},
 ): Promise<Passage[]> {
-  const matches = (await nearest(env, userId, words.join(' '))).filter(
+  const matches = (await nearest(env, userId, words.join(' '), deadlineMs)).filter(
     (m) => m.score >= SIMILARITY_THRESHOLD,
   );
   if (matches.length === 0) return [];
@@ -105,12 +112,12 @@ export async function findPassages(
         (a.row.link_id < b.row.link_id ? -1 : a.row.link_id > b.row.link_id ? 1 : 0) ||
         a.row.position - b.row.position,
     );
-  const perLink = new Map<string, number>();
+  const counts = new Map<string, number>();
   const found: Passage[] = [];
   for (const { row, score } of ranked) {
-    const taken = perLink.get(row.link_id) ?? 0;
-    if (taken >= PASSAGES_PER_LINK) continue;
-    perLink.set(row.link_id, taken + 1);
+    const taken = counts.get(row.link_id) ?? 0;
+    if (taken >= perLink) continue;
+    counts.set(row.link_id, taken + 1);
     found.push({
       link_id: row.link_id,
       title: row.title,

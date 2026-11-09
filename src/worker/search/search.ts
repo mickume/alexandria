@@ -96,6 +96,24 @@ export interface RankedLink {
   snippet: Segment[];
 }
 
+/** The snippets of the links `ids` for the search `match`, by link id. */
+export async function snippetsFor(
+  db: D1Database,
+  match: string,
+  ids: string[],
+): Promise<Map<string, Segment[]>> {
+  if (ids.length === 0) return new Map();
+  const snippets = await db
+    .prepare(
+      `SELECT link_id AS id, ${snippetSql('link_search')} AS snippet FROM link_search
+       WHERE link_search MATCH ?
+         AND rowid IN (SELECT id FROM link_search_keys WHERE link_id IN (SELECT value FROM json_each(?)))`,
+    )
+    .bind(match, JSON.stringify(ids))
+    .all<{ id: string; snippet: string }>();
+  return new Map(snippets.results.map((r) => [r.id, segments(r.snippet)]));
+}
+
 /**
  * One page of the user's links matching `match`, most relevant first (bm25,
  * title 10, tags and topic 5, summary 3, host, original URL and note 2,
@@ -123,17 +141,65 @@ export async function rankedLinks(
     .bind(match, userId, ...where.params, limit + 1, offset)
     .all<{ id: string }>();
   const ids = ranked.results.map((r) => r.id);
-  if (ids.length === 0) return [];
-  const snippets = await db
+  const snippets = await snippetsFor(db, match, ids);
+  return ids.map((id) => ({ id, snippet: snippets.get(id) ?? [] }));
+}
+
+/** A link matching a keyword search, with what orders it among the others. */
+export interface KeywordMatch {
+  id: string;
+  /** The relevance (bm25, lower is more relevant); links with the same score tie. */
+  score: number;
+  pin_position: number | null;
+  last_used_at: string;
+}
+
+/**
+ * Every one of the user's links matching `match`, in the order `rankedLinks`
+ * pages them, each with its relevance, pin position and last use.
+ */
+export async function keywordMatches(
+  db: D1Database,
+  userId: string,
+  match: string,
+  where: Conditions,
+): Promise<KeywordMatch[]> {
+  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
+  const rows = await db
     .prepare(
-      `SELECT link_id AS id, ${snippetSql('link_search')} AS snippet FROM link_search
-       WHERE link_search MATCH ?
-         AND rowid IN (SELECT id FROM link_search_keys WHERE link_id IN (SELECT value FROM json_each(?)))`,
+      `SELECT link_search.link_id AS id, bm25(link_search, ${LINK_WEIGHTS}) AS score,
+         l.pin_position, l.last_used_at
+       FROM link_search JOIN links l ON l.id = link_search.link_id
+       WHERE link_search MATCH ? AND l.user_id = ? ${conditions}
+       ORDER BY score, l.pin_position IS NULL, l.pin_position, l.last_used_at DESC, l.id`,
     )
-    .bind(match, JSON.stringify(ids))
-    .all<{ id: string; snippet: string }>();
-  const byId = new Map(snippets.results.map((r) => [r.id, r.snippet]));
-  return ids.map((id) => ({ id, snippet: segments(byId.get(id) ?? '') }));
+    .bind(match, userId, ...where.params)
+    .all<KeywordMatch>();
+  return rows.results;
+}
+
+/**
+ * The ids of the user's links whose title, tags and topic together hold every
+ * free word as the start of a word: the keyword matches that are not left to
+ * the note, the summary, the address or the page's text alone.
+ */
+export async function strongMatchIds(
+  db: D1Database,
+  userId: string,
+  words: string[],
+  where: Conditions,
+): Promise<Set<string>> {
+  const match = matchExpression(userId, words, 'title tags topic');
+  if (!match) return new Set();
+  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
+  const rows = await db
+    .prepare(
+      `SELECT link_search.link_id AS id FROM link_search JOIN links l ON l.id = link_search.link_id
+       WHERE link_search MATCH ? AND l.user_id = ? ${conditions}`,
+    )
+    .bind(match, userId, ...where.params)
+    .all<{ id: string }>();
+  return new Set(rows.results.map((r) => r.id));
 }
 
 /** A workspace among a search's results. */
