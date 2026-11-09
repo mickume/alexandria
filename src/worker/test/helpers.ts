@@ -5,9 +5,11 @@
 import {
   createExecutionContext,
   createMessageBatch,
+  createScheduledController,
   env,
   getQueueResult,
   SELF,
+  waitOnExecutionContext,
 } from 'cloudflare:test';
 import type {
   AccountMessage,
@@ -307,6 +309,13 @@ export async function deliverAccount(
   bindings: Partial<Cloudflare.Env> = {},
 ): Promise<{ acked: string[]; retried: string[] }> {
   return deliver('alexandria-account', bodies, bindings);
+}
+
+/** Runs the Worker's every-minute scheduled handler once, as its Cron Trigger would, at the current clock. */
+export async function runEveryMinute(): Promise<void> {
+  const ctx = createExecutionContext();
+  await worker.scheduled?.(createScheduledController({ cron: '* * * * *' }), env, ctx);
+  await waitOnExecutionContext(ctx);
 }
 
 /** Delivers indexing messages to the Worker's queue consumer in one batch. */

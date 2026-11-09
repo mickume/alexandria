@@ -51,7 +51,11 @@ as variables in the dashboard; `keep_vars` keeps those across deploys), and in
 - `0 * * * *`: the hourly run that evaluates decay and enqueues the weekly
   liveness checks.
 - `* * * * *`: the every-minute run that sends imported links waiting for
-  their turn to the fetch worker.
+  their turn to the fetch worker, deletes the vectors of removed passages from
+  the Vectorize index (at most 20 calls of 1,000 ids a run), and queues up to 60
+  links per user that have no up-to-date passages (the backfill) on
+  `alexandria-index`, the most recently used first and none twice within 10
+  minutes. The three are independent: one failing does not stop the others.
 - `*/5 * * * *`: the sweep that runs the deletion job of every account marked
   for deletion more than 5 minutes ago.
 

@@ -14,19 +14,29 @@ import type {
 } from './env';
 import { handleFetchBatch } from './fetcher/queue';
 import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
+import { maintainIndex } from './meaning/backfill';
 import { handleIndexBatch } from './meaning/indexing';
 
 export { HostGate } from './fetcher/hostgate';
+
+/** The every-minute jobs, each run whatever the others do. */
+async function everyMinute(env: Env): Promise<void> {
+  const jobs = await Promise.allSettled([dispatchAllImports(env), maintainIndex(env)]);
+  for (const job of jobs) {
+    if (job.status === 'rejected') console.error('an every-minute job failed', job.reason);
+  }
+}
 
 export default {
   fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
   scheduled(controller, env, ctx) {
-    // Every minute: imported links; every 5 minutes: account deletions; every hour: decay and liveness.
+    // Every minute: imported links and the index; every 5 minutes: account deletions; every hour:
+    // decay and liveness.
     const run =
       controller.cron === DISPATCH_CRON
-        ? dispatchAllImports(env)
+        ? everyMinute(env)
         : controller.cron === SWEEP_CRON
           ? sweepDeletions(env)
           : runScheduled(env);
