@@ -2,6 +2,32 @@
 
 ## Interfaces
 
+### KeywordMatch
+
+A link matching a keyword search, with what orders it among the others.
+
+#### Properties
+
+##### id
+
+> **id**: `string`
+
+##### last\_used\_at
+
+> **last\_used\_at**: `string`
+
+##### pin\_position
+
+> **pin\_position**: `number` \| `null`
+
+##### score
+
+> **score**: `number`
+
+The relevance (bm25, lower is more relevant); links with the same score tie.
+
+***
+
 ### RankedLink
 
 One link of a search's results, by id, with its snippet.
@@ -121,6 +147,37 @@ runs it in the batch that stores the text.
 #### Returns
 
 `D1PreparedStatement`
+
+***
+
+### keywordMatches()
+
+> **keywordMatches**(`db`, `userId`, `match`, `where`): `Promise`\<[`KeywordMatch`](#keywordmatch)[]\>
+
+Every one of the user's links matching `match`, in the order `rankedLinks`
+pages them, each with its relevance, pin position and last use.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### match
+
+`string`
+
+##### where
+
+[`Conditions`](query.md#conditions)
+
+#### Returns
+
+`Promise`\<[`KeywordMatch`](#keywordmatch)[]\>
 
 ***
 
@@ -276,3 +333,61 @@ Splits a snippet marked with OPEN and CLOSE into segments; never HTML.
 #### Returns
 
 [`Segment`](#segment)[]
+
+***
+
+### snippetsFor()
+
+> **snippetsFor**(`db`, `match`, `ids`): `Promise`\<`Map`\<`string`, [`Segment`](#segment)[]\>\>
+
+The snippets of the links `ids` for the search `match`, by link id.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### match
+
+`string`
+
+##### ids
+
+`string`[]
+
+#### Returns
+
+`Promise`\<`Map`\<`string`, [`Segment`](#segment)[]\>\>
+
+***
+
+### strongMatchIds()
+
+> **strongMatchIds**(`db`, `userId`, `words`, `where`): `Promise`\<`Set`\<`string`\>\>
+
+The ids of the user's links whose title, tags and topic together hold every
+free word as the start of a word: the keyword matches that are not left to
+the note, the summary, the address or the page's text alone.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### words
+
+`string`[]
+
+##### where
+
+[`Conditions`](query.md#conditions)
+
+#### Returns
+
+`Promise`\<`Set`\<`string`\>\>

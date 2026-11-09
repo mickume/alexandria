@@ -66,6 +66,24 @@ Marks the link as the page being shown.
 
 ***
 
+### modeOf()
+
+> **modeOf**(`location`): `"hybrid"` \| `undefined`
+
+The search mode a location carries in its mode parameter: 'hybrid', or none.
+
+#### Parameters
+
+##### location
+
+[`Location`](#location)
+
+#### Returns
+
+`"hybrid"` \| `undefined`
+
+***
+
 ### navigate()
 
 > **navigate**(`path`, `__namedParameters?`): `void`

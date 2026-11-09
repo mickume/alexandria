@@ -582,9 +582,19 @@ One page of a search's results.
 
 > **link**: [`Link`](#link)
 
+###### match?
+
+> `optional` **match?**: [`MatchKind`](#matchkind)
+
 ###### snippet
 
 > **snippet**: [`Segment`](#segment)[]
+
+##### meaning?
+
+> `optional` **meaning?**: `"used"` \| `"unavailable"`
+
+Only in a search by meaning: whether meaning could be added to the results.
 
 ##### next\_cursor
 
@@ -744,6 +754,14 @@ One event of a link's history: a use, or a fetch attempt.
 
 ***
 
+### MatchKind
+
+> **MatchKind** = `"keyword"` \| `"meaning"` \| `"both"`
+
+How a link of a search by meaning was found.
+
+***
+
 ### Member
 
 > **Member** = [`Link`](#link) & `object`
@@ -755,6 +773,14 @@ A member of a workspace: a link with its position.
 ##### position
 
 > **position**: `number`
+
+***
+
+### SearchMode
+
+> **SearchMode** = `"hybrid"`
+
+The mode of a search that also finds links by meaning.
 
 ***
 
@@ -1594,9 +1620,10 @@ Sends a request to the API and returns its parsed JSON body (undefined for 204).
 
 ### search()
 
-> **search**(`q`, `cursor?`): `Promise`\<[`SearchResults`](#searchresults)\>
+> **search**(`q`, `cursor?`, `mode?`): `Promise`\<[`SearchResults`](#searchresults)\>
 
-Searches the library: free words and prefix filters, one page at a time.
+Searches the library: free words and prefix filters, one page at a time; by
+meaning as well as by words when `mode` is 'hybrid'.
 
 #### Parameters
 
@@ -1608,6 +1635,10 @@ Searches the library: free words and prefix filters, one page at a time.
 
 `string` \| `null`
 
+##### mode?
+
+`"hybrid"`
+
 #### Returns
 
 `Promise`\<[`SearchResults`](#searchresults)\>
@@ -1616,15 +1647,19 @@ Searches the library: free words and prefix filters, one page at a time.
 
 ### searchPath()
 
-> **searchPath**(`q`): `string`
+> **searchPath**(`q`, `mode?`): `string`
 
-The website's address of a search.
+The website's address of a search, by meaning when `mode` is 'hybrid'.
 
 #### Parameters
 
 ##### q
 
 `string`
+
+##### mode?
+
+`"hybrid"`
 
 #### Returns
 

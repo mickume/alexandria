@@ -668,8 +668,9 @@ filters apply to those links as to keyword matches.
   found both ways comes before one found a single way. Links of equal score are
   ordered as keyword search orders its ties: pinned (by position), then the more
   recently used, then by id. Every link keyword search finds is returned.
-- **Paging** is by a signed `next_cursor` of its own kind: a cursor of one mode
-  is `400 invalid_cursor` in the other. Every result appears once across the
+- **Paging** is by a signed `next_cursor` of its own kind: for a query with free
+  words, a cursor of one mode is `400 invalid_cursor` in the other (a query of
+  filters only is answered alike in both modes, with the stream's cursor). Every result appears once across the
   pages, and the first page lists the matching workspaces, as in keyword mode.
 - **`meaning`** is `used`, or `unavailable` when Workers AI or Vectorize
   failed or had not answered within 600 ms: the answer is then the keyword

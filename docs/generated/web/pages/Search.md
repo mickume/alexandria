@@ -12,6 +12,10 @@ The results of a search: matching workspaces first, then each link's card with i
 
 ##### \_\_namedParameters
 
+###### mode?
+
+`"hybrid"`
+
 ###### query
 
 `string`

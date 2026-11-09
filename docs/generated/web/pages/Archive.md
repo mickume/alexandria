@@ -13,6 +13,10 @@ or delete; with a query (from the search box), the archived links matching it.
 
 ##### \_\_namedParameters
 
+###### mode?
+
+`"hybrid"`
+
 ###### query?
 
 `string` = `''`
