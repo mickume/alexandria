@@ -12,6 +12,18 @@
 
 ##### \_\_namedParameters
 
+###### className?
+
+`string` = `'q-btn-link'`
+
+The button's class: a link-like button unless an action list asks for its own.
+
+###### icon?
+
+`ReactNode`
+
+An icon before the label.
+
 ###### link
 
 [`Link`](../api.md#link-1)

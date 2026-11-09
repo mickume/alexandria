@@ -609,6 +609,68 @@ a.brand:hover span {
 
 /* ── A link on its own: facts, history, editable fields, notes. ── */
 
+/* As an issue is laid out: the content on the left, a narrower column of metadata and actions on the right. */
+.detail {
+  max-width: var(--q-container-md);
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: var(--q-space-6);
+  align-items: start;
+}
+
+@media (max-width: 48rem) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--q-space-3);
+  font-size: var(--q-text-sm);
+}
+
+/* Each part of the side column is divided from the one before it, as an issue's sidebar is. */
+.detail-side > * + * {
+  padding-top: var(--q-space-3);
+  border-top: var(--q-border-width) solid var(--q-border-muted);
+}
+
+/* A side heading reads as the Tags and Topic labels do. */
+.detail-side h2 {
+  margin: 0;
+  color: var(--q-fg-muted);
+  font-size: var(--q-text-xs);
+  font-weight: var(--q-weight-normal);
+}
+
+.detail-workspaces {
+  margin: var(--q-space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-workspaces li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--q-space-2);
+}
+
+.detail-actions .muted {
+  padding: 0 var(--q-space-2) var(--q-space-1);
+  font-size: var(--q-text-xs);
+}
+
+.detail-actions .picker-menu {
+  z-index: var(--q-z-dropdown);
+  min-width: 12rem;
+}
+
 .facts {
   display: grid;
   grid-template-columns: max-content 1fr;

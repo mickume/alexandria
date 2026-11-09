@@ -1,18 +1,24 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { workspaces, type WorkspaceSummary } from '../api';
 
 /**
- * 'Add to workspace' on a card: the owner's workspaces by name, those already
+ * 'Add to workspace' on a card or a link's detail page: the owner's workspaces by name, those already
  * holding the link marked; choosing another adds the link at its bottom.
  */
 export function WorkspacePicker({
   linkId,
   memberOf,
   onAdded,
+  className = 'q-btn-link',
+  icon,
 }: {
   linkId: string;
   memberOf: string[];
   onAdded: (workspace: WorkspaceSummary) => void;
+  /** The button's class: a link-like button unless an action list asks for its own. */
+  className?: string;
+  /** An icon before the label. */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<WorkspaceSummary[] | null>(null);
@@ -45,10 +51,11 @@ export function WorkspacePicker({
     <span className="picker">
       <button
         type="button"
-        className="q-btn-link"
+        className={className}
         aria-haspopup="menu"
         onClick={() => void toggle()}
       >
+        {icon}
         Add to workspace
       </button>
       {open && (

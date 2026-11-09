@@ -20,9 +20,15 @@ import { WorkspacePicker } from './WorkspacePicker';
 export function RefreshButton({
   link,
   onRefreshing,
+  className = 'q-btn-link',
+  icon,
 }: {
   link: Link;
   onRefreshing?: (link: Link) => void;
+  /** The button's class: a link-like button unless an action list asks for its own. */
+  className?: string;
+  /** An icon before the label. */
+  icon?: ReactNode;
 }) {
   const [status, setStatus] = useState<string | null>(null);
   async function refresh() {
@@ -37,7 +43,8 @@ export function RefreshButton({
   }
   return (
     <>
-      <button type="button" className="q-btn-link" onClick={() => void refresh()}>
+      <button type="button" className={className} onClick={() => void refresh()}>
+        {icon}
         Refresh
       </button>
       {status && (

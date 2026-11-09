@@ -6,9 +6,10 @@
 
 > **LinkDetail**(`__namedParameters`): `Element` \| `null`
 
-The detail page of one link: its note and editable fields, when it was
-added and used, its history, and last its technical details (its addresses
-and the fetch's answer).
+The detail page of one link, laid out as an issue is: the title across the
+top; then its note, editable title and summary, when it was added and used,
+its history and last its technical details on the left; and its tags,
+topic, workspaces and actions in a narrower column on the right.
 
 #### Parameters
 

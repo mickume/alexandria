@@ -1,5 +1,6 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Link } from '../api';
 import { FakeApi, makeLink, renderPage } from '../test/helpers';
 
 describe('the link detail page', () => {
@@ -318,4 +319,119 @@ describe('checking a link from its detail page', () => {
     expect(api.sent('POST', '/api/v1/links/abc/check')).toHaveLength(1);
     expect(await screen.findByText(text)).toBeTruthy();
   });
+});
+
+describe('the side column of a link’s detail page', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** A fake API for a link in workspace A, with workspaces A and B, that pins, unpins, removes and deletes. */
+  function sideApi(fields: Partial<Link> = {}): FakeApi {
+    let current = makeLink({
+      id: 'abc',
+      title: 'Alarms',
+      tags: ['rust'],
+      topic: 'Programming',
+      workspaces: [{ id: 'wa', name: 'A' }],
+      ...fields,
+    });
+    const workspace = (id: string, name: string) => ({
+      id,
+      name,
+      description: '',
+      link_count: 1,
+      created_at: '2026-03-01T00:00:00.000Z',
+    });
+    return new FakeApi()
+      .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('GET', '/api/v1/links', { status: 200, body: { items: [], next_cursor: null } })
+      .on('POST', '/api/v1/links/abc/pin', () => {
+        current = { ...current, pinned: true };
+        return { status: 200, body: current };
+      })
+      .on('DELETE', '/api/v1/links/abc/pin', () => {
+        current = { ...current, pinned: false };
+        return { status: 200, body: current };
+      })
+      .on('GET', '/api/v1/workspaces', {
+        status: 200,
+        body: { items: [workspace('wa', 'A'), workspace('wb', 'B')], next_cursor: null },
+      })
+      .on('POST', '/api/v1/workspaces/wb/links', { status: 201, body: { position: 1 } })
+      .on('DELETE', '/api/v1/workspaces/wa/links/abc', { status: 204 })
+      .on('DELETE', '/api/v1/links/abc', { status: 204 });
+  }
+
+  const side = async () =>
+    within(await screen.findByRole('complementary', { name: 'About this link' }));
+
+  it('holds the tags, topic and workspaces, then the actions', async () => {
+    renderPage('/links/abc', sideApi());
+    const column = await side();
+
+    expect(column.getByRole('link', { name: 'rust' })).toBeTruthy();
+    expect(column.getByRole('link', { name: 'Programming' })).toBeTruthy();
+    expect(column.getByRole('link', { name: 'A' }).getAttribute('href')).toBe('/workspaces/wa');
+    const actions = within(column.getByRole('group', { name: 'Actions' }));
+    expect(actions.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Refresh',
+      'Check now',
+      'Pin',
+      'Add to workspace',
+      'Delete',
+    ]);
+  });
+
+  it('pins the link and unpins it again', async () => {
+    const api = sideApi();
+    renderPage('/links/abc', api);
+    const column = await side();
+
+    fireEvent.click(column.getByRole('button', { name: 'Pin' }));
+    fireEvent.click(await column.findByRole('button', { name: 'Unpin' }));
+
+    await column.findByRole('button', { name: 'Pin' });
+    expect(api.sent('POST', '/api/v1/links/abc/pin')).toHaveLength(1);
+    expect(api.sent('DELETE', '/api/v1/links/abc/pin')).toHaveLength(1);
+  });
+
+  it('adds the link to a workspace and removes it from one', async () => {
+    const api = sideApi();
+    renderPage('/links/abc', api);
+    const column = await side();
+
+    fireEvent.click(column.getByRole('button', { name: 'Add to workspace' }));
+    fireEvent.click(await column.findByRole('menuitemcheckbox', { name: 'B' }));
+    await column.findByRole('link', { name: 'B' });
+    fireEvent.click(column.getByRole('button', { name: 'Remove from A' }));
+
+    await waitFor(() => expect(column.queryByRole('link', { name: 'A' })).toBeNull());
+    expect(api.sent('POST', '/api/v1/workspaces/wb/links').map((r) => r.body)).toEqual([
+      { link_id: 'abc' },
+    ]);
+    expect(api.sent('DELETE', '/api/v1/workspaces/wa/links/abc')).toHaveLength(1);
+    expect(column.getByRole('link', { name: 'B' })).toBeTruthy();
+  });
+
+  it.each([
+    { confirmed: false, deletes: 0, path: '/links/abc' },
+    { confirmed: true, deletes: 1, path: '/' },
+  ])(
+    'deletes the link and goes to the stream only when confirmed ($confirmed)',
+    async ({ confirmed, deletes, path }) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed);
+      const api = sideApi();
+      renderPage('/links/abc', api);
+      const column = await side();
+
+      fireEvent.click(column.getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(window.location.pathname).toBe(path));
+      expect(confirm).toHaveBeenCalledOnce();
+      expect(api.sent('DELETE', '/api/v1/links/abc')).toHaveLength(deletes);
+    },
+  );
 });

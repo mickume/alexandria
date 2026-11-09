@@ -1,9 +1,21 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError, links, type Link } from '../api';
 import { formatWhen } from '../format';
 
 /** 'Check now' on a link's detail page: whether its address answers, and when it was checked. */
-export function CheckButton({ link, onChecked }: { link: Link; onChecked?: (link: Link) => void }) {
+export function CheckButton({
+  link,
+  onChecked,
+  className = 'q-btn-link',
+  icon,
+}: {
+  link: Link;
+  onChecked?: (link: Link) => void;
+  /** The button's class: a link-like button unless an action list asks for its own. */
+  className?: string;
+  /** An icon before the label. */
+  icon?: ReactNode;
+}) {
   const [status, setStatus] = useState<string | null>(null);
   async function check() {
     setStatus(null);
@@ -22,7 +34,8 @@ export function CheckButton({ link, onChecked }: { link: Link; onChecked?: (link
   }
   return (
     <>
-      <button type="button" className="q-btn-link" onClick={() => void check()}>
+      <button type="button" className={className} onClick={() => void check()}>
+        {icon}
         Check now
       </button>
       {status && (

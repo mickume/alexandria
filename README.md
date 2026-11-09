@@ -71,6 +71,15 @@ Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the
 search started from.
 
+## A link's page
+
+**Details** in a card's ⋯ menu opens the link's own page, laid out like an
+issue: the note, title and summary, the history and the technical details
+(its addresses and the fetch's answer) on the left; its tags, topic and
+workspaces and the actions on the right: **Refresh**, **Check now**, **Pin** or
+**Unpin**, **Add to workspace** (and × to take it out of one), and **Delete**,
+which asks first and then goes back to the stream.
+
 ## Ask
 
 The **Ask** tab, between Tags and Archive, answers a question from your own
