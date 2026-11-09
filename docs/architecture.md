@@ -398,8 +398,10 @@ OpenRouter through `POST /chat/completions` with `stream: true`, and bounds the
 whole answer by the provider timeout. The prompt gives the provider each passage
 headed by its source's number and title and the free words of the question
 (the filters only narrow the passages); a detailed ask (`detailed: true`, the
-Ask page's Tell me more) adds an instruction to answer thoroughly in Markdown
-and allows 4,096 tokens instead of 1,024. The Ask page renders the answer with
+Ask page's Tell me more) adds an instruction to answer thoroughly and allows
+4,096 tokens instead of 1,024. Both are told to write plain text without
+formatting, since an answer is often passed on to another agent. The Ask page
+shows the detailed answer under the first and renders each with
 `renderAnswer` (`components/Markdown.tsx`), the note sanitiser that also keeps
 links to `/links/{id}`, which each citation `[n]` becomes. Nothing about a
 question or an answer is stored, and no use of any link is recorded.

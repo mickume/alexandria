@@ -777,10 +777,12 @@ Alexandria retrieves the 8 best passages (at most 3 of one link, at most 1,500
 characters each, as `GET /api/v1/passages` would return them under the same
 filters) and sends them, each headed by its source's number and title, with the
 free words of the question to the provider. The provider is instructed to
-answer from the passages only, to cite every statement as `[n]`, and to answer
+answer from the passages only, to cite every statement as `[n]`, to write plain
+text in short paragraphs without Markdown or other formatting, and to answer
 "Nothing in your library answers this." when they do not. A detailed ask
-retrieves the 16 best passages instead, adds an instruction to write a
-detailed, thorough answer structured in Markdown, and lets the answer run to
+retrieves the 16 best passages instead (their sources start with the 8 best
+passages' sources, numbered alike), adds an instruction to write a detailed,
+thorough answer, and lets the answer run to
 4,096 tokens instead of 1,024. When no passage
 reaches the similarity threshold the provider is not called and the answer is
 `sources` with an empty list, that one `delta`, and `done`.

@@ -301,6 +301,7 @@ describe('an answer to a question', () => {
       expect(request!.body.max_tokens).toBe(maxTokens);
       expect(String(request!.body.system).includes('detailed, thorough')).toBe(thorough);
       expect(String(request!.body.system)).toContain('Nothing in your library answers this.');
+      expect(String(request!.body.system)).toContain('Do not use Markdown');
     },
   );
 

@@ -13,26 +13,29 @@ const NOTHING_ANSWERS = 'Nothing in your library answers this.';
 /** Whether the model wrote an answer: some text that is not the answer for nothing found. */
 const answered = (answer: string) => answer.trim() !== '' && answer.trim() !== NOTHING_ANSWERS;
 
-/** A link title with the brackets that would end a Markdown link escaped. */
-const linkText = (title: string) => title.replace(/[[\]\\]/g, '\\$&');
+/** One source as plain text: its title and URL, after its number when it has one. */
+const sourceLine = (s: AskSource, numbered: boolean) =>
+  `${numbered ? `[${s.n}] ` : ''}${s.link.title} - ${s.link.url}`;
 
 /**
- * What Copy puts on the clipboard, as Markdown: the model's answer followed by
- * its sources, each [n] with its title and URL; with no answer from the model,
+ * What Copy puts on the clipboard, as plain text for pasting into another
+ * agent: the model's answer, then its detailed answer when there is one, then
+ * the sources, each [n] with its title and URL; with no answer from the model,
  * only the links that were found. Empty when there is neither.
  */
-function copyText(answer: string, sources: AskSource[]): string {
+function copyText(answer: string, detail: string, sources: AskSource[]): string {
   if (answered(answer)) {
-    const cited = sources.map((s) => `- [${s.n}] [${linkText(s.link.title)}](${s.link.url})`);
-    return cited.length
-      ? `${answer.trim()}\n\nSources:\n\n${cited.join('\n')}\n`
-      : `${answer.trim()}\n`;
+    const parts = [answer.trim()];
+    if (answered(detail)) parts.push(`More detail:\n\n${detail.trim()}`);
+    if (sources.length)
+      parts.push(`Sources:\n${sources.map((s) => sourceLine(s, true)).join('\n')}`);
+    return `${parts.join('\n\n')}\n`;
   }
   if (sources.length === 0) return '';
-  return `${sources.map((s) => `- [${linkText(s.link.title)}](${s.link.url})`).join('\n')}\n`;
+  return `${sources.map((s) => sourceLine(s, false)).join('\n')}\n`;
 }
 
-/** The answer's Markdown, each [n] that names a source a link to that source's page. */
+/** An answer, each [n] that names a source a link to that source's page. */
 function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
   const html = renderAnswer(text, (n) => {
     const source = sources.find((s) => s.n === n);
@@ -51,26 +54,33 @@ function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
 
 /**
  * The Ask page: a question to the library, answered by the owner's own AI
- * provider from passages of their links. The answer streams in as Markdown
- * with each [n] a link to its source, the sources listed under it, and a
- * refusal or a failure of the stream shown under whatever part of the answer
- * arrived. Once it has arrived, Copy puts the answer and its sources on the
- * clipboard, and Tell me more asks the same question again for a detailed
- * answer, which replaces it. Nothing is kept: asking again, or leaving the
- * page, loses the answer.
+ * provider from passages of their links. The answer streams in with each [n] a
+ * link to its source, the sources listed under it, and a refusal or a failure
+ * of the stream shown under whatever part of the answer arrived. Once it has
+ * arrived, Tell me more asks the same question again for a detailed answer,
+ * shown under the first with the sources it read, and Copy puts the answers
+ * and their sources on the clipboard. Nothing is kept: asking again, or
+ * leaving the page, loses the answer.
  */
 export function Ask() {
   const [question, setQuestion] = useState('');
+  /** The first answer and the sources it cites. */
   const [answer, setAnswer] = useState('');
   const [sources, setSources] = useState<AskSource[]>([]);
+  /** The detailed answer and the sources it cites, which start with the first answer's. */
+  const [detail, setDetail] = useState('');
+  const [detailSources, setDetailSources] = useState<AskSource[] | null>(null);
   const [asking, setAsking] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  /** The question the answer shown answers, and whether that answer is the detailed one. */
+  /** The question the answers shown answer, and whether the detailed answer was asked for. */
   const [asked, setAsked] = useState<{ question: string; detailed: boolean } | null>(null);
   /** What the Copy button says after a copy: Copied, or that it failed. */
   const [copied, setCopied] = useState<string | null>(null);
   /** The ask the page is showing: an earlier one that is still streaming is ignored. */
   const current = useRef(0);
+
+  const listed = detailSources ?? sources;
+  const text = copyText(answer, detail, listed);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -79,7 +89,7 @@ export function Ask() {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(copyText(answer, sources));
+      await navigator.clipboard.writeText(text);
       setCopied('Copied');
     } catch {
       setCopied('Could not copy');
@@ -88,16 +98,20 @@ export function Ask() {
 
   async function run(question: string, detailed: boolean) {
     const mine = ++current.current;
-    setAnswer('');
-    setSources([]);
+    if (!detailed) {
+      setAnswer('');
+      setSources([]);
+    }
+    setDetail('');
+    setDetailSources(null);
     setFailure(null);
     setCopied(null);
     setAsked({ question, detailed });
     setAsking(true);
     const onEvent = (e: AskEvent) => {
       if (mine !== current.current) return;
-      if (e.event === 'sources') setSources(e.data.sources);
-      else if (e.event === 'delta') setAnswer((text) => text + e.data.text);
+      if (e.event === 'sources') (detailed ? setDetailSources : setSources)(e.data.sources);
+      else if (e.event === 'delta') (detailed ? setDetail : setAnswer)((t) => t + e.data.text);
       else if (e.event === 'error') setFailure(e.data.message);
     };
     try {
@@ -111,7 +125,6 @@ export function Ask() {
     }
   }
 
-  const copyable = copyText(answer, sources) !== '';
   const moreable = answered(answer) && !failure && asked !== null && !asked.detailed;
 
   return (
@@ -138,14 +151,19 @@ export function Ask() {
           <Answer text={answer} sources={sources} />
         </section>
       )}
+      {detail && (
+        <section className="ask-answer" aria-label="Detailed answer">
+          <Answer text={detail} sources={detailSources ?? sources} />
+        </section>
+      )}
       {failure && (
         <p className="notice" role="alert">
           {failure}
         </p>
       )}
-      {sources.length > 0 && (
+      {listed.length > 0 && (
         <ol className="ask-sources" aria-label="Sources">
-          {sources.map((s) => (
+          {listed.map((s) => (
             <li key={s.n}>
               <span className="muted">[{s.n}]</span>{' '}
               <SiteLink link={s.link}>{s.link.title}</SiteLink>{' '}
@@ -154,9 +172,9 @@ export function Ask() {
           ))}
         </ol>
       )}
-      {!asking && (copyable || moreable) && (
+      {!asking && (text !== '' || moreable) && (
         <div className="ask-actions">
-          {copyable && (
+          {text !== '' && (
             <button type="button" className="q-btn" onClick={() => void copy()}>
               {copied ?? 'Copy'}
             </button>

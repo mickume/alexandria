@@ -256,15 +256,15 @@ describe('the Ask page', () => {
       ],
       text: 'Use an alarm [1] or a queue [2].',
       copied:
-        'Use an alarm [1] or a queue [2].\n\nSources:\n\n' +
-        '- [1] [Durable Object alarms](https://example.com/l1)\n' +
-        '- [2] [Cloudflare Queues explained](https://example.com/l2)\n',
+        'Use an alarm [1] or a queue [2].\n\nSources:\n' +
+        '[1] Durable Object alarms - https://example.com/l1\n' +
+        '[2] Cloudflare Queues explained - https://example.com/l2\n',
     },
     {
       name: 'only the links found when the model wrote no answer',
       sources: [{ n: 1, link: alarms }],
       text: 'Nothing in your library answers this.',
-      copied: '- [Durable Object alarms](https://example.com/l1)\n',
+      copied: 'Durable Object alarms - https://example.com/l1\n',
     },
   ])('copies $name', async ({ sources, text, copied }) => {
     const user = userEvent.setup();
@@ -291,14 +291,15 @@ describe('the Ask page', () => {
     expect(screen.queryByRole('button', { name: 'Tell me more' })).toBeNull();
   });
 
-  it('asks the same question for a detailed answer on Tell me more, which replaces the answer', async () => {
+  it('shows a detailed answer of the same question under the first on Tell me more, and copies both', async () => {
     const user = userEvent.setup();
+    const at = (link: typeof alarms) => ({ ...link, url: `https://example.com/${link.id}` });
     const answers = [
-      answered([{ n: 1, link: alarms }], 'Use an alarm [1].'),
+      answered([{ n: 1, link: at(alarms) }], 'Use an alarm [1].'),
       answered(
         [
-          { n: 1, link: alarms },
-          { n: 2, link: queues },
+          { n: 1, link: at(alarms) },
+          { n: 2, link: at(queues) },
         ],
         'In detail: an alarm [1], or a queue [2].',
       ),
@@ -312,18 +313,50 @@ describe('the Ask page', () => {
     await user.type(question(), ' changed');
     await user.click(screen.getByRole('button', { name: 'Tell me more' }));
 
-    expect(await screen.findByText(/In detail/)).toBeTruthy();
-    expect(screen.queryByText(/Use an alarm/)).toBeNull();
+    const detail = await screen.findByRole('region', { name: 'Detailed answer' });
+    await within(detail).findByText(/In detail/);
+    const first = screen.getByRole('region', { name: 'Answer' });
+    expect(first.textContent?.trim()).toBe('Use an alarm [1].');
+    expect(first.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(detail).getByRole('link', { name: '[2]' }).getAttribute('href')).toBe(
+      '/links/l2',
+    );
     expect(fake.sent('POST', '/api/v1/ask').map((r) => r.body)).toEqual([
       { question: 'background work' },
       { question: 'background work', detailed: true },
     ]);
     expect(
-      within(screen.getByRole('list', { name: 'Sources' })).getByText(
-        'Cloudflare Queues explained',
-      ),
-    ).toBeTruthy();
+      within(screen.getByRole('list', { name: 'Sources' }))
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['Durable Object alarms', 'Cloudflare Queues explained']);
     expect(screen.queryByRole('button', { name: 'Tell me more' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(await navigator.clipboard.readText()).toBe(
+      'Use an alarm [1].\n\nMore detail:\n\nIn detail: an alarm [1], or a queue [2].\n\n' +
+        'Sources:\n[1] Durable Object alarms - https://example.com/l1\n' +
+        '[2] Cloudflare Queues explained - https://example.com/l2\n',
+    );
+  });
+
+  it('keeps the first answer when the detailed one fails, showing why', async () => {
+    const user = userEvent.setup();
+    const answers = [
+      answered([{ n: 1, link: alarms }], 'Use an alarm [1].'),
+      { status: 409, body: { error: 'ai_key_rejected', message: 'invalid x-api-key' } },
+    ];
+    const fake = api();
+    fake.on('POST', '/api/v1/ask', () => answers.shift()!);
+    renderPage('/ask', fake);
+
+    await ask('background work');
+    await user.click(await screen.findByRole('button', { name: 'Tell me more' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe('invalid x-api-key');
+    expect(screen.getByRole('region', { name: 'Answer' }).textContent?.trim()).toBe(
+      'Use an alarm [1].',
+    );
+    expect(screen.queryByRole('region', { name: 'Detailed answer' })).toBeNull();
   });
 });

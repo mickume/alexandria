@@ -25,13 +25,17 @@ export const DETAILED_MAX_TOKENS = 4_096;
 /** The whole answer when the passages answer nothing. */
 export const NOTHING_ANSWERS = 'Nothing in your library answers this.';
 
+/** How an answer is written: it is often passed on to another agent, where formatting gets in the way. */
+const PLAIN =
+  'Write plain text in short paragraphs. Do not use Markdown or other formatting: no headings, bold, italics, tables or code blocks.';
+
 /** What the provider is told: to answer from the passages only, and how to cite and to give up. */
-const SYSTEM = `You answer a question from numbered passages of the user's own saved web pages, and only from them. Use no knowledge from outside the passages. Cite every statement with the number of its source as [n], for example [1]. If the passages do not answer the question, answer exactly: ${NOTHING_ANSWERS}`;
+const SYSTEM = `You answer a question from numbered passages of the user's own saved web pages, and only from them. Use no knowledge from outside the passages. Cite every statement with the number of its source as [n], for example [1]. If the passages do not answer the question, answer exactly: ${NOTHING_ANSWERS} ${PLAIN}`;
 
 /** What the provider is told for a detailed answer: the same rules, and to be thorough. */
 const DETAILED_SYSTEM = `${SYSTEM}
 
-Otherwise write a detailed, thorough answer: explain the topic fully, bring in every relevant point the passages make, compare what different sources say, and include specifics such as steps, examples, figures and caveats. Structure the answer in Markdown with short headings and lists where they help.`;
+Otherwise write a detailed, thorough answer: explain the topic fully, bring in every relevant point the passages make, compare what different sources say, and include specifics such as steps, examples, figures and caveats. Keep it plain text, as above.`;
 
 /** One source of an answer: a link its passages came from, numbered from 1. */
 interface Source {
