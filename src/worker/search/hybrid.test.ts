@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { api, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
+import { embedText } from '../test/embedder';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
 
 /** GET /api/v1/search as the user. */
@@ -427,5 +428,95 @@ describe('a search by meaning while meaning is unavailable', () => {
     expect(next.status).toBe(200);
     expect(idsOf(next.json.items)).toHaveLength(1);
     expect(next.json.meaning).toBe('unavailable');
+  });
+});
+
+describe('hybrid search over 10,000 links', () => {
+  it('answers within 800 ms at the 95th percentile', { timeout: 600_000 }, async () => {
+    const user = await signIn();
+    let seedValue = 11;
+    const random = () => {
+      seedValue = (seedValue * 1103515245 + 12345) % 2 ** 31;
+      return seedValue / 2 ** 31;
+    };
+    const pick = <T>(list: T[]): T => list[Math.floor(random() * list.length)]!;
+    const vocabulary = Array.from({ length: 300 }, (_, i) => `term${i}x`);
+    const common = ['cloud', 'design', 'history', 'notes', 'guide', 'review', 'python', 'garden'];
+    const timing = ['alarm', 'schedule', 'timer', 'delay', 'cron'];
+    const title = (i: number) =>
+      [
+        ...Array.from({ length: 6 }, () => pick(random() < 0.3 ? common : vocabulary)),
+        ...(i % 25 === 0 ? [pick(timing)] : []),
+      ].join(' ');
+
+    for (let start = 0; start < 10_000; start += 250) {
+      const links: D1PreparedStatement[] = [];
+      const passages: D1PreparedStatement[] = [];
+      for (let i = start; i < start + 250; i++) {
+        const id = crypto.randomUUID();
+        const text = title(i);
+        const host = `site${i % 500}.example`;
+        const at = new Date(Date.parse('2026-01-01T00:00:00.000Z') + i * 60_000).toISOString();
+        links.push(
+          env.DB.prepare(
+            `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at,
+               last_used_at, pin_position, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ).bind(
+            id,
+            user.id,
+            `https://${host}/p${i}`,
+            `https://${host}/p${i}`,
+            host,
+            text,
+            i % 7 === 0 ? 'archived' : 'active',
+            at,
+            at,
+            i < 20 ? i + 1 : null,
+            at,
+          ),
+        );
+        passages.push(
+          env.DB.prepare(
+            `INSERT INTO link_passages (vector_id, link_id, user_id, version, position, text)
+             VALUES (?, ?, ?, 0, 0, ?)`,
+          ).bind(`${id}:0:0`, id, user.id, text),
+        );
+        meaning.index.upsert([{ id: `${id}:0:0`, namespace: user.id, values: embedText(text) }]);
+      }
+      await env.DB.batch(links);
+      await env.DB.batch(passages);
+    }
+
+    const queries = [
+      'cloud design',
+      'term7x',
+      'guide',
+      'timer delay',
+      'schedule cron',
+      'cloud timer',
+      'history alarm',
+      'term12x term40x',
+      'garden',
+      'python review',
+    ];
+    const matched = new Set<string>();
+    const timed = async (q: string) => {
+      const start = performance.now();
+      const r = await search(user, q, '&mode=hybrid');
+      const took = performance.now() - start;
+      expect(r.status).toBe(200);
+      expect(r.json.meaning).toBe('used');
+      for (const item of r.json.items as Item[]) matched.add(item.match!);
+      return took;
+    };
+    await timed('warm up');
+    const times: number[] = [];
+    for (let round = 0; round < 10; round++) for (const q of queries) times.push(await timed(q));
+    // The queries found things both ways, so the time is of a search that did the work.
+    expect(matched).toEqual(new Set(['keyword', 'meaning', 'both']));
+
+    times.sort((a, b) => a - b);
+    expect(times[Math.floor(times.length * 0.95)]).toBeLessThan(800);
   });
 });
