@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { FakeAi } from '../test/ai';
 import { api, count, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
 import { markKeyRejected } from '../enrich/keys';
+import { setProviderTimeout } from '../enrich/providers';
 
 /** Saves a key the fake provider accepts, for Anthropic or OpenRouter. */
 async function saveKey(
@@ -365,4 +366,109 @@ describe('an answer to a question', () => {
     ]);
     expect(ai.asks).toEqual([]);
   });
+});
+
+describe('an answer the provider cannot finish', () => {
+  afterEach(() => setProviderTimeout(null));
+
+  const providers = [
+    { provider: 'anthropic' as const, model: 'claude-test' },
+    { provider: 'openrouter' as const, model: 'test/model' },
+  ];
+
+  /** A signed-in user with a key, an indexed article and a fake provider that is failed by `arrange`. */
+  async function asked(
+    provider: 'anthropic' | 'openrouter',
+    model: string,
+    arrange: (ai: FakeAi) => void,
+  ) {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user, provider, model);
+    await indexed(user, [ARTICLES.alarms]);
+    arrange(ai);
+    const sent = events(await (await ask(user, { question: QUESTION })).response.text());
+    const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
+    return { sent, settings };
+  }
+
+  it.each(providers.flatMap((p) => [401, 402, 403].map((status) => ({ ...p, status }))))(
+    'ends with ai_key_rejected and marks the key when $provider answers $status',
+    async ({ provider, model, status }) => {
+      const { sent, settings } = await asked(provider, model, (ai) =>
+        ai.status(status, 'invalid x-api-key', { testsToo: false }),
+      );
+
+      expect(sent.map((e) => e.event)).toEqual(['sources', 'error']);
+      expect(sent[1]!.data).toEqual({ error: 'ai_key_rejected', message: 'invalid x-api-key' });
+      expect(settings).toMatchObject({ status: 'rejected', rejected_message: 'invalid x-api-key' });
+    },
+  );
+
+  it.each(
+    providers.flatMap((p) => [
+      { ...p, name: 'is unreachable', arrange: (ai: FakeAi) => ai.refuse(), deltas: 0 },
+      {
+        ...p,
+        name: 'answers 503',
+        arrange: (ai: FakeAi) => ai.status(503, 'overloaded', { testsToo: false }),
+        deltas: 0,
+      },
+      {
+        ...p,
+        name: 'stalls after one piece',
+        arrange: (ai: FakeAi) => {
+          setProviderTimeout(200);
+          ai.answerText(['Use '], { hang: true });
+        },
+        deltas: 1,
+      },
+    ]),
+  )(
+    'ends with provider_unavailable, keeping the key, when $provider $name',
+    async ({ provider, model, arrange, deltas }) => {
+      const { sent, settings } = await asked(provider, model, arrange);
+
+      expect(sent.map((e) => e.event)).toEqual([
+        'sources',
+        ...Array<string>(deltas).fill('delta'),
+        'error',
+      ]);
+      expect(sent.at(-1)!.data).toMatchObject({ error: 'provider_unavailable' });
+      expect(typeof sent.at(-1)!.data.message).toBe('string');
+      expect(settings.status).toBe('verified');
+    },
+  );
+
+  it.each(
+    providers.flatMap((p) => [
+      {
+        ...p,
+        name: 'is rate limited',
+        arrange: (ai: FakeAi) => ai.status(429, 'slow down', { testsToo: false }),
+        message: 'rate limited: slow down',
+      },
+      {
+        ...p,
+        name: 'refuses the request',
+        arrange: (ai: FakeAi) => ai.status(400, 'bad request', { testsToo: false }),
+        message: 'bad request',
+      },
+      {
+        ...p,
+        name: 'declines to answer',
+        arrange: (ai: FakeAi) => ai.refusal(),
+        message: 'the model declined',
+      },
+    ]),
+  )(
+    'ends with provider_failed and the provider’s message when $provider $name',
+    async ({ provider, model, arrange, message }) => {
+      const { sent, settings } = await asked(provider, model, arrange);
+
+      expect(sent.map((e) => e.event)).toEqual(['sources', 'error']);
+      expect(sent[1]!.data).toEqual({ error: 'provider_failed', message });
+      expect(settings.status).toBe('verified');
+    },
+  );
 });

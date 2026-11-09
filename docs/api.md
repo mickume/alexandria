@@ -779,6 +779,15 @@ answer from the passages only, to cite every statement as `[n]`, and to answer
 reaches the similarity threshold the provider is not called and the answer is
 `sources` with an empty list, that one `delta`, and `done`.
 
+Once the stream has started, a failure ends it with one `error` event
+`{"error", "message"}` and no `done`, after whatever `delta` events arrived:
+
+| `error` | When | Also |
+|---|---|---|
+| `ai_key_rejected` | the provider answered 401, 402 or 403; `message` is the provider's | the key is marked rejected, as a rejected enrichment marks it (`GET /api/v1/settings/ai` shows `status: "rejected"`) |
+| `provider_unavailable` | the provider could not be reached, answered 5xx, or had not finished within 60 seconds | |
+| `provider_failed` | any other failure: a rate limit (`rate limited: …`), a refused request, a refusal ("the model declined") or an empty answer; `message` is the provider's | |
+
 ### Topics and tags
 
 The topics and tags enrichment and the owner's edits give links. A topic or

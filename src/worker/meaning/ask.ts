@@ -6,7 +6,7 @@
 import { Hono } from 'hono';
 import { limitReached, readJson, refusal, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
-import { decryptKey, getAiSettings } from '../enrich/keys';
+import { decryptKey, getAiSettings, markKeyRejected } from '../enrich/keys';
 import { streamAnswer, type AnswerRequest } from '../enrich/providers';
 import { getLink, toView } from '../links/store';
 import { parseQuery } from '../search/query';
@@ -112,7 +112,23 @@ askRoutes.post('/', async (c) => {
           answerRequest(passages, numbers, parsed.words),
           (text) => void controller.enqueue(event('delta', { text })),
         );
-        if (outcome.ok) controller.enqueue(event('done', {}));
+        if (outcome.ok) {
+          controller.enqueue(event('done', {}));
+        } else if (outcome.kind === 'rejected') {
+          // As a rejected enrichment does: the owner sees the key marked, and enrichment pauses.
+          await markKeyRejected(c.env.DB, userId, outcome.message);
+          controller.enqueue(
+            event('error', { error: 'ai_key_rejected', message: outcome.message }),
+          );
+        } else {
+          const error = outcome.kind === 'unavailable' ? 'provider_unavailable' : 'provider_failed';
+          controller.enqueue(event('error', { error, message: outcome.message }));
+        }
+      } catch (err) {
+        console.error('answering a question failed', err);
+        controller.enqueue(
+          event('error', { error: 'provider_failed', message: 'something went wrong, try again' }),
+        );
       } finally {
         controller.close();
       }
