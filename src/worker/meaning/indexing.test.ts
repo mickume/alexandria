@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { PASSAGE_MAX } from './cut';
-import { api, deliverIndexing, env, seedLinks, signIn, type TestUser } from '../test/helpers';
+import { FakeAi } from '../test/ai';
+import { FakeOrigin } from '../test/origin';
+import {
+  addAndFetch,
+  api,
+  deliverEnrichments,
+  deliverFetches,
+  deliverIndexing,
+  env,
+  recordEnrichQueue,
+  recordIndexQueue,
+  seedLinks,
+  signIn,
+  type TestUser,
+} from '../test/helpers';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
+import { blogArticle } from '../fetcher/fixtures/pages';
 
 interface PassageRow {
   vector_id: string;
@@ -305,5 +320,173 @@ describe('what indexing leaves alone', () => {
     const vectors = meaning.index.all();
     expect(vectors.length).toBeGreaterThanOrEqual(4);
     for (const v of vectors) expect(v.namespace).toBe(owners.get(v.id.split(':')[0]!));
+  });
+});
+
+describe('queueing a link for indexing', () => {
+  interface Library {
+    user: TestUser;
+    ids: string[];
+  }
+
+  /** Three indexed links, all tagged 'infra'; the first two under the topic 'Platform', the third under 'Garden'. */
+  async function library(): Promise<Library> {
+    const user = await signIn();
+    const ids = [
+      await seedArticle(user, { ...ARTICLES.alarms, tags: ['infra'], topic: 'Platform' }),
+      await seedArticle(user, { ...ARTICLES.queues, tags: ['infra'], topic: 'Platform' }),
+      await seedArticle(user, { ...ARTICLES.tomatoes, tags: ['infra'], topic: 'Garden' }),
+    ];
+    await deliverIndexing(ids.map((link_id) => ({ user_id: user.id, link_id })));
+    return { user, ids };
+  }
+
+  /** The id of one of the user's topics or tags, by name. */
+  async function vocabularyId(user: TestUser, kind: 'topics' | 'tags', name: string) {
+    const list = await api('GET', `/api/v1/${kind}`, { as: user.session });
+    return (list.json.items as { id: string; name: string }[]).find((i) => i.name === name)!.id;
+  }
+
+  const edit =
+    (body: Record<string, unknown>) =>
+    ({ user, ids }: Library) =>
+      api('PATCH', `/api/v1/links/${ids[0]}`, { as: user.session, body });
+  const rename =
+    (kind: 'topics' | 'tags', from: string, to: string) =>
+    async ({ user }: Library) =>
+      api('PATCH', `/api/v1/${kind}/${await vocabularyId(user, kind, from)}`, {
+        as: user.session,
+        body: { name: to },
+      });
+  const merge =
+    (kind: 'topics' | 'tags', from: string, into: string) =>
+    async ({ user }: Library) =>
+      api('POST', `/api/v1/${kind}/${await vocabularyId(user, kind, from)}/merge`, {
+        as: user.session,
+        body: { into: await vocabularyId(user, kind, into) },
+      });
+  const post =
+    (action: string) =>
+    ({ user, ids }: Library) =>
+      api('POST', `/api/v1/links/${ids[0]}/${action}`, { as: user.session });
+
+  it.each([
+    { name: 'an edit of the title', write: edit({ title: 'A new title' }), queued: [0] },
+    { name: 'an edit of the summary', write: edit({ summary: 'A new summary.' }), queued: [0] },
+    { name: 'an edit of the tags', write: edit({ tags: ['infra', 'alarms'] }), queued: [0] },
+    { name: 'an edit of the topic', write: edit({ topic: 'Garden' }), queued: [0] },
+    { name: 'an edit of the note', write: edit({ note: 'A new note.' }), queued: [0] },
+    {
+      name: 'a rename of a tag three links carry',
+      write: rename('tags', 'infra', 'ops'),
+      queued: [0, 1, 2],
+    },
+    {
+      name: 'a rename of a topic two links carry',
+      write: rename('topics', 'Platform', 'Infrastructure'),
+      queued: [0, 1],
+    },
+    {
+      name: 'a merge of a topic two links carry into another',
+      write: merge('topics', 'Platform', 'Garden'),
+      queued: [0, 1],
+    },
+    {
+      name: 'a merge of a tag one link carries into another',
+      prepare: async (lib: Library) => {
+        await edit({ tags: ['infra', 'extra'] })(lib);
+      },
+      write: merge('tags', 'extra', 'infra'),
+      queued: [0],
+    },
+    {
+      name: 'an edit that sets the title the link already has',
+      write: edit({ title: ARTICLES.alarms.title }),
+      queued: [],
+    },
+    { name: 'a pin', write: post('pin'), queued: [] },
+    { name: 'an archive', write: post('archive'), queued: [] },
+    {
+      name: 'a use',
+      write: ({ user, ids }: Library) =>
+        api('GET', `/api/v1/links/${ids[0]}/open`, { as: user.session }),
+      queued: [],
+    },
+  ] as {
+    name: string;
+    prepare?: (lib: Library) => Promise<void>;
+    write: (lib: Library) => Promise<{ status: number }>;
+    queued: number[];
+  }[])('sends one message for each link whose text changed: $name', async (row) => {
+    const lib = await library();
+    await row.prepare?.(lib);
+    // Indexing what the preparation changed, so that only the write itself can make a link stale.
+    await deliverIndexing(lib.ids.map((link_id) => ({ user_id: lib.user.id, link_id })));
+    const sent = recordIndexQueue();
+
+    const written = await row.write(lib);
+
+    expect([200, 302]).toContain(written.status);
+    expect(sent.map((m) => m.body.link_id).sort()).toEqual(
+      row.queued.map((i) => lib.ids[i]!).sort(),
+    );
+    expect(sent.every((m) => m.body.user_id === lib.user.id)).toBe(true);
+  });
+
+  it('sends one message for a first fetch that stores reader text', async () => {
+    new FakeOrigin().page('https://news.example/queued', blogArticle);
+    const user = await signIn();
+    const sent = recordIndexQueue();
+
+    const { id } = await addAndFetch(user, 'https://news.example/queued');
+
+    expect(sent.map((m) => m.body)).toEqual([{ user_id: user.id, link_id: id }]);
+  });
+
+  it('sends one message for a refresh that stores reader text again', async () => {
+    new FakeOrigin().page('https://news.example/refreshed', blogArticle);
+    const user = await signIn();
+    const { id } = await addAndFetch(user, 'https://news.example/refreshed');
+    await deliverIndexing([{ user_id: user.id, link_id: id }]);
+    const sent = recordIndexQueue();
+
+    await deliverFetches([{ user_id: user.id, link_id: id, refresh: true }]);
+
+    expect(sent.map((m) => m.body)).toEqual([{ user_id: user.id, link_id: id }]);
+  });
+
+  it('sends one message when enrichment stores a summary, a topic and tags', async () => {
+    new FakeOrigin().page('https://news.example/enriched', blogArticle);
+    new FakeAi().answer({ summary: 'A summary.', tags: ['one', 'two', 'three'], topic: 'A topic' });
+    const user = await signIn();
+    await api('PUT', '/api/v1/settings/ai', {
+      as: user.session,
+      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+    });
+    const enrich = recordEnrichQueue();
+    const { id } = await addAndFetch(user, 'https://news.example/enriched');
+    await deliverIndexing([{ user_id: user.id, link_id: id }]);
+    const sent = recordIndexQueue();
+
+    await deliverEnrichments(enrich.map((m) => m.body));
+
+    expect(sent.map((m) => m.body)).toEqual([{ user_id: user.id, link_id: id }]);
+  });
+
+  it('still saves an edit when the queue cannot be reached, and leaves the link for the backfill', async () => {
+    const { user, ids } = await library();
+    const failing = {
+      send: async () => Promise.reject(new Error('the queue is down')),
+      sendBatch: async () => Promise.reject(new Error('the queue is down')),
+    };
+    env.INDEX_QUEUE = failing as unknown as typeof env.INDEX_QUEUE;
+
+    const r = await api('PATCH', `/api/v1/links/${ids[0]}`, {
+      as: user.session,
+      body: { note: 'Saved all the same.' },
+    });
+
+    expect(r.status).toBe(200);
+    expect(r.json.note).toBe('Saved all the same.');
   });
 });

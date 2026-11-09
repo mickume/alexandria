@@ -109,6 +109,22 @@ const CARRIERS: Record<VocabularyKind, string> = {
   tags: 'SELECT link_id FROM link_tags WHERE tag_id = ?',
 };
 
+/** The ids of the user's links carrying one of their topics or tags. */
+export async function carrierIds(
+  db: D1Database,
+  userId: string,
+  kind: VocabularyKind,
+  id: string,
+): Promise<string[]> {
+  const sql =
+    kind === 'topics'
+      ? 'SELECT id FROM links WHERE topic_id = ? AND user_id = ?'
+      : `SELECT lt.link_id FROM link_tags lt JOIN links l ON l.id = lt.link_id
+         WHERE lt.tag_id = ? AND l.user_id = ?`;
+  const rows = await db.prepare(sql).bind(id, userId).raw<[string]>();
+  return rows.map(([linkId]) => linkId);
+}
+
 /** One of the user's topics or tags with its number of links, or null when the user has none such. */
 export async function getEntry(
   db: D1Database,

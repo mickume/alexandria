@@ -2,6 +2,7 @@ import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
+import { queueIndexing } from '../meaning/indexing';
 import { applyAliases, buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
@@ -86,6 +87,7 @@ async function storeEnrichment(env: Env, link: LinkRow, proposed: Enrichment): P
     ),
     ...(tagIds ? setTagsStatements(env.DB, link.user_id, link.id, tagIds) : []),
   ]);
+  await queueIndexing(env, link.user_id, [link.id]);
 }
 
 /** The request about `link`: its text, or its title and description, and the user's vocabulary. */

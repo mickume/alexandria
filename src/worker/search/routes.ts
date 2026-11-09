@@ -3,10 +3,12 @@ import { notFound, readJson, refusal, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
+import { queueIndexing } from '../meaning/indexing';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
 import { linkMatch, matchingWorkspaces, rankedLinks } from './search';
 import {
+  carrierIds,
   isVocabularyCursor,
   listVocabularyItems,
   mergeEntry,
@@ -155,7 +157,9 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
     if (name === null) {
       return validationError(c, 'invalid_name', 'name', NAME_RULE[kind]);
     }
-    const renamed = await renameEntry(c.env.DB, c.get('user').id, kind, c.req.param('id'), name);
+    const userId = c.get('user').id;
+    const id = c.req.param('id');
+    const renamed = await renameEntry(c.env.DB, userId, kind, id, name);
     if (renamed === null) return notFound(c);
     if (renamed === 'taken') {
       const what = kind === 'topics' ? 'topic' : 'tag';
@@ -166,6 +170,7 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
         `another ${what} is named ${name}: merge this ${what} into it instead`,
       );
     }
+    await queueIndexing(c.env, userId, await carrierIds(c.env.DB, userId, kind, id));
     return c.json(renamed);
   });
 
@@ -185,8 +190,13 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
         `a ${kind.slice(0, -1)} cannot merge into itself`,
       );
     }
-    const merged = await mergeEntry(c.env.DB, c.get('user').id, kind, id, into);
-    return merged ? c.json(merged) : notFound(c);
+    // The links the merge moves onto the survivor are the source's carriers.
+    const userId = c.get('user').id;
+    const moved = await carrierIds(c.env.DB, userId, kind, id);
+    const merged = await mergeEntry(c.env.DB, userId, kind, id, into);
+    if (!merged) return notFound(c);
+    await queueIndexing(c.env, userId, moved);
+    return c.json(merged);
   });
   return routes;
 }

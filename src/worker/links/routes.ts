@@ -5,6 +5,7 @@ import type { AppEnv, Env } from '../env';
 import { now } from '../clock';
 import { applyEdit, parseEdit } from '../enrich/edits';
 import { deleteLinkObjects } from '../fetcher/snapshots';
+import { queueIndexing } from '../meaning/indexing';
 import { filterConditions, filtersFromParams } from '../search/query';
 import { checkNote } from '../workspaces/notes';
 import { normalizeUrl } from './normalize';
@@ -232,5 +233,7 @@ linkRoutes.patch('/:id', async (c) => {
   if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
   if (note?.ok) await setLinkNote(c.env.DB, userId, id, note.note);
   const link = await applyEdit(c.env.DB, userId, id, edit);
-  return link ? c.json(toFullView(link)) : notFound(c);
+  if (!link) return notFound(c);
+  await queueIndexing(c.env, userId, [id]);
+  return c.json(toFullView(link));
 });

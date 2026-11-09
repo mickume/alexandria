@@ -3,6 +3,7 @@ import type { Env, FetchMessage } from '../env';
 import { accountActive } from '../account/deletion';
 import { afterFetch } from '../enrich/queue';
 import { getLink, parseStrings, type LinkRow } from '../links/store';
+import { queueIndexing } from '../meaning/indexing';
 import { indexReaderTextStatement } from '../search/search';
 import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
@@ -346,6 +347,7 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
       if (await storeResult(env, link, result)) {
         const stored = await getLink(env.DB, link.user_id, link.id);
         if (stored) await afterFetch(env, stored, parseStrings(stored.notes));
+        await queueIndexing(env, link.user_id, [link.id]);
       }
     } else {
       await recordFailure(env, link, message.body, result);

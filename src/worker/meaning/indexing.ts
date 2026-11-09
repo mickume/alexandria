@@ -1,5 +1,6 @@
 /** Indexing links by meaning: one job per link, cutting its text into passages and embedding them. */
 import { accountActive } from '../account/deletion';
+import { now } from '../clock';
 import type { Env, IndexMessage } from '../env';
 import { getLink, parseStrings } from '../links/store';
 import { meaningBackend } from './backend';
@@ -45,6 +46,75 @@ async function queueDeletions(db: D1Database, userId: string, ids: string[]): Pr
     )
     .bind(JSON.stringify(ids), userId)
     .run();
+}
+
+/** The most messages one sendBatch carries. */
+const SEND_BATCH = 100;
+/** The most links looked up in one query. */
+const LOOKUP_BATCH = 500;
+
+/** `items` in slices of at most `size`. */
+function slices<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * The condition, on a link `l` left-joined with its `link_index_state` row
+ * `s`, that the link is stale: no passage of it was made from its current
+ * text version.
+ */
+export const IS_STALE = `NOT EXISTS (
+  SELECT 1 FROM link_passages p WHERE p.link_id = l.id AND p.version = COALESCE(s.text_version, 0))`;
+
+/**
+ * Sends one index message for each of the user's links and records when they
+ * were queued, so that the backfill leaves them alone for a while. The links
+ * must exist.
+ */
+export async function sendIndexMessages(
+  env: Env,
+  userId: string,
+  linkIds: string[],
+): Promise<void> {
+  for (const batch of slices(linkIds, SEND_BATCH)) {
+    await env.INDEX_QUEUE.sendBatch(
+      batch.map((link_id) => ({ body: { user_id: userId, link_id } })),
+    );
+    await env.DB.prepare(
+      `INSERT INTO link_index_state (link_id, text_version, queued_at)
+       SELECT value, 0, ?1 FROM json_each(?2) WHERE true
+       ON CONFLICT (link_id) DO UPDATE SET queued_at = excluded.queued_at`,
+    )
+      .bind(now().toISOString(), JSON.stringify(batch))
+      .run();
+  }
+}
+
+/**
+ * Queues the stale ones among the user's links for indexing, after a write
+ * that may have changed their text. A failure is logged and never fails the
+ * write: the links stay stale and the backfill picks them up.
+ */
+export async function queueIndexing(env: Env, userId: string, linkIds: string[]): Promise<void> {
+  try {
+    for (const lookup of slices(linkIds, LOOKUP_BATCH)) {
+      const stale = await env.DB.prepare(
+        `SELECT l.id FROM links l LEFT JOIN link_index_state s ON s.link_id = l.id
+         WHERE l.user_id = ?1 AND l.id IN (SELECT value FROM json_each(?2)) AND ${IS_STALE}`,
+      )
+        .bind(userId, JSON.stringify(lookup))
+        .all<{ id: string }>();
+      await sendIndexMessages(
+        env,
+        userId,
+        stale.results.map((r) => r.id),
+      );
+    }
+  } catch (err) {
+    console.error('queueing links for indexing failed', err);
+  }
 }
 
 /**
