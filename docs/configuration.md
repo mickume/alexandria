@@ -21,6 +21,7 @@ as variables in the dashboard; `keep_vars` keeps those across deploys), and in
 | `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
 | `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
 | `FIRECRAWL_API_URL` | `wrangler.jsonc` | Firecrawl's API base URL, `https://api.firecrawl.dev`, used for pages behind a bot check when the owner stored a Firecrawl key; changed only for tests. |
+| `MEANING_FAKE_URL` | end-to-end tests only | When set, embeddings and the vector index are served by the fake at this URL (`e2e/fake-meaning.ts`) instead of the `AI` and `VECTORIZE` bindings. Never set in a deployment. |
 
 ## Secrets
 
@@ -40,6 +41,9 @@ as variables in the dashboard; `keep_vars` keeps those across deploys), and in
 | `FETCH_QUEUE` | Queue `alexandria-fetch` | One message per link to fetch. |
 | `ENRICH_QUEUE` | Queue `alexandria-enrich` | One message per link to enrich. |
 | `LIVENESS_QUEUE` | Queue `alexandria-liveness` | One message per weekly liveness check. |
+| `INDEX_QUEUE` | Queue `alexandria-index` | One message per link to index by meaning (batch size 10, 5 retries). |
+| `AI` | Workers AI | Computes the embeddings of a link's passages and of a question, with `@cf/baai/bge-m3`. Paid by the deployment's account. `wrangler dev` reaches the real service for it (and so needs a Cloudflare login); `wrangler dev --local` does not, and the call then fails. |
+| `VECTORIZE` | Vectorize index `alexandria-passages` | The embeddings of every user's passages, 1,024 dimensions, cosine, one namespace per user. `scripts/provision.sh` creates it. |
 | `ACCOUNT_QUEUE` | Queue `alexandria-account` | One message per run of an account's deletion job; the job queues its next run until nothing of the account remains (batch size 1, 10 retries). |
 
 ## Cron Triggers

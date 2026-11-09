@@ -24,6 +24,14 @@ export interface Env {
   LIVENESS_QUEUE: Queue<LivenessMessage>;
   /** The queue of account deletion jobs, one message per run. */
   ACCOUNT_QUEUE: Queue<AccountMessage>;
+  /** The queue of indexing jobs, one message per link to index by meaning. */
+  INDEX_QUEUE: Queue<IndexMessage>;
+  /** Workers AI, which computes the embeddings. */
+  AI: Ai;
+  /** The Vectorize index holding the embeddings of every user's passages, one namespace per user. */
+  VECTORIZE: Vectorize;
+  /** End-to-end tests only: embeddings and the index are served by the fake at this URL. */
+  MEANING_FAKE_URL?: string;
   /** The per-host rate limit: one Durable Object per host. */
   HOST_GATE: DurableObjectNamespace<import('./fetcher/hostgate').HostGate>;
   /** Snapshots and reader views. */
@@ -38,6 +46,12 @@ export interface Env {
   OPENROUTER_BASE_URL: string;
   /** Firecrawl's API base URL; configurable so tests can run a local fake. */
   FIRECRAWL_API_URL: string;
+}
+
+/** A request to index one link by meaning. */
+export interface IndexMessage {
+  user_id: string;
+  link_id: string;
 }
 
 /** A run of the deletion job of one account marked for deletion. */

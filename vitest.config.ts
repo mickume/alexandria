@@ -22,6 +22,8 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             main: './src/worker/index.ts',
+            // The Workers AI binding is always remote; the tests replace it with a fake.
+            remoteBindings: false,
             wrangler: { configPath: './wrangler.jsonc' },
             miniflare: {
               bindings: { ...testBindings, TEST_MIGRATIONS: migrations },

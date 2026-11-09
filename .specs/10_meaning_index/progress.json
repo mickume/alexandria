@@ -3,11 +3,11 @@
   "spec_id": "10",
   "spec_name": "meaning_index",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-09T07:44:39Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

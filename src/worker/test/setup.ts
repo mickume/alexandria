@@ -10,9 +10,11 @@ import {
   recordEnrichQueue,
   recordFetchQueue,
   recordAccountQueue,
+  recordIndexQueue,
   recordLivenessQueue,
   savedKeys,
 } from './helpers';
+import { meaning } from './meaning';
 import { installOutbound, resetOutbound } from './outbound';
 
 let tables: string[] = [];
@@ -20,6 +22,7 @@ const fetchQueue = env.FETCH_QUEUE;
 const enrichQueue = env.ENRICH_QUEUE;
 const livenessQueue = env.LIVENESS_QUEUE;
 const accountQueue = env.ACCOUNT_QUEUE;
+const indexQueue = env.INDEX_QUEUE;
 
 beforeAll(async () => {
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
@@ -39,6 +42,9 @@ beforeEach(async () => {
   recordEnrichQueue();
   recordLivenessQueue();
   recordAccountQueue();
+  recordIndexQueue();
+  // Workers AI and Vectorize are never reached: the fakes answer, and are emptied each test.
+  meaning.reset();
   await env.DB.batch([
     env.DB.prepare('PRAGMA defer_foreign_keys = on'),
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
@@ -50,6 +56,7 @@ afterEach(() => {
   env.ENRICH_QUEUE = enrichQueue;
   env.LIVENESS_QUEUE = livenessQueue;
   env.ACCOUNT_QUEUE = accountQueue;
+  env.INDEX_QUEUE = indexQueue;
   setNow(null);
   resetOutbound();
 });

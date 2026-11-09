@@ -27,7 +27,8 @@
       "migrations_dir": "migrations",
     },
   ],
-  // Hourly: decay and liveness checks; every minute: imports; every 5 minutes: account deletions.
+  // Hourly: decay and liveness checks; every minute: imports, the index backfill and the
+  // deletion of vectors; every 5 minutes: account deletions.
   "triggers": { "crons": ["0 * * * *", "* * * * *", "*/5 * * * *"] },
   "queues": {
     "producers": [
@@ -35,17 +36,24 @@
       { "binding": "ENRICH_QUEUE", "queue": "alexandria-enrich" },
       { "binding": "LIVENESS_QUEUE", "queue": "alexandria-liveness" },
       { "binding": "ACCOUNT_QUEUE", "queue": "alexandria-account" },
+      { "binding": "INDEX_QUEUE", "queue": "alexandria-index" },
     ],
     "consumers": [
       { "queue": "alexandria-fetch", "max_batch_size": 10, "max_retries": 5 },
       { "queue": "alexandria-enrich", "max_batch_size": 5, "max_retries": 5 },
       { "queue": "alexandria-liveness", "max_batch_size": 10, "max_retries": 3 },
       { "queue": "alexandria-account", "max_batch_size": 1, "max_retries": 10 },
+      { "queue": "alexandria-index", "max_batch_size": 10, "max_retries": 5 },
     ],
   },
   // One Durable Object per host spaces Alexandria's requests to it a second apart.
   "durable_objects": { "bindings": [{ "name": "HOST_GATE", "class_name": "HostGate" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HostGate"] }],
+  // Embeddings for search by meaning, computed on the account's Workers AI and
+  // kept in a Vectorize index (scripts/provision.sh creates it). `wrangler dev
+  // --local` serves neither: the end-to-end tests set MEANING_FAKE_URL instead.
+  "ai": { "binding": "AI", "remote": true },
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "alexandria-passages", "remote": true }],
   // Snapshots and reader views, under u/{user_id}/l/{link_id}/.
   "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "alexandria-snapshots" }],
   // The settings every deployment shares. ALLOWED_EMAILS, GOOGLE_CLIENT_ID and

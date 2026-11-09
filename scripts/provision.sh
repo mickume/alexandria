@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-QUEUES=(alexandria-fetch alexandria-enrich alexandria-liveness alexandria-account)
+QUEUES=(alexandria-fetch alexandria-enrich alexandria-liveness alexandria-account alexandria-index)
 BUCKET=alexandria-snapshots
 DATABASE=alexandria
 

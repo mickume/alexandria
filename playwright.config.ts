@@ -4,6 +4,7 @@ const PORT = 8788;
 const FAKE_GOOGLE_PORT = 8790;
 const FAKE_ORIGIN_PORT = 8791;
 const FAKE_AI_PORT = 8792;
+const FAKE_MEANING_PORT = 8793;
 
 /**
  * The end-to-end tests run against a production build served by wrangler dev
@@ -32,6 +33,11 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
+      command: `node e2e/fake-meaning.ts ${FAKE_MEANING_PORT}`,
+      url: `http://localhost:${FAKE_MEANING_PORT}/health`,
+      reuseExistingServer: false,
+    },
+    {
       command: `node e2e/fake-origin.ts ${FAKE_ORIGIN_PORT}`,
       url: `http://localhost:${FAKE_ORIGIN_PORT}/health`,
       reuseExistingServer: false,
@@ -41,7 +47,7 @@ export default defineConfig({
         'rm -rf .wrangler/e2e',
         'npx vite build',
         'npx wrangler d1 migrations apply alexandria --local --persist-to .wrangler/e2e -c dist/alexandria/wrangler.json',
-        `npx wrangler dev -c dist/alexandria/wrangler.json --port ${PORT} --persist-to .wrangler/e2e --test-scheduled` +
+        `npx wrangler dev -c dist/alexandria/wrangler.json --port ${PORT} --persist-to .wrangler/e2e --test-scheduled --local` +
           ` --var ALLOWED_EMAILS:owner@example.test` +
           ` --var GOOGLE_CLIENT_ID:e2e-client` +
           ` --var GOOGLE_CLIENT_SECRET:e2e-secret` +
@@ -50,6 +56,7 @@ export default defineConfig({
           ` --var PUBLIC_ORIGIN:http://localhost:${PORT}` +
           ` --var ORIGIN_PROXY_URL:http://localhost:${FAKE_ORIGIN_PORT}/` +
           ` --var KEY_ENCRYPTION_KEY:e2e-key-encryption-key` +
+          ` --var MEANING_FAKE_URL:http://localhost:${FAKE_MEANING_PORT}` +
           ` --var ANTHROPIC_BASE_URL:http://localhost:${FAKE_AI_PORT}` +
           ` --var OPENROUTER_BASE_URL:http://localhost:${FAKE_AI_PORT}/openrouter`,
       ].join(' && '),
