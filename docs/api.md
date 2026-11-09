@@ -210,7 +210,7 @@ equal points the batch appears in the stream in the order given.
 
 #### `GET /api/v1/links`
 
-The stream: the links that are not expired, the pinned ones first in pin
+The stream: the links that are neither expired nor archived, the pinned ones first in pin
 position order, then the rest by `points`, highest first, then by
 `last_used_at`, newest first, with the id (descending) breaking ties. With
 `start_points` 60, a link used 10 times and last used 5 days ago (65 points)
@@ -231,12 +231,14 @@ once.
 The filters of the search (below) narrow the list as query parameters, in
 the same stream order: `tag`, `topic`, `host`, `state`, `in` and `is`, each
 with the meaning of its prefix filter; repeated parameters all apply
-(`?tag=cloudflare&tag=queues`). A `state` other than pending, active,
-unreachable, expired or any, or an `is` other than pinned or dead,
+(`?tag=cloudflare&tag=queues`). Archived links stay out of the list unless a
+`state` parameter asks for them (`state=archived` or `state=any`). A `state`
+other than pending, active, unreachable, expired, archived or any, or an `is`
+other than pinned or dead,
 is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
 
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
-every link that is not expired and changed at or after that time (every
+every link that is neither expired nor archived and changed at or after that time (every
 write to a link sets its `updated_at`), oldest change first, with the
 server's time to ask from next:
 `200 {"items": [<link>], "server_time": "…"}`. A link changed in the very
@@ -276,6 +278,8 @@ already pinned link stays where it is. At most 30 links are pinned.
 - `400 {"error": "invalid_position", "field": "position", "message"}`
 - `409 {"error": "pin_limit", "message": "unpin something first"}`; nothing
   changes. Moving a link that is already pinned is always possible.
+- `409 {"error": "link_archived", "message": "archived links cannot be pinned"}`
+  for an archived link; nothing changes.
 
 #### `DELETE /api/v1/links/{id}/pin`
 
@@ -668,12 +672,13 @@ every filter given applies:
 | `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
 | `in:<workspace>` | in the workspace with that name, ignoring case |
 | `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
-| `state:<state>` | in that state: `pending`, `active` or `unreachable`; `expired` keeps only expired links, `any` every state |
+| `state:<state>` | in that state: `pending`, `active`, `unreachable` or `archived`; `expired` keeps only expired links, `any` every state |
 
-Without a `state:` filter expired links are left out; `state:dormant` and
-`state:archived` are refused as any unknown value is. Any other `word:` is
+Without a `state:` filter expired links are left out and archived links are
+kept; `state:dormant` is refused as any unknown value is. Any other `word:` is
 a free word. A query of filters only lists the matching links in stream
-order, each snippet `[]`, with the stream's cursor.
+order (the archived ones last, newest last use first), each snippet `[]`,
+with the stream's cursor.
 
 Errors: `400 {"error": "query_too_long", "field": "q"}`, and
 `400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;

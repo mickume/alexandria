@@ -37,12 +37,17 @@ The stream (`links/stream.ts`, `listStream`) lists the pinned links by pin
 position, then every other link by its points descending, then `last_used_at`
 descending, then id descending. The points are computed in SQL at one
 reference time, the time of the first page, with the same integer day count
-as `pointsAt`. The cursor carries that time (`{s: 'p', t, p}` in the pinned
-section, `{s: 'r', t, n, l, i}` after it, `n` being the last row's points at
-`t`), so later pages rank by the first page's points and a link crossing a
-day boundary while the owner pages is neither skipped nor repeated; any other
-cursor shape is refused. Every search made of filters alone, the topic and tag
-searches included, goes through `listStream` and has the same order.
+as `pointsAt`. Archived links have no points: where a list includes them
+(a search made of filters alone, or `state=archived`), they come after every
+ranked link, by `last_used_at` then id descending. The cursor carries that
+time (`{s: 'p', t, p}` in the pinned section, `{s: 'r', t, n, l, i}` after
+it, `n` being the last row's points at `t`, and `{s: 'a', t, l, i}` among the
+archived links), so later pages rank by the first page's points and a link
+crossing a day boundary while the owner pages is neither skipped nor
+repeated; any other cursor shape is refused. Every search made of filters
+alone, the topic and tag searches included, goes through `listStream` and has
+the same order. The stream itself (`GET /api/v1/links`) and the change feed
+leave archived links out; searches and Ask keep them.
 
 ## Sign-in
 

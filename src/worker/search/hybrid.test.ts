@@ -228,8 +228,9 @@ describe('a search by meaning', () => {
   });
 
   it.each([
-    { suffix: '', expected: [1, 2, 3] },
+    { suffix: '', expected: [1, 2, 3, 4] },
     { suffix: 'state:expired', expected: [0] },
+    { suffix: 'state:archived', expected: [4] },
     { suffix: 'tag:infra', expected: [1] },
     { suffix: 'in:Research', expected: [2] },
     { suffix: 'host:docs.example', expected: [3] },
@@ -240,6 +241,7 @@ describe('a search by meaning', () => {
       { url: 'https://b.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
       { url: 'https://c.example/', title: 'Alarm filed', text: null },
       { url: 'https://docs.example/alarm', title: 'Alarm on docs', text: null },
+      { url: 'https://e.example/', title: 'Alarm archived', text: null, state: 'archived' },
     ]);
     const workspace = await api('POST', '/api/v1/workspaces', {
       as: user.session,

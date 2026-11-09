@@ -135,7 +135,10 @@ linkRoutes.get('/', async (c) => {
   }
   const parsed = filtersFromParams((name) => c.req.queries(name));
   if (!parsed.ok) return validationError(c, 'invalid_filter', parsed.field, parsed.message);
+  // The stream keeps archived links out unless a state parameter asks for them;
+  // filterConditions already keeps expired ones out.
   const where = filterConditions(parsed.filters);
+  if (!parsed.filters.state?.length) where.sql.push("l.state <> 'archived'");
   const page = await listStream(c.env.DB, c.get('user').id, limit, after, where);
   return c.json({
     items: page.items.map(toView),
@@ -205,6 +208,9 @@ linkRoutes.post('/:id/pin', async (c) => {
   );
   if (result.status === 'not_found') return notFound(c);
   if (result.status === 'pin_limit') return limitReached(c, 'pin_limit', 'unpin something first');
+  if (result.status === 'archived') {
+    return limitReached(c, 'link_archived', 'archived links cannot be pinned');
+  }
   return c.json(result.link);
 });
 

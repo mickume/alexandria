@@ -470,20 +470,23 @@ describe('filters', () => {
     },
   );
 
-  it('keeps expired links out unless state:expired or state:any asks for them', async () => {
+  it('keeps expired links out unless state:expired or state:any asks for them, and archived ones in', async () => {
     const user = await signIn();
-    const [p, a, u, x] = await seedLinks(user, [
+    const [p, a, u, x, r] = await seedLinks(user, [
       { url: 'https://kiwi-p.example/', state: 'pending' },
       { url: 'https://kiwi-a.example/', state: 'active' },
       { url: 'https://kiwi-u.example/', state: 'unreachable' },
       { url: 'https://kiwi-x.example/', state: 'expired' },
+      { url: 'https://kiwi-r.example/', state: 'archived' },
     ]);
     const sorted = async (q: string) => [...(await foundIds(user, q))].sort();
-    expect(await sorted('kiwi')).toEqual([p, a, u].sort());
+    expect(await sorted('kiwi')).toEqual([p, a, u, r].sort());
     expect(await sorted('kiwi state:expired')).toEqual([x]);
-    expect(await sorted('kiwi state:any')).toEqual([p, a, u, x].sort());
+    expect(await sorted('kiwi state:archived')).toEqual([r]);
+    expect(await sorted('kiwi state:any')).toEqual([p, a, u, x, r].sort());
     expect(await sorted('kiwi state:unreachable')).toEqual([u]);
     expect(await sorted('state:expired')).toEqual([x]);
+    expect(await sorted('state:archived')).toEqual([r]);
   });
 
   it('lists a filter-only query in stream order without snippets', async () => {

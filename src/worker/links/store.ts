@@ -313,14 +313,17 @@ export function unpinStatements(db: D1Database, userId: string, id: string): D1P
 
 /** What pinning a link did. */
 export type PinOutcome =
-  { status: 'pinned'; link: LinkView } | { status: 'not_found' } | { status: 'pin_limit' };
+  | { status: 'pinned'; link: LinkView }
+  | { status: 'not_found' }
+  | { status: 'pin_limit' }
+  | { status: 'archived' };
 
 /**
  * Pins one of the user's links at `position` (1-based; past the end means the
  * end), or at the end of the pinned section when no position is given, keeping
  * the other pinned links in order. A link already pinned and given no position
  * stays where it is. The positions stay 1..n in one transaction; a new pin
- * past PIN_LIMIT changes nothing.
+ * past PIN_LIMIT, or of an archived link, changes nothing.
  */
 export async function pinLink(
   db: D1Database,
@@ -330,6 +333,8 @@ export async function pinLink(
 ): Promise<PinOutcome> {
   const current = await getLink(db, userId, id);
   if (!current) return { status: 'not_found' };
+  // The pinned section is part of the stream, which archived links are out of.
+  if (current.state === 'archived') return { status: 'archived' };
   if (position === undefined && current.pin_position !== null) {
     return { status: 'pinned', link: toView(current) };
   }

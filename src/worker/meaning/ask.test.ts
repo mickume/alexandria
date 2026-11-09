@@ -309,7 +309,7 @@ describe('an answer to a question', () => {
     const user = await signIn();
     const ai = new FakeAi();
     await saveKey(user);
-    const [tagged] = await indexed(user, [
+    const [tagged, , , archived] = await indexed(user, [
       { url: 'https://a.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
       { url: 'https://b.example/', title: 'Alarm plain', text: null },
       {
@@ -319,15 +319,23 @@ describe('an answer to a question', () => {
         tags: ['infra'],
         state: 'expired',
       },
+      {
+        url: 'https://d.example/',
+        title: 'Alarm archived',
+        text: null,
+        tags: ['infra'],
+        state: 'archived',
+      },
     ]);
 
     const sent = events(
       await (await ask(user, { question: 'schedule a task tag:infra' })).response.text(),
     );
 
-    expect((sent[0]!.data.sources as { link: { id: string } }[]).map((s) => s.link.id)).toEqual([
-      tagged,
-    ]);
+    expect(
+      (sent[0]!.data.sources as { link: { id: string } }[]).map((s) => s.link.id).sort(),
+    ).toEqual([tagged, archived].sort());
+    expect(promptOf(ai.asks[0]!.body)).toContain('Alarm archived');
     expect(promptOf(ai.asks[0]!.body)).toContain('Alarm tagged');
     expect(promptOf(ai.asks[0]!.body)).not.toContain('Alarm plain');
     expect(promptOf(ai.asks[0]!.body)).not.toContain('Alarm expired');

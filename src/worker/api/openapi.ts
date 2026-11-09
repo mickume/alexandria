@@ -143,7 +143,7 @@ const FILTER_PARAMETERS: Operation['query'] = {
   host: { description: 'Links on this host or a subdomain of it', schema: z.string() },
   state: {
     description:
-      'pending, active, unreachable, expired or any; without it, expired links are left out',
+      'pending, active, unreachable, expired, archived or any; without it, expired links are left out (and archived ones from the stream)',
     schema: z.string(),
   },
   in: { description: 'Links in the workspace with this name (ignoring case)', schema: z.string() },
@@ -920,7 +920,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'One page of the stream (expired links left out); with changed_since, the changed links and the server time to ask from next',
+          'One page of the stream (expired and archived links left out); with changed_since, the changed links and the server time to ask from next',
         schema: z.union([
           z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
           z.strictObject({ items: z.array(Link), server_time: z.string() }),
@@ -1156,7 +1156,9 @@ export const operations: Operation[] = [
     responses: {
       200: { description: 'The pinned link', schema: Link },
       400: error('invalid_json, or invalid_position: an integer of at least 1'),
-      409: error('pin_limit: 30 links are pinned, "unpin something first"'),
+      409: error(
+        'pin_limit: 30 links are pinned, "unpin something first"; link_archived: "archived links cannot be pinned"',
+      ),
     },
   },
   {

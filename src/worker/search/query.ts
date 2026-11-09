@@ -12,7 +12,7 @@ export type FilterName = (typeof FILTER_NAMES)[number];
 export type Filters = Partial<Record<FilterName, string[]>>;
 
 /** The values `state:` accepts. */
-export const STATE_VALUES = ['pending', 'active', 'unreachable', 'expired', 'any'];
+export const STATE_VALUES = ['pending', 'active', 'unreachable', 'expired', 'archived', 'any'];
 /** The values `is:` accepts. */
 export const IS_VALUES = ['pinned', 'dead'];
 

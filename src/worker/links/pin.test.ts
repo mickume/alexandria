@@ -67,6 +67,26 @@ describe('pinning a link', () => {
     );
   });
 
+  it('refuses to pin an archived link, changing no position', async () => {
+    const user = await signIn();
+    const [first = '', archived = ''] = await seedLinks(user, [
+      { url: 'https://first.example', pinPosition: 1, state: 'active' },
+      { url: 'https://kept.example', state: 'archived' },
+    ]);
+    const r = await api('POST', `/api/v1/links/${archived}/pin`, { as: user.session });
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error: 'link_archived', message: 'archived links cannot be pinned' });
+    const rows = await env.DB.prepare(
+      'SELECT id, pin_position FROM links WHERE user_id = ? ORDER BY id',
+    )
+      .bind(user.id)
+      .all<{ id: string; pin_position: number | null }>();
+    expect(Object.fromEntries(rows.results.map((r) => [r.id, r.pin_position]))).toEqual({
+      [first]: 1,
+      [archived]: null,
+    });
+  });
+
   it('refuses a 31st pin, but still moves a pinned link', async () => {
     const { user, ids } = await setup(31);
     for (const id of ids.slice(0, 30)) expect((await pin(user, id)).status).toBe(200);

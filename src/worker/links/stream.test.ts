@@ -102,6 +102,24 @@ describe('the stream', () => {
     expect(r.json.next_cursor).toBeNull();
   });
 
+  it('leaves archived links out of the stream, its filters and the change feed', async () => {
+    const user = await signIn();
+    const [active, archived] = await seedLinks(user, [
+      { url: 'https://kept.example', lastUsedAt: '2026-03-01T00:00:00.000Z', state: 'active' },
+      { url: 'https://boxed.example', lastUsedAt: '2026-03-02T00:00:00.000Z', state: 'archived' },
+    ]);
+    for (const id of [active!, archived!]) {
+      await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { tags: ['x'] } });
+    }
+    const list = async (query: string) =>
+      ids((await api('GET', `/api/v1/links${query}`, { as: user.session })).json.items);
+    expect(await list('')).toEqual([active]);
+    expect(await list('?tag=x')).toEqual([active]);
+    expect(await list('?changed_since=2026-01-01T00:00:00.000Z')).toEqual([active]);
+    expect(await list('?state=archived')).toEqual([archived]);
+    expect((await list('?state=any')).sort()).toEqual([active, archived].sort());
+  });
+
   it('leaves expired links out of the change feed', async () => {
     const user = await signIn();
     const [active, expired] = await seedLinks(user, [
@@ -260,6 +278,38 @@ describe('the filtered link list', () => {
     },
   );
 
+  it('lists archived links after the links with points in a search of filters alone, newest last use first, each once across pages', async () => {
+    setNow(T);
+    const user = await signIn();
+    const at = (ms: number) => new Date(T - ms).toISOString();
+    const [pin, high, low, negative, kept1, kept2, kept3] = await seedLinks(user, [
+      { url: 'https://pin.example', lastUsedAt: at(DAY), pinPosition: 1, state: 'active' },
+      { url: 'https://high.example', lastUsedAt: at(0), useCount: 10, state: 'active' },
+      { url: 'https://low.example', lastUsedAt: at(50 * DAY), state: 'active' },
+      { url: 'https://negative.example', lastUsedAt: at(65 * DAY), state: 'active' },
+      { url: 'https://kept1.example', lastUsedAt: at(DAY), state: 'archived' },
+      { url: 'https://kept2.example', lastUsedAt: at(2 * DAY), state: 'archived' },
+      { url: 'https://kept3.example', lastUsedAt: at(3 * DAY), state: 'archived' },
+    ]);
+    await intoWorkspace(user, negative!);
+    const all = [pin, high, low, negative, kept1, kept2, kept3] as string[];
+    for (const id of all) {
+      await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { tags: ['x'] } });
+    }
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page: { json: { items: { link: Item }[]; next_cursor: string | null } } = await api(
+        'GET',
+        `/api/v1/search?q=tag%3Ax&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        { as: user.session },
+      );
+      seen.push(...page.json.items.map((i) => i.link.id));
+      cursor = page.json.next_cursor;
+    } while (cursor);
+    expect(seen).toEqual(all);
+  });
+
   it('pages a filtered list with the shared cursor, every match once', async () => {
     const user = await signIn();
     const links = await seedFilterLinks(user);
@@ -289,11 +339,12 @@ describe('the filtered link list', () => {
 
   it('applies state and repeated parameters together', async () => {
     const user = await signIn();
-    const [pending, active, unreachable, expired] = await seedLinks(user, [
+    const [pending, active, unreachable, expired, archived] = await seedLinks(user, [
       { url: 'https://p.example/', state: 'pending' },
       { url: 'https://a.example/', state: 'active' },
       { url: 'https://u.example/', state: 'unreachable' },
       { url: 'https://x.example/', state: 'expired' },
+      { url: 'https://r.example/', state: 'archived' },
     ]);
     const list = async (params: string) =>
       ids((await api('GET', `/api/v1/links?${params}`, { as: user.session })).json.items);
@@ -301,9 +352,10 @@ describe('the filtered link list', () => {
     expect(await list('state=active')).toEqual([active]);
     expect(await list('state=unreachable')).toEqual([unreachable]);
     expect(await list('state=expired')).toEqual([expired]);
+    expect(await list('state=archived')).toEqual([archived]);
     expect((await list('')).sort()).toEqual([pending, active, unreachable].sort());
     expect((await list('state=any')).sort()).toEqual(
-      [pending, active, unreachable, expired].sort(),
+      [pending, active, unreachable, expired, archived].sort(),
     );
     expect(await list('state=any&state=active')).toEqual([active]);
   });
@@ -311,7 +363,6 @@ describe('the filtered link list', () => {
   it.each([
     ['state=gone', 'state'],
     ['state=dormant', 'state'],
-    ['state=archived', 'state'],
     ['is=starred', 'is'],
     ['state=', 'state'],
   ])('refuses %s, naming the parameter', async (params, field) => {
