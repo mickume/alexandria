@@ -116,6 +116,7 @@ export function LinkDetail({ id }: { id: string }) {
         <RefreshButton link={link} />
         <CheckButton link={link} onChecked={setLink} />
       </div>
+      <hr />
       <h2 id="history-heading">History</h2>
       <ul className="history" aria-label="History">
         {history.map((event, i) => (

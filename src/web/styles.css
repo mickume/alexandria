@@ -631,13 +631,8 @@ a.brand:hover span {
   list-style: none;
 }
 
-/* Lines only between the rows: the divider after the list is the line under the last one. */
 .history li {
-  padding: var(--q-space-2) 0;
-}
-
-.history li + li {
-  border-top: var(--q-border-width) solid var(--q-border-muted);
+  padding: var(--q-space-1) 0;
 }
 
 .editable {
