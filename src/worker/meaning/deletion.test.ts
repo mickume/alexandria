@@ -92,11 +92,11 @@ describe('deleting a link that is indexed', () => {
     },
     {
       path: 'decay removes it',
-      state: 'archived',
+      state: 'expired',
       remove: async (user: TestUser, id: string) => {
         const t = Date.parse('2026-11-09T10:00:00.000Z');
         setNow(t);
-        await env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?')
+        await env.DB.prepare('UPDATE links SET expired_at = ? WHERE id = ?')
           .bind(new Date(t - 181 * 86_400_000).toISOString(), id)
           .run();
         await evaluateDecay(env, user.id);

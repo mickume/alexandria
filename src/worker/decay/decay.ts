@@ -8,14 +8,17 @@ const DAY_MS = 86_400_000;
 /** Test seams of the evaluation, as the clock is one. */
 export const decayHooks: { afterSelect?: (userId: string) => Promise<void> } = {};
 
-/** The SQL condition that a link `l` is sticky: at least 5 uses on at least 5 distinct UTC days. */
-export const STICKY = `(
-  (SELECT COUNT(*) FROM link_uses u WHERE u.link_id = l.id) >= 5
-  AND (SELECT COUNT(DISTINCT substr(u.at, 1, 10)) FROM link_uses u WHERE u.link_id = l.id) >= 5
-)`;
-
 /** The SQL condition that a link `l` is in at least one workspace. */
 const MEMBER = 'EXISTS (SELECT 1 FROM workspace_links wl WHERE wl.link_id = l.id)';
+
+/**
+ * The SQL expression of a stored timestamp `column` as milliseconds since the
+ * epoch, in integers, so that whole days are counted exactly as pointsAt counts
+ * them.
+ */
+export function epochMs(column: string): string {
+  return `(CAST(strftime('%s', ${column}) AS INTEGER) * 1000 + CAST(substr(${column}, 21, 3) AS INTEGER))`;
+}
 
 /** The time `days` before `t`, as stored. */
 function daysBefore(t: Date, days: number): string {
@@ -23,92 +26,57 @@ function daysBefore(t: Date, days: number): string {
 }
 
 /**
- * The statements of one user's decay evaluation at time `t`, each carrying its
- * own conditions so that a link boosted meanwhile is left as the boost left
- * it: sticky dormant links become active again; active links unused for
- * dormant_days that are not sticky become dormant; links unused for
- * archive_days that are neither sticky, pinned nor in a workspace are
- * archived.
+ * The statement that expires, at time `t`, every link of the user whose
+ * points are 0 or below, that is active, pending or unreachable, not pinned
+ * and in no workspace. Points reach 0 once the whole days since the last use
+ * reach the start points plus the use count. The statement carries its own
+ * conditions, so a link used or re-pasted meanwhile is left as the use left it.
  */
-export async function decayStatements(
-  db: D1Database,
-  userId: string,
-  t: Date,
-): Promise<D1PreparedStatement[]> {
-  const { dormant_days, archive_days } = (await db
-    .prepare('SELECT dormant_days, archive_days FROM users WHERE id = ?')
-    .bind(userId)
-    .first<{ dormant_days: number; archive_days: number }>()) ?? {
-    dormant_days: 60,
-    archive_days: 120,
-  };
-  const at = t.toISOString();
-  return [
-    db
-      .prepare(
-        `UPDATE links AS l SET state = 'active', updated_at = ?2 WHERE l.user_id = ?1 AND l.state = 'dormant' AND ${STICKY}`,
-      )
-      .bind(userId, at),
-    db
-      .prepare(
-        `UPDATE links AS l SET state = 'dormant', updated_at = ?2
-         WHERE l.user_id = ?1 AND l.state = 'active' AND l.last_used_at <= ?3 AND NOT ${STICKY}`,
-      )
-      .bind(userId, at, daysBefore(t, dormant_days)),
-    db
-      .prepare(
-        `UPDATE links AS l SET state = 'archived', archived_at = ?2, updated_at = ?2
-         WHERE l.user_id = ?1 AND l.state <> 'archived' AND l.last_used_at <= ?3
-           AND l.pin_position IS NULL AND NOT ${MEMBER} AND NOT ${STICKY}`,
-      )
-      .bind(userId, at, daysBefore(t, archive_days)),
-  ];
+export function expiryStatement(db: D1Database, userId: string, t: Date): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE links AS l SET state = 'expired', expired_at = ?2, updated_at = ?2
+       WHERE l.user_id = ?1 AND l.state IN ('active', 'pending', 'unreachable')
+         AND l.pin_position IS NULL AND NOT ${MEMBER}
+         AND ${epochMs('l.last_used_at')} <=
+           ?3 - ((SELECT start_points FROM users WHERE id = ?1) + l.use_count) * ${DAY_MS}`,
+    )
+    .bind(userId, t.toISOString(), t.getTime());
 }
 
 /**
- * The statements that remove the user's links archived at least remove_days
- * before `t`: everything DELETE /api/v1/links/{id} deletes, workspace
- * positions closed up, the links themselves last (returning their ids, so
- * their stored objects can go too). The condition is in every statement, so a
- * link restored meanwhile is kept.
+ * The statements that remove the user's links expired at least remove_days
+ * before `t` that are neither pinned nor in a workspace: everything
+ * DELETE /api/v1/links/{id} deletes, the links themselves last (returning
+ * their ids, so their stored objects can go too). The condition is in every
+ * statement, so a link restored, pinned or added to a workspace meanwhile is
+ * kept.
  */
 function removalStatements(db: D1Database, userId: string, cutoff: string): D1PreparedStatement[] {
-  const removed = `SELECT id FROM links WHERE user_id = ?1 AND state = 'archived' AND archived_at <= ?2`;
+  const removable = `l.user_id = ?1 AND l.state = 'expired' AND l.expired_at <= ?2
+    AND l.pin_position IS NULL AND NOT ${MEMBER}`;
+  const removed = `SELECT l.id FROM links l WHERE ${removable}`;
   return [
     db.prepare(`DELETE FROM link_uses WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_texts WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_passages WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_events WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_tags WHERE link_id IN (${removed})`).bind(userId, cutoff),
-    db
-      .prepare(
-        `UPDATE workspace_links SET position = position - (
-           SELECT COUNT(*) FROM workspace_links r
-           WHERE r.workspace_id = workspace_links.workspace_id AND r.position < workspace_links.position
-             AND r.link_id IN (${removed}))
-         WHERE workspace_id IN (SELECT workspace_id FROM workspace_links WHERE link_id IN (${removed}))`,
-      )
-      .bind(userId, cutoff),
-    db.prepare(`DELETE FROM workspace_links WHERE link_id IN (${removed})`).bind(userId, cutoff),
-    db
-      .prepare(
-        `DELETE FROM links WHERE user_id = ?1 AND state = 'archived' AND archived_at <= ?2 RETURNING id`,
-      )
-      .bind(userId, cutoff),
+    db.prepare(`DELETE FROM links AS l WHERE ${removable} RETURNING id`).bind(userId, cutoff),
   ];
 }
 
 /**
- * Evaluates decay for one user at the current time: dormancy, archiving and
- * removal, and the user's last_decay_at, all in one transaction, so that an
- * evaluation that fails changes nothing. The stored objects of the removed
- * links are deleted after the transaction.
+ * Evaluates decay for one user at the current time: expiry, removal and the
+ * user's last_decay_at, all in one transaction, so that an evaluation that
+ * fails changes nothing. The stored objects of the removed links are deleted
+ * after the transaction.
  */
 export async function evaluateDecay(env: Env, userId: string): Promise<void> {
   const t = now();
   const { remove_days } = await getThresholds(env.DB, userId);
   const statements = [
-    ...(await decayStatements(env.DB, userId, t)),
+    expiryStatement(env.DB, userId, t),
     ...removalStatements(env.DB, userId, daysBefore(t, remove_days)),
     env.DB.prepare('UPDATE users SET last_decay_at = ? WHERE id = ?').bind(t.toISOString(), userId),
   ];

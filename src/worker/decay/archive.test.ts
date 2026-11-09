@@ -49,7 +49,6 @@ describe('archiving a link by hand', () => {
       pinned: false,
     });
     expect(await archivedAt(x)).toBe(new Date(T).toISOString());
-    expect(r.json.removal_at).toBe(new Date(T + 180 * 86_400_000).toISOString());
     expect(await pinned(user)).toEqual([[y, 1]]);
     expect(r.json.workspaces.map((ws: { id: string }) => ws.id)).toEqual([w]);
     const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items.map(
@@ -86,11 +85,6 @@ describe('the archive list', () => {
     const r = await api('GET', '/api/v1/archive', { as: user.session });
     expect(r.status).toBe(200);
     expect(r.json.items.map((l: { id: string }) => l.id)).toEqual([b, c, a]);
-    for (const l of r.json.items) {
-      expect(Date.parse(l.removal_at) - Date.parse((await archivedAt(l.id))!)).toBe(
-        180 * 86_400_000,
-      );
-    }
   });
 
   it('pages 100 at a time', async () => {

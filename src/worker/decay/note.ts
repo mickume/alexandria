@@ -38,15 +38,19 @@ export function decayFields(row: LinkRow) {
   const sticky = uses >= 5 && days >= 5;
   const removeDays = row.user_remove_days ?? 180;
   const archivedAt = row.archived_at ?? null;
-  const expiredAt = row.expired_at ?? null;
-  const since = expiredAt ?? archivedAt;
-  const removalAt = since ? new Date(Date.parse(since) + removeDays * DAY_MS).toISOString() : null;
+  const expiredAt = row.state === 'expired' ? (row.expired_at ?? null) : null;
+  const removalAt = expiredAt
+    ? new Date(Date.parse(expiredAt) + removeDays * DAY_MS).toISOString()
+    : null;
+  const archiveRemovalAt = archivedAt
+    ? new Date(Date.parse(archivedAt) + removeDays * DAY_MS).toISOString()
+    : null;
   const unused = unusedFor(
     Math.max(0, Math.floor((now().getTime() - Date.parse(row.last_used_at)) / DAY_MS)),
   );
   let decay_note: string;
-  if (row.state === 'archived' && archivedAt && removalAt) {
-    decay_note = `archived on ${isoDate(Date.parse(archivedAt))}, removed on ${isoDate(Date.parse(removalAt))}`;
+  if (row.state === 'archived' && archivedAt && archiveRemovalAt) {
+    decay_note = `archived on ${isoDate(Date.parse(archivedAt))}, removed on ${isoDate(Date.parse(archiveRemovalAt))}`;
   } else if (sticky) {
     decay_note = `sticky: ${uses} uses on ${days} days, never archived`;
   } else if (row.pin_position !== null) {

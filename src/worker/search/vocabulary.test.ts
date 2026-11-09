@@ -114,7 +114,7 @@ describe('the topics and tags lists', () => {
         setup: { tags: ['solo'] },
         act: async (u: TestUser, id: string) => {
           await env.DB.prepare(
-            "UPDATE links SET state = 'archived', archived_at = '2020-01-01T00:00:00.000Z' WHERE id = ?",
+            "UPDATE links SET state = 'expired', expired_at = '2020-01-01T00:00:00.000Z' WHERE id = ?",
           )
             .bind(id)
             .run();

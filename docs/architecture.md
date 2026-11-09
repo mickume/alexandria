@@ -253,18 +253,26 @@ set-based statements, each carrying its own conditions, so a link boosted
 meanwhile keeps what the boost gave it and a failed evaluation changes
 nothing (that user is evaluated again at the next run):
 
-- a sticky dormant link (at least 5 uses on 5 UTC days) becomes `active`;
-- an `active` link unused for `dormant_days` that is not sticky becomes
-  `dormant` (pinned and workspace links too);
-- a link unused for `archive_days` that is neither sticky, pinned nor in a
-  workspace is `archived` (`archived_at` set; it leaves the stream);
-- an archived link archived `remove_days` ago is removed with everything
+- a link whose points are 0 or below, that is `active`, `pending` or
+  `unreachable`, not pinned and in no workspace, becomes `expired`
+  (`expired_at` set to the evaluation time);
+- an expired link that is neither pinned nor in a workspace, expired
+  `remove_days` ago or more, is removed with everything
   `DELETE /api/v1/links/{id}` removes, its stored R2 objects deleted after the
   transaction;
 - `last_decay_at` is set.
 
-A use, a re-paste or a restore makes a dormant link active in its own
-request. `decay/note.ts` gives every link its `decay_note`.
+A link's points are never stored: `decay/note.ts` computes them for every link
+the API returns (`pointsAt`): the user's `start_points` plus the link's
+`use_count`, minus the whole 24-hour periods since `last_used_at`, negative
+allowed. The expiry statement compares the same quantity in SQL, counting
+milliseconds in integers (`epochMs`) so the day boundary falls where `pointsAt`
+puts it; a link expires once the whole days since its last use reach its start
+points plus its use count. A change of `start_points` therefore applies to
+every link at once. Pinned links and links in a workspace keep losing points
+but never expire, and an expired link that is pinned or in a workspace is
+never removed. `removal_at` is `expired_at` plus `remove_days`.
+`decay/note.ts` also gives every link its `decay_note`.
 
 ### Liveness
 

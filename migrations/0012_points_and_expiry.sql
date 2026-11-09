@@ -5,6 +5,9 @@
 -- The start points take over from the dormant threshold.
 ALTER TABLE users ADD COLUMN start_points INTEGER NOT NULL DEFAULT 60;
 UPDATE users SET start_points = dormant_days;
+ALTER TABLE users DROP COLUMN dormant_days;
+-- A link expires when its points run out, not after a fixed time.
+ALTER TABLE users DROP COLUMN archive_days;
 
 -- What package 05 called archived is expired, from the same date, so its
 -- removal date does not change; there is no dormant state any more.
