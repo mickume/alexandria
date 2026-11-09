@@ -4,12 +4,13 @@
 
 ### StreamCursor
 
-> **StreamCursor** = \{ `p`: `number`; `s`: `"p"`; `t`: `number`; \} \| \{ `i`: `string`; `l`: `string`; `n`: `number`; `s`: `"r"`; `t`: `number`; \}
+> **StreamCursor** = \{ `p`: `number`; `s`: `"p"`; `t`: `number`; \} \| \{ `i`: `string`; `l`: `string`; `n`: `number`; `s`: `"r"`; `t`: `number`; \} \| \{ `i`: `string`; `l`: `string`; `s`: `"a"`; `t`: `number`; \}
 
 Where a page of the stream ends, with `t`, the time of the first page, so
 that every later page orders the links by their points at that time: in the
-pinned section at a pin position, or in the rest of the stream at a
-(points, last used, id) triple.
+pinned section at a pin position, in the ranked rest of the stream at a
+(points, last used, id) triple, or among the archived links, which have no
+points and come last, at a (last used, id) pair.
 
 ## Variables
 
@@ -21,11 +22,11 @@ The most changed links one change-feed answer carries.
 
 ***
 
-### NOT\_EXPIRED
+### IN\_STREAM
 
-> `const` **NOT\_EXPIRED**: [`Conditions`](../search/query.md#conditions)
+> `const` **IN\_STREAM**: [`Conditions`](../search/query.md#conditions)
 
-The stream's own restriction: every link but the expired ones.
+The stream's own restriction: every link but the expired and the archived ones.
 
 ## Functions
 
@@ -51,7 +52,7 @@ Whether a decoded cursor payload has the shape of a stream cursor.
 
 > **listChanged**(`db`, `userId`, `since`): `Promise`\<[`LinkRow`](store.md#linkrow)[]\>
 
-The user's links that are not expired and changed at or after `since`,
+The user's links that are neither expired nor archived and changed at or after `since`,
 oldest change first. A link changed in the very millisecond of `since` may
 come again; the website replaces cards in place, so a repeat is harmless,
 while a missed change would leave a card pending.
@@ -81,8 +82,9 @@ while a missed change would leave a card pending.
 > **listStream**(`db`, `userId`, `limit`, `after`, `where?`): `Promise`\<\{ `items`: [`LinkRow`](store.md#linkrow)[]; `next`: [`StreamCursor`](#streamcursor) \| `null`; \}\>
 
 One page of the user's stream: the links that satisfy `where` (by default,
-those not expired), the pinned ones first by pin position, then the rest by
-points descending, then last use descending, with the id breaking ties.
+those neither expired nor archived), the pinned ones first by pin position,
+then the rest by points descending, then last use descending, with the id
+breaking ties, then the archived ones by last use and id descending.
 Points are computed at the time of the first page, which the cursor
 carries, so a link that does not change is listed exactly once however
 long the paging takes. Returns the page and the cursor of the next one, if
@@ -108,7 +110,7 @@ any.
 
 ##### where?
 
-[`Conditions`](../search/query.md#conditions) = `NOT_EXPIRED`
+[`Conditions`](../search/query.md#conditions) = `IN_STREAM`
 
 #### Returns
 

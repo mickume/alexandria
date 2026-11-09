@@ -554,6 +554,10 @@ a.brand:hover span {
   opacity: 0.6;
 }
 
+.ask-sources li.archived a {
+  color: var(--q-fg-muted);
+}
+
 /* A pinned card is faintly tinted, a shade under the hover of a row, and grabbable. */
 .card.pinned {
   background: color-mix(in srgb, var(--q-accent-subtle) 50%, transparent);

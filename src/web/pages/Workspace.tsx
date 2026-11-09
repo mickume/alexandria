@@ -53,6 +53,8 @@ export function WorkspacePage({ id }: { id: string }) {
     onPin: (link) => change(() => links.pin(link.id)),
     onUnpin: (link) => change(() => links.unpin(link.id)),
     onDelete: (link) => change(() => links.remove(link.id)),
+    onArchive: (link) => change(() => links.archive(link.id)),
+    onUnarchive: (link) => change(() => links.unarchive(link.id)),
     onRemoveFromWorkspace: (link) => {
       workspaces
         .removeLink(id, link.id)

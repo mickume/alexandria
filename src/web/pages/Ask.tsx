@@ -179,7 +179,7 @@ export function Ask() {
       {listed.length > 0 && (
         <ol className="ask-sources" aria-label="Sources">
           {listed.map((s) => (
-            <li key={s.n}>
+            <li key={s.n} className={s.link.state === 'archived' ? 'archived' : undefined}>
               <span className="muted">[{s.n}]</span>{' '}
               <SiteLink link={s.link}>{s.link.title}</SiteLink>{' '}
               <span className="muted">{s.link.host}</span>

@@ -8,6 +8,22 @@ What a card's actions do; the stream page supplies them.
 
 #### Properties
 
+##### onArchive?
+
+> `optional` **onArchive?**: (`link`) => `void`
+
+Archive the link: keep it for good, out of the stream.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link-1)
+
+###### Returns
+
+`void`
+
 ##### onChanged?
 
 > `optional` **onChanged?**: (`link`) => `void`
@@ -116,6 +132,22 @@ On a workspace's page: take the link out of the workspace.
 
 `void`
 
+##### onUnarchive?
+
+> `optional` **onUnarchive?**: (`link`) => `void`
+
+Bring an archived link back to the stream.
+
+###### Parameters
+
+###### link
+
+[`Link`](../api.md#link-1)
+
+###### Returns
+
+`void`
+
 ##### onUnpin
 
 > **onUnpin**: (`link`) => `void`
@@ -138,7 +170,8 @@ On a workspace's page: take the link out of the workspace.
 
 One link in the stream, as a row of a list: title and actions, then host,
 dates and state, the summary, and the labels. A pinned card shows a pin
-where the site's icon would be.
+where the site's icon would be. An archived card is dimmed and offers
+Unarchive where other cards offer Pin.
 
 #### Parameters
 

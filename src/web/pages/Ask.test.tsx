@@ -123,6 +123,28 @@ describe('the Ask page', () => {
     expect(site.getAttribute('target')).toBe('_blank');
     expect(site.getAttribute('rel')).toContain('noopener');
     expect(sources.getByText('example.com')).toBeTruthy();
+    expect(site.closest('li')!.classList.contains('archived')).toBe(false);
+  });
+
+  it('dims a source whose link is archived', async () => {
+    const kept = { ...queues, state: 'archived', points: null };
+    renderPage(
+      '/ask',
+      api(
+        answered(
+          [
+            { n: 1, link: alarms },
+            { n: 2, link: kept },
+          ],
+          'Use an alarm [1][2].',
+        ),
+      ),
+    );
+    await ask('how do I schedule background work?');
+    const sources = within(await screen.findByRole('list', { name: 'Sources' }));
+    const item = (name: string) => sources.getByRole('link', { name }).closest('li')!;
+    expect(item('Cloudflare Queues explained').classList.contains('archived')).toBe(true);
+    expect(item('Durable Object alarms').classList.contains('archived')).toBe(false);
   });
 
   it('replaces the answer and the sources when asked again, and keeps nothing when left', async () => {

@@ -134,6 +134,10 @@ export interface CardActions {
   onRemoveFromWorkspace?: (link: Link) => void;
   /** The card's link changed (it joined a workspace): the link as the API now shows it. */
   onChanged?: (link: Link) => void;
+  /** Archive the link: keep it for good, out of the stream. */
+  onArchive?: (link: Link) => void;
+  /** Bring an archived link back to the stream. */
+  onUnarchive?: (link: Link) => void;
 }
 
 /** The workspaces a link is in, each a chip linking to the workspace's page. */
@@ -321,9 +325,11 @@ function pinDragProps(link: Link, actions: CardActions) {
 /**
  * One link in the stream, as a row of a list: title and actions, then host,
  * dates and state, the summary, and the labels. A pinned card shows a pin
- * where the site's icon would be.
+ * where the site's icon would be. An archived card is dimmed and offers
+ * Unarchive where other cards offer Pin.
  */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
+  const archived = link.state === 'archived';
   // Joining a workspace can change the decay note, so the card shows the link as the API
   // now has it; without it, the chips at least show the new workspace.
   const joined = (w: { id: string; name: string }) => {
@@ -338,7 +344,9 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
   };
   return (
     <article
-      className={['card', link.pinned && 'pinned'].filter(Boolean).join(' ')}
+      className={['card', link.pinned && 'pinned', archived && 'archived']
+        .filter(Boolean)
+        .join(' ')}
       aria-label={link.title}
       {...pinDragProps(link, actions)}
     >
@@ -381,13 +389,23 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
               Read
             </PageLink>
           )}
-          <button
-            type="button"
-            className="q-btn q-btn--sm q-btn--invisible"
-            onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
-          >
-            {link.pinned ? 'Unpin' : 'Pin'}
-          </button>
+          {archived ? (
+            <button
+              type="button"
+              className="q-btn q-btn--sm q-btn--invisible"
+              onClick={() => actions.onUnarchive?.(link)}
+            >
+              Unarchive
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="q-btn q-btn--sm q-btn--invisible"
+              onClick={() => (link.pinned ? actions.onUnpin(link) : actions.onPin(link))}
+            >
+              {link.pinned ? 'Unpin' : 'Pin'}
+            </button>
+          )}
           <CardMenu>
             {link.has_snapshot && (
               <PageLink to={`/links/${link.id}/snapshot`} className="q-menu-item">
@@ -414,6 +432,15 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
                 onClick={() => actions.onRemoveFromWorkspace?.(link)}
               >
                 Remove from workspace
+              </button>
+            )}
+            {!archived && actions.onArchive && (
+              <button
+                type="button"
+                className="q-menu-item"
+                onClick={() => actions.onArchive?.(link)}
+              >
+                Archive
               </button>
             )}
             <button

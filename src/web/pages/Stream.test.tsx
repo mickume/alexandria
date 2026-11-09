@@ -9,6 +9,25 @@ function makeLinks(n: number): Link[] {
   );
 }
 
+describe('archiving from the stream page', () => {
+  it('archives a card from its More actions menu and takes it out of the stream', async () => {
+    const all = makeLinks(2);
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links', { status: 200, body: { items: all, next_cursor: null } })
+      .on('POST', '/api/v1/links/:id/archive', (_req, { id }) => ({
+        status: 200,
+        body: { ...all.find((l) => l.id === id), state: 'archived', points: null },
+      }));
+    renderPage('/', api);
+    const card = await screen.findByRole('article', { name: 'Title 1' });
+    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
+    await act(async () => within(card).getByRole('button', { name: 'Archive' }).click());
+    expect(api.sent('POST', '/api/v1/links/l1/archive')).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'Title 1' })).toBeNull());
+    expect(screen.getByRole('article', { name: 'Title 0' })).toBeTruthy();
+  });
+});
+
 describe('the stream page', () => {
   it('shows one card per link in order and loads the next page at the end of the list', async () => {
     const all = makeLinks(70);

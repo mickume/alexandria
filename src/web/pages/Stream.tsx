@@ -273,6 +273,16 @@ export function Stream() {
     onDelete: deletes.remove,
     onRefreshing: feed.markRefreshing,
     onChanged: (link) => setItems((current) => current.map((l) => (l.id === link.id ? link : l))),
+    onArchive: (link) => {
+      setNotice(null);
+      linksApi
+        .archive(link.id)
+        .then(() => setItems((current) => current.filter((l) => l.id !== link.id)))
+        .catch((err) =>
+          setNotice(err instanceof ApiError ? err.message : 'could not archive, try again'),
+        );
+    },
+    onUnarchive: (link) => void change(() => linksApi.unarchive(link.id)),
     onDragStart: (link) => {
       dragged.current = link;
     },

@@ -137,6 +137,29 @@ test.describe.serial('an agent with the MCP server', () => {
     expect(removed.status()).toBe(204);
   });
 
+  test('archives a link with archive_link, and the owner finds it in the Archive', async ({
+    page,
+  }) => {
+    await signIn(page);
+    const origin = new URL(page.url()).origin;
+    const [id = ''] = await addLinkIds(page, ['https://code.example/archived-by-agent']);
+    const secret = await createToken(page, 'archiving agent');
+    const client = await agent(page, secret);
+    const archived = await call(client, 'archive_link', { link_id: id });
+    await client.close();
+    expect(archived.isError).toBeFalsy();
+    expect(archived.structuredContent.state).toBe('archived');
+
+    await page.goto('/archive');
+    const today = new Date().toISOString().slice(0, 10);
+    const row = page.locator('article.archived', { hasText: 'code.example' });
+    await expect(row).toBeVisible();
+    await expect(row.getByText(`archived on ${today}`)).toBeVisible();
+
+    // The specs share one library: leave it without this link.
+    await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
+  });
+
   test('files a new link into the owner’s workspace and pins it', async ({ page }) => {
     await signIn(page);
     await page.goto('/workspaces');

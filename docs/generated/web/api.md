@@ -370,6 +370,12 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
+When the link was archived, while it is archived.
+
 ##### content\_kind
 
 > **content\_kind**: `"html"` \| `"pdf"` \| `"other"` \| `null`
@@ -476,9 +482,9 @@ The whole note: only on a link read on its own.
 
 ##### points
 
-> **points**: `number`
+> **points**: `number` \| `null`
 
-Start points plus the use count, minus the whole days since the last use or boost.
+Start points plus the use count, minus the whole days since the last use or boost; null when archived.
 
 ##### removal\_at
 
@@ -1066,6 +1072,30 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 `Promise`\<[`BatchResult`](#batchresult)\>
 
+##### archive
+
+> **archive**: (`id`) => `Promise`\<[`Link`](#link-1)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link-1)\>
+
+##### archived
+
+> **archived**: () => `Promise`\<[`Link`](#link-1)[]\>
+
+Every archived link, most recently archived first, page after page.
+
+###### Returns
+
+`Promise`\<[`Link`](#link-1)[]\>
+
 ##### changedSince
 
 > **changedSince**: (`since`) => `Promise`\<[`Changes`](#changes)\>
@@ -1265,6 +1295,20 @@ Deletes a link for good; a link already gone counts as deleted.
 ##### restore
 
 > **restore**: (`id`) => `Promise`\<[`Link`](#link-1)\>
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`Link`](#link-1)\>
+
+##### unarchive
+
+> **unarchive**: (`id`) => `Promise`\<[`Link`](#link-1)\>
 
 ###### Parameters
 

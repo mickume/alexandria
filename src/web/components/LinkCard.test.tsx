@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
 import { FakeApi, installFakeApi, makeLink } from '../test/helpers';
 import { LinkCard } from './LinkCard';
@@ -35,7 +35,13 @@ describe('a card’s links to the site', () => {
 
 describe('a card’s More actions menu', () => {
   const stored = makeLink({ id: 'abc', state: 'active', has_snapshot: true, title: 'Stored' });
-  const actions = { onPin: noop, onUnpin: noop, onDelete: noop };
+  const actions = {
+    onPin: noop,
+    onUnpin: noop,
+    onDelete: noop,
+    onArchive: noop,
+    onUnarchive: noop,
+  };
 
   it('keeps Open, Read and Pin on the card and the rest behind it', async () => {
     render(<LinkCard link={stored} actions={actions} />);
@@ -55,13 +61,42 @@ describe('a card’s More actions menu', () => {
     for (const name of ['Refresh', 'Add to workspace', 'Delete']) {
       expect(screen.getByRole('button', { name }), name).toBeTruthy();
     }
-    expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Details' }).getAttribute('href')).toBe('/links/abc');
     expect(screen.getByRole('link', { name: 'Snapshot' }).getAttribute('href')).toBe(
       '/links/abc/snapshot',
     );
   });
+
+  it.each([
+    { state: 'active', archived: false },
+    { state: 'archived', archived: true },
+  ])(
+    'shows an $state card dimmed: $archived, with Unarchive in place of Pin when archived',
+    async ({ state, archived }) => {
+      const archive = vi.fn();
+      const unarchive = vi.fn();
+      const link = makeLink({ id: 'k', title: 'Kept', state, points: archived ? null : 60 });
+      const { container } = render(
+        <LinkCard
+          link={link}
+          actions={{ ...actions, onArchive: archive, onUnarchive: unarchive }}
+        />,
+      );
+      expect(container.querySelector('article')!.classList.contains('archived')).toBe(archived);
+      expect(screen.queryByRole('button', { name: 'Pin' }) !== null).toBe(!archived);
+      await moreActions();
+      expect(screen.queryByRole('button', { name: 'Archive' }) !== null).toBe(!archived);
+      if (archived) {
+        await act(async () => screen.getByRole('button', { name: 'Unarchive' }).click());
+        expect(unarchive).toHaveBeenCalledWith(link);
+      } else {
+        expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
+        await act(async () => screen.getByRole('button', { name: 'Archive' }).click());
+        expect(archive).toHaveBeenCalledWith(link);
+      }
+    },
+  );
 
   it('closes on Escape, giving the focus back to its button, and on a click elsewhere', async () => {
     render(<LinkCard link={stored} actions={actions} />);

@@ -290,13 +290,32 @@ but never expire, and an expired link that is pinned or in a workspace is
 never removed. `removal_at` is `expired_at` plus `remove_days`.
 `decay/note.ts` also gives every link its `decay_note`.
 
+### The archive
+
+An archived link (`state` `archived`, `archived_at` set) is one the owner
+chose to keep, and decay leaves it alone: the expiry statement takes only
+`active`, `pending` and `unreachable` links and removal only `expired` ones,
+and `decay/note.ts` gives it no points and no removal date.
+`POST /api/v1/links/{id}/archive` (`decay/archive.ts`) sets the state in one
+batch with the unpin statements (`unpinStatements`), then sends a refresh
+message on `FETCH_QUEUE` without touching `refresh_requested_at`, recording a
+failed fetch event when the send fails. The fetch worker's write
+(`writeFetched`) keeps the state `archived`, so the refresh replaces the
+snapshot and reader text and re-enriches the link without un-archiving it.
+`POST .../unarchive` makes it `active` with `last_used_at` now. The stream
+and the change feed leave archived links out; searches and Ask keep them,
+and `listStream` lists them after the ranked links. Pinning one is refused,
+the weekly liveness checks skip it and the on-demand check refuses it.
+`GET /api/v1/archive` shares its paging with `GET /api/v1/expired`
+(`listByTime`).
+
 ### Liveness
 
 The same hourly run enqueues one `LIVENESS_QUEUE` message per link due a
-weekly check (`decay/liveness.ts`): not expired, and active or pinned, last
+weekly check (`decay/liveness.ts`): neither expired nor archived, and active or pinned, last
 checked (or, never checked, added) 7 days ago or more, and not enqueued in
 the last 6 hours (`check_enqueued_at`, set in the selecting statement). The
-consumer drops a message for a link deleted, expired or no longer due;
+consumer drops a message for a link deleted, expired, archived or no longer due;
 otherwise it sends HEAD through the fetcher's request path
 (`fetcher/fetch.ts`, `requestFollowing`: blocked addresses refused, at most 5
 redirects, `ORIGIN_PROXY_URL`, and the host gate shared with fetches), and

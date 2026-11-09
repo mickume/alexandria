@@ -84,6 +84,13 @@ export const fakeOrigin = {
   async goOnline(): Promise<void> {
     await fetch(`${this.url}/__online`, { method: 'POST' });
   },
+  /** Makes the fake origin serve an article with `title` and `text` at `url` from now on. */
+  async servePage(url: string, title: string, text: string): Promise<void> {
+    await fetch(`${this.url}/__page`, {
+      method: 'POST',
+      body: JSON.stringify({ url, title, text }),
+    });
+  },
   async requestsSince(t: number): Promise<number> {
     const log = (await (await fetch(`${this.url}/__log`)).json()) as { at: number }[];
     return log.filter((r) => r.at >= t).length;

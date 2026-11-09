@@ -128,6 +128,10 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
       void linksApi.unpin(link.id).then(replace, () => setError('could not unpin')),
     onDelete: deletes.remove,
     onChanged: replace,
+    onArchive: (link) =>
+      void linksApi.archive(link.id).then(replace, () => setError('could not archive')),
+    onUnarchive: (link) =>
+      void linksApi.unarchive(link.id).then(replace, () => setError('could not unarchive')),
   };
 
   return (

@@ -128,8 +128,8 @@ function RelatedLinks({ id }: { id: string }) {
 /**
  * The side column of a link's detail page: its tags, topic and workspaces
  * (each workspace can be left), then the actions: refresh, check, pin or
- * unpin, add to a workspace, and delete after a confirmation, which leaves
- * for the stream.
+ * unpin (unarchive, for an archived link), add to a workspace, archive, and
+ * delete after a confirmation, which leaves for the stream.
  */
 function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => void }) {
   const [failure, setFailure] = useState<string | null>(null);
@@ -142,6 +142,12 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
       setFailure(err instanceof ApiError ? err.message : `could not ${what}, try again`);
     }
   }
+
+  const archived = link.state === 'archived';
+  const toggleArchive = () =>
+    act(archived ? 'unarchive' : 'archive', async () =>
+      onChange(await (archived ? links.unarchive(link.id) : links.archive(link.id))),
+    );
 
   const togglePin = () =>
     act(link.pinned ? 'unpin' : 'pin', async () =>
@@ -204,10 +210,17 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           className="q-menu-item"
           icon={<Icon name="pulse" />}
         />
-        <button type="button" className="q-menu-item" onClick={() => void togglePin()}>
-          <Icon name="pin" />
-          {link.pinned ? 'Unpin' : 'Pin'}
-        </button>
+        {archived ? (
+          <button type="button" className="q-menu-item" onClick={() => void toggleArchive()}>
+            <Icon name="archive" />
+            Unarchive
+          </button>
+        ) : (
+          <button type="button" className="q-menu-item" onClick={() => void togglePin()}>
+            <Icon name="pin" />
+            {link.pinned ? 'Unpin' : 'Pin'}
+          </button>
+        )}
         <WorkspacePicker
           linkId={link.id}
           memberOf={link.workspaces.map((w) => w.id)}
@@ -220,6 +233,12 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
             })
           }
         />
+        {!archived && (
+          <button type="button" className="q-menu-item" onClick={() => void toggleArchive()}>
+            <Icon name="archive" />
+            Archive
+          </button>
+        )}
         <button type="button" className="q-menu-item q-menu-item--danger" onClick={remove}>
           <Icon name="trash" />
           Delete

@@ -21,6 +21,7 @@
 - [web/format](web/format.md)
 - [web/main](web/main.md)
 - [web/pages/AiKeySection](web/pages/AiKeySection.md)
+- [web/pages/Archive](web/pages/Archive.md)
 - [web/pages/Ask](web/pages/Ask.md)
 - [web/pages/DecaySection](web/pages/DecaySection.md)
 - [web/pages/DeleteAccountSection](web/pages/DeleteAccountSection.md)

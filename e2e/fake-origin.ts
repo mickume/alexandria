@@ -11,9 +11,11 @@
  * at https://leaving.example/ and https://backup.example/, and at
  * https://code.example/<slug> a page whose
  * text holds 'marker-<slug>'. It logs every request, and can be taken
- * offline, after which it refuses every connection.
+ * offline, after which it refuses every connection. POST /__page sets the
+ * page one address serves, so a test can change it between two fetches.
  *
- * Control: POST /__offline, POST /__online, GET /__log (JSON), GET /health.
+ * Control: POST /__offline, POST /__online, POST /__page ({url, title, text}),
+ * GET /__log (JSON), GET /health.
  * Run with: node e2e/fake-origin.ts <port>
  */
 import { createServer } from 'node:http';
@@ -150,6 +152,16 @@ const server = createServer((req, res) => {
   if (url.pathname === '/__online') {
     offline = false;
     return void res.end('online');
+  }
+  if (url.pathname === '/__page') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+    req.on('end', () => {
+      const set = JSON.parse(body) as { url: string; title: string; text: string };
+      pages[set.url] = { type: HTML, body: articlePage(set.title, set.text) };
+      res.end('set');
+    });
+    return;
   }
   if (url.pathname === '/__log') {
     res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -218,6 +218,12 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+##### archived\_at
+
+> **archived\_at**: `string` \| `null`
+
+When the link was archived, while it is archived.
+
 ##### content\_kind
 
 > **content\_kind**: `string` \| `null`
@@ -232,7 +238,7 @@ What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fe
 
 > **decay\_note**: `string`
 
-One sentence: the link's points and when it expires, or when it will be removed.
+One sentence: the link's points and when it expires, when it will be removed, or that it is kept.
 
 ##### description
 
@@ -340,9 +346,10 @@ Short notes such as "truncated" or "not a web page (image/png)".
 
 ##### points
 
-> **points**: `number`
+> **points**: `number` \| `null`
 
-Start points plus the use count, minus the whole days since the last use or boost.
+Start points plus the use count, minus the whole days since the last use
+or boost; null for an archived link, which decay leaves alone.
 
 ##### removal\_at
 
@@ -432,7 +439,7 @@ What adding one URL did.
 
 ### PinOutcome
 
-> **PinOutcome** = \{ `link`: [`LinkView`](#linkview); `status`: `"pinned"`; \} \| \{ `status`: `"not_found"`; \} \| \{ `status`: `"pin_limit"`; \}
+> **PinOutcome** = \{ `link`: [`LinkView`](#linkview); `status`: `"pinned"`; \} \| \{ `status`: `"not_found"`; \} \| \{ `status`: `"pin_limit"`; \} \| \{ `status`: `"archived"`; \}
 
 What pinning a link did.
 
@@ -588,7 +595,7 @@ Pins one of the user's links at `position` (1-based; past the end means the
 end), or at the end of the pinned section when no position is given, keeping
 the other pinned links in order. A link already pinned and given no position
 stays where it is. The positions stay 1..n in one transaction; a new pin
-past PIN_LIMIT changes nothing.
+past PIN_LIMIT, or of an archived link, changes nothing.
 
 #### Parameters
 

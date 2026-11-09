@@ -448,6 +448,14 @@ describe('the side column of a link’s detail page', () => {
         current = { ...current, pinned: false };
         return { status: 200, body: current };
       })
+      .on('POST', '/api/v1/links/abc/archive', () => {
+        current = { ...current, state: 'archived', points: null, pinned: false };
+        return { status: 200, body: current };
+      })
+      .on('POST', '/api/v1/links/abc/unarchive', () => {
+        current = { ...current, state: 'active', points: 60 };
+        return { status: 200, body: current };
+      })
       .on('GET', '/api/v1/workspaces', {
         status: 200,
         body: { items: [workspace('wa', 'A'), workspace('wb', 'B')], next_cursor: null },
@@ -473,8 +481,32 @@ describe('the side column of a link’s detail page', () => {
       'Check now',
       'Pin',
       'Add to workspace',
+      'Archive',
       'Delete',
     ]);
+  });
+
+  it('archives the link, offering Unarchive in place of Pin, and unarchives it again', async () => {
+    const api = sideApi();
+    renderPage('/links/abc', api);
+    const column = await side();
+
+    fireEvent.click(column.getByRole('button', { name: 'Archive' }));
+    await column.findByRole('button', { name: 'Unarchive' });
+    const actions = within(column.getByRole('group', { name: 'Actions' }));
+    expect(actions.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Refresh',
+      'Check now',
+      'Unarchive',
+      'Add to workspace',
+      'Delete',
+    ]);
+    expect(api.sent('POST', '/api/v1/links/abc/archive')).toHaveLength(1);
+
+    fireEvent.click(column.getByRole('button', { name: 'Unarchive' }));
+    await column.findByRole('button', { name: 'Archive' });
+    expect(column.getByRole('button', { name: 'Pin' })).toBeTruthy();
+    expect(api.sent('POST', '/api/v1/links/abc/unarchive')).toHaveLength(1);
   });
 
   it('pins the link and unpins it again', async () => {
