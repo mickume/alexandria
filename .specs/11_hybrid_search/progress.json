@@ -3,7 +3,7 @@
   "spec_id": "11",
   "spec_name": "hybrid_search",
   "schema_version": 3,
-  "updated_at": "2026-11-09T08:49:24Z",
+  "updated_at": "2026-11-09T08:55:03Z",
   "tasks": [
     {
       "id": 1,
@@ -35,7 +35,7 @@
     },
     {
       "id": 8,
-      "state": "pending"
+      "state": "done"
     }
   ]
 }

@@ -111,6 +111,34 @@ test.describe.serial('an agent with the MCP server', () => {
     expect(removed.status()).toBe(204);
   });
 
+  test('finds a link by meaning with search_links', async ({ page }) => {
+    await signIn(page);
+    const url = 'https://example.com/alarms-for-agents';
+    const [id = ''] = await addLinkIds(page, [url]);
+    const secret = await createToken(page, 'meaning agent');
+    const client = await agent(page, secret);
+    // The article shares no word with this query ('later' is not in it): only meaning finds it.
+    const query = 'run a task later';
+    const hit = async () => {
+      const found = await call(client, 'search_links', { query });
+      return (found.structuredContent.items as { link: { id: string }; match: string }[]).find(
+        (i) => i.link.id === id,
+      );
+    };
+
+    await expect.poll(async () => (await hit())?.match, { timeout: 60_000 }).toBe('meaning');
+
+    const found = await call(client, 'search_links', { query });
+    expect(found.isError).toBeFalsy();
+    expect(found.structuredContent.meaning).toBe('used');
+    await client.close();
+    // The specs share one library, and later ones look for the best passage of their own article.
+    const removed = await page.request.delete(`/api/v1/links/${id}`, {
+      headers: { Origin: new URL(page.url()).origin },
+    });
+    expect(removed.status()).toBe(204);
+  });
+
   test('files a new link into the owner’s workspace and pins it', async ({ page }) => {
     await signIn(page);
     await page.goto('/workspaces');

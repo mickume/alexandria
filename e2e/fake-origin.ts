@@ -6,7 +6,7 @@
  * https://papers.example/on-links.pdf, a page about Cloudflare Queues at
  * https://docs.example/queues and one about Apache Kafka at
  * https://blog.example/kafka, two more about queues and one about gardening at
- * https://guides.example/, two pages about Durable Object alarms at
+ * https://guides.example/, three pages about Durable Object alarms at
  * https://example.com/, a paper at https://example.net/paper, two pages each
  * at https://leaving.example/ and https://backup.example/, and at
  * https://code.example/<slug> a page whose
@@ -89,6 +89,15 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
     body: articlePage(
       'Durable Object alarms',
       'An alarm lets a Durable Object schedule a task to run later on Cloudflare, in the background, without a cron trigger.',
+    ),
+  },
+  // Shares no word with the question 'run a task later on cloudflare', so that only
+  // its meaning can find it.
+  'https://example.com/alarm-timers': {
+    type: HTML,
+    body: articlePage(
+      'Alarm timers',
+      'Alarms in Durable Objects schedule background work with a timer, like a cron trigger.',
     ),
   },
   'https://example.com/alarms-for-agents': {
