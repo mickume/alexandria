@@ -6,10 +6,12 @@ import {
   links as linksApi,
   search,
   type Link,
+  type MatchKind,
   type SearchMode,
   type SearchResults,
   type Segment,
 } from '../api';
+import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
 import { Toast } from '../components/Toast';
@@ -52,8 +54,12 @@ function NothingFound({ query }: { query: string }) {
 /** The search's pages so far: the links, their snippets, the workspaces and the next cursor. */
 interface Found {
   snippets: Map<string, Segment[]>;
+  /** How each link was found, in a search by meaning. */
+  matches: Map<string, MatchKind | undefined>;
   workspaces: SearchResults['workspaces'];
   next: string | null;
+  /** Whether a search by meaning could use meaning. */
+  meaning: SearchResults['meaning'];
 }
 
 /** The results of a search: matching workspaces first, then each link's card with its snippet. */
@@ -71,8 +77,10 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
         setError(null);
         setFound({
           snippets: new Map(page.items.map((i) => [i.link.id, i.snippet])),
+          matches: new Map(page.items.map((i) => [i.link.id, i.match])),
           workspaces: page.workspaces,
           next: page.next_cursor,
+          meaning: page.meaning,
         });
         setItems(page.items.map((i) => i.link));
       })
@@ -96,7 +104,12 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
           ...found.snippets,
           ...page.items.map((i) => [i.link.id, i.snippet] as const),
         ]),
+        matches: new Map([
+          ...found.matches,
+          ...page.items.map((i) => [i.link.id, i.match] as const),
+        ]),
         next: page.next_cursor,
+        meaning: page.meaning ?? found.meaning,
       });
       setItems((current) => [...current, ...page.items.map((i) => i.link)]);
     } catch {
@@ -124,6 +137,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
           {error}
         </p>
       )}
+      {found?.meaning === 'unavailable' && <KeywordOnlyNotice />}
       {found && <WorkspaceResults workspaces={found.workspaces} />}
       {found && items.length === 0 && found.workspaces.length === 0 && (
         <NothingFound query={query} />
@@ -132,7 +146,14 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
         {items.map((link) => (
           <li key={link.id}>
             <LinkCard link={link} actions={actions} />
-            <Snippet segments={found?.snippets.get(link.id) ?? []} />
+            {found?.matches.get(link.id) === 'meaning' ? (
+              <div className="match-row">
+                <ByMeaning />
+                <Snippet segments={found.snippets.get(link.id) ?? []} />
+              </div>
+            ) : (
+              <Snippet segments={found?.snippets.get(link.id) ?? []} />
+            )}
           </li>
         ))}
       </ul>

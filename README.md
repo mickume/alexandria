@@ -39,7 +39,10 @@ Press **Enter** to search the same query by meaning as well: it also finds
 links that share no word with it, such as a page saved as "Durable Objects
 alarms" for "scheduling work in the background on Cloudflare". The address
 becomes `/search?q=…&mode=hybrid`, so a reload or a shared address repeats the
-search by meaning; typing again goes back to searching as you type.
+search by meaning; typing again goes back to searching as you type. A link
+found only by meaning is marked "by meaning" beside the start of the passage
+that matched; if the index could not be used, the line "Showing keyword matches
+only." says that the results are the keyword ones.
 
 Filters narrow a search, and can be combined with words or each other:
 

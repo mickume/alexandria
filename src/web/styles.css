@@ -773,6 +773,20 @@ a.brand:hover span {
   padding: 0;
 }
 
+/* A result found by meaning: its mark beside the start of the passage that matched. */
+.match-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--q-space-2);
+  margin: calc(-1 * var(--q-space-1)) 0 0;
+  padding: 0 var(--q-space-4) var(--q-space-3);
+}
+
+.match-row .snippet {
+  margin: 0;
+  padding: 0;
+}
+
 /* ── Settings: sections one after another, the account's end in a red box. ── */
 
 .decay-settings .field {

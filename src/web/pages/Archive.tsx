@@ -1,12 +1,26 @@
 import { useEffect, useState } from 'react';
 import { links, search, type Link, type SearchMode } from '../api';
+import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { Toast } from '../components/Toast';
 import { useUndoableDelete } from './Stream';
 
+/** Archived links as the page lists them, and how a search by meaning found them. */
+interface Archived {
+  list: Link[];
+  /** The ids of the links found by meaning alone. */
+  byMeaning: Set<string>;
+  /** Whether a search by meaning could not use meaning. */
+  keywordOnly: boolean;
+}
+
 /** The archived links matching `query`: the search, limited to archived links. */
-async function searchArchive(query: string, mode?: SearchMode): Promise<Link[]> {
+async function searchArchive(query: string, mode?: SearchMode): Promise<Archived> {
   const page = await search(`${query.trim()} state:archived`, undefined, mode);
-  return page.items.map((i) => i.link);
+  return {
+    list: page.items.map((i) => i.link),
+    byMeaning: new Set(page.items.filter((i) => i.match === 'meaning').map((i) => i.link.id)),
+    keywordOnly: page.meaning === 'unavailable',
+  };
 }
 
 /**
@@ -17,14 +31,23 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
   const [items, setItems] = useState<Link[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [byMeaning, setByMeaning] = useState<Set<string>>(new Set());
+  const [keywordOnly, setKeywordOnly] = useState(false);
   const deletes = useUndoableDelete(items, setItems);
 
   useEffect(() => {
     let live = true;
-    (query.trim() ? searchArchive(query, mode) : links.archived())
-      .then((list) => {
+    (query.trim()
+      ? searchArchive(query, mode)
+      : links
+          .archived()
+          .then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
+    )
+      .then((archived) => {
         if (!live) return;
-        setItems(list);
+        setItems(archived.list);
+        setByMeaning(archived.byMeaning);
+        setKeywordOnly(archived.keywordOnly);
         setLoaded(true);
       })
       .catch(() => live && setError('could not load the archive'));
@@ -54,6 +77,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
           {error}
         </p>
       )}
+      {keywordOnly && <KeywordOnlyNotice />}
       <div className="cards">
         {items.map((link) => (
           <article key={link.id} className="card" aria-label={link.title}>
@@ -72,6 +96,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
             </div>
             <div className="card-meta muted">
               <span>{link.host}</span>
+              {byMeaning.has(link.id) && <ByMeaning />}
               {link.removal_at && <span>removed on {link.removal_at.slice(0, 10)}</span>}
             </div>
           </article>

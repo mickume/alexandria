@@ -101,4 +101,49 @@ describe('the Archive page', () => {
       '/api/v1/search?q=kiwi%20state%3Aarchived&mode=hybrid',
     ]);
   });
+
+  it('marks a link found by meaning alone and says when meaning was left out', async () => {
+    const byMeaning = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'archived' });
+    const byWords = makeLink({ id: 'w', title: 'Kiwi farming', state: 'archived' });
+    const answer = (meaning: 'used' | 'unavailable') => ({
+      items: [
+        { link: byMeaning, snippet: [], match: 'meaning' },
+        { link: byWords, snippet: [], match: 'keyword' },
+      ],
+      workspaces: [],
+      next_cursor: null,
+      meaning,
+    });
+
+    renderPage(
+      '/archive?q=kiwi&mode=hybrid',
+      new FakeApi().on('GET', '/api/v1/search', { status: 200, body: answer('unavailable') }),
+    );
+    const card = await screen.findByRole('article', { name: 'Kiwi orchards' });
+
+    expect(screen.getAllByText('by meaning')).toHaveLength(1);
+    expect(card.contains(screen.getByText('by meaning'))).toBe(true);
+    const line = screen.getByText('Showing keyword matches only.');
+    expect(line.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no line about meaning when meaning was used', async () => {
+    const link = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'archived' });
+    renderPage(
+      '/archive?q=kiwi&mode=hybrid',
+      new FakeApi().on('GET', '/api/v1/search', {
+        status: 200,
+        body: {
+          items: [{ link, snippet: [], match: 'keyword' }],
+          workspaces: [],
+          next_cursor: null,
+          meaning: 'used',
+        },
+      }),
+    );
+
+    await screen.findByRole('article', { name: 'Kiwi orchards' });
+    expect(screen.queryByText('Showing keyword matches only.')).toBeNull();
+    expect(screen.queryByText('by meaning')).toBeNull();
+  });
 });

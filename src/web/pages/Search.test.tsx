@@ -158,4 +158,64 @@ describe('the Search page', () => {
       '/api/v1/search?q=queues&cursor=c2&mode=hybrid',
     ]);
   });
+
+  describe('a search by meaning', () => {
+    const found = makeLink({ id: 'm1', title: 'Durable Object alarms' });
+    const both = makeLink({ id: 'b1', title: 'Alarm clocks' });
+    const words = makeLink({ id: 'k1', title: 'Alarm bells' });
+    const hybrid = (meaningState?: 'used' | 'unavailable') => ({
+      items: [
+        {
+          link: found,
+          snippet: [{ text: 'schedule a task for later', match: false }],
+          match: 'meaning',
+        },
+        { link: both, snippet: [{ text: 'Alarm', match: true }], match: 'both' },
+        { link: words, snippet: [{ text: 'Alarm', match: true }], match: 'keyword' },
+      ],
+      workspaces: [],
+      next_cursor: null,
+      ...(meaningState ? { meaning: meaningState } : {}),
+    });
+
+    it('marks a link found by meaning alone “by meaning” beside its snippet, and no other', async () => {
+      renderPage('/search?q=later&mode=hybrid', api(hybrid('used')));
+      await screen.findByRole('article', { name: 'Durable Object alarms' });
+
+      const marks = screen.getAllByText('by meaning');
+      expect(marks).toHaveLength(1);
+      const row = screen.getByRole('article', { name: 'Durable Object alarms' }).closest('li')!;
+      expect(row.contains(marks[0]!)).toBe(true);
+      expect(within(row).getByText('schedule a task for later')).toBeTruthy();
+      expect(marks[0]!.parentElement).toBe(
+        within(row).getByText('schedule a task for later').closest('p')!.parentElement,
+      );
+    });
+
+    it.each([
+      { name: 'meaning was not used', answer: hybrid('unavailable'), shown: true },
+      { name: 'meaning was used', answer: hybrid('used'), shown: false },
+      {
+        name: 'the answer is a keyword search’s',
+        answer: { ...hybrid(), items: [] },
+        shown: false,
+      },
+    ])(
+      'shows “Showing keyword matches only.” above the results only when $name',
+      async ({ answer, shown }) => {
+        renderPage('/search?q=later&mode=hybrid', api(answer));
+        await act(async () => undefined);
+        await act(async () => undefined);
+
+        const line = screen.queryByText('Showing keyword matches only.');
+        expect(line !== null).toBe(shown);
+        if (line) {
+          const results = screen.getByRole('list', { name: 'Results' });
+          expect(
+            line.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ).toBeTruthy();
+        }
+      },
+    );
+  });
 });
