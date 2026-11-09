@@ -625,7 +625,15 @@ order, each snippet `[]`, with the stream's cursor.
 
 Errors: `400 {"error": "query_too_long", "field": "q"}`, and
 `400 {"error": "invalid_filter", "field": "q", "message"}` naming the filter;
-`invalid_limit`, `invalid_cursor`.
+`invalid_limit`, `invalid_cursor`, and
+`400 {"error": "invalid_mode", "field": "mode", "message": "mode takes keyword, hybrid"}`.
+
+**`mode`.** `keyword` (the default) is the search described above, and an
+answer without a `mode` is the same bytes as one with `mode=keyword`: no
+`match` and no `meaning` field. `mode=hybrid` also finds links by what they
+mean (see Searching by meaning below). A hybrid query of filters only, or an
+empty one, is answered as in keyword mode, with `"meaning": "used"` added and
+nothing embedded.
 
 ### Passages
 

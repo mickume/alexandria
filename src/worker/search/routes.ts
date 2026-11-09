@@ -58,6 +58,7 @@ async function streamPage(
   filters: Filters,
   limit: number,
   raw: string | undefined,
+  hybrid: boolean,
 ) {
   let after = null;
   if (raw !== undefined) {
@@ -70,6 +71,7 @@ async function streamPage(
     items: page.items.map((row) => ({ link: toView(row), snippet: [] })),
     workspaces: [],
     next_cursor: page.next ? await encodeCursor(c.env, page.next) : null,
+    ...(hybrid ? { meaning: 'used' } : {}),
   });
 }
 
@@ -109,6 +111,10 @@ async function rankedPage(
 searchRoutes.get('/', async (c) => {
   const parsed = parseQuery(c.req.query('q') ?? '');
   if (!parsed.ok) return validationError(c, parsed.error, 'q', parsed.message);
+  const mode = c.req.query('mode');
+  if (mode !== undefined && mode !== 'keyword' && mode !== 'hybrid') {
+    return validationError(c, 'invalid_mode', 'mode', 'mode takes keyword, hybrid');
+  }
   const limit = parseLimit(c.req.query('limit'));
   if (limit === null) {
     return validationError(
@@ -120,7 +126,7 @@ searchRoutes.get('/', async (c) => {
   }
   const raw = c.req.query('cursor');
   return parsed.words.length === 0
-    ? streamPage(c, parsed.filters, limit, raw)
+    ? streamPage(c, parsed.filters, limit, raw, mode === 'hybrid')
     : rankedPage(c, parsed, limit, raw);
 });
 

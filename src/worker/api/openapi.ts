@@ -205,6 +205,25 @@ export const SearchResults = z.strictObject({
   next_cursor: z.string().nullable(),
 });
 
+/** The answer of a search with mode=hybrid: SearchResults, each item saying how it matched, and whether meaning was added. */
+export const HybridResults = z.strictObject({
+  items: z.array(
+    z.strictObject({
+      link: Link,
+      snippet: Snippet,
+      match: z
+        .enum(['keyword', 'meaning', 'both'])
+        .optional()
+        .describe('How the link matched; absent in an answer that is the stream'),
+    }),
+  ),
+  workspaces: z.array(z.strictObject({ id: z.string(), name: z.string(), snippet: Snippet })),
+  next_cursor: z.string().nullable(),
+  meaning: z
+    .enum(['used', 'unavailable'])
+    .describe('unavailable when Workers AI or Vectorize could not be used'),
+});
+
 /** The answer of a request for passages. */
 export const PassageResults = z.strictObject({
   items: z.array(
@@ -534,14 +553,21 @@ export const operations: Operation[] = [
       },
       limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
+      mode: {
+        description:
+          'keyword (the default) or hybrid, which also finds links by meaning and adds match and meaning to the answer',
+        schema: z.string(),
+      },
     },
     responses: {
       200: {
         description:
-          'One page of results, most relevant first, each with its snippet as text segments',
-        schema: SearchResults,
+          'One page of results, most relevant first, each with its snippet as text segments; with mode=hybrid also meaning, and for a query with free words each item’s match',
+        schema: z.union([SearchResults, HybridResults]),
       },
-      400: error('query_too_long, invalid_filter (field q), invalid_limit or invalid_cursor'),
+      400: error(
+        'query_too_long, invalid_filter (field q), invalid_mode (field mode), invalid_limit or invalid_cursor',
+      ),
     },
   },
   {

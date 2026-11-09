@@ -3,11 +3,11 @@
   "spec_id": "11",
   "spec_name": "hybrid_search",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-09T08:32:19Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,
