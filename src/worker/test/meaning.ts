@@ -5,6 +5,7 @@
  */
 import { env } from 'cloudflare:test';
 import { DIMENSIONS, embedText, VectorIndex } from './embedder';
+import { api, seedLinks, type TestUser } from './helpers';
 
 /** The calls the Worker makes to the index and the model. */
 export type MeaningCall = 'embed' | 'query' | 'upsert' | 'deleteByIds';
@@ -115,3 +116,71 @@ class FakeMeaning {
 
 /** The fakes of Workers AI and Vectorize every Worker test runs with; reset before each test. */
 export const meaning = new FakeMeaning();
+
+/** A link to seed for a test of search by meaning, with the text the fetch and enrichment would store. */
+export interface Article {
+  url: string;
+  title: string;
+  /** The reader text; none for a link that was not fetched as a page. */
+  text?: string | null;
+  summary?: string;
+  note?: string;
+  topic?: string;
+  tags?: string[];
+  state?: string;
+}
+
+/** Three articles that are near in meaning to different questions (see embedder.ts). */
+export const ARTICLES = {
+  alarms: {
+    url: 'https://example.com/durable-object-alarms',
+    title: 'Durable Object alarms',
+    summary: 'How an object schedules work for itself.',
+    text: 'An alarm lets a Durable Object schedule a task to run later, in the background, without a cron trigger. Set the alarm and the object wakes up at that time.',
+  },
+  queues: {
+    url: 'https://example.com/cloudflare-queues',
+    title: 'Cloudflare Queues explained',
+    summary: 'Queues hand messages from one Worker to another.',
+    text: 'Cloudflare Queues deliver messages between Workers in batches and retry them until a consumer accepts them.',
+  },
+  tomatoes: {
+    url: 'https://example.com/growing-tomatoes',
+    title: 'Growing tomatoes in pots',
+    summary: 'Tomatoes on a balcony.',
+    text: 'Tomatoes grow well in rich soil with compost, in a pot on a sunny balcony.',
+  },
+} satisfies Record<string, Article>;
+
+/**
+ * Stores a link for `user` as the fetch worker and enrichment leave it, directly
+ * in the store, and returns its id. Tags and a topic go through the owner's edit.
+ */
+export async function seedArticle(user: TestUser, article: Article): Promise<string> {
+  const [id] = await seedLinks(user, [{ url: article.url, state: article.state ?? 'active' }]);
+  await env.DB.batch([
+    env.DB.prepare('UPDATE links SET title = ?, summary = ?, note = ? WHERE id = ?').bind(
+      article.title,
+      article.summary ?? null,
+      article.note ?? '',
+      id!,
+    ),
+    ...(article.text
+      ? [
+          env.DB.prepare('INSERT INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)').bind(
+            id!,
+            user.id,
+            article.text,
+          ),
+        ]
+      : []),
+  ]);
+  if (article.tags || article.topic) {
+    const body = {
+      ...(article.tags && { tags: article.tags }),
+      ...(article.topic && { topic: article.topic }),
+    };
+    await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body });
+  }
+  return id!;
+}

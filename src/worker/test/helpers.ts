@@ -309,6 +309,14 @@ export async function deliverAccount(
   return deliver('alexandria-account', bodies, bindings);
 }
 
+/** Delivers indexing messages to the Worker's queue consumer in one batch. */
+export async function deliverIndexing(
+  bodies: IndexMessage[],
+  bindings: Partial<Cloudflare.Env> = {},
+): Promise<{ acked: string[]; retried: string[] }> {
+  return deliver('alexandria-index', bodies, bindings);
+}
+
 /** Delivers enrichment messages to the Worker's queue consumer in one batch. */
 export async function deliverEnrichments(
   bodies: EnrichMessage[],
@@ -329,7 +337,7 @@ async function deliver<T>(
   const ctx = createExecutionContext();
   await worker.queue?.(
     batch as unknown as MessageBatch<
-      FetchMessage | EnrichMessage | LivenessMessage | AccountMessage
+      FetchMessage | EnrichMessage | LivenessMessage | AccountMessage | IndexMessage
     >,
     { ...env, ...bindings },
     ctx,

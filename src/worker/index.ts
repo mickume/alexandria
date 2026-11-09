@@ -4,9 +4,17 @@ import { app } from './app';
 import { runScheduled } from './decay/cron';
 import { handleEnrichBatch } from './enrich/queue';
 import { handleLivenessBatch } from './decay/liveness';
-import type { AccountMessage, EnrichMessage, Env, FetchMessage, LivenessMessage } from './env';
+import type {
+  AccountMessage,
+  EnrichMessage,
+  Env,
+  FetchMessage,
+  IndexMessage,
+  LivenessMessage,
+} from './env';
 import { handleFetchBatch } from './fetcher/queue';
 import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
+import { handleIndexBatch } from './meaning/indexing';
 
 export { HostGate } from './fetcher/hostgate';
 
@@ -28,6 +36,9 @@ export default {
     if (batch.queue === 'alexandria-liveness') {
       return handleLivenessBatch(batch as MessageBatch<LivenessMessage>, env);
     }
+    if (batch.queue === 'alexandria-index') {
+      return handleIndexBatch(batch as MessageBatch<IndexMessage>, env);
+    }
     if (batch.queue === 'alexandria-account') {
       return handleAccountBatch(batch as MessageBatch<AccountMessage>, env);
     }
@@ -36,4 +47,7 @@ export default {
     }
     return handleFetchBatch(batch as MessageBatch<FetchMessage>, env, ctx);
   },
-} satisfies ExportedHandler<Env, FetchMessage | EnrichMessage | LivenessMessage | AccountMessage>;
+} satisfies ExportedHandler<
+  Env,
+  FetchMessage | EnrichMessage | LivenessMessage | AccountMessage | IndexMessage
+>;
