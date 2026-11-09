@@ -131,6 +131,14 @@ export const fakeMeaning = {
       namespace: string;
     }[];
   },
+  /** Makes embedding and querying fail, as when Workers AI is unreachable. */
+  async fail(): Promise<void> {
+    await fetch(`${this.url}/__fail`, { method: 'POST' });
+  },
+  /** Undoes fail. */
+  async recover(): Promise<void> {
+    await fetch(`${this.url}/__recover`, { method: 'POST' });
+  },
 };
 
 /** Runs the Worker's every-minute scheduled handler through wrangler dev's test endpoint. */

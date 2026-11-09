@@ -6,7 +6,8 @@
  *
  * POST /embed {texts} -> {vectors}, POST /upsert {namespace, vectors},
  * POST /query {namespace, vector, topK} -> {matches}, POST /delete {ids};
- * control: GET /__vectors?namespace= lists {id, namespace}, GET /health.
+ * control: GET /__vectors?namespace= lists {id, namespace}, POST /__fail makes
+ * /embed and /query answer 503 until POST /__recover, GET /health.
  * Run with: node e2e/fake-meaning.ts <port>
  */
 import { createServer, type IncomingMessage } from 'node:http';
@@ -14,6 +15,8 @@ import { embedText, VectorIndex } from '../src/worker/test/embedder.ts';
 
 const port = Number(process.argv[2] ?? 8793);
 const index = new VectorIndex();
+/** Whether embedding and querying fail, as when Workers AI is unreachable. */
+let failing = false;
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -37,6 +40,13 @@ const server = createServer((req, res) => {
     );
   }
   if (req.method !== 'POST') return send(404, { error: 'not found' });
+  if (url.pathname === '/__fail' || url.pathname === '/__recover') {
+    failing = url.pathname === '/__fail';
+    return send(200, { failing });
+  }
+  if (failing && (url.pathname === '/embed' || url.pathname === '/query')) {
+    return send(503, { error: 'unavailable' });
+  }
   readJson(req)
     .then((body) => {
       if (url.pathname === '/embed') {

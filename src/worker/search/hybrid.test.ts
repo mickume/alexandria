@@ -382,3 +382,50 @@ describe('how a hybrid result matched', () => {
     expect(h.get(keywordOnly!)!.snippet.some((s) => s.match)).toBe(true);
   });
 });
+
+describe('a search by meaning while meaning is unavailable', () => {
+  it.each([
+    { name: 'the embedding fails', arrange: () => meaning.fail('embed') },
+    { name: 'the index fails', arrange: () => meaning.fail('query') },
+    { name: 'the embedding does not answer', arrange: () => meaning.stall('embed') },
+  ])('answers with the keyword results when $name', { timeout: 20_000 }, async ({ arrange }) => {
+    const user = await signIn();
+    await seed(
+      user,
+      [1, 2, 3].map((n) => ({
+        url: `https://queues${n}.example/`,
+        title: `Cloudflare Queues explained ${n}`,
+        text: 'Queues deliver messages.',
+      })),
+    );
+    await api('POST', '/api/v1/workspaces', {
+      as: user.session,
+      body: { name: 'Cloudflare queues' },
+    });
+    const keyword = await search(user, 'cloudflare queues', '&mode=keyword&limit=2');
+    arrange();
+    const start = Date.now();
+
+    const r = await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
+
+    expect(Date.now() - start).toBeLessThan(1_500);
+    expect(r.status).toBe(200);
+    expect(r.json.meaning).toBe('unavailable');
+    expect(idsOf(r.json.items)).toEqual(idsOf(keyword.json.items));
+    expect((r.json.items as Item[]).every((i) => i.match === 'keyword')).toBe(true);
+    expect(r.json.items.map((i: Item) => i.snippet)).toEqual(
+      keyword.json.items.map((i: Item) => i.snippet),
+    );
+    expect(r.json.workspaces).toEqual(keyword.json.workspaces);
+    // The next page continues the same results, still from the keyword matches.
+    expect(r.json.next_cursor).toBeTruthy();
+    const next = await search(
+      user,
+      'cloudflare queues',
+      `&mode=hybrid&limit=2&cursor=${encodeURIComponent(r.json.next_cursor)}`,
+    );
+    expect(next.status).toBe(200);
+    expect(idsOf(next.json.items)).toHaveLength(1);
+    expect(next.json.meaning).toBe('unavailable');
+  });
+});
