@@ -901,3 +901,38 @@ a.brand:hover span {
     width: auto;
   }
 }
+
+/* ── Ask: a question, its streamed answer and the sources under it. ── */
+
+.ask-form {
+  display: flex;
+  gap: var(--q-space-2);
+  margin: var(--q-space-4) 0;
+}
+
+.ask-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-answer {
+  padding: var(--q-space-3) var(--q-space-4);
+  border: var(--q-border-width) solid var(--q-border-default);
+  border-radius: var(--q-radius-md);
+  white-space: pre-wrap;
+}
+
+.ask-answer p {
+  margin: 0;
+}
+
+.ask-sources {
+  margin: var(--q-space-4) 0 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: var(--q-text-sm);
+}
+
+.ask-sources li + li {
+  margin-top: var(--q-space-1);
+}

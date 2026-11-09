@@ -64,6 +64,19 @@ Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the
 search started from.
 
+## Ask
+
+The **Ask** tab, between Tags and Archive, answers a question from your own
+links. Type it (at most 500 characters, with the same filters as the search
+box if you like) and press **Ask**: the answer streams in, written by your own
+AI provider with the key saved under Settings, from the passages of your links
+that best match the question. Each `[1]`, `[2]`… in the answer links to the
+link it came from, and the links are listed under the answer. If nothing in your
+library answers, it says so without calling the provider. Nothing is kept:
+asking again, or leaving the page, loses the answer, and asking records no use
+of the links it cites. Without a key the page asks you to add one in settings.
+Agents get the passages instead, with the MCP tool `search_passages`.
+
 ## Import
 
 The **Import** button at the end of the header's tabs opens the import page.

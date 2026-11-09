@@ -431,3 +431,55 @@ export const account = {
   remove: (confirmEmail: string) =>
     request<{ status: 'deleting' }>('DELETE', '/me', { confirm_email: confirmEmail }),
 };
+
+/** A link an answer cites, numbered from 1. */
+export interface AskSource {
+  n: number;
+  link: Link;
+}
+
+/** One event of an answer: the sources first, then pieces of the answer, then done or an error. */
+export type AskEvent =
+  | { event: 'sources'; data: { sources: AskSource[] } }
+  | { event: 'delta'; data: { text: string } }
+  | { event: 'done'; data: Record<string, never> }
+  | { event: 'error'; data: { error: string; message: string } };
+
+/**
+ * Asks the library a question and hands each event of the streamed answer to
+ * `onEvent` as it arrives. A refusal before the stream is thrown as an ApiError.
+ */
+export async function ask(question: string, onEvent: (event: AskEvent) => void): Promise<void> {
+  const response = await fetch('/api/v1/ask', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  });
+  if (response.status === 401) {
+    window.location.assign('/signin');
+    throw new ApiError(401, 'unauthorized', 'signed out');
+  }
+  if (!response.ok || !response.body) {
+    const text = await response.text();
+    const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    const code = typeof json.error === 'string' ? json.error : 'error';
+    const message = typeof json.message === 'string' ? json.message : code;
+    throw new ApiError(response.status, code, message, json);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    pending += decoder.decode(value, { stream: !done });
+    const blocks = pending.split('\n\n');
+    pending = done ? '' : (blocks.pop() ?? '');
+    for (const block of blocks) {
+      const name = /^event: (.*)$/m.exec(block)?.[1];
+      const data = /^data: (.*)$/m.exec(block)?.[1];
+      if (name && data) onEvent({ event: name, data: JSON.parse(data) } as AskEvent);
+    }
+    if (done) return;
+  }
+}

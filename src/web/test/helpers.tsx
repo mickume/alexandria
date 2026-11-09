@@ -16,7 +16,17 @@ export interface RecordedRequest {
 }
 
 type Answer =
-  { status: number; body?: unknown; headers?: Record<string, string> } | 'network-error';
+  | {
+      status: number;
+      /** A JSON body. */
+      body?: unknown;
+      /** A body that is not JSON, such as an event stream, sent as it is. */
+      text?: string;
+      /** A body the test feeds while the page reads it. */
+      stream?: ReadableStream<Uint8Array>;
+      headers?: Record<string, string>;
+    }
+  | 'network-error';
 type Handler = (req: RecordedRequest, params: Record<string, string>) => Answer | Promise<Answer>;
 
 interface Route {
@@ -79,7 +89,8 @@ export class FakeApi {
       if (answer === 'network-error') throw new TypeError('Failed to fetch');
       const headers = new Headers(answer.headers);
       if (answer.body !== undefined) headers.set('Content-Type', 'application/json');
-      return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
+      const raw = answer.stream ?? answer.text;
+      return new Response(raw ?? (answer.body === undefined ? null : JSON.stringify(answer.body)), {
         status: answer.status,
         headers,
       });
