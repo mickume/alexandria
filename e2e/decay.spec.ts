@@ -73,4 +73,9 @@ test('the stream lists a much-used link above a recently used one, each with its
   const at = (id: string) => ids.findIndex((h) => h === `/api/v1/links/${id}/open`);
   expect(at(used)).toBeGreaterThanOrEqual(0);
   expect(at(used)).toBeLessThan(at(recent));
+
+  // The other specs share this library and expect a link they add to lead the stream.
+  for (const id of [used, recent]) {
+    await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
+  }
 });

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { paperPdf, PAPER_FIRST_SENTENCE } from '../src/worker/fetcher/fixtures/pdfs.ts';
-import { d1, fakeOrigin, r2Object, signIn } from './helpers';
+import { cardOf, d1, fakeOrigin, r2Object, signIn } from './helpers';
 
 /** Pastes `url` into the add input and returns the new link's id. */
 async function paste(page: Page, url: string): Promise<string> {
@@ -57,18 +57,15 @@ test.describe('fetching links', () => {
 
     await fakeOrigin.goOffline();
     const offlineSince = Date.now();
-    const card = page.getByRole('article', { name: 'An Article' }).first();
+    // The article of the test before was used once, so it ranks above this new one.
+    const card = cardOf(page, id);
     await card.getByRole('button', { name: 'More actions' }).click();
     await card.getByRole('link', { name: 'Snapshot' }).click();
     const frame = page.frameLocator('iframe[sandbox]');
     await expect(frame.getByRole('heading', { name: 'An Article' })).toBeVisible();
 
     await page.goBack();
-    await page
-      .getByRole('article', { name: 'An Article' })
-      .first()
-      .getByRole('link', { name: 'Read', exact: true })
-      .click();
+    await cardOf(page, id).getByRole('link', { name: 'Read', exact: true }).click();
     await expect(page.getByText('This is the first paragraph of the article')).toBeVisible();
 
     expect(await fakeOrigin.requestsSince(offlineSince)).toBe(0);

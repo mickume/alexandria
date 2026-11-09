@@ -69,9 +69,7 @@ test.describe.serial('an agent with the MCP server', () => {
     expect(Date.parse(history.items[0].at)).toBeGreaterThanOrEqual(before - 1_000);
 
     await page.goto('/');
-    const card = page.locator('article.card:not(.pinned)').first();
-    await expect(card.locator(`a[href="/api/v1/links/${first.id}/open"]`).first()).toBeVisible();
-    await expect(card.getByText('Used just now')).toBeVisible();
+    await expect(cardOf(page, first.id).getByText('Used just now')).toBeVisible();
   });
 
   test('answers a question from passages of the owner’s links, recording no use', async ({

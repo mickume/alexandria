@@ -24,7 +24,10 @@ test('a script uses a personal access token until the owner revokes it', async (
   expect(added.status()).toBe(201);
   const listed = await script.get('/api/v1/links');
   expect(listed.status()).toBe(200);
-  expect((await listed.json()).items[0].url).toBe('https://example.org/docs');
+  // A new link starts at the start points: below links used more, above the rest.
+  expect((await listed.json()).items.map((l: { url: string }) => l.url)).toContain(
+    'https://example.org/docs',
+  );
   const scriptEnd = new Date().toISOString();
 
   const row = page.getByRole('listitem', { name: 'laptop script' });

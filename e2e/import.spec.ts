@@ -59,10 +59,12 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
   const download = page.waitForEvent('download');
   await view.getByRole('link', { name: 'Download report' }).click();
 
-  // The stream: the imported links first (after any pinned link), in file order.
+  // The stream: the imported links in file order, each at the start points, so
+  // below any link used more and above every older one.
+  const imported = new Set(urls);
   const stream: { url: string; pinned: boolean }[] = [];
   let cursor: string | null = null;
-  while (stream.filter((l) => !l.pinned).length < 397) {
+  while (stream.filter((l) => imported.has(l.url)).length < 397) {
     const r = await page.request.get(
       `/api/v1/links?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
     );
@@ -74,12 +76,9 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
     cursor = body.next_cursor;
     if (!cursor) break;
   }
-  expect(
-    stream
-      .filter((l) => !l.pinned)
-      .slice(0, 397)
-      .map((l) => l.url),
-  ).toEqual(urls);
+  const listed = stream.filter((l) => !l.pinned).map((l) => l.url);
+  const start = listed.indexOf(urls[0]!);
+  expect(listed.slice(start, start + 397)).toEqual(urls);
 
   // After 70 seconds the first minute's links, and no more, have been fetched.
   await page.waitForTimeout(Math.max(0, 70_000 - (Date.now() - startedAt)));
@@ -98,7 +97,7 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
     ).toBeLessThanOrEqual(20);
   }
   await page.goto('/');
-  await expect(page.getByRole('article').first()).toHaveAttribute('aria-label', 'Code import-1', {
+  await expect(page.getByRole('article', { name: 'Code import-1', exact: true })).toBeVisible({
     timeout: 30_000,
   });
 

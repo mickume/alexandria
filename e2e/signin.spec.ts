@@ -16,8 +16,9 @@ test('the owner signs in, adds a link and opens it', async ({ page }) => {
   await input.fill('https://example.com/article?utm_source=x');
   const entered = Date.now();
   await input.press('Enter');
-  const first = page.getByRole('article').first();
-  await expect(first).toHaveAttribute('aria-label', 'example.com', { timeout: 1000 });
+  // Links used more than a new one rank above it; this library may hold some.
+  const first = page.getByRole('article', { name: 'example.com' });
+  await expect(first).toBeVisible({ timeout: 1000 });
   await expect(first.getByText('pending')).toBeVisible({ timeout: 1000 });
   expect(Date.now() - entered).toBeLessThanOrEqual(1000);
 
@@ -29,8 +30,7 @@ test('the owner signs in, adds a link and opens it', async ({ page }) => {
   await site.close();
 
   await page.goto('/');
-  const card = page.getByRole('article').first();
-  await expect(card).toHaveAttribute('aria-label', 'example.com');
+  const card = page.getByRole('article', { name: 'example.com' });
   await expect(card.getByText('Used just now')).toBeVisible();
 
   const users = d1<{ name: string }>("SELECT name FROM users WHERE email = 'owner@example.test'");
