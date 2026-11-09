@@ -164,7 +164,7 @@ curl -sS https://alexandria.example.com/mcp \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
 ```
 
-A working setup answers JSON whose `result.tools` names the nine tools below.
+A working setup answers JSON whose `result.tools` names the ten tools below.
 Settings then shows the token as just used.
 
 | Answer | Meaning |
@@ -187,6 +187,7 @@ Settings then shows the token as just used.
 | `list_workspaces` | Your workspaces, with their descriptions and link counts |
 | `add_to_workspace` | File a link at the bottom of a workspace (named by its id or its name) |
 | `pin_link` | Pin a link at the top of the stream |
+| `archive_link` | Archive a link: keep it for good, out of the stream and out of decay, after one refresh of its page |
 
 Two behaviours are worth knowing when you direct an agent:
 

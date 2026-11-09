@@ -27,6 +27,7 @@ async function agent(email = 'owner@example.test'): Promise<TestUser & { secret:
 const TOOLS = [
   'add_link',
   'add_to_workspace',
+  'archive_link',
   'get_link',
   'get_link_content',
   'list_recent',
@@ -59,7 +60,7 @@ describe('the MCP endpoint', () => {
     expect(tokens.json.items[0].last_used_at).toBe(t);
   });
 
-  it('lists exactly the nine tools with their arguments', async () => {
+  it('lists exactly the ten tools with their arguments', async () => {
     const a = await agent();
     const r = await mcp(a.secret, 'tools/list', {});
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -758,6 +759,18 @@ describe('workspaces and pins', () => {
     expect(stream.json.items.slice(0, 2).map((l: { id: string }) => l.id)).toEqual([x, y]);
   });
 
+  it('archive_link archives a link: out of the stream, unpinned', async () => {
+    const a = await agent();
+    const [x = ''] = await seedLinks(a, [
+      { url: 'https://kept.example', state: 'active', pinPosition: 1 },
+    ]);
+    const r = await mcpTool(a.secret, 'archive_link', { link_id: x });
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent).toMatchObject({ id: x, state: 'archived', pinned: false });
+    const stream = await api('GET', '/api/v1/links', { as: a.session });
+    expect(stream.json.items.map((l: { id: string }) => l.id)).not.toContain(x);
+  });
+
   it('pin_link refuses a 31st pin', async () => {
     const a = await agent();
     const ids = await seedLinks(
@@ -777,29 +790,6 @@ describe('workspaces and pins', () => {
       .first<{ n: number }>();
     expect(positions?.n).toBe(30);
   });
-
-  it('has no archive_link tool, and calling it changes nothing', async () => {
-    const a = await agent();
-    const [link] = await seedLinks(a, [{ url: 'https://link.example', state: 'active' }]);
-    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first();
-    const list = await mcp(a.secret, 'tools/list', {});
-    expect(list.json.result.tools.map((t: { name: string }) => t.name)).not.toContain(
-      'archive_link',
-    );
-    const r = await mcp(a.secret, 'tools/call', {
-      name: 'archive_link',
-      arguments: { link_id: link },
-    });
-    expect(r.status).toBe(200);
-    expect(r.json.result.isError).toBe(true);
-    expect(r.json.result.structuredContent).toEqual({
-      error: 'not_found',
-      message: 'no such tool',
-    });
-    expect(await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first()).toEqual(
-      before,
-    );
-  });
 });
 
 describe('one user, one contract', () => {
@@ -815,6 +805,7 @@ describe('one user, one contract', () => {
       (_l: string, w: string, mine: { link: string }) => ({ link_id: mine.link, workspace: w }),
     ],
     ['pin_link', (l: string) => ({ link_id: l })],
+    ['archive_link', (l: string) => ({ link_id: l })],
   ] as const)(
     '%s answers for another user’s resource as for one that does not exist',
     async (name, args) => {

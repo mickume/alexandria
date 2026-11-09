@@ -296,5 +296,16 @@ export const TOOLS: Tool[] = [
       return outcomeOf(await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/pin`));
     },
   },
+  {
+    name: 'archive_link',
+    description:
+      'Archive a link: keep it for good, out of the stream and out of decay, after one refresh of its page.',
+    input: z.object({ link_id: linkId }),
+    async run(ctx, args: { link_id: string }) {
+      return outcomeOf(
+        await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/archive`),
+      );
+    },
+  },
   listRecent,
 ];
