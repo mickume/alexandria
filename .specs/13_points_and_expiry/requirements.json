@@ -1,0 +1,600 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "13",
+  "spec_name": "points_and_expiry",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Points on every link",
+      "rationale": "One number the owner can read explains both where a link stands in the stream and when it will expire.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "ubiquitous",
+          "action": "for any link it returns, carry points equal to its user's start_points plus its use_count minus the number of whole 24-hour periods between its last_used_at and the time of the request, and carry expired_at, and carry neither sticky nor archived_at",
+          "contract": "every link object of the API (GET /api/v1/links, GET /api/v1/links/{id}, search results, MCP get_link) has points: integer (negative allowed) and expired_at: string | null, and has no key sticky or archived_at",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the owner's start_points is 60",
+              "setNow fixes the request time"
+            ],
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over (use_count, time since last use) -> points: (0, 0h) -> 60; (0, 23h59m) -> 60; (0, 24h) -> 59; (10, 5 days) -> 65; (0, 61 days) -> -1; (3, 200 days) -> -137. For each: seedLinks one link, set use_count and last_used_at, r = api('GET', '/api/v1/links/' + id); assert r.json.points == expected; assert r.json.expired_at === null; assert !('sticky' in r.json) and !('archived_at' in r.json)"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "a link is used (an open, a read, a snapshot view or an MCP open)",
+          "action": "add 1 to its use_count and set its last_used_at to now, so that its points become start_points plus the new use_count",
+          "contract": "the next GET /api/v1/links/{id} answers use_count one higher and points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, extending 'records a use and redirects to the normalised URL, by session or by token': seed a link with use_count 4 and last_used_at 30 days back; GET /api/v1/links/{id}/open; assert GET /api/v1/links/{id} has use_count 5 and points 65 with start_points 60"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "event_driven",
+          "condition": "the owner adds the address of a link the library already holds",
+          "action": "set the link's last_used_at to now without changing its use_count",
+          "contract": "the answer's link has last_used_at equal to the request time, use_count unchanged, and points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, extending 'adds and boosts in order, collapses repeats and lists the invalid inputs': seed a link with use_count 2 and last_used_at 40 days back; POST /api/v1/links with its URL; assert the link's use_count == 2 and points == 62"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Start points and removal delay as per-user settings",
+      "rationale": "How long an unused link survives is the owner's choice, within bounds that keep the rules meaningful.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a user requests GET /api/v1/settings/decay",
+          "action": "return the user's start_points and remove_days, the defaults being 60 and 180",
+          "contract": "HTTP 200 with body exactly {start_points: integer, remove_days: integer}; {60, 180} for a user who never changed them",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, replacing 'are 60, 120 and 180 days for a user who never changed them': r = api('GET', '/api/v1/settings/decay', {as: signIn(...)}); assert r.status == 200 and r.json == {start_points: 60, remove_days: 180}"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "a user requests PUT /api/v1/settings/decay with start_points and remove_days each a whole number from 7 to 3650",
+          "action": "store both values for that user only, so that the points of every one of the user's links and every later evaluation use them at once",
+          "contract": "HTTP 200 with body {start_points, remove_days} equal to the request; GET /api/v1/settings/decay answers the same; another user's values are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, extending 'are stored per user': seed a link with use_count 0 unused 8 days; PUT {start_points: 7, remove_days: 3650}; assert 200; assert GET /api/v1/links/{id} has points -1; evaluateDecay(user); assert the link is expired; assert another user's settings are {60, 180}; the bounds 7 and 3650 are accepted"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "PUT /api/v1/settings/decay carries a start_points or remove_days that is missing, not a whole number, below 7 or above 3650",
+          "action": "refuse the request and keep the stored values",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_threshold\", \"field\": <the field's name>, \"message\": \"<field> must be a whole number from 7 to 3650\"}; GET /api/v1/settings/decay answers the previous values",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, a table over bodies {start_points absent, remove_days absent, start_points 6, remove_days 3651, start_points 7.5, start_points '60'}: r = PUT; assert r.status == 400 and r.json.error == 'invalid_threshold' and r.json.field names the bad field; assert GET answers {60, 180}"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Settings page and saves its decay section",
+          "system": "website",
+          "action": "show the fields 'Start points' and 'Remove after expiring (days)' with their current values, send both to PUT /api/v1/settings/decay, and show a refusal's message beside the field it names",
+          "contract": "the section shows exactly two number fields; after Save a success shows 'Saved' and a 400 shows the API's message next to the named field",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx, replacing the tests of 'the decay section of the settings page': FakeApi answers GET {start_points: 60, remove_days: 180}; renderPage('/settings'); assert the two labelled fields hold 60 and 180 and no 'Archive after' field exists; change Start points to 30 and Save; assert the PUT body {start_points: 30, remove_days: 180}; FakeApi answers 400 invalid_threshold on remove_days; assert the message is shown beside 'Remove after expiring (days)'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Expiry by the scheduled evaluation",
+      "rationale": "A link the owner no longer uses has to leave the stream on its own, or the library becomes the open tabs it replaces.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "the scheduled evaluation runs for a user",
+          "action": "make expired, with expired_at set to the evaluation time, every link of the user whose points at that time are 0 or below, whose state is active, pending or unreachable, that is not pinned and that is in no workspace, and leave every other link's state unchanged",
+          "contract": "after evaluateDecay(env, userId) each such link has state 'expired' and expired_at == the evaluation time; every other link keeps its state and expired_at",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "start_points 60"
+            ],
+            "pseudocode": "in src/worker/decay/decay.test.ts, replacing the 'dormancy', 'stickiness' and 'archiving by decay' tables with one table over (state, use_count, days unused, pinned, in a workspace) -> state after evaluateDecay: (active, 0, 60, no, no) -> expired; (active, 0, 59, no, no) -> active; (active, 10, 65, no, no) -> expired; (active, 10, 69, no, no) -> active; (pending, 0, 60, no, no) -> expired; (unreachable, 0, 61, no, no) -> expired; (active, 0, 400, yes, no) -> active; (active, 0, 400, no, yes) -> active; (active, 7, 30 uses on 6 days, unused 70, no, no) -> expired, i.e. no stickiness. Assert expired_at == the setNow time for each expired one"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "state_driven",
+          "condition": "a link is pinned or belongs to at least one workspace",
+          "action": "keep it out of expiry whatever its points, while still computing its points, which keep falling",
+          "contract": "the link's state stays as it was and its points are start_points + use_count - days unused, negative allowed",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "a link is used or re-pasted after the evaluation of its user has begun and before it commits",
+          "action": "leave the link as the use or re-paste left it",
+          "contract": "the link's state is 'active', expired_at is null and last_used_at is the use's time after both have finished",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, extending 'leaves a link boosted after selection as the boost left it': a link with points 0; decayHooks.afterSelect opens the link; evaluateDecay(user); assert state 'active' and expired_at null"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "the evaluation of one user fails during the hourly run",
+          "action": "change none of that user's links, keep that user's last_decay_at, evaluate the other users of the run, and evaluate that user again at the next hourly run",
+          "contract": "the failing user's links keep their state and expired_at and their last_decay_at is unchanged; the other users' links are evaluated; a second runScheduled evaluates the failing user",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, extending 'leaves a user whose evaluation fails as it was and evaluates them at the next run' with links whose points are 0: decayHooks.afterSelect throws for user A; runScheduled; assert A's link active and B's link expired; clear the hook; advance less than 20 hours; runScheduled; assert A's link expired"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Removal of expired links",
+      "rationale": "An expired link that nobody brought back is deleted for good, on a date the owner can see in advance.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the scheduled evaluation runs for a user",
+          "action": "remove every expired link of the user that is neither pinned nor in a workspace and whose expired_at is at least remove_days before the evaluation time, deleting its uses, texts, passages, events, tags, workspace memberships and stored objects, and keep every expired link whose expired_at is less than remove_days before",
+          "contract": "GET /api/v1/links/{id} answers 404 for a removed link and count() of its rows in link_uses, link_texts, link_passages, link_events, link_tags and workspace_links is 0 and its SNAPSHOTS objects are gone; a link one day short keeps state 'expired'",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "remove_days 180"
+            ],
+            "pseudocode": "in src/worker/decay/decay.test.ts, extending 'deletes a link archived remove_days ago with everything it had, and keeps one a day short' with expired links: a table over (expired_at days ago, pinned, in a workspace) -> removed: (180, no, no) -> yes; (179, no, no) -> no; (400, yes, no) -> no; (400, no, yes) -> no. For the removed one assert 404 and every related row and stored object gone"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "state_driven",
+          "condition": "an expired link is pinned or belongs to at least one workspace",
+          "action": "keep it from removal while it stays pinned or in a workspace",
+          "contract": "the link keeps state 'expired' and stays readable through GET /api/v1/links/{id}",
+          "check": {
+            "same_as": "REQ-4.1"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "ubiquitous",
+          "action": "for any link it returns, carry removal_at equal to expired_at plus the user's remove_days for an expired link and null for every other link",
+          "contract": "removal_at: string | null; Date.parse(removal_at) - Date.parse(expired_at) == remove_days * 86400000 for an expired link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts: an expired link with expired_at T and remove_days 180 has removal_at T + 180 days; after PUT remove_days 30 it has T + 30 days; an active link has removal_at null"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Expired links out of every list, and back on use or restore",
+      "rationale": "An expired link is out of sight but not yet gone, and the owner can bring it back by using it or by restoring it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "ubiquitous",
+          "action": "leave expired links out of the stream, the change feed, and every keyword search, hybrid search and Ask that has no state: filter",
+          "contract": "an expired link's id is absent from GET /api/v1/links, GET /api/v1/links?changed_since=..., GET /api/v1/search (both modes) and the sources of POST /api/v1/ask, when no state: filter is given",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "a table over the listings, each extending its existing test: in src/worker/links/stream.test.ts 'lists pinned links first, then the rest by last use, without archived links' and its change-feed test; in src/worker/search/search.test.ts the keyword search; in src/worker/search/hybrid.test.ts 'finds a link that shares no word with the query'; in src/worker/meaning/ask.test.ts 'reads the passages under the question’s filters'. Seed an active and an expired link sharing the query's words; assert only the active link's id appears"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "an expired link is used (an open, a read, a snapshot view or an MCP open) or its address is added again",
+          "action": "make it active and clear its expired_at in the same request",
+          "contract": "the next GET /api/v1/links/{id} answers state 'active' and expired_at null; the link is listed by GET /api/v1/links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, a table over {GET /links/{id}/open, GET /links/{id}/read, GET /links/{id}/snapshot, POST /api/v1/links with its URL}: seed an expired link with a snapshot; do the request; assert state 'active' and expired_at null"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "event_driven",
+          "condition": "the owner requests POST /api/v1/links/{id}/restore for an expired link",
+          "action": "make it active, clear its expired_at and set its last_used_at to now without changing its use_count",
+          "contract": "HTTP 200 with the link: state 'active', expired_at null, removal_at null, last_used_at the request time, use_count unchanged, points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, extending 'brings it back active to the top of the stream, without counting a use': seed an expired link with use_count 3; POST restore; assert 200 and the contract's fields; assert GET /api/v1/links lists it"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/restore names a link of the owner that is not expired",
+          "action": "refuse the request and change nothing",
+          "contract": "HTTP 409 with body {\"error\": \"not_expired\", \"message\": \"this link is not expired\"}; the link's state, last_used_at and expired_at are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, replacing \"is refused for a %s link\" with a table over the states active, pending and unreachable: POST restore; assert 409 and the body; assert the link unchanged"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/restore or POST /api/v1/links/{id}/check names a link that does not exist or belongs to another user",
+          "action": "answer as for a link that does not exist and change nothing",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the other user's link is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, extending 'is answered as one that does not exist by archive, restore and check' to restore and check on another user's expired link and on an unknown id"
+          }
+        },
+        {
+          "id": "REQ-5.6",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/links/{id}/check names an expired link of the owner",
+          "action": "refuse the check without making a request to the link's address",
+          "contract": "HTTP 409 with body {\"error\": \"link_expired\", \"message\": \"expired links are not checked\"}; no outbound request was made; last_checked_at is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts beside the archived-link refusal it replaces: seed an expired link; onOutbound counts requests to its origin; POST check; assert 409 and the body; assert 0 outbound requests"
+          }
+        },
+        {
+          "id": "REQ-5.7",
+          "pattern": "ubiquitous",
+          "action": "leave expired links out of the weekly liveness checks it enqueues",
+          "contract": "enqueueDueChecks sends no LIVENESS_QUEUE message for an expired link, however long ago it was last checked",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/liveness.test.ts, extending the due-check selection test: an active and an expired link both last checked 8 days ago; enqueueDueChecks; assert the recorded liveness queue holds only the active link's message"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "The expired list and the Expired page",
+      "rationale": "The owner sees every expired link and the day it will go, and can bring it back or delete it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the owner requests GET /api/v1/expired",
+          "action": "return the owner's expired links, most recently expired first and id descending on ties, at most limit of them (1 to 100, default 50), with the cursor of the next page",
+          "contract": "HTTP 200 with body {items: Link[] each with expired_at and removal_at, next_cursor: string | null}; following next_cursor lists every expired link exactly once",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, replacing 'lists the archived links most recently archived first, with their removal dates' and 'pages 100 at a time': seed 3 expired links with distinct expired_at and an active link; GET /api/v1/expired; assert the order and that the active one is absent; seed 150 expired links; page with limit 100; assert 150 distinct ids and next_cursor null on the last page"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/expired carries a limit that is not an integer from 1 to 100 or a cursor this route did not issue",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_limit\", \"field\": \"limit\", ...} or {\"error\": \"invalid_cursor\", \"field\": \"cursor\", ...}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, a table over {limit=0, limit=101, limit=x, cursor=garbage, cursor of GET /api/v1/links}: assert 400 and the error code"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Expired page at /expired",
+          "system": "website",
+          "action": "list the expired links from GET /api/v1/expired, each with 'removed on <date>', a Restore button and a Delete action, remove a restored link from the list, and say 'Nothing has expired.' when there is none",
+          "contract": "one article per expired link with 'removed on' its removal_at date; Restore sends POST /api/v1/links/{id}/restore and removes the article; Delete deletes after the undo window; an empty list shows 'Nothing has expired.'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Expired.test.tsx (renamed from src/web/pages/Archive.test.tsx), from 'lists archived links with their removal dates, restores one and deletes another after the undo window': FakeApi answers GET /expired with two links; renderPage('/expired'); assert both with 'removed on'; click Restore on one; assert the POST and that it is gone; delete the other; assert the DELETE after the undo window; then 'Nothing has expired.'"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "event_driven",
+          "condition": "the owner searches from the Expired page's search box",
+          "system": "website",
+          "action": "send the query with state:expired added and show the matching expired links on the Expired page",
+          "contract": "GET /api/v1/search receives q ending in ' state:expired'; the results are listed on /expired",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Expired.test.tsx, from 'searches only archived links and shows the results on the Archive page' and the meaning-mode tests that follow it, with state:expired in place of state:archived"
+          }
+        },
+        {
+          "id": "REQ-6.5",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "show a navigation entry named 'Expired' that opens /expired, and no entry named 'Archive'",
+          "contract": "the navigation holds a link with name 'Expired' and href '/expired' and none with name 'Archive'; /archive shows the not-found page",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Expired.test.tsx: renderPage('/'); assert getByRole('link', {name: 'Expired'}) has href '/expired' and queryByRole('link', {name: 'Archive'}) is null"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "State filters and the withdrawn archive",
+      "rationale": "Until the new archive arrives, nothing may still name the old one or set a state that no longer exists.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "a search or a filtered link list carries state:expired, state:any or another state: value among pending, active and unreachable",
+          "action": "keep only the expired links for state:expired, every link for state:any, and only that state's links for another value",
+          "contract": "GET /api/v1/search?q=state:expired and GET /api/v1/links?state=expired list exactly the expired links; state:any lists links of every state",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, extending 'applies state and repeated parameters together', and src/worker/search/query.test.ts 'accepts every state and is value, in any case' with the values pending, active, unreachable, expired, any: seed one link of each state; assert each filter's ids"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "unwanted",
+          "condition": "a search or a filtered link list carries state:dormant or state:archived",
+          "action": "refuse it as an unknown filter value",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_filter\", \"message\": <text naming the term>}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/query.test.ts, adding 'state:dormant' and 'state:archived' to the table of the refused-filter test over 'state:gone', 'is:starred'; and in src/worker/links/stream.test.ts GET /api/v1/links?state=dormant answers 400 invalid_filter"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "a client requests POST /api/v1/links/{id}/archive or GET /api/v1/archive",
+          "action": "answer as for an unknown route and change no link",
+          "contract": "HTTP 404 with body {\"error\": \"not_found\"}; the link's state is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, replacing 'archives it whatever keeps it from decay, unpins it and keeps its workspaces': seed an active pinned link; POST /api/v1/links/{id}/archive; assert 404 not_found and the link still active and pinned; GET /api/v1/archive answers 404"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "ubiquitous",
+          "system": "MCP server",
+          "action": "list no tool named archive_link among the MCP server's tools",
+          "contract": "tools/list holds no tool named 'archive_link'; tools/call with name 'archive_link' answers the MCP error for an unknown tool",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, replacing the archive_link cases of 'workspaces, pins and the archive': tools/list names no archive_link; tools/call archive_link answers the unknown-tool error and the link is unchanged"
+          }
+        },
+        {
+          "id": "REQ-7.5",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "offer no Archive action on any link card",
+          "contract": "a card's actions and its More actions menu hold no control named 'Archive'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, in 'a card’s More actions menu': open the menu; assert queryByRole('menuitem', {name: 'Archive'}) and queryByRole('button', {name: 'Archive'}) are null"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "The stream ordered by points",
+      "rationale": "The links the owner uses most and most recently are the ones worth seeing first.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "the owner requests GET /api/v1/links without a cursor",
+          "action": "list the pinned links first by pin position, then every other listed link by points descending, then last_used_at descending, then id descending",
+          "contract": "HTTP 200 with items in that order and next_cursor for the next page",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "start_points 60"
+            ],
+            "pseudocode": "in src/worker/links/stream.test.ts, replacing the order of 'lists pinned links first, then the rest by last use, without archived links': a table of links (pinned 2, pinned 1, A: 10 uses, last used 5 days ago -> 65, B: 1 use, today -> 61, C: 1 use, 3 hours ago -> 61, D: 0 uses, 70 days ago -> -10 but in a workspace, E and F: equal points and last_used_at); assert the ids in order pinned 1, pinned 2, A, B, C, E/F by id descending, D"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "event_driven",
+          "condition": "a search or filtered link list consists of filters alone, among them the topic: and tag: searches the topic and tag chips open",
+          "action": "list the matching links in the order of the stream",
+          "contract": "GET /api/v1/search?q=topic:<name> and ?q=tag:<name> answer their items in the same relative order as GET /api/v1/links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, extending \"%s lists what the search lists, in stream order\" with links whose points and last use disagree: assert the search's ids equal the stream's ids filtered to the matches"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "ubiquitous",
+          "action": "for any sequence of pages that follows next_cursor from a first page, order every page by the points as of the time of the first page",
+          "contract": "every link that does not change while the owner pages appears exactly once across the pages, even when a 24-hour boundary of a link's last use passes between two pages",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, beside 'pages a filtered list with the shared cursor, every match once': seed 120 links whose last uses are spread so that many cross a day boundary within the next hour; setNow(T); first page limit 50; setNow(T + 1 hour); follow the cursors; assert 120 distinct ids, each once, in the order computed at T"
+          }
+        },
+        {
+          "id": "REQ-8.4",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/links or a filters-only search carries a cursor that this order did not issue, a cursor of the previous order among them",
+          "action": "refuse the request",
+          "contract": "HTTP 400 with body {\"error\": \"invalid_cursor\", \"field\": \"cursor\", ...}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, extending the existing invalid-cursor table with a cursor encoded with encodeCursor(env, {s: 'u', l: <time>, i: <id>}): assert 400 invalid_cursor"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-9",
+      "title": "The decay note and the link card",
+      "rationale": "The owner can always see why a link is where it is and when it will go.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-9.1",
+          "pattern": "ubiquitous",
+          "action": "for any link it returns, carry decay_note: '<n> points: expires in <n> days' for a link that is neither pinned, in a workspace nor expired, with 'point' and 'day' in the singular for 1 and '<n> points: expires today' at 0 or below; 'pinned: never expires, <n> points' for a pinned link; 'in a workspace: never expires, <n> points' for a link in a workspace that is not pinned; and 'expired on <YYYY-MM-DD>, removed on <YYYY-MM-DD>' for an expired link",
+          "contract": "decay_note: string, one of the four forms, with the expired form taking precedence over pinned and workspace",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, replacing the table of 'why a link is in its state': (active, 42 points) -> '42 points: expires in 42 days'; (active, 1 point) -> '1 point: expires in 1 day'; (pending, 0 points) -> '0 points: expires today'; (active pinned, -3) -> 'pinned: never expires, -3 points'; (in a workspace, 12) -> 'in a workspace: never expires, 12 points'; (expired 2027-03-01, remove_days 179) -> 'expired on 2027-03-01, removed on 2027-08-27'"
+          }
+        },
+        {
+          "id": "REQ-9.2",
+          "pattern": "ubiquitous",
+          "system": "website",
+          "action": "show every card's decay_note, dim no card for decay, show no 'sticky' label, and keep the struck-through title and 'dead since <date>' of a dead link",
+          "contract": "each card holds its decay_note text; no card carries the class 'dormant'; the text 'sticky' is absent; a link with dead_since keeps both dead marks",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/components/LinkCard.test.tsx, replacing the tests of 'a card’s decay': render cards for an active link with decay_note '42 points: expires in 42 days' and a dead link; assert the notes are shown, no 'dormant' class and no 'sticky' text; the tests of 'a dead link’s card' still pass"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-10",
+      "title": "Existing links and settings carried over",
+      "rationale": "An owner's library before the change keeps every link and every removal date it had.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-10.1",
+          "pattern": "event_driven",
+          "condition": "migration 0012 is applied to a database holding archived, dormant and active links and users with their decay thresholds",
+          "action": "make every archived link expired with expired_at equal to its former archived_at, make every dormant link active, give every user start_points equal to their dormant_days and keep their remove_days, and leave every other link's state unchanged",
+          "contract": "after the migration: former archived links have state 'expired' and expired_at == their old archived_at, so removal_at is unchanged; former dormant links have state 'active'; GET /api/v1/settings/decay answers {start_points: <old dormant_days>, remove_days: <old remove_days>}",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/decay/migration.test.ts (new): apply the migrations up to 0011 to a fresh D1 with applyD1Migrations and a filtered env.TEST_MIGRATIONS; insert a user with dormant_days 45 and remove_days 90 and links archived (archived_at T), dormant, active and pending; apply 0012; assert the states, expired_at == T, removal_at == T + 90 days and the settings {45, 90}"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "An unused link expires and the owner restores it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds a link through the website, and its last use is then more than start_points days back"
+        },
+        {
+          "actor": "scheduler",
+          "action": "runs the hourly evaluation, which makes the link expired with its expiry time"
+        },
+        {
+          "actor": "website",
+          "action": "shows the stream without the link and the Expired page with the link and 'removed on <date>'"
+        },
+        {
+          "actor": "owner",
+          "action": "presses Restore on the Expired page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "makes the link active with expired_at cleared and last use now"
+        },
+        {
+          "actor": "website",
+          "action": "shows the link in the stream and 'Nothing has expired.' on the Expired page"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "scheduler",
+          "Alexandria API",
+          "website",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev --test-scheduled with local D1, the owner signed in through e2e/fake-google.ts",
+          "one link added through the API whose last_used_at is then set 61 days back with wrangler d1 execute --local"
+        ],
+        "end_state": [
+          "after the scheduled run the link's state was 'expired' with removal_at 180 days after expired_at, and the stream did not list it",
+          "after Restore the link's state is 'active', expired_at is null and last_used_at is the restore time",
+          "the stream lists the link and the Expired page shows 'Nothing has expired.'"
+        ],
+        "pseudocode": "rewrites the test in e2e/decay.spec.ts: add the link; set last_used_at back 61 days with d1(); runScheduled(page); poll GET /api/v1/links/{id} until state 'expired'; on / expect no card for it; on /expired expect its article with 'removed on' the date; click Restore; on / expect its card; on /expired expect 'Nothing has expired.'"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "The stream lists a much-used link above a recently used one",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds two links, opens the first 10 times and the second once"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "records each use, raising each link's points to start_points plus its use count"
+        },
+        {
+          "actor": "owner",
+          "action": "opens the stream after the first link's last use was moved 5 days back"
+        },
+        {
+          "actor": "website",
+          "action": "lists the first link above the second, each card showing its points in its decay note"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "Alexandria API",
+          "website",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev with local D1, the owner signed in through e2e/fake-google.ts, start_points 60"
+        ],
+        "end_state": [
+          "the stream's first card is the first link with '65 points: expires in 65 days' and the next is the second link with '61 points: expires in 61 days'"
+        ],
+        "pseudocode": "in e2e/decay.spec.ts, a second test: add two links through the API; request /api/v1/links/{a}/open 10 times and /api/v1/links/{b}/open once; d1() sets a's last_used_at 5 days back; page.goto('/'); expect the first article to be a with its note and the second b with its note"
+      }
+    }
+  ]
+}

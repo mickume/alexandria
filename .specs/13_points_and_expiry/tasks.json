@@ -1,0 +1,229 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "13",
+  "spec_name": "points_and_expiry",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/decay src/worker/links src/worker/search src/worker/mcp src/worker/meaning/ask.test.ts src/web/pages src/web/components/LinkCard.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "01",
+      "reason": "changes the stream's order and cursor, recordUse and the re-paste boost, and uses its error envelope, cursors, OpenAPI document, Settings page, LinkCard and test helpers"
+    },
+    {
+      "spec": "04",
+      "reason": "workspace membership exempts a link from expiry and removal"
+    },
+    {
+      "spec": "05",
+      "reason": "supersedes its decay rules, archive routes, decay settings and decay notes, and keeps its hourly run, removal and liveness checks with expired links skipped"
+    },
+    {
+      "spec": "06",
+      "reason": "changes the state: filter values, the default exclusion and the order of filters-only searches"
+    },
+    {
+      "spec": "08",
+      "reason": "withdraws the MCP tool archive_link"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Carry existing links over and compute every link's points",
+      "criteria": [
+        "REQ-1",
+        "REQ-10"
+      ],
+      "steps": [
+        "Add the points behaviours to src/worker/decay/decay.test.ts, src/worker/links/use.test.ts and src/worker/links/links.test.ts, and the migration behaviour to the new src/worker/decay/migration.test.ts, and confirm they fail",
+        "Create migrations/0012_points_and_expiry.sql: users gain start_points copied from dormant_days and lose dormant_days and archive_days; links gain expired_at; every archived link becomes expired with expired_at = archived_at and archived_at cleared; every dormant link becomes active; recreate link_views with the user's start_points beside user_remove_days, dropping use_days",
+        "Compute points when a link row is turned into its API view: start_points + use_count - whole 24-hour periods since last_used_at at the clock's now, negative allowed",
+        "Return points and expired_at on every link view and drop sticky and archived_at; drop the dormant-to-active rewrite from recordUse and the re-paste statement, which task 4 replaces with the expired-to-active one",
+        "Update the Link schema of the OpenAPI document and the link fields in docs/api.md"
+      ],
+      "touches": [
+        "migrations/0012_points_and_expiry.sql",
+        "src/worker/links/store.ts",
+        "src/worker/links/use.ts",
+        "src/worker/decay/note.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/decay/migration.test.ts",
+        "src/worker/links/use.test.ts",
+        "src/worker/links/links.test.ts",
+        "src/web/api.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Store start points and the removal delay per user",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the settings behaviours to src/worker/decay/decay.test.ts and src/web/pages/Settings.test.tsx and confirm they fail",
+        "Make GET and PUT /api/v1/settings/decay read and write {start_points, remove_days}, each a whole number from 7 to 3650, refusing anything else with 400 invalid_threshold naming the field and storing nothing; drop invalid_thresholds",
+        "Make the Settings page's decay section show 'Start points' and 'Remove after expiring (days)' with their meanings, send both on Save, and show a refusal beside its field",
+        "Update the settings routes in the OpenAPI document, docs/api.md and docs/configuration.md"
+      ],
+      "touches": [
+        "src/worker/decay/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/web/pages/DecaySection.tsx",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/api.ts",
+        "docs/api.md",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Expire links at 0 points and remove them remove_days later",
+      "criteria": [
+        "REQ-3",
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the expiry and removal behaviours to src/worker/decay/decay.test.ts and confirm they fail",
+        "Replace the evaluation's dormancy, sticky and archiving statements with one statement that expires every active, pending or unreachable link of the user with points 0 or below at the evaluation time, not pinned and in no workspace, setting expired_at; the statement carries its own conditions so a link used meanwhile is left as the use left it",
+        "Make the removal statements select expired links that are neither pinned nor in a workspace with expired_at at least remove_days before the evaluation time; keep the single transaction, last_decay_at and the deletion of stored objects after it",
+        "Give every link view removal_at = expired_at + remove_days for an expired link and null otherwise",
+        "Remove STICKY and its uses; describe the rules in docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/decay/decay.ts",
+        "src/worker/decay/note.ts",
+        "src/worker/decay/cron.ts",
+        "src/worker/decay/decay.test.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Keep expired links out of every list and bring them back on use or restore",
+      "criteria": [
+        "REQ-5",
+        "REQ-7.1",
+        "REQ-7.2"
+      ],
+      "steps": [
+        "Add the behaviours to src/worker/links/stream.test.ts, src/worker/search/search.test.ts, src/worker/search/hybrid.test.ts, src/worker/meaning/ask.test.ts, src/worker/search/query.test.ts, src/worker/links/use.test.ts, src/worker/decay/archive.test.ts and src/worker/decay/liveness.test.ts and confirm they fail",
+        "Make the state: values pending, active, unreachable, expired and any; leave expired links out of the stream, the change feed, and every search, hybrid search and Ask without a state: filter",
+        "Make recordUse and the re-paste turn an expired link active and clear expired_at in the same statement",
+        "Make POST /api/v1/links/{id}/restore act on expired links only: active, expired_at cleared, last_used_at now, use_count unchanged; 409 not_expired for any other state; 404 for a link the user does not have",
+        "Refuse POST /api/v1/links/{id}/check for an expired link with 409 link_expired before any request is made, and leave expired links out of enqueueDueChecks and isCheckable",
+        "Update the OpenAPI document and docs/api.md for the state values, restore and the check refusal"
+      ],
+      "touches": [
+        "src/worker/search/query.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/use.ts",
+        "src/worker/links/store.ts",
+        "src/worker/decay/archive.ts",
+        "src/worker/decay/liveness.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/links/stream.test.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/search/hybrid.test.ts",
+        "src/worker/meaning/ask.test.ts",
+        "src/worker/search/query.test.ts",
+        "src/worker/links/use.test.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/worker/decay/liveness.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "List expired links on the Expired page and withdraw the old archive",
+      "criteria": [
+        "REQ-6",
+        "REQ-7.3",
+        "REQ-7.4",
+        "REQ-7.5"
+      ],
+      "steps": [
+        "Add the behaviours to src/worker/decay/archive.test.ts, src/worker/mcp/mcp.test.ts, src/web/components/LinkCard.test.tsx and src/web/pages/Expired.test.tsx (renamed from Archive.test.tsx) and confirm they fail",
+        "Replace GET /api/v1/archive with GET /api/v1/expired: expired links by expired_at descending then id descending, paged with limit and a cursor of its own, refusing a bad limit or cursor with 400 invalid_limit or invalid_cursor",
+        "Remove POST /api/v1/links/{id}/archive, so it and GET /api/v1/archive fall through to the 404 not_found of unknown routes",
+        "Remove the MCP tool archive_link",
+        "Rename the Archive page to the Expired page at /expired: the list with 'removed on <date>', Restore and Delete, the search box limited to state:expired, 'Nothing has expired.' when empty; replace the navigation entry 'Archive' with 'Expired'",
+        "Remove the Archive action from LinkCard and its callers",
+        "Rewrite e2e/decay.spec.ts for an unused link that expires and is restored from the Expired page",
+        "Update the OpenAPI document, docs/api.md and docs/mcp.md"
+      ],
+      "touches": [
+        "src/worker/decay/archive.ts",
+        "src/worker/app.ts",
+        "src/worker/mcp/tools.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/decay/archive.test.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "src/web/App.tsx",
+        "src/web/api.ts",
+        "src/web/pages/Archive.tsx",
+        "src/web/pages/Expired.tsx",
+        "src/web/pages/Archive.test.tsx",
+        "src/web/pages/Expired.test.tsx",
+        "src/web/pages/Stream.tsx",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/test/helpers.tsx",
+        "e2e/decay.spec.ts",
+        "docs/api.md",
+        "docs/mcp.md"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Order the stream by points",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the ordering and paging behaviours to src/worker/links/stream.test.ts and confirm they fail",
+        "Order the unpinned part of listStream by points descending, then last_used_at descending, then id descending, with points computed at one reference time",
+        "Give the stream cursor a new shape that carries the reference time of the first page with the last row's points, last_used_at and id, so later pages use the first page's points; refuse any other shape, the previous {s: 'u', l, i} among them, with 400 invalid_cursor",
+        "Confirm streamPage's filters-only searches, the topic and tag searches among them, follow the same order through listStream",
+        "Describe the order in docs/api.md and docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/links/stream.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/links/stream.test.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Say each link's points in its decay note and on its card",
+      "criteria": [
+        "REQ-9"
+      ],
+      "steps": [
+        "Add the decay-note behaviours to src/worker/decay/decay.test.ts and the card behaviours to src/web/components/LinkCard.test.tsx and confirm they fail",
+        "Make decayFields write the four forms of decay_note, the expired form first, then pinned, then in a workspace, then the points form with singular 'point' and 'day' for 1 and 'expires today' at 0 or below",
+        "Show decay_note on every card, drop the dormant class and dimming and the sticky label, and keep the dead marks",
+        "Add the e2e test in e2e/decay.spec.ts in which a link used 10 times 5 days ago is listed above one used once today, each card showing its note",
+        "Update docs/api.md for decay_note and run make doc"
+      ],
+      "touches": [
+        "src/worker/decay/note.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/web/components/LinkCard.tsx",
+        "src/web/components/LinkCard.test.tsx",
+        "src/design",
+        "e2e/decay.spec.ts",
+        "docs/api.md",
+        "docs/generated"
+      ]
+    }
+  ]
+}
