@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { api, createToken, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  createToken,
+  deliverIndexing,
+  env,
+  seedLinks,
+  setNow,
+  signIn,
+  type TestUser,
+} from '../test/helpers';
+import { ARTICLES, seedArticle } from '../test/meaning';
 import { SELF } from 'cloudflare:test';
 import { readerKey, snapshotKey } from '../fetcher/snapshots';
 
@@ -83,6 +93,26 @@ describe('GET /api/v1/export', () => {
       body.tags.length,
     ]).toEqual([3, 2, 2, 4]);
     expect(text.endsWith('"complete":true}')).toBe(true);
+  });
+
+  it('is the same document once the library is indexed by meaning', async () => {
+    setNow('2026-11-07T10:00:00.000Z');
+    const user = await signIn();
+    const ids = [
+      await seedArticle(user, ARTICLES.alarms),
+      await seedArticle(user, ARTICLES.tomatoes),
+    ];
+    const before = await exportOf(user);
+
+    await deliverIndexing(ids.map((link_id) => ({ user_id: user.id, link_id })));
+    expect(
+      await env.DB.prepare('SELECT COUNT(*) AS n FROM link_passages').first('n'),
+    ).toBeGreaterThan(0);
+
+    const after = await exportOf(user);
+    expect(after.text).toBe(before.text);
+    expect(after.text).not.toContain('vector');
+    expect(after.text).not.toContain('passage');
   });
 
   it('gives every link, in every state, its API representation and its content URLs', async () => {

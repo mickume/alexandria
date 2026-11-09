@@ -361,7 +361,7 @@ export async function unpinLink(
 }
 
 /**
- * Deletes one of the user's links, its use and fetch events and its text at once and for good,
+ * Deletes one of the user's links, its use and fetch events, its text and its passages at once and for good,
  * closing the gap in the pinned section if it was pinned. Returns false when
  * the user has no such link.
  */
@@ -370,6 +370,8 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
+    // Its passages go with it; the trigger on them queues their vectors for deletion.
+    db.prepare('DELETE FROM link_passages WHERE link_id = ? AND user_id = ?').bind(id, userId),
     ...leaveAllWorkspaces(db, id),
     db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),

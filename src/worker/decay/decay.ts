@@ -71,6 +71,7 @@ function removalStatements(db: D1Database, userId: string, cutoff: string): D1Pr
   return [
     db.prepare(`DELETE FROM link_uses WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_texts WHERE link_id IN (${removed})`).bind(userId, cutoff),
+    db.prepare(`DELETE FROM link_passages WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_events WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_tags WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db

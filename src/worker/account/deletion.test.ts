@@ -7,6 +7,7 @@ import {
   createToken,
   deliverAccount,
   deliverEnrichments,
+  deliverIndexing,
   deliverFetches,
   deliverLiveness,
   env,
@@ -14,12 +15,14 @@ import {
   recordEnrichQueue,
   recordFetchQueue,
   recordLivenessQueue,
+  runEveryMinute,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
 } from '../test/helpers';
 import { googleSignIn } from '../test/google';
+import { meaning } from '../test/meaning';
 import { deletionHooks } from './deletion';
 import { FakeAi } from '../test/ai';
 import { FakeOrigin } from '../test/origin';
@@ -297,6 +300,16 @@ describe('the deletion job', () => {
       await everything(b, 'b');
       const aLinks = await linkIdsOf(a.id);
       const bLinks = await linkIdsOf(b.id);
+      // Both libraries are indexed, and the every-minute run has had its turn with them.
+      for (const [user, links] of [
+        [a, aLinks],
+        [b, bLinks],
+      ] as const) {
+        await deliverIndexing(links.map((link_id) => ({ user_id: user.id, link_id })));
+      }
+      await runEveryMinute();
+      expect(await count('link_passages', 'user_id = ?', a.id)).toBeGreaterThan(0);
+      expect(meaning.index.all(a.id).length).toBeGreaterThan(0);
       const bRows = await rowsOf(b.id, bLinks);
       const bObjects = await objectsOf(b.id);
       expect(Object.keys(bObjects).length).toBeGreaterThan(0);
@@ -307,6 +320,10 @@ describe('the deletion job', () => {
       });
       expect(r.status).toBe(202);
       await driveDeletion(queue);
+      // The vectors of the removed passages leave the index at the next every-minute run.
+      await runEveryMinute();
+      expect(meaning.index.all(a.id)).toEqual([]);
+      expect(meaning.index.all(b.id).length).toBeGreaterThan(0);
       const left = await rowsOf(a.id, aLinks);
       for (const [table, rows] of Object.entries(left)) expect(rows, table).toEqual([]);
       expect(await objectsOf(a.id)).toEqual({});
