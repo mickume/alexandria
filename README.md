@@ -29,7 +29,9 @@ apply the migrations with `npx wrangler d1 migrations apply alexandria --local`.
 
 To deploy to Cloudflare, run `npm run deploy` with `CLOUDFLARE_API_TOKEN`
 set (its permissions, Vectorize among them, are listed under
-[Deploying](docs/configuration.md#deploying)).
+[Deploying](docs/configuration.md#deploying)). To set the deployment's
+settings and secrets, copy `.env.example` to `.env`, fill it in and run
+`npm run configure`.
 
 ## Search
 

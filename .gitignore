@@ -3,6 +3,9 @@ dist/
 coverage/
 .wrangler/
 .dev.vars
+.env
+.env.*
+!.env.example
 test-results/
 playwright-report/
 *.log

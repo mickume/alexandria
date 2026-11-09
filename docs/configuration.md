@@ -8,9 +8,11 @@ for local development.
 ## Variables
 
 `wrangler.jsonc` holds the settings every deployment shares. The settings of
-one deployment are not in it: set them with `wrangler secret put <NAME>` (or
-as variables in the dashboard; `keep_vars` keeps those across deploys), and in
-`.dev.vars` for local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secrets below) nobody can sign in.
+one deployment are not in it: set them all at once from a `.env` file with
+`npm run configure` (see [Setting a deployment's settings](#setting-a-deployments-settings)),
+one by one with `wrangler secret put <NAME>` (or as variables in the
+dashboard; `keep_vars` keeps those across deploys), and in `.dev.vars` for
+local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secrets below) nobody can sign in.
 
 | Name               | Where                       | Meaning |
 | ------------------ | --------------------------- | ------- |
@@ -86,10 +88,32 @@ is nothing to do. The token needs Account > Workers Scripts, D1, Queues, Workers
 R2 Storage and Vectorize, each Edit. Workers AI is used through its binding
 and is billed to the account; the script does not check it.
 
-Set the per-deployment settings once (above), with the secrets below, and add
+Set the per-deployment settings once (above), with the secrets, and add
 `<the site's origin>/auth/google/callback` (for example
 `https://alexandria.<subdomain>.workers.dev/auth/google/callback`) as an
 authorised redirect URI of the Google OAuth client.
+
+### Setting a deployment's settings
+
+`npm run configure` (`scripts/configure.sh`) sets the per-deployment settings
+from a `.env` file in the checkout, or from the file named after it
+(`npm run configure -- prod.env`). Copy `.env.example` to `.env` (git ignores
+`.env` and `.env.*`) and fill it in. The script stores each of
+`ALLOWED_EMAILS`, `GOOGLE_CLIENT_ID`, `PUBLIC_ORIGIN`, `GOOGLE_CLIENT_SECRET`
+and `KEY_ENCRYPTION_KEY` that the file holds as a secret of the Worker, in one
+`wrangler secret bulk` call, so that every deploy keeps them; a setting the
+file leaves out is left as it is. `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` may be in the file too: they are used to reach the
+account when the environment does not set them, and are never uploaded.
+
+The file is read as wrangler reads a `.env` file: one `NAME=value` a line,
+blank lines and lines starting with `#` skipped, the quotes around a value
+removed, and an unquoted value ending at its first `#` (so a value holding
+`#` or spaces needs quotes). Any other name, an empty value or a line that is
+not `NAME=value` stops the script before anything is sent, naming the line.
+It prints the names it sets, never the values. When the Worker does not exist
+yet, wrangler creates it as a draft to hold the secrets. The token needs
+Account > Workers Scripts > Edit.
 
 ### Previews
 

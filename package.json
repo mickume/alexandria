@@ -13,7 +13,8 @@
     "build": "vite build",
     "test": "vitest run",
     "e2e": "playwright test",
-    "deploy": "scripts/deploy.sh"
+    "deploy": "scripts/deploy.sh",
+    "configure": "scripts/configure.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
