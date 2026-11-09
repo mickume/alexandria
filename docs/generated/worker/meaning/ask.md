@@ -16,6 +16,22 @@ How many passages an answer is written from.
 
 ***
 
+### DETAILED\_MAX\_TOKENS
+
+> `const` **DETAILED\_MAX\_TOKENS**: `4096` = `4_096`
+
+The most tokens a detailed answer may hold.
+
+***
+
+### DETAILED\_PASSAGES
+
+> `const` **DETAILED\_PASSAGES**: `16` = `16`
+
+How many passages a detailed answer is written from.
+
+***
+
 ### NOTHING\_ANSWERS
 
 > `const` **NOTHING\_ANSWERS**: `"Nothing in your library answers this."` = `'Nothing in your library answers this.'`

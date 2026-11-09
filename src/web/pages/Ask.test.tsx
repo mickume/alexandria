@@ -6,6 +6,13 @@ import { FakeApi, makeLink, renderPage } from '../test/helpers';
 const alarms = makeLink({ id: 'l1', title: 'Durable Object alarms', host: 'example.com' });
 const queues = makeLink({ id: 'l2', title: 'Cloudflare Queues explained', host: 'docs.example' });
 
+/** A whole answer: its sources, its text in one piece, and done. */
+const answered = (sources: { n: number; link: typeof alarms }[], text: string) => ({
+  status: 200,
+  headers: sseHeaders,
+  text: event('sources', { sources }) + event('delta', { text }) + event('done', {}),
+});
+
 const encoder = new TextEncoder();
 
 /** One server-sent event. */
@@ -102,7 +109,7 @@ describe('the Ask page', () => {
     });
     const cited = await within(answer).findByRole('link', { name: '[1]' });
     expect(cited.getAttribute('href')).toBe('/links/l1');
-    expect(answer.textContent).toBe('Use an alarm [1].');
+    expect(answer.textContent?.trim()).toBe('Use an alarm [1].');
     const sources = within(screen.getByRole('list', { name: 'Sources' }));
     const site = sources.getByRole('link', { name: 'Durable Object alarms' });
     expect(site.getAttribute('href')).toBe('/api/v1/links/l1/open');
@@ -198,7 +205,7 @@ describe('the Ask page', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toBe('timed out');
     const answer = screen.getByRole('region', { name: 'Answer' });
-    expect(answer.textContent).toBe('Use an ');
+    expect(answer.textContent?.trim()).toBe('Use an');
     expect(answer.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -222,5 +229,101 @@ describe('the Ask page', () => {
 
     expect(await screen.findByText('Fine.')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('renders the answer’s Markdown, keeping each [n] a link to its source', async () => {
+    renderPage(
+      '/ask',
+      api(answered([{ n: 1, link: alarms }], '## Alarms\n\nUse **an alarm** [1].')),
+    );
+
+    await ask('alarms');
+
+    const answer = await screen.findByRole('region', { name: 'Answer' });
+    expect(within(answer).getByRole('heading', { name: 'Alarms' })).toBeTruthy();
+    expect(answer.querySelector('strong')?.textContent).toBe('an alarm');
+    const cited = within(answer).getByRole('link', { name: '[1]' });
+    fireEvent.click(cited);
+    expect(window.location.pathname).toBe('/links/l1');
+  });
+
+  it.each([
+    {
+      name: 'the answer as Markdown and its sources with their URLs',
+      sources: [
+        { n: 1, link: alarms },
+        { n: 2, link: queues },
+      ],
+      text: 'Use an alarm [1] or a queue [2].',
+      copied:
+        'Use an alarm [1] or a queue [2].\n\nSources:\n\n' +
+        '- [1] [Durable Object alarms](https://example.com/l1)\n' +
+        '- [2] [Cloudflare Queues explained](https://example.com/l2)\n',
+    },
+    {
+      name: 'only the links found when the model wrote no answer',
+      sources: [{ n: 1, link: alarms }],
+      text: 'Nothing in your library answers this.',
+      copied: '- [Durable Object alarms](https://example.com/l1)\n',
+    },
+  ])('copies $name', async ({ sources, text, copied }) => {
+    const user = userEvent.setup();
+    const links = sources.map((s) => ({
+      ...s,
+      link: { ...s.link, url: `https://example.com/${s.link.id}` },
+    }));
+    renderPage('/ask', api(answered(links, text)));
+
+    await ask('background work');
+    await user.click(await screen.findByRole('button', { name: 'Copy' }));
+
+    expect(await navigator.clipboard.readText()).toBe(copied);
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
+  });
+
+  it('offers neither Copy nor Tell me more when nothing was found', async () => {
+    renderPage('/ask', api(answered([], 'Nothing in your library answers this.')));
+
+    await ask('quarterly tax return');
+
+    await screen.findByText('Nothing in your library answers this.');
+    expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Tell me more' })).toBeNull();
+  });
+
+  it('asks the same question for a detailed answer on Tell me more, which replaces the answer', async () => {
+    const user = userEvent.setup();
+    const answers = [
+      answered([{ n: 1, link: alarms }], 'Use an alarm [1].'),
+      answered(
+        [
+          { n: 1, link: alarms },
+          { n: 2, link: queues },
+        ],
+        'In detail: an alarm [1], or a queue [2].',
+      ),
+    ];
+    const fake = api();
+    fake.on('POST', '/api/v1/ask', () => answers.shift()!);
+    renderPage('/ask', fake);
+
+    await ask('background work');
+    await screen.findByText(/Use an alarm/);
+    await user.type(question(), ' changed');
+    await user.click(screen.getByRole('button', { name: 'Tell me more' }));
+
+    expect(await screen.findByText(/In detail/)).toBeTruthy();
+    expect(screen.queryByText(/Use an alarm/)).toBeNull();
+    expect(fake.sent('POST', '/api/v1/ask').map((r) => r.body)).toEqual([
+      { question: 'background work' },
+      { question: 'background work', detailed: true },
+    ]);
+    expect(
+      within(screen.getByRole('list', { name: 'Sources' })).getByText(
+        'Cloudflare Queues explained',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tell me more' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
   });
 });

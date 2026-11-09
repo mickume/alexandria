@@ -103,6 +103,16 @@ describe('a question that is refused before the answer streams', () => {
       },
     },
     {
+      name: 'a detailed flag that is not true or false',
+      body: { question: 'alarms', detailed: 'yes' },
+      status: 400,
+      json: {
+        error: 'invalid_detailed',
+        field: 'detailed',
+        message: 'detailed must be true or false',
+      },
+    },
+    {
       name: 'a body that is not JSON',
       body: 'not json',
       status: 400,
@@ -265,6 +275,32 @@ describe('an answer to a question', () => {
       expect(Math.max(...perSource.values())).toBeLessThanOrEqual(3);
       // The big link’s 3 passages and 5 of the 6 others make the 8.
       expect((sent[0]!.data.sources as unknown[]).length).toBe(6);
+    },
+  );
+
+  it.each([
+    { name: 'an ask', detailed: undefined, passages: 8, maxTokens: 1024, thorough: false },
+    { name: 'a detailed ask', detailed: true, passages: 16, maxTokens: 4096, thorough: true },
+  ])(
+    'sends $name $passages passages and room for $maxTokens tokens',
+    async ({ detailed, passages, maxTokens, thorough }) => {
+      const user = await signIn();
+      const ai = new FakeAi();
+      await saveKey(user);
+      const articles = Array.from({ length: 7 }, (_, i): Article => ({
+        url: `https://notes${i}.example/`,
+        title: `Scheduling notes ${i}`,
+        text: 'Schedule a task for later. '.repeat(330),
+      }));
+      await indexed(user, articles);
+
+      await (await ask(user, { question: 'schedule a task', detailed })).response.text();
+
+      const [request] = ai.asks;
+      expect(promptOf(request!.body).match(/^\[\d+\] /gm)).toHaveLength(passages);
+      expect(request!.body.max_tokens).toBe(maxTokens);
+      expect(String(request!.body.system).includes('detailed, thorough')).toBe(thorough);
+      expect(String(request!.body.system)).toContain('Nothing in your library answers this.');
     },
   );
 

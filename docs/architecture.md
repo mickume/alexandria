@@ -389,7 +389,7 @@ one namespace per user.
 links with the owner's own AI provider. It refuses in this order: the body, the
 question (`parseQuery` with a cap of 500 characters), the owner's key
 (`getAiSettings`: none, or marked rejected), and the index (`findPassages`
-for the 8 best passages, at most 3 a link). Then it numbers the sources from 1
+for the 8 best passages, at most 3 a link; 16 for a detailed ask). Then it numbers the sources from 1
 in the order of their best passage, reads each as `toView` shows it, and
 answers with a `ReadableStream` of server-sent events: `sources` first, a
 `delta` for each piece `streamAnswer` (`enrich/providers.ts`) hands on, and
@@ -397,8 +397,12 @@ answers with a `ReadableStream` of server-sent events: `sources` first, a
 OpenRouter through `POST /chat/completions` with `stream: true`, and bounds the
 whole answer by the provider timeout. The prompt gives the provider each passage
 headed by its source's number and title and the free words of the question
-(the filters only narrow the passages). Nothing about a question or an answer is
-stored, and no use of any link is recorded.
+(the filters only narrow the passages); a detailed ask (`detailed: true`, the
+Ask page's Tell me more) adds an instruction to answer thoroughly in Markdown
+and allows 4,096 tokens instead of 1,024. The Ask page renders the answer with
+`renderAnswer` (`components/Markdown.tsx`), the note sanitiser that also keeps
+links to `/links/{id}`, which each citation `[n]` becomes. Nothing about a
+question or an answer is stored, and no use of any link is recorded.
 
 ## MCP server
 

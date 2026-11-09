@@ -919,11 +919,20 @@ a.brand:hover span {
   padding: var(--q-space-3) var(--q-space-4);
   border: var(--q-border-width) solid var(--q-border-default);
   border-radius: var(--q-radius-md);
-  white-space: pre-wrap;
 }
 
-.ask-answer p {
-  margin: 0;
+.ask-answer .markdown > :first-child {
+  margin-top: 0;
+}
+
+.ask-answer .markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.ask-actions {
+  display: flex;
+  gap: var(--q-space-2);
+  margin-top: var(--q-space-4);
 }
 
 .ask-sources {

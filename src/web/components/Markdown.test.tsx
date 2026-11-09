@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { Markdown } from './Markdown';
+import { Markdown, renderAnswer } from './Markdown';
 
 describe('a rendered note', () => {
   it('renders Markdown with its links', () => {
@@ -61,5 +61,33 @@ describe('a rendered note', () => {
   ])('keeps out $label', ({ note, check }) => {
     const { container } = render(<Markdown source={note} />);
     check(container.firstElementChild as HTMLElement);
+  });
+});
+
+describe('a rendered answer', () => {
+  /** The answer rendered into an element, with sources 1 and 2. */
+  function rendered(source: string): HTMLElement {
+    const div = document.createElement('div');
+    div.innerHTML = renderAnswer(
+      source,
+      (n) => ({ 1: '/links/l1', 2: '/links/l2', 3: 'javascript:alert(1)' })[n],
+    );
+    return div;
+  }
+
+  it('makes each citation of a source a link to its page, as [n]', () => {
+    const links = [...rendered('An alarm [1][2], see **this** [9].').querySelectorAll('a')];
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['[1]', '/links/l1'],
+      ['[2]', '/links/l2'],
+    ]);
+    expect(links[0]?.getAttribute('target')).toBeNull();
+  });
+
+  it.each([
+    { label: 'a citation whose page is not a link page', source: 'See [3].' },
+    { label: 'a relative link the answer writes itself', source: '[x](/settings)' },
+  ])('keeps no link for $label', ({ source }) => {
+    expect(rendered(source).querySelector('a')?.getAttribute('href') ?? null).toBeNull();
   });
 });

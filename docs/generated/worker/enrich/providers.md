@@ -8,6 +8,12 @@ What a streamed answer is asked: the instruction, and the passages and question.
 
 #### Properties
 
+##### maxTokens?
+
+> `optional` **maxTokens?**: `number`
+
+The most tokens the answer may hold; ANSWER_MAX_TOKENS when not given.
+
 ##### prompt
 
 > **prompt**: `string`
@@ -86,7 +92,7 @@ Any other failure: a 4xx, a rate limit, a refusal, an unusable answer.
 
 > `const` **ANSWER\_MAX\_TOKENS**: `1024` = `1_024`
 
-The most tokens an answer to a question may hold.
+The most tokens an answer to a question may hold, unless its request says otherwise.
 
 ***
 

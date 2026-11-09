@@ -43,17 +43,24 @@ export function openWebLinksInNewTab(sanitiser: ReturnType<typeof createDOMPurif
   });
 }
 
-/** A sanitiser of its own, so that its URL rule does not reach other sanitising on the page. */
-const purifier = createDOMPurify(window);
-openWebLinksInNewTab(purifier);
-purifier.addHook('uponSanitizeAttribute', (_node, data) => {
-  if (
-    (data.attrName === 'href' || data.attrName === 'src') &&
-    !SAFE_URL.test(data.attrValue.trim())
-  ) {
-    data.keepAttr = false;
-  }
-});
+/** A link page of the website, which an answer's citation points to. */
+const LINK_PAGE = /^\/links\/[\w-]+$/;
+
+/** A sanitiser of its own that keeps only the URLs `safe` accepts, so that its rule reaches no other sanitising on the page. */
+function sanitiser(safe: (url: string) => boolean): ReturnType<typeof createDOMPurify> {
+  const purifier = createDOMPurify(window);
+  openWebLinksInNewTab(purifier);
+  purifier.addHook('uponSanitizeAttribute', (_node, data) => {
+    if ((data.attrName === 'href' || data.attrName === 'src') && !safe(data.attrValue.trim())) {
+      data.keepAttr = false;
+    }
+  });
+  return purifier;
+}
+
+const purifier = sanitiser((url) => SAFE_URL.test(url));
+/** An answer may also link to the website's link pages, its citations. */
+const answerPurifier = sanitiser((url) => SAFE_URL.test(url) || LINK_PAGE.test(url));
 
 /** Markdown with raw HTML reduced to its text: a note's own HTML never becomes an element. */
 const markdown = new Marked({ async: false, gfm: true });
@@ -65,13 +72,26 @@ markdown.use({
   },
 });
 
+const SANITISE = {
+  ALLOWED_TAGS: MARKDOWN_TAGS,
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'type', 'checked', 'disabled'],
+};
+
 /** A note as HTML: Markdown rendered, raw HTML removed, only http, https and mailto URLs kept. */
 export function renderNote(source: string): string {
-  const html = markdown.parse(source, { async: false });
-  return purifier.sanitize(html, {
-    ALLOWED_TAGS: MARKDOWN_TAGS,
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'type', 'checked', 'disabled'],
+  return purifier.sanitize(markdown.parse(source, { async: false }), SANITISE);
+}
+
+/**
+ * An answer as HTML, rendered as a note is, with each citation [n] that
+ * `citation` gives a link page for made a link to that page.
+ */
+export function renderAnswer(source: string, citation: (n: number) => string | undefined): string {
+  const cited = source.replace(/\[(\d+)\](?!\()/g, (match, n: string) => {
+    const page = citation(Number(n));
+    return page && LINK_PAGE.test(page) ? `[\\[${n}\\]](${page})` : match;
   });
+  return answerPurifier.sanitize(markdown.parse(cited, { async: false }), SANITISE);
 }
 
 /** A rendered note. */

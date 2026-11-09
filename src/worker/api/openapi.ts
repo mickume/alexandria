@@ -607,6 +607,12 @@ export const operations: Operation[] = [
         .describe(
           'The question: free words, with the filters tag:, topic:, host:, state:, in: and is:, at most 500 characters',
         ),
+      detailed: z
+        .boolean()
+        .optional()
+        .describe(
+          'Asks for a longer, thorough answer from the 16 best passages instead of 8 (default false)',
+        ),
     }),
     responses: {
       200: {
@@ -615,7 +621,7 @@ export const operations: Operation[] = [
         mediaType: 'text/event-stream',
       },
       400: error(
-        'invalid_json, invalid_question (field question), question_too_long (field question) or invalid_filter (field question)',
+        'invalid_json, invalid_question (field question), question_too_long (field question), invalid_filter (field question) or invalid_detailed (field detailed)',
       ),
       409: error('no_ai_key, or ai_key_rejected with the provider’s message'),
       503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),

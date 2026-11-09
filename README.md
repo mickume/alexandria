@@ -79,7 +79,11 @@ AI provider with the key saved under Settings, from the passages of your links
 that best match the question. Each `[1]`, `[2]`… in the answer opens the detail
 page of the link it came from, and the links are listed under the answer; a
 title there opens the site in a new tab, as everywhere in Alexandria. If nothing in your
-library answers, it says so without calling the provider. Nothing is kept:
+library answers, it says so without calling the provider. Once the answer has
+arrived, **Copy** puts it on the clipboard as Markdown with its sources' titles
+and URLs (only the links found, when the model wrote no answer), and **Tell me
+more** asks the same question again for a longer, detailed answer from more
+passages, which replaces the first. Nothing is kept:
 asking again, or leaving the page, loses the answer, and asking records no use
 of the links it cites. Without a key the page asks you to add one in settings.
 Agents get the passages instead, with the MCP tool `search_passages`.

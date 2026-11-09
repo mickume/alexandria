@@ -447,14 +447,19 @@ export type AskEvent =
 
 /**
  * Asks the library a question and hands each event of the streamed answer to
- * `onEvent` as it arrives. A refusal before the stream is thrown as an ApiError.
+ * `onEvent` as it arrives; `detailed` asks for a longer, thorough answer. A
+ * refusal before the stream is thrown as an ApiError.
  */
-export async function ask(question: string, onEvent: (event: AskEvent) => void): Promise<void> {
+export async function ask(
+  question: string,
+  onEvent: (event: AskEvent) => void,
+  { detailed = false } = {},
+): Promise<void> {
   const response = await fetch('/api/v1/ask', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(detailed ? { question, detailed } : { question }),
   });
   if (response.status === 401) {
     window.location.assign('/signin');

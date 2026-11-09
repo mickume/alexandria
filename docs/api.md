@@ -733,8 +733,9 @@ meaning is unavailable, try again"}`.
 #### `POST /api/v1/ask`
 
 Asks the library a question, which the owner's own AI provider answers from
-passages of the owner's own links: `{"question": "<text>"}`, at most 500
-characters, written in the search query language. Its free words are the
+passages of the owner's own links: `{"question": "<text>", "detailed": false}`.
+The question is at most 500 characters, written in the search query language;
+`detailed` (optional, default `false`) asks for a longer, thorough answer. Its free words are the
 question, and the prefix filters narrow the passages exactly as in
 `GET /api/v1/passages`. The provider is the one saved under settings, called
 with the owner's key and model; nothing about the question or the answer is
@@ -751,6 +752,8 @@ the index:
   only filters;
 - `400 {"error": "question_too_long", "field": "question", "message": "a
   question of at most 500 characters"}`;
+- `400 {"error": "invalid_detailed", "field": "detailed", "message": "detailed
+  must be true or false"}`;
 - `400 {"error": "invalid_filter", "field": "question", "message"}` naming the
   filter, as in search;
 - `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`;
@@ -775,7 +778,10 @@ characters each, as `GET /api/v1/passages` would return them under the same
 filters) and sends them, each headed by its source's number and title, with the
 free words of the question to the provider. The provider is instructed to
 answer from the passages only, to cite every statement as `[n]`, and to answer
-"Nothing in your library answers this." when they do not. When no passage
+"Nothing in your library answers this." when they do not. A detailed ask
+retrieves the 16 best passages instead, adds an instruction to write a
+detailed, thorough answer structured in Markdown, and lets the answer run to
+4,096 tokens instead of 1,024. When no passage
 reaches the similarity threshold the provider is not called and the answer is
 `sources` with an empty list, that one `delta`, and `done`.
 

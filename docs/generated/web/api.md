@@ -1568,10 +1568,11 @@ The prefix filters of a query, each as written: tag:x, topic:"web development", 
 
 ### ask()
 
-> **ask**(`question`, `onEvent`): `Promise`\<`void`\>
+> **ask**(`question`, `onEvent`, `__namedParameters?`): `Promise`\<`void`\>
 
 Asks the library a question and hands each event of the streamed answer to
-`onEvent` as it arrives. A refusal before the stream is thrown as an ApiError.
+`onEvent` as it arrives; `detailed` asks for a longer, thorough answer. A
+refusal before the stream is thrown as an ApiError.
 
 #### Parameters
 
@@ -1582,6 +1583,12 @@ Asks the library a question and hands each event of the streamed answer to
 ##### onEvent
 
 (`event`) => `void`
+
+##### \_\_namedParameters?
+
+###### detailed?
+
+`boolean` = `false`
 
 #### Returns
 

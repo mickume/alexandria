@@ -251,9 +251,11 @@ export async function enrichWith(
 export interface AnswerRequest {
   system: string;
   prompt: string;
+  /** The most tokens the answer may hold; ANSWER_MAX_TOKENS when not given. */
+  maxTokens?: number;
 }
 
-/** The most tokens an answer to a question may hold. */
+/** The most tokens an answer to a question may hold, unless its request says otherwise. */
 export const ANSWER_MAX_TOKENS = 1_024;
 
 const DECLINED = { ok: false, kind: 'failed', message: 'the model declined' } as const;
@@ -323,7 +325,7 @@ export async function streamAnswer(
         const stream = anthropic(env, call.apiKey).messages.stream(
           {
             model: call.model,
-            max_tokens: ANSWER_MAX_TOKENS,
+            max_tokens: request.maxTokens ?? ANSWER_MAX_TOKENS,
             system: request.system,
             messages: [{ role: 'user', content: request.prompt }],
           },
@@ -346,7 +348,7 @@ export async function streamAnswer(
           body: JSON.stringify({
             model: call.model,
             stream: true,
-            max_tokens: ANSWER_MAX_TOKENS,
+            max_tokens: request.maxTokens ?? ANSWER_MAX_TOKENS,
             messages: [
               { role: 'system', content: request.system },
               { role: 'user', content: request.prompt },
