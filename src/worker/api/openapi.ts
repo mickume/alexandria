@@ -1017,7 +1017,9 @@ export const operations: Operation[] = [
           link: LinkWithNote,
         }),
       },
-      409: error('link_expired: "expired links are not checked"'),
+      409: error(
+        'link_expired: "expired links are not checked", or link_archived: "archived links are not checked"',
+      ),
       429: {
         ...error('checked_recently: "already checked recently", or rate_limited'),
         headers: {

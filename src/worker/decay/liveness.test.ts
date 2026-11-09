@@ -95,6 +95,11 @@ describe('scheduling liveness checks', () => {
     { label: 'active, never checked, added 7 days ago', seed: { addedDaysAgo: 7 }, due: true },
     { label: 'active, never checked, added 2 days ago', seed: { addedDaysAgo: 2 }, due: false },
     {
+      label: 'archived, checked 30 days ago',
+      seed: { state: 'archived', checkedDaysAgo: 30 },
+      due: false,
+    },
+    {
       label: 'pinned and expired, checked 30 days ago',
       seed: { state: 'expired', pinned: true, checkedDaysAgo: 30 },
       due: false,
@@ -132,7 +137,7 @@ describe('scheduling liveness checks', () => {
     if (due) expect(row?.check_enqueued_at).toBe(new Date(T).toISOString());
   });
 
-  it.each(['a deleted link', 'an expired link', 'a link checked an hour ago'])(
+  it.each(['a deleted link', 'an expired link', 'an archived link', 'a link checked an hour ago'])(
     'drops the message of %s',
     async (label) => {
       setNow(T);
@@ -144,6 +149,10 @@ describe('scheduling liveness checks', () => {
         await env.DB.prepare('DELETE FROM links WHERE id = ?').bind(id).run();
       if (label === 'an expired link')
         await env.DB.prepare("UPDATE links SET state = 'expired', expired_at = ? WHERE id = ?")
+          .bind(new Date(T).toISOString(), id)
+          .run();
+      if (label === 'an archived link')
+        await env.DB.prepare("UPDATE links SET state = 'archived', archived_at = ? WHERE id = ?")
           .bind(new Date(T).toISOString(), id)
           .run();
       if (label === 'a link checked an hour ago')
@@ -479,11 +488,14 @@ describe('checking a link on demand', () => {
     );
   }, 15_000);
 
-  it('is refused for an expired link, without a request to its address', async () => {
+  it.each([
+    { state: 'expired', error: 'link_expired', message: 'expired links are not checked' },
+    { state: 'archived', error: 'link_archived', message: 'archived links are not checked' },
+  ])('is refused for an $state link, without a request to its address', async (refusal) => {
     setNow(T);
     const user = await signIn();
     const id = await seedChecked(user, {
-      state: 'expired',
+      state: refusal.state,
       checkedDaysAgo: 10,
       url: 'https://expired-check.example/',
     });
@@ -495,7 +507,7 @@ describe('checking a link on demand', () => {
       .first();
     const r = await api('POST', `/api/v1/links/${id}/check`, { as: user.session });
     expect(r.status).toBe(409);
-    expect(r.json).toEqual({ error: 'link_expired', message: 'expired links are not checked' });
+    expect(r.json).toEqual({ error: refusal.error, message: refusal.message });
     expect(origin.log).toEqual([]);
     expect(
       await env.DB.prepare('SELECT last_checked_at FROM links WHERE id = ?').bind(id).first(),

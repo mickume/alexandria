@@ -267,6 +267,7 @@ describe('expiry by decay', () => {
     { state: 'unreachable', uses: 0, unused: 61, opts: {}, expected: 'expired' },
     { state: 'active', uses: 0, unused: 400, opts: { pinned: true }, expected: 'active' },
     { state: 'active', uses: 0, unused: 400, opts: { member: true }, expected: 'active' },
+    { state: 'archived', uses: 0, unused: 400, opts: {}, expected: 'archived' },
   ])(
     'leaves a link $state with $uses uses, unused $unused days, $opts $expected',
     async ({ state, uses, unused, opts, expected }) => {
@@ -278,8 +279,8 @@ describe('expiry by decay', () => {
       const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
       expect(link.state).toBe(expected);
       expect(link.expired_at).toBe(expected === 'expired' ? new Date(T).toISOString() : null);
-      // A link kept from expiry still loses its points.
-      expect(link.points).toBe(60 + uses - unused);
+      // A link kept from expiry still loses its points; an archived link has none.
+      expect(link.points).toBe(expected === 'archived' ? null : 60 + uses - unused);
     },
   );
 
@@ -414,7 +415,7 @@ describe('one evaluation', () => {
     setNow(T);
     const user = await signIn();
     const config = fc.record({
-      state: fc.constantFrom('pending', 'active', 'unreachable', 'expired'),
+      state: fc.constantFrom('pending', 'active', 'unreachable', 'expired', 'archived'),
       uses: fc.integer({ min: 0, max: 50 }),
       unused: fc.integer({ min: 0, max: 1000 }),
       expiredDays: fc.integer({ min: 0, max: 400 }),
@@ -459,7 +460,8 @@ describe('one evaluation', () => {
           links.forEach((l, i) => {
             const kept = l.pinned || l.member;
             let expected: string | null;
-            if (l.state === 'expired')
+            if (l.state === 'archived') expected = 'archived';
+            else if (l.state === 'expired')
               expected = !kept && l.expiredDays >= s.remove ? null : 'expired';
             else if (!kept && s.start + l.uses - l.unused <= 0) expected = 'expired';
             else expected = l.state;

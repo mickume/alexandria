@@ -593,7 +593,7 @@ nothing changes. Another user's link, or one that does not exist: `404`.
 
 ### Liveness
 
-Every active or pinned link that is not expired is checked weekly:
+Every active or pinned link that is neither expired nor archived is checked weekly:
 HEAD, then a headers-only GET when the HEAD fails, 10 seconds each, at most 5
 redirects, never more than one request per second to one host. A final 2xx
 passes. Three failed weekly checks in a row set `dead_since`; a later pass
@@ -610,7 +610,9 @@ result but does not count towards the three. At most one per link per 10
 minutes:
 `429 {"error": "checked_recently", "message": "already checked recently"}`
 with `Retry-After`. An expired link, without any request to its address:
-`409 {"error": "link_expired", "message": "expired links are not checked"}`.
+`409 {"error": "link_expired", "message": "expired links are not checked"}`;
+an archived link, likewise:
+`409 {"error": "link_archived", "message": "archived links are not checked"}`.
 
 ### Search
 

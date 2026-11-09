@@ -90,6 +90,49 @@ describe('using an expired link', () => {
   });
 });
 
+describe('using an archived link', () => {
+  it.each([
+    { label: 'an open', method: 'GET', path: (id: string) => `/api/v1/links/${id}/open`, uses: 4 },
+    { label: 'a read', method: 'GET', path: (id: string) => `/api/v1/links/${id}/reader`, uses: 4 },
+    {
+      label: 'a snapshot view',
+      method: 'GET',
+      path: (id: string) => `/api/v1/links/${id}/snapshot`,
+      uses: 4,
+    },
+    { label: 'a re-paste', method: 'POST', path: () => '/api/v1/links', uses: 3 },
+  ])('keeps it archived through $label, last used now', async ({ method, path, uses }) => {
+    const user = await signIn();
+    const url = 'https://kept.example';
+    const [id = ''] = await seedLinks(user, [{ url, state: 'archived', useCount: 3 }]);
+    const archivedAt = '2026-01-01T00:00:00.000Z';
+    await env.DB.prepare(
+      "UPDATE links SET archived_at = ?, content_kind = 'html', has_snapshot = 1 WHERE id = ?",
+    )
+      .bind(archivedAt, id)
+      .run();
+    await env.SNAPSHOTS.put(snapshotKey(user.id, id), '<html><body>kept</body></html>');
+    await env.SNAPSHOTS.put(
+      readerKey(user.id, id),
+      JSON.stringify({ title: 'T', byline: null, html: '<p>kept</p>' }),
+    );
+    const t = '2026-06-01T08:00:00.000Z';
+    setNow(t);
+    const r = await api(method, path(id), {
+      as: user.session,
+      ...(method === 'POST' ? { body: { url } } : {}),
+    });
+    expect(r.status).toBeLessThan(400);
+    const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(link).toMatchObject({
+      state: 'archived',
+      archived_at: archivedAt,
+      last_used_at: t,
+      use_count: uses,
+    });
+  });
+});
+
 describe('a link’s history', () => {
   it('lists its uses newest first', async () => {
     const user = await signIn();
