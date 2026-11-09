@@ -58,9 +58,10 @@ function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
  * link to its source, the sources listed under it, and a refusal or a failure
  * of the stream shown under whatever part of the answer arrived. Once it has
  * arrived, Tell me more asks the same question again for a detailed answer,
- * shown under the first with the sources it read, and Copy puts the answers
- * and their sources on the clipboard. Nothing is kept: asking again, or
- * leaving the page, loses the answer.
+ * which streams in under the first with a spinner until it is done and adds
+ * the sources it read, and Copy puts the answers and their sources on the
+ * clipboard. Nothing is kept: asking again, or leaving the page, loses the
+ * answer.
  */
 export function Ask() {
   const [question, setQuestion] = useState('');
@@ -125,6 +126,8 @@ export function Ask() {
     }
   }
 
+  /** The detailed answer is still arriving. */
+  const writingDetail = asking && asked?.detailed === true;
   const moreable = answered(answer) && !failure && asked !== null && !asked.detailed;
 
   return (
@@ -151,9 +154,14 @@ export function Ask() {
           <Answer text={answer} sources={sources} />
         </section>
       )}
-      {detail && (
-        <section className="ask-answer" aria-label="Detailed answer">
-          <Answer text={detail} sources={detailSources ?? sources} />
+      {(detail || writingDetail) && (
+        <section className="ask-answer" aria-label="Detailed answer" aria-busy={writingDetail}>
+          {detail && <Answer text={detail} sources={detailSources ?? sources} />}
+          {writingDetail && (
+            <p className="ask-progress muted" role="status">
+              <span className="q-spinner" aria-hidden="true" /> Writing a detailed answer…
+            </p>
+          )}
         </section>
       )}
       {failure && (

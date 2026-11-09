@@ -933,6 +933,18 @@ a.brand:hover span {
   margin-top: var(--q-space-3);
 }
 
+.ask-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--q-space-2);
+  margin: 0;
+  font-size: var(--q-text-sm);
+}
+
+.ask-answer .markdown + .ask-progress {
+  margin-top: var(--q-space-3);
+}
+
 .ask-actions {
   display: flex;
   gap: var(--q-space-2);

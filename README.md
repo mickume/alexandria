@@ -81,7 +81,8 @@ page of the link it came from, and the links are listed under the answer; a
 title there opens the site in a new tab, as everywhere in Alexandria. If nothing in your
 library answers, it says so without calling the provider. Once the answer has
 arrived, **Tell me more** asks the same question again for a longer, detailed
-answer from more passages, shown under the first, and **Copy** puts the
+answer from more passages, which streams in under the first with a spinner
+until it is done, and **Copy** puts the
 answers on the clipboard as plain text followed by their sources, each with its
 title and URL (only the links found, when the model wrote no answer). Answers
 are written as plain text with little formatting, so that they can be passed on

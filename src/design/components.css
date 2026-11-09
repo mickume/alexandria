@@ -989,6 +989,31 @@
     font-weight: var(--q-weight-semibold);
   }
 
+  /* A small turning ring that shows work in progress, sized to the text around it. */
+  .q-spinner {
+    display: inline-block;
+    flex: none;
+    width: 1em;
+    height: 1em;
+    border: 2px solid var(--q-border-default);
+    border-top-color: var(--q-accent-fg);
+    border-radius: var(--q-radius-full);
+    vertical-align: text-bottom;
+    animation: q-spin 800ms linear infinite;
+  }
+
+  @keyframes q-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .q-spinner {
+      animation-duration: 2400ms;
+    }
+  }
+
   /* What an empty list or a fruitless search shows. */
   .q-blankslate {
     display: flex;

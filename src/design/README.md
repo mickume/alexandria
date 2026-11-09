@@ -201,6 +201,9 @@ first column of `q-layout`, which stacks the columns on narrow screens.
   thing it is about.
 - `q-toast` is a dark notice at the bottom of the screen, with an optional
   `q-btn-link` action.
+- `q-spinner` is a small turning ring for work in progress, as big as the text
+  around it; it turns slowly when the system asks for reduced motion. Pair it
+  with text, or with `role="status"` and a label, so the progress is announced.
 - `q-blankslate` is what an empty list shows: `q-blankslate-heading` and
   `q-blankslate-description`. `--spacious` gives it more room.
 

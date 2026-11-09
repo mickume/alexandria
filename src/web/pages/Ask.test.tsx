@@ -340,6 +340,43 @@ describe('the Ask page', () => {
     );
   });
 
+  it('shows the detailed answer as it streams in, with a spinner until it is done', async () => {
+    const user = userEvent.setup();
+    const body = feed();
+    const answers = [
+      answered([{ n: 1, link: alarms }], 'Use an alarm [1].'),
+      { status: 200, headers: sseHeaders, stream: body.stream },
+    ];
+    const fake = api();
+    fake.on('POST', '/api/v1/ask', () => answers.shift()!);
+    renderPage('/ask', fake);
+
+    await ask('background work');
+    await user.click(await screen.findByRole('button', { name: 'Tell me more' }));
+
+    const detail = await screen.findByRole('region', { name: 'Detailed answer' });
+    expect(within(detail).getByRole('status').textContent).toContain('Writing a detailed answer');
+    expect(detail.getAttribute('aria-busy')).toBe('true');
+
+    await act(async () => {
+      body.send(
+        event('sources', { sources: [{ n: 1, link: alarms }] }),
+        event('delta', { text: 'In detail' }),
+      );
+    });
+    await within(detail).findByText(/In detail/);
+    expect(within(detail).getByRole('status')).toBeTruthy();
+
+    await act(async () => {
+      body.send(event('delta', { text: ', an alarm [1].' }), event('done', {}));
+      body.end();
+    });
+    await within(detail).findByRole('link', { name: '[1]' });
+    expect(within(detail).queryByRole('status')).toBeNull();
+    expect(detail.getAttribute('aria-busy')).toBe('false');
+    expect(detail.textContent?.trim()).toBe('In detail, an alarm [1].');
+  });
+
   it('keeps the first answer when the detailed one fails, showing why', async () => {
     const user = userEvent.setup();
     const answers = [
