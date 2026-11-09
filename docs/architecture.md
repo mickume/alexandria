@@ -33,6 +33,17 @@ browser ──► Worker (src/worker/index.ts)
     pinning and deleting (`store.ts`), the stream (`stream.ts`), uses and
     history (`use.ts`), and the routes.
 
+The stream (`links/stream.ts`, `listStream`) lists the pinned links by pin
+position, then every other link by its points descending, then `last_used_at`
+descending, then id descending. The points are computed in SQL at one
+reference time, the time of the first page, with the same integer day count
+as `pointsAt`. The cursor carries that time (`{s: 'p', t, p}` in the pinned
+section, `{s: 'r', t, n, l, i}` after it, `n` being the last row's points at
+`t`), so later pages rank by the first page's points and a link crossing a
+day boundary while the owner pages is neither skipped nor repeated; any other
+cursor shape is refused. Every search made of filters alone, the topic and tag
+searches included, goes through `listStream` and has the same order.
+
 ## Sign-in
 
 `GET /auth/google` starts Google's OAuth 2.0 authorization-code flow with PKCE

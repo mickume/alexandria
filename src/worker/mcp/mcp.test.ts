@@ -415,6 +415,8 @@ describe('search_links and list_recent', () => {
   });
 
   it('list_recent returns the first page of the stream', async () => {
+    // The stream's cursor carries the time of its first page.
+    setNow('2026-11-07T10:00:00.000Z');
     const a = await agent();
     const ids = await seedLinks(
       a,

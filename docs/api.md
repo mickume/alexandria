@@ -207,8 +207,15 @@ in the stream in the order given.
 #### `GET /api/v1/links`
 
 The stream: the links that are not expired, the pinned ones first in pin
-position order, then the rest by `last_used_at`, newest first, with the id
-breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
+position order, then the rest by `points`, highest first, then by
+`last_used_at`, newest first, with the id (descending) breaking ties. With
+`start_points` 60, a link used 10 times and last used 5 days ago (65 points)
+is listed above one used once today (61). Query: `limit` (1 to 100, default
+50), `cursor`. The pages after the first are ordered by the points as of the
+first page, so every link that does not change while you page appears exactly
+once, even when a day boundary passes; a cursor this order did not issue (one
+of the former order by last use among them) is
+`400 {"error": "invalid_cursor", "field": "cursor", "message"}`.
 
 - `200 {"items": [<link>], "next_cursor": <string or null>}`
 - `400 {"error": "invalid_limit", "field": "limit", "message"}` or
