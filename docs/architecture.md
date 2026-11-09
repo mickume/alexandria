@@ -14,6 +14,7 @@ browser ──► Worker (src/worker/index.ts)
                      │
                      ├──► D1 (DB)          users, sessions, tokens, links, link_uses, rate_limits, …
                      ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites
+                     ├──► INDEX_QUEUE ──► index worker ──► Workers AI (AI) and Vectorize (VECTORIZE)
                      └──► R2 (SNAPSHOTS)   snapshots and reader views
 ```
 
@@ -102,6 +103,9 @@ account and checks the PKCE verifier as Google does.
 | `link_search` | the FTS5 full-text index: one row per link (see Search) |
 | `link_search_keys` | the index row id of each link |
 | `workspace_search`, `workspace_search_keys` | the FTS5 index of workspaces' names, descriptions and notes |
+| `link_passages` | per link: the passages it is cut into for search by meaning, each with its vector id and the text version it was made from (see Search by meaning) |
+| `link_index_state` | per link: the text version, which triggers move whenever the indexed text changes, and when the link was last queued for indexing |
+| `vector_deletions` | the ids of vectors to delete from the Vectorize index, filled by a trigger on every deleted passage |
 | `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
 
 Every query of a user's resources is filtered by the authenticated user, so
@@ -304,6 +308,60 @@ its first 500,000 characters, replacing what was indexed before, and nothing
 when a fetch stores no text. The migration indexed the links and texts stored
 before it.
 
+## Search by meaning
+
+Keyword search is unchanged. Beside it, every link is indexed by what it means
+([ADR 05](adr/05-index-links-by-meaning-with-vectorize-and-workers-ai.md)):
+Workers AI embeds passages of the link's text and Vectorize holds the vectors,
+one namespace per user.
+
+- **Passages** (`meaning/cut.ts`). A link is cut into passages of at most 1,500
+  characters: its title, summary, topic, tags and note first, then the first
+  50,000 characters of its reader text. They are rows of `link_passages`, with
+  the id of the vector made from each: `{link_id}:{version}:{position}`.
+- **The text version.** Triggers (`migrations/0011_meaning_index.sql`) move
+  `link_index_state.text_version` whenever the title, summary, topic, tags, note
+  or reader text changes, or a topic or tag the link carries is renamed. A link
+  is stale when no passage carries its version; a link never indexed is stale
+  too. Writers need do nothing for that to hold.
+- **Queueing** (`meaning/indexing.ts`, `queueIndexing`). The fetch consumer,
+  enrichment, `PATCH /api/v1/links/{id}` and the rename and merge of topics and
+  tags send `{user_id, link_id}` on `INDEX_QUEUE` for each of their links that is
+  stale. A send that fails is logged and fails nothing; the backfill picks the
+  link up.
+- **The index worker** (`handleIndexBatch`, the `alexandria-index` consumer,
+  batch 10, 5 retries). It acknowledges a message for an account being deleted,
+  a deleted link or a link whose passages are current. Otherwise it reads the
+  link, cuts it, embeds the passages, upserts the vectors into the owner's
+  namespace and replaces the passages in one D1 batch whose writes depend on
+  the link existing, its account not being deleted and its text version being
+  the one it read. If that no longer holds it queues the vectors it stored for
+  deletion and stores nothing. A failing Workers AI or Vectorize throws before
+  anything is written to D1, and the message is retried.
+- **The every-minute run** (`meaning/backfill.ts`, `maintainIndex`, beside the
+  import dispatcher) deletes the vectors queued in `vector_deletions` (a
+  thousand ids to a call, 20 calls a run, a failed call leaves its ids queued)
+  and then queues, for each user not marked for deletion, up to 60 stale links
+  not queued in the last 10 minutes, the most recently used first.
+- **Passages for a question** (`meaning/passages.ts`). `GET /api/v1/passages`
+  embeds the question's free words, takes the 100 nearest vectors in the user's
+  namespace, keeps those scoring at least 0.5 (`SIMILARITY_THRESHOLD`,
+  `meaning/backend.ts`), reads them from the user's own `link_passages` joined
+  with their links under the query filters, and returns at most 3 a link and
+  `limit` in all. The embedding and the query together have 5 seconds; a failure
+  or the timeout is `503 search_unavailable`. `findPassages` is the function
+  other features call. The `search_passages` MCP tool is this route.
+- **Deletion.** `deleteLink` and decay's removal delete a link's passages in the
+  batch that deletes the link, and a trigger queues each passage's vector in
+  `vector_deletions`; the account deletion job deletes `link_passages` like any
+  table that references the links, and leaves `vector_deletions` and
+  `link_index_state`, which triggers fill, to the drain and the cascade. A
+  passage request reads only passages still in D1, so a deleted link is never
+  returned while its vectors await deletion.
+- **The backend** (`meaning/backend.ts`) is the one interface to Workers AI and
+  Vectorize. With `MEANING_FAKE_URL` set (end-to-end tests only) it speaks HTTP
+  to `e2e/fake-meaning.ts` instead of using the `AI` and `VECTORIZE` bindings.
+
 ## MCP server
 
 `/mcp` (`mcp/server.ts`) serves the Model Context Protocol over Streamable
@@ -342,10 +400,15 @@ deletion job (`runDeletion`):
 - one batch of at most 1,000 of the user's R2 objects under `u/{user_id}/`;
 - one batch of at most 1,000 rows from each table that holds the user's rows,
   found from the schema (every table with a `link_id` or `user_id` column,
-  except full-text tables and the tables triggers keep): rows referencing the
-  user's links first, then the links once none references them (their
-  triggers remove their search index rows), then the rest;
+  except full-text tables and the tables triggers keep, `vector_deletions` and
+  `link_index_state` among them): rows referencing the user's links first (the
+  passages' vectors are queued for deletion by a trigger), then the links once
+  none references them (their triggers remove their search index rows), then
+  the rest;
 - when nothing is left, the users row.
+
+The every-minute run then deletes the queued vectors from the Vectorize index,
+so the index holds nothing of the account within a minute of the job ending.
 
 A run that removed a full batch anywhere queues the next run. A failed run is
 retried and continues with what remains; a run for an account that is gone
@@ -369,6 +432,9 @@ Their messages are acknowledged, not retried.
 | End to end                  | `e2e/*.spec.ts`           | Playwright (Chromium) against `wrangler dev`      | The whole flows, with only Google faked                             |
 
 Shared helpers: `src/worker/test/helpers.ts` (requests through the Worker,
-users, sessions, tokens, seeded links, the clock), `src/worker/test/outbound.ts`
-(answers the Worker's outbound requests) and `src/web/test/helpers.tsx`
-(`renderPage` with a `FakeApi`).
+users, sessions, tokens, seeded links, the clock, queue recorders and
+`deliver…` functions), `src/worker/test/outbound.ts` (answers the Worker's
+outbound requests), `src/worker/test/meaning.ts` (fake Workers AI and Vectorize
+bindings, reset before each test, and seeded articles; the embedder they share
+with `e2e/fake-meaning.ts` is `src/worker/test/embedder.ts`) and
+`src/web/test/helpers.tsx` (`renderPage` with a `FakeApi`).

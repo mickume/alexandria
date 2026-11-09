@@ -74,6 +74,43 @@ test.describe.serial('an agent with the MCP server', () => {
     await expect(card.getByText('Used just now')).toBeVisible();
   });
 
+  test('answers a question from passages of the owner’s links, recording no use', async ({
+    page,
+  }) => {
+    await signIn(page);
+    const url = 'https://example.com/alarms-for-agents';
+    const [id = ''] = await addLinkIds(page, [url]);
+    const secret = await createToken(page, 'passages agent');
+    const client = await agent(page, secret);
+    const question = 'how do I schedule background work on Cloudflare?';
+
+    await expect
+      .poll(
+        async () =>
+          (await call(client, 'search_passages', { query: question })).structuredContent.items?.[0]
+            ?.link_id,
+        { timeout: 60_000 },
+      )
+      .toBe(id);
+
+    const found = await call(client, 'search_passages', { query: question });
+    expect(found.isError).toBeFalsy();
+    expect(found.structuredContent.items[0]).toMatchObject({
+      link_id: id,
+      title: 'Alarms for agents',
+      url,
+    });
+    await client.close();
+    const [row] = d1<{ use_count: number }>(`SELECT use_count FROM links WHERE id = '${id}'`);
+    expect(row!.use_count).toBe(0);
+
+    // The specs share one library, and later ones look for the best passage of their own article.
+    const removed = await page.request.delete(`/api/v1/links/${id}`, {
+      headers: { Origin: new URL(page.url()).origin },
+    });
+    expect(removed.status()).toBe(204);
+  });
+
   test('files a new link into the owner’s workspace and pins it', async ({ page }) => {
     await signIn(page);
     await page.goto('/workspaces');

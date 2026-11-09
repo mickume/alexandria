@@ -120,6 +120,14 @@ Every documented operation. Routes add theirs as they are implemented.
 
 ***
 
+### PassageResults
+
+> `const` **PassageResults**: `ZodObject`\<\{ `items`: `ZodArray`\<`ZodObject`\<\{ `link_id`: `ZodString`; `passage`: `ZodString`; `score`: `ZodNumber`; `title`: `ZodString`; `url`: `ZodString`; \}, `$strict`\>\>; `meaning`: `ZodLiteral`\<`"used"`\>; \}, `$strict`\>
+
+The answer of a request for passages.
+
+***
+
 ### SearchResults
 
 > `const` **SearchResults**: `ZodObject`\<\{ `items`: `ZodArray`\<`ZodObject`\<\{ `link`: `ZodObject`\<\{ `added_at`: `ZodString`; `archived_at`: `ZodNullable`\<`ZodString`\>; `content_kind`: `ZodNullable`\<`ZodEnum`\<\{ `html`: `"html"`; `other`: `"other"`; `pdf`: `"pdf"`; \}\>\>; `dead_since`: `ZodNullable`\<`ZodString`\>; `decay_note`: `ZodString`; `description`: `ZodNullable`\<`ZodString`\>; `edited_fields`: `ZodArray`\<`ZodString`\>; `enrichment_reason`: `ZodNullable`\<`ZodString`\>; `enrichment_status`: `ZodNullable`\<`ZodEnum`\<\{ `enriched`: `"enriched"`; `failed`: `"failed"`; `no_key`: `"no_key"`; `queued`: `"queued"`; `skipped`: `"skipped"`; `waiting_for_key`: `"waiting_for_key"`; \}\>\>; `favicon_url`: `ZodNullable`\<`ZodString`\>; `fetched_at`: `ZodNullable`\<`ZodString`\>; `final_url`: `ZodNullable`\<`ZodString`\>; `has_snapshot`: `ZodBoolean`; `host`: `ZodString`; `http_status`: `ZodNullable`\<`ZodNumber`\>; `id`: `ZodString`; `language`: `ZodNullable`\<`ZodString`\>; `last_check_result`: `ZodNullable`\<`ZodString`\>; `last_checked_at`: `ZodNullable`\<`ZodString`\>; `last_used_at`: `ZodString`; `note_preview`: `ZodNullable`\<`ZodString`\>; `notes`: `ZodArray`\<`ZodString`\>; `original_url`: `ZodString`; `pin_position`: `ZodNullable`\<`ZodNumber`\>; `pinned`: `ZodBoolean`; `removal_at`: `ZodNullable`\<`ZodString`\>; `state`: `ZodString`; `state_reason`: `ZodNullable`\<`ZodString`\>; `sticky`: `ZodBoolean`; `summary`: `ZodNullable`\<`ZodString`\>; `tags`: `ZodArray`\<`ZodString`\>; `title`: `ZodString`; `topic`: `ZodNullable`\<`ZodString`\>; `updated_at`: `ZodString`; `url`: `ZodString`; `use_count`: `ZodNumber`; `workspaces`: `ZodArray`\<`ZodObject`\<\{ `id`: `ZodString`; `name`: `ZodString`; \}, `$strict`\>\>; \}, `$strict`\>; `snippet`: `ZodArray`\<`ZodObject`\<\{ `match`: `ZodBoolean`; `text`: `ZodString`; \}, `$strict`\>\>; \}, `$strict`\>\>; `next_cursor`: `ZodNullable`\<`ZodString`\>; `workspaces`: `ZodArray`\<`ZodObject`\<\{ `id`: `ZodString`; `name`: `ZodString`; `snippet`: `ZodArray`\<`ZodObject`\<\{ `match`: `ZodBoolean`; `text`: `ZodString`; \}, `$strict`\>\>; \}, `$strict`\>\>; \}, `$strict`\>

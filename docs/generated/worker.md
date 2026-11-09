@@ -38,7 +38,7 @@
 
 ###### batch
 
-`MessageBatch`\<[`FetchMessage`](worker/env.md#fetchmessage) \| [`EnrichMessage`](worker/env.md#enrichmessage) \| [`LivenessMessage`](worker/env.md#livenessmessage) \| [`AccountMessage`](worker/env.md#accountmessage)\>
+`MessageBatch`\<[`FetchMessage`](worker/env.md#fetchmessage) \| [`EnrichMessage`](worker/env.md#enrichmessage) \| [`LivenessMessage`](worker/env.md#livenessmessage) \| [`AccountMessage`](worker/env.md#accountmessage) \| [`IndexMessage`](worker/env.md#indexmessage)\>
 
 ###### env
 

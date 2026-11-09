@@ -120,6 +120,25 @@ export const fakeAi = {
   },
 };
 
+/** The fake of Workers AI and Vectorize in e2e/fake-meaning.ts. */
+export const fakeMeaning = {
+  url: 'http://localhost:8793',
+  /** The vectors the fake index holds, optionally of one namespace (a user's id). */
+  async vectors(namespace?: string): Promise<{ id: string; namespace: string }[]> {
+    const query = namespace === undefined ? '' : `?namespace=${encodeURIComponent(namespace)}`;
+    return (await (await fetch(`${this.url}/__vectors${query}`)).json()) as {
+      id: string;
+      namespace: string;
+    }[];
+  },
+};
+
+/** Runs the Worker's every-minute scheduled handler through wrangler dev's test endpoint. */
+export async function runMinute(page: Page): Promise<void> {
+  const r = await page.request.get('/cdn-cgi/local/scheduled?cron=*+*+*+*+*');
+  expect(r.status()).toBeLessThan(400);
+}
+
 /** Runs the Worker's hourly scheduled handler through wrangler dev's test endpoint. */
 export async function runScheduled(page: Page): Promise<void> {
   const r = await page.request.get('/cdn-cgi/local/scheduled?cron=0+*+*+*+*');

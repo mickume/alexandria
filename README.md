@@ -24,7 +24,8 @@ For local sign-in, create `.dev.vars` with `GOOGLE_CLIENT_ID`,
 apply the migrations with `npx wrangler d1 migrations apply alexandria --local`.
 
 To deploy to Cloudflare, run `npm run deploy` with `CLOUDFLARE_API_TOKEN`
-set; see [Deploying](docs/configuration.md#deploying).
+set (its permissions, Vectorize among them, are listed under
+[Deploying](docs/configuration.md#deploying)).
 
 ## Search
 

@@ -356,7 +356,9 @@ Every workspace of the user, reading every page of GET /api/v1/workspaces.
 
 > **outcomeOf**(`answer`): [`Outcome`](#outcome)
 
-The outcome an API answer stands for: 2xx is success, 4xx a refusal, anything else unexpected.
+The outcome an API answer stands for: 2xx is success, 4xx a refusal (and so
+is search_unavailable, the one 5xx the API gives on purpose), anything else
+unexpected.
 
 #### Parameters
 

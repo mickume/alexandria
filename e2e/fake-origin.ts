@@ -6,7 +6,8 @@
  * https://papers.example/on-links.pdf, a page about Cloudflare Queues at
  * https://docs.example/queues and one about Apache Kafka at
  * https://blog.example/kafka, two more about queues and one about gardening at
- * https://guides.example/, a paper at https://example.net/paper, two pages each
+ * https://guides.example/, two pages about Durable Object alarms at
+ * https://example.com/, a paper at https://example.net/paper, two pages each
  * at https://leaving.example/ and https://backup.example/, and at
  * https://code.example/<slug> a page whose
  * text holds 'marker-<slug>'. It logs every request, and can be taken
@@ -82,6 +83,20 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
   'https://guides.example/gardening': {
     type: HTML,
     body: articlePage('Tomatoes in pots', 'Tomatoes grow well in pots on a sunny balcony.'),
+  },
+  'https://example.com/durable-object-alarms': {
+    type: HTML,
+    body: articlePage(
+      'Durable Object alarms',
+      'An alarm lets a Durable Object schedule a task to run later on Cloudflare, in the background, without a cron trigger.',
+    ),
+  },
+  'https://example.com/alarms-for-agents': {
+    type: HTML,
+    body: articlePage(
+      'Alarms for agents',
+      'A Durable Object alarm schedules background work on Cloudflare: set the alarm and the object runs the task at that time.',
+    ),
   },
   'https://example.net/paper': {
     type: HTML,

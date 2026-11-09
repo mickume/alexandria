@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Gets the Cloudflare account ready for a deploy of Alexandria: checks that the
 # API token can manage what the Worker binds, creates the D1 database, the
-# queues and the R2 bucket when they do not exist yet, and applies the D1
-# migrations. Every step is a no-op when there is nothing to do. Needs
+# queues, the R2 bucket and the Vectorize index when they do not exist yet, and
+# applies the D1 migrations. Every step is a no-op when there is nothing to do. Needs
 # CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID when the token cannot list
 # its accounts).
 set -euo pipefail
@@ -11,6 +11,9 @@ cd "$(dirname "$0")/.."
 QUEUES=(alexandria-fetch alexandria-enrich alexandria-liveness alexandria-account alexandria-index)
 BUCKET=alexandria-snapshots
 DATABASE=alexandria
+# The index of the passages of every user's links, for search by meaning: the
+# dimensions are those of the embedding model, @cf/baai/bge-m3.
+VECTOR_INDEX=alexandria-passages
 
 wrangler() { npx --no-install wrangler "$@"; }
 
@@ -31,6 +34,7 @@ check() {
 check D1 "Account > D1 > Edit" d1 list
 check Queues "Account > Queues > Edit" queues list
 check R2 "Account > Workers R2 Storage > Edit" r2 bucket list
+check Vectorize "Account > Vectorize > Edit" vectorize list
 if [ "$failed" = 1 ]; then
   echo "(The token also needs Account > Workers Scripts > Edit, and CLOUDFLARE_ACCOUNT_ID set.)" >&2
   exit 1
@@ -51,6 +55,11 @@ done
 if ! wrangler r2 bucket info "$BUCKET" >/dev/null 2>&1; then
   echo "Creating the R2 bucket $BUCKET"
   wrangler r2 bucket create "$BUCKET"
+fi
+
+if ! wrangler vectorize get "$VECTOR_INDEX" >/dev/null 2>&1; then
+  echo "Creating the Vectorize index $VECTOR_INDEX"
+  wrangler vectorize create "$VECTOR_INDEX" --dimensions 1024 --metric cosine
 fi
 
 # Before the deploy, so that new code never meets an old schema.

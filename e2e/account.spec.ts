@@ -1,6 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, cardOf, d1, fakeAi, fakeOrigin, r2Object, saveAiKey, signIn } from './helpers';
+import {
+  addLinkIds,
+  cardOf,
+  d1,
+  fakeAi,
+  fakeMeaning,
+  fakeOrigin,
+  r2Object,
+  runMinute,
+  saveAiKey,
+  signIn,
+} from './helpers';
 
 /** Creates a personal access token on the settings page and returns its secret. */
 async function createToken(page: Page, name: string): Promise<string> {
@@ -49,6 +60,7 @@ function rowsLeft(userId: string, linkIds: string[]): number {
        + (SELECT COUNT(*) FROM tokens WHERE user_id = '${userId}')
        + (SELECT COUNT(*) FROM workspaces WHERE user_id = '${userId}')
        + (SELECT COUNT(*) FROM link_texts WHERE user_id = '${userId}')
+       + (SELECT COUNT(*) FROM link_passages WHERE user_id = '${userId}')
        + (SELECT COUNT(*) FROM link_events WHERE user_id = '${userId}')
        + (SELECT COUNT(*) FROM link_uses WHERE user_id = '${userId}')
        + (SELECT COUNT(*) FROM tags WHERE user_id = '${userId}')
@@ -77,6 +89,15 @@ test.describe.serial('the owner’s account', () => {
       `u/${userId}/l/${id}/reader.json`,
     ]);
     expect(objects.some((key) => r2Object(key) !== null)).toBe(true);
+    // The index has the account's links by now, passages and vectors both.
+    const indexed = () =>
+      d1<{ n: number }>(`SELECT COUNT(*) AS n FROM link_passages WHERE user_id = '${userId}'`)[0]!
+        .n;
+    const deadline0 = Date.now() + 60_000;
+    while (indexed() === 0 || (await fakeMeaning.vectors(userId)).length === 0) {
+      expect(Date.now(), 'the links were not indexed within a minute').toBeLessThan(deadline0);
+      await page.waitForTimeout(2_000);
+    }
 
     await page.goto('/settings');
     await page.getByLabel('Type your email address to confirm').fill('owner@example.test');
@@ -93,6 +114,15 @@ test.describe.serial('the owner’s account', () => {
     const deadline = Date.now() + 10 * 60_000;
     while (rowsLeft(userId, ids) > 0 || objects.some((key) => r2Object(key) !== null)) {
       expect(Date.now(), 'the deletion did not finish within 10 minutes').toBeLessThan(deadline);
+      await page.waitForTimeout(2_000);
+    }
+
+    // Once the job is done, the next every-minute run deletes the account's vectors from the index.
+    await runMinute(page);
+    const left = () => d1<{ n: number }>('SELECT COUNT(*) AS n FROM vector_deletions')[0]!.n;
+    const deadline1 = Date.now() + 60_000;
+    while (left() > 0 || (await fakeMeaning.vectors(userId)).length > 0) {
+      expect(Date.now(), 'the index kept the account’s vectors').toBeLessThan(deadline1);
       await page.waitForTimeout(2_000);
     }
 

@@ -77,12 +77,14 @@ Two ways deploy the same Worker:
   list its accounts): builds with Vite, runs `scripts/provision.sh`, and deploys
   the Worker bundle Vite built (`dist/alexandria/`).
 
-`scripts/provision.sh` checks that the token can manage D1, Queues and R2 (and
-names the permissions it lacks), creates the D1 database `alexandria`, the
-four queues and the R2 bucket when they do not exist, and applies the D1
-migrations, before the deploy. Every step is a no-op when there is nothing to
-do. The token needs Account > Workers Scripts, D1, Queues and Workers R2
-Storage, each Edit.
+`scripts/provision.sh` checks that the token can manage D1, Queues, R2 and
+Vectorize (and names the permissions it lacks), creates the D1 database
+`alexandria`, the five queues, the R2 bucket and the Vectorize index
+`alexandria-passages` (1,024 dimensions, cosine) when they do not exist, and
+applies the D1 migrations, before the deploy. Every step is a no-op when there
+is nothing to do. The token needs Account > Workers Scripts, D1, Queues, Workers
+R2 Storage and Vectorize, each Edit. Workers AI is used through its binding
+and is billed to the account; the script does not check it.
 
 Set the per-deployment settings once (above), with the secrets below, and add
 `<the site's origin>/auth/google/callback` (for example
@@ -107,6 +109,12 @@ its telemetry off (`WRANGLER_SEND_METRICS=false`).
 
 `e2e/fake-google.ts` signs in `FAKE_GOOGLE_EMAIL` (default `owner@example.test`)
 named `FAKE_GOOGLE_NAME` (default `Ada Owner`).
+
+`e2e/fake-meaning.ts` stands in for Workers AI and Vectorize (the Worker is
+given its address as `MEANING_FAKE_URL`), and `wrangler dev` runs with
+`--local`, since an `ai` binding is otherwise always remote and would need a
+Cloudflare login. `npx vite dev` and `wrangler dev` without `--local` reach the
+real services through the `AI` and `VECTORIZE` bindings.
 
 ## Per-user settings
 

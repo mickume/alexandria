@@ -88,6 +88,36 @@ The longest tag and topic names.
 
 ## Functions
 
+### carrierIds()
+
+> **carrierIds**(`db`, `userId`, `kind`, `id`): `Promise`\<`string`[]\>
+
+The ids of the user's links carrying one of their topics or tags.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### kind
+
+[`VocabularyKind`](#vocabularykind)
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<`string`[]\>
+
+***
+
 ### getEntry()
 
 > **getEntry**(`db`, `userId`, `kind`, `id`): `Promise`\<[`VocabularyEntry`](#vocabularyentry) \| `null`\>

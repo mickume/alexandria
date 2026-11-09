@@ -108,6 +108,12 @@ The bindings and variables of the Worker, as wrangler.jsonc declares them.
 
 The queue of account deletion jobs, one message per run.
 
+##### AI
+
+> **AI**: `Ai`
+
+Workers AI, which computes the embeddings.
+
 ##### ALLOWED\_EMAILS
 
 > **ALLOWED\_EMAILS**: `string`
@@ -216,6 +222,12 @@ Google's token endpoint; configurable so tests can run a local fake.
 
 The per-host rate limit: one Durable Object per host.
 
+##### INDEX\_QUEUE
+
+> **INDEX\_QUEUE**: `Queue`\<[`IndexMessage`](#indexmessage)\>
+
+The queue of indexing jobs, one message per link to index by meaning.
+
 ##### KEY\_ENCRYPTION\_KEY
 
 > **KEY\_ENCRYPTION\_KEY**: `string`
@@ -227,6 +239,12 @@ The secret the owners' AI keys are encrypted under.
 > **LIVENESS\_QUEUE**: `Queue`\<[`LivenessMessage`](#livenessmessage)\>
 
 The queue of weekly liveness checks, one per link due.
+
+##### MEANING\_FAKE\_URL?
+
+> `optional` **MEANING\_FAKE\_URL?**: `string`
+
+End-to-end tests only: embeddings and the index are served by the fake at this URL.
 
 ##### OPENROUTER\_BASE\_URL
 
@@ -252,6 +270,12 @@ The site's own origin, such as https://alexandria.example.com; unset, the origin
 
 Snapshots and reader views.
 
+##### VECTORIZE
+
+> **VECTORIZE**: `Vectorize`
+
+The Vectorize index holding the embeddings of every user's passages, one namespace per user.
+
 ***
 
 ### FetchMessage
@@ -269,6 +293,22 @@ A request to fetch one link's page.
 > `optional` **refresh?**: `boolean`
 
 Set for a refresh the owner asked for; a failed refresh is not retried.
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
+### IndexMessage
+
+A request to index one link by meaning.
+
+#### Properties
+
+##### link\_id
+
+> **link\_id**: `string`
 
 ##### user\_id
 
