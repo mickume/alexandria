@@ -386,13 +386,12 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/settings/decay',
     operationId: 'getDecaySettings',
-    summary: 'The decay thresholds, in days',
+    summary: 'The decay settings: the start points and the days from expiry to removal',
     responses: {
       200: {
-        description: 'The thresholds',
+        description: 'The settings',
         schema: z.strictObject({
-          dormant_days: z.number().int(),
-          archive_days: z.number().int(),
+          start_points: z.number().int(),
           remove_days: z.number().int(),
         }),
       },
@@ -402,22 +401,20 @@ export const operations: Operation[] = [
     method: 'put',
     path: '/settings/decay',
     operationId: 'saveDecaySettings',
-    summary: 'Set the decay thresholds: whole days from 7 to 3650, dormant below archive',
+    summary: 'Set the decay settings: each a whole number from 7 to 3650',
     body: z.object({
-      dormant_days: z.number().int().min(7).max(3650),
-      archive_days: z.number().int().min(7).max(3650),
+      start_points: z.number().int().min(7).max(3650),
       remove_days: z.number().int().min(7).max(3650),
     }),
     responses: {
       200: {
-        description: 'The stored thresholds',
+        description: 'The stored settings',
         schema: z.strictObject({
-          dormant_days: z.number().int(),
-          archive_days: z.number().int(),
+          start_points: z.number().int(),
           remove_days: z.number().int(),
         }),
       },
-      400: error('invalid_json, invalid_threshold (naming the field) or invalid_thresholds'),
+      400: error('invalid_json, or invalid_threshold naming the field'),
     },
   },
   {

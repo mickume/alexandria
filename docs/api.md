@@ -510,22 +510,23 @@ is not http, https or mailto.
 
 ### Decay settings
 
-Links the owner does not use decay: after `dormant_days` without use an
-active link becomes `dormant` (dimmed, still in the stream); after
-`archive_days` it is archived (out of the stream, kept with its snapshot);
-`remove_days` after archiving it is removed for good.
+Links the owner does not use decay. A link's `points` are the owner's
+`start_points` plus its use count, minus the whole days since its last use or
+boost; a link whose points reach 0 expires, and it is removed `remove_days`
+after it expired.
 
 #### `GET /api/v1/settings/decay`
 
-`200 {"dormant_days": 60, "archive_days": 120, "remove_days": 180}` (the
-defaults).
+`200 {"start_points": 60, "remove_days": 180}` (the defaults).
 
 #### `PUT /api/v1/settings/decay`
 
-Body with all three, each a whole number of days from 7 to 3650, and
-`dormant_days` below `archive_days`: `200` with the stored values.
-`400 {"error": "invalid_threshold", "field": <name>, "message"}`, or
-`400 {"error": "invalid_thresholds", "field": "dormant_days", "message": "the dormant threshold must be below the archive threshold"}`.
+Body with both, each a whole number from 7 to 3650: `200` with the stored
+values. A change applies to the points of every link of the owner at once.
+A field missing, not a whole number, or out of bounds is refused, and nothing
+is stored:
+`400 {"error": "invalid_threshold", "field": "start_points", "message": "start_points must be a whole number from 7 to 3650"}`
+(or `remove_days`).
 
 ### The archive
 

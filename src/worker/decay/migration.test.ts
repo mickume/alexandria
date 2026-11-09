@@ -56,11 +56,7 @@ describe('carrying a library over to points and expiry', () => {
     expect((await read(dormant)).state).toBe('active');
     expect((await read(active)).state).toBe('active');
     expect((await read(pending)).state).toBe('pending');
-    const settings = await env.DB.prepare(
-      'SELECT start_points, remove_days FROM users WHERE id = ?',
-    )
-      .bind(user.id)
-      .first();
-    expect(settings).toEqual({ start_points: 45, remove_days: 90 });
+    const settings = await api('GET', '/api/v1/settings/decay', { as: user.session });
+    expect(settings.json).toEqual({ start_points: 45, remove_days: 90 });
   });
 });

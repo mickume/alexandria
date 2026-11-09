@@ -313,7 +313,7 @@ describe('a rejected AI key on the settings page', () => {
 
 describe('the decay section of the settings page', () => {
   function decayApi(): FakeApi {
-    let stored = { dormant_days: 60, archive_days: 120, remove_days: 180 };
+    let stored = { start_points: 60, remove_days: 180 };
     return fakeApi()
       .on('GET', '/api/v1/settings/decay', () => ({ status: 200, body: stored }))
       .on('PUT', '/api/v1/settings/decay', (req) => {
@@ -322,48 +322,52 @@ describe('the decay section of the settings page', () => {
       });
   }
 
-  it('shows the thresholds and saves new ones', async () => {
+  it('shows the start points and the removal delay with their meanings, and saves both', async () => {
     const api = decayApi();
     renderPage('/settings', api);
-    const dormant = (await screen.findByLabelText('Dormant after (days)')) as HTMLInputElement;
-    const archive = screen.getByLabelText('Archive after (days)') as HTMLInputElement;
-    const remove = screen.getByLabelText('Remove after archiving (days)') as HTMLInputElement;
-    await waitFor(() => expect(dormant.value).toBe('60'));
-    expect([archive.value, remove.value]).toEqual(['120', '180']);
-    fireEvent.change(dormant, { target: { value: '30' } });
-    fireEvent.change(archive, { target: { value: '90' } });
-    fireEvent.change(remove, { target: { value: '30' } });
+    const start = (await screen.findByLabelText('Start points')) as HTMLInputElement;
+    const remove = screen.getByLabelText('Remove after expiring (days)') as HTMLInputElement;
+    await waitFor(() => expect(start.value).toBe('60'));
+    expect(remove.value).toBe('180');
+    expect(screen.queryByLabelText(/Archive after/)).toBeNull();
+    expect(screen.queryByLabelText(/Dormant after/)).toBeNull();
+    expect(
+      screen.getByText(
+        'Points a link starts with and goes back to when used, plus one per use; it loses one a day',
+      ),
+    ).toBeTruthy();
+    fireEvent.change(start, { target: { value: '30' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save thresholds' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     });
     expect(api.sent('PUT', '/api/v1/settings/decay')[0]?.body).toEqual({
-      dormant_days: 30,
-      archive_days: 90,
-      remove_days: 30,
+      start_points: 30,
+      remove_days: 180,
     });
+    expect(await screen.findByText('Saved')).toBeTruthy();
   });
 
   it('shows a refusal beside the field it names and keeps the typed values', async () => {
     const api = decayApi().on('PUT', '/api/v1/settings/decay', {
       status: 400,
       body: {
-        error: 'invalid_thresholds',
-        field: 'dormant_days',
-        message: 'the dormant threshold must be below the archive threshold',
+        error: 'invalid_threshold',
+        field: 'remove_days',
+        message: 'remove_days must be a whole number from 7 to 3650',
       },
     });
     renderPage('/settings', api);
-    const dormant = (await screen.findByLabelText('Dormant after (days)')) as HTMLInputElement;
-    await waitFor(() => expect(dormant.value).toBe('60'));
-    fireEvent.change(dormant, { target: { value: '200' } });
+    const remove = (await screen.findByLabelText(
+      'Remove after expiring (days)',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(remove.value).toBe('180'));
+    fireEvent.change(remove, { target: { value: '3000' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save thresholds' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     });
-    const message = await screen.findByText(
-      'the dormant threshold must be below the archive threshold',
-    );
-    expect(message.closest('[data-field="dormant_days"]')).not.toBeNull();
-    expect(dormant.value).toBe('200');
+    const message = await screen.findByText('remove_days must be a whole number from 7 to 3650');
+    expect(message.closest('[data-field="remove_days"]')).not.toBeNull();
+    expect(remove.value).toBe('3000');
   });
 });
 

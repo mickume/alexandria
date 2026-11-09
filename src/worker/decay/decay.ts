@@ -35,7 +35,13 @@ export async function decayStatements(
   userId: string,
   t: Date,
 ): Promise<D1PreparedStatement[]> {
-  const { dormant_days, archive_days } = await getThresholds(db, userId);
+  const { dormant_days, archive_days } = (await db
+    .prepare('SELECT dormant_days, archive_days FROM users WHERE id = ?')
+    .bind(userId)
+    .first<{ dormant_days: number; archive_days: number }>()) ?? {
+    dormant_days: 60,
+    archive_days: 120,
+  };
   const at = t.toISOString();
   return [
     db

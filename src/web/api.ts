@@ -281,10 +281,9 @@ export const workspaces = {
     request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
 };
 
-/** The decay thresholds, in days. */
+/** The decay settings: the points a link starts from, and the days from expiry to removal. */
 export interface Thresholds {
-  dormant_days: number;
-  archive_days: number;
+  start_points: number;
   remove_days: number;
 }
 

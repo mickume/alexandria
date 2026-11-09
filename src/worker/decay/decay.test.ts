@@ -18,88 +18,6 @@ import {
 } from '../test/helpers';
 import { decayHooks, evaluateDecay } from './decay';
 
-const DEFAULTS = { dormant_days: 60, archive_days: 120, remove_days: 180 };
-
-function thresholds(user: TestUser) {
-  return api('GET', '/api/v1/settings/decay', { as: user.session });
-}
-
-function save(user: TestUser, body: unknown) {
-  return api('PUT', '/api/v1/settings/decay', { as: user.session, body });
-}
-
-describe('the decay thresholds', () => {
-  it('are 60, 120 and 180 days for a user who never changed them', async () => {
-    const r = await thresholds(await signIn());
-    expect(r.status).toBe(200);
-    expect(r.json).toEqual(DEFAULTS);
-  });
-
-  it('are stored per user', async () => {
-    const user = await signIn();
-    const other = await signIn('other@example.test', 'Other');
-    const r = await save(user, { dormant_days: 7, archive_days: 14, remove_days: 7 });
-    expect(r.status).toBe(200);
-    expect(r.json).toEqual({ dormant_days: 7, archive_days: 14, remove_days: 7 });
-    expect((await thresholds(user)).json).toEqual({
-      dormant_days: 7,
-      archive_days: 14,
-      remove_days: 7,
-    });
-    expect((await thresholds(other)).json).toEqual(DEFAULTS);
-    expect(
-      (await save(user, { dormant_days: 7, archive_days: 3650, remove_days: 3650 })).status,
-    ).toBe(200);
-  });
-
-  it.each([
-    {
-      body: { dormant_days: 60, archive_days: 120 },
-      error: 'invalid_threshold',
-      field: 'remove_days',
-    },
-    {
-      body: { dormant_days: 6, archive_days: 120, remove_days: 180 },
-      error: 'invalid_threshold',
-      field: 'dormant_days',
-    },
-    {
-      body: { dormant_days: 60, archive_days: 3651, remove_days: 180 },
-      error: 'invalid_threshold',
-      field: 'archive_days',
-    },
-    {
-      body: { dormant_days: 60, archive_days: 120, remove_days: 7.5 },
-      error: 'invalid_threshold',
-      field: 'remove_days',
-    },
-    {
-      body: { dormant_days: '60', archive_days: 120, remove_days: 180 },
-      error: 'invalid_threshold',
-      field: 'dormant_days',
-    },
-    {
-      body: { dormant_days: 120, archive_days: 120, remove_days: 180 },
-      error: 'invalid_thresholds',
-      field: 'dormant_days',
-    },
-  ])('refuses $body', async ({ body, error, field }) => {
-    const user = await signIn();
-    await save(user, { dormant_days: 30, archive_days: 90, remove_days: 30 });
-    const r = await save(user, body);
-    expect(r.status).toBe(400);
-    expect(r.json).toEqual({ error, field, message: expect.any(String) });
-    if (error === 'invalid_thresholds') {
-      expect(r.json.message).toBe('the dormant threshold must be below the archive threshold');
-    }
-    expect((await thresholds(user)).json).toEqual({
-      dormant_days: 30,
-      archive_days: 90,
-      remove_days: 30,
-    });
-  });
-});
-
 const DAY = 86_400_000;
 const T = Date.parse('2027-06-01T12:00:00.000Z');
 
@@ -156,6 +74,57 @@ async function stateOf(id: string): Promise<string | undefined> {
     await env.DB.prepare('SELECT state FROM links WHERE id = ?').bind(id).first<{ state: string }>()
   )?.state;
 }
+
+const DEFAULTS = { start_points: 60, remove_days: 180 };
+
+function thresholds(user: TestUser) {
+  return api('GET', '/api/v1/settings/decay', { as: user.session });
+}
+
+function save(user: TestUser, body: unknown) {
+  return api('PUT', '/api/v1/settings/decay', { as: user.session, body });
+}
+
+describe('the decay settings', () => {
+  it('are 60 start points and 180 days to removal for a user who never changed them', async () => {
+    const r = await thresholds(await signIn());
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual(DEFAULTS);
+  });
+
+  it('are stored per user and apply to the points of every link at once', async () => {
+    setNow(T);
+    const user = await signIn();
+    const other = await signIn('other@example.test', 'Other');
+    const id = await seedAged(user, 8);
+    const r = await save(user, { start_points: 7, remove_days: 3650 });
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ start_points: 7, remove_days: 3650 });
+    expect((await thresholds(user)).json).toEqual({ start_points: 7, remove_days: 3650 });
+    expect((await api('GET', `/api/v1/links/${id}`, { as: user.session })).json.points).toBe(-1);
+    expect((await thresholds(other)).json).toEqual(DEFAULTS);
+    expect((await save(user, { start_points: 3650, remove_days: 7 })).status).toBe(200);
+  });
+
+  it.each([
+    { body: { remove_days: 180 }, field: 'start_points' },
+    { body: { start_points: 60 }, field: 'remove_days' },
+    { body: { start_points: 6, remove_days: 180 }, field: 'start_points' },
+    { body: { start_points: 60, remove_days: 3651 }, field: 'remove_days' },
+    { body: { start_points: 7.5, remove_days: 180 }, field: 'start_points' },
+    { body: { start_points: '60', remove_days: 180 }, field: 'start_points' },
+  ])('refuses $body', async ({ body, field }) => {
+    const user = await signIn();
+    const r = await save(user, body);
+    expect(r.status).toBe(400);
+    expect(r.json).toEqual({
+      error: 'invalid_threshold',
+      field,
+      message: `${field} must be a whole number from 7 to 3650`,
+    });
+    expect((await thresholds(user)).json).toEqual(DEFAULTS);
+  });
+});
 
 describe('dormancy', () => {
   it.each([
@@ -444,11 +413,11 @@ describe('archiving by decay', () => {
   it('applies each user’s own thresholds', async () => {
     setNow(T);
     const user = await signIn();
-    await api(
-      'PUT',
-      '/api/v1/settings/decay',
-      await as(user, { body: { dormant_days: 7, archive_days: 14, remove_days: 7 } }),
-    );
+    await env.DB.prepare(
+      'UPDATE users SET dormant_days = 7, archive_days = 14, remove_days = 7 WHERE id = ?',
+    )
+      .bind(user.id)
+      .run();
     const dormant = await seedAged(user, 8);
     const archived = await seedAged(user, 15);
     const old = await seedAged(user, 400, { state: 'archived' });

@@ -143,7 +143,9 @@ real services through the `AI` and `VECTORIZE` bindings.
 ## Per-user settings
 
 Each user sets on the settings page (or with `PUT /api/v1/settings/decay`)
-how fast their unused links decay: `dormant_days` (default 60),
-`archive_days` (default 120) and `remove_days` after archiving (default
-180), each from 7 to 3650 days. They are stored on the user, not in the
-deployment's configuration.
+how fast their unused links decay: `start_points` (default 60), the points a
+link starts from and goes back to, plus its use count, when it is used, and
+`remove_days` (default 180), the days from a link's expiry to its removal,
+each a whole number from 7 to 3650. They are stored on the user, not in the
+deployment's configuration, and a change applies to every link of the user at
+once.
