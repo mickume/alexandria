@@ -1,0 +1,434 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "12",
+  "spec_name": "ask_the_library",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Answer a question from passages of the owner's links",
+      "rationale": "An answer the owner can trust must come from their own library and say where each claim came from.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "the owner sends POST /api/v1/ask with a question holding at least one free word, has an AI key that is not marked rejected, and at least one passage reaches the similarity threshold",
+          "action": "retrieve the 8 best passages as GET /api/v1/passages would, send them and the question to the owner's provider with the owner's key and model, and stream the answer",
+          "contract": "200 with Content-Type text/event-stream: one 'sources' event {sources: [{n, link}]}, then one or more 'delta' events {text}, then one 'done' event {}, in that order",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "package 10's fake AI and VECTORIZE bindings (src/worker/test/meaning.ts) and ARTICLES seeded with seedArticle and indexed with deliverIndexing",
+              "a FakeAi (src/worker/test/ai.ts) that streams the answer 'Use an alarm [1].' in two deltas",
+              "an Anthropic key saved through PUT /api/v1/settings/ai"
+            ],
+            "pseudocode": "in a new src/worker/meaning/ask.test.ts: r = POST /api/v1/ask {question: 'how do I schedule background work on cloudflare'}; assert r.status == 200 and Content-Type starts with text/event-stream; events = parse the body's server-sent events; assert the event names are ['sources', 'delta', 'delta', 'done'], the deltas join to 'Use an alarm [1].' and done's data is {}"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "ubiquitous",
+          "action": "number the sources from 1 in the order of their best passage, one per link the passages came from, each with the link as the stream lists it, and head each passage sent to the provider with its source's number",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts: two indexed articles matching the question; ask; assert sources is [{n: 1, link: <GET /api/v1/links/{first}.json without note>}, {n: 2, link: ...}] in the order of GET /api/v1/passages for the same question; assert the request the FakeAi received holds each passage text headed by '[1]' or '[2]' as its source"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "ubiquitous",
+          "action": "send the provider at most 8 passages, at most 3 of one link, read with the question's filters as GET /api/v1/passages reads them, with the owner's own key and model",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over providers {anthropic with model 'claude-test', openrouter with model 'test/model'}: one link with 6 matching passages and 6 others; ask 'schedule a task tag:infra' and 'schedule a task'; assert the FakeAi request went to the provider with the saved key (x-api-key or Authorization) and model, held at most 8 passages and at most 3 of one link, and with tag:infra only passages of the tagged link"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "ubiquitous",
+          "action": "instruct the provider to answer from the passages only, to cite every statement with the number of its source as [n], and to answer 'Nothing in your library answers this.' when the passages do not answer the question",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, on the request the FakeAi received: assert its system text holds 'only', '[n]' and the exact sentence 'Nothing in your library answers this.', and its user text holds the numbered passages and the question"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "ubiquitous",
+          "action": "record no use of any source, and count an ask once against the owner's 600 requests a minute",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts: before = use_count and last_used_at of every link and count('link_uses'); ask; assert they are unchanged and the rate_limits row of the owner's minute grew by exactly 1"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "ubiquitous",
+          "action": "for any ask, send the provider no passage of another user's links",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts: users A and B each index an article with the same alarms text but a different title; meaning.ignoreNamespaces = true; A asks; assert the sources hold only A's link and the request the FakeAi received holds no text of B's title"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Say so when nothing in the library answers",
+      "rationale": "An answer from nothing would be invented; the provider is not worth calling for it.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "no passage of the owner's links reaches the similarity threshold for the question",
+          "action": "answer without calling the provider",
+          "contract": "200 text/event-stream: 'sources' {sources: []}, one 'delta' {text: 'Nothing in your library answers this.'}, 'done' {}; the FakeAi received no request",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts: an indexed alarms article; ask 'quarterly tax return'; assert the three events exactly and FakeAi.requests == []"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Refuse a question before the stream starts",
+      "rationale": "Every failure that can be known before calling the provider keeps the API's error envelope and costs the owner nothing.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "unwanted",
+          "condition": "the question is missing, not a string, empty, blank or filters only",
+          "action": "refuse it",
+          "contract": "400 application/json {error: 'invalid_question', field: 'question', message: 'ask with at least one word'}; the provider is not called",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, one table over (body -> status, JSON body): {} , {question: 3}, {question: ''}, {question: '   '}, {question: 'tag:infra'} -> 400 invalid_question; {question: 'x'.repeat(501)} -> 400 question_too_long, field 'question', 'a question of at most 500 characters'; {question: 'x'.repeat(500)} -> not refused for its length; {question: 'alarms state:bogus'} -> 400 invalid_filter, field 'question'; a body 'not json' -> 400 invalid_json; each row asserts the JSON body and FakeAi.requests == []"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "unwanted",
+          "condition": "the question is over 500 characters",
+          "action": "refuse it",
+          "contract": "400 {error: 'question_too_long', field: 'question', message: 'a question of at most 500 characters'}; the provider is not called",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "the question holds a filter value search refuses",
+          "action": "refuse it as search does",
+          "contract": "400 {error: 'invalid_filter', field: 'question', message: parseQuery's message}; the provider is not called",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "the owner has no AI key, or the key is marked rejected",
+          "action": "refuse the question",
+          "contract": "409 {error: 'no_ai_key', message: 'add an AI key in settings'}, or 409 {error: 'ai_key_rejected', message: <the provider's message stored with the key>}; the provider and the index are not called",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over {no key saved -> no_ai_key; a saved key marked rejected with markKeyRejected(db, user, 'invalid x-api-key') -> ai_key_rejected with that message}: r = POST /api/v1/ask {question: 'alarms'}; assert status 409, the JSON body, FakeAi.requests == [] and meaning.calls == []"
+          }
+        },
+        {
+          "id": "REQ-3.5",
+          "pattern": "unwanted",
+          "condition": "Workers AI or Vectorize fails or takes over 5 seconds while the passages are retrieved",
+          "action": "refuse the question",
+          "contract": "503 {error: 'search_unavailable', message: 'search by meaning is unavailable, try again'}; the provider is not called",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over {meaning.fail('embed'), meaning.fail('query')}: with a key saved, POST /api/v1/ask {question: 'alarms'}; assert 503 and the JSON body; FakeAi received only the key test of the save"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "End the stream with a named error when the provider fails",
+      "rationale": "Once the answer has started, the owner must still learn why it stopped.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "unwanted",
+          "condition": "the provider rejects the owner's key (401, 402 or 403) while answering",
+          "action": "end the stream with an error and mark the key rejected as a rejected enrichment marks it",
+          "contract": "an 'error' event {error: 'ai_key_rejected', message: <the provider's message>} after 'sources' and no 'done'; GET /api/v1/settings/ai then shows status 'rejected' with that message",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over status {401, 402, 403} and both providers: FakeAi answers the answer request with that status and 'invalid x-api-key'; ask; assert the events are ['sources', 'error'] with the contract's data; assert GET /api/v1/settings/ai has status 'rejected' and rejected_message 'invalid x-api-key'"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "unwanted",
+          "condition": "the provider is unreachable, answers 5xx, or has not finished the answer within 60 seconds",
+          "action": "end the stream with an error",
+          "contract": "an 'error' event {error: 'provider_unavailable', message} after whatever deltas arrived, and no 'done'; the key is not marked",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over {FakeAi.refuse(), FakeAi.status(503, 'overloaded'), FakeAi streams one delta then stalls with setProviderTimeout(200)}: ask; assert the last event is 'error' with error 'provider_unavailable', no 'done', and the settings still show the key verified"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "the provider fails in any other way: a rate limit, a refusal or an unusable answer",
+          "action": "end the stream with an error carrying the provider's message",
+          "contract": "an 'error' event {error: 'provider_failed', message: <the provider's message>} and no 'done'; the key is not marked",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/ask.test.ts, a table over {FakeAi.status(429, 'slow down'), FakeAi.status(400, 'bad request'), the model refuses}: ask; assert the last event is 'error' with error 'provider_failed' and the provider's message, no 'done'"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Stream answers from both providers",
+      "rationale": "The owner's key may be Anthropic's or OpenRouter's; asking must work with either.",
+      "system": "Worker",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "an answer is asked of the owner's provider",
+          "action": "stream it, Anthropic through messages.stream of @anthropic-ai/sdk and OpenRouter through POST /chat/completions with stream: true, handing on each piece of text as it arrives and sorting a failure into rejected, unavailable or failed as enrichment sorts it",
+          "contract": "the pieces of text in order, then the end; or one outcome {kind: 'rejected' | 'unavailable' | 'failed', message}",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/enrich/providers.test.ts, beside the enrichWith tests, a table over both providers: FakeAi streams 'Use ' and 'an alarm [1].'; collect what streamAnswer hands on; assert ['Use ', 'an alarm [1].'] and a successful end; a table over FakeAi.status(401/503/429) and refuse() asserts the outcome kinds rejected, unavailable, failed, unavailable"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Ask from the website",
+      "rationale": "The owner asks where they already read and search.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "ubiquitous",
+          "action": "show an Ask tab in the header between Tags and Archive, opening the Ask page at /ask with one text box for a question of at most 500 characters and an Ask button",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in a new src/web/pages/Ask.test.tsx: renderPage('/', api); assert the header's tab names are [Stream, Workspaces, Topics, Tags, Ask, Archive, Settings]; click Ask; assert the address is /ask, a textbox named 'Question' with maxLength 500 and a button named 'Ask'"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "event_driven",
+          "condition": "the owner asks a question on the Ask page",
+          "action": "send POST /api/v1/ask with it, show the answer as it streams in with each [n] a link to that source's detail page, and list the sources under the answer by title and host",
+          "contract": "the answer text grows as deltas arrive; '[1]' is a link to /links/<id of source 1>; the sources list shows each source's title and host",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Ask.test.tsx: a FakeApi answering POST /api/v1/ask with a raw event-stream text (sources with one link, deltas 'Use an alarm ' and '[1].', done); type the question and click Ask; assert the request body {question}; assert the answer reads 'Use an alarm [1].', the '[1]' link's href is /links/<id>, and the sources list holds the link's title and host"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "the owner asks again on the Ask page",
+          "action": "replace the previous answer and sources with the new ones, keeping nothing of earlier asks",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Ask.test.tsx: ask twice with different streamed answers; assert only the second answer and its sources are shown; navigate away and back to /ask; assert no answer is shown"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Show why an ask failed",
+      "rationale": "A refusal or a stopped answer must tell the owner what to do.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "unwanted",
+          "condition": "POST /api/v1/ask is refused with a JSON error",
+          "action": "show the error's message on the Ask page",
+          "contract": "the message of the error body, such as 'add an AI key in settings', in an alert",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Ask.test.tsx, a table over {409 no_ai_key 'add an AI key in settings', 409 ai_key_rejected 'invalid x-api-key', 503 search_unavailable 'search by meaning is unavailable, try again', 400 invalid_question 'ask with at least one word'}: assert getByRole('alert') shows the message"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "unwanted",
+          "condition": "the stream ends with an error event",
+          "action": "show the error's message under the part of the answer that arrived",
+          "contract": "the partial answer stays shown, followed by an alert with the error's message",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Ask.test.tsx: a stream of sources, one delta 'Use an ' and an error event {error: 'provider_unavailable', message: 'timed out'}; assert 'Use an' is shown and an alert 'timed out' follows it in the document"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner asks a question and opens the source of the answer",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the Ask tab and asks 'how do I schedule background work on Cloudflare?'"
+        },
+        {
+          "actor": "website",
+          "action": "sends POST /api/v1/ask and reads the stream"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "retrieves the passages of the indexed article and streams the sources"
+        },
+        {
+          "actor": "AI provider",
+          "action": "streams an answer citing [1]"
+        },
+        {
+          "actor": "website",
+          "action": "shows the answer as it arrives and the article under it"
+        },
+        {
+          "actor": "owner",
+          "action": "clicks [1] and lands on the article's detail page"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1",
+          "the index queue and its consumer"
+        ],
+        "setup": [
+          "an Anthropic key the fake provider accepts, saved through the API",
+          "e2e/fake-ai.ts streams an answer citing [1]; e2e/fake-meaning.ts stands in for Workers AI and Vectorize"
+        ],
+        "end_state": [
+          "the Ask page shows the streamed answer with the article listed as source 1",
+          "after the click the address is /links/<the article's id>"
+        ],
+        "pseudocode": "in a new e2e/ask.spec.ts: signIn; saveAiKey(page); add the alarm article and wait until GET /api/v1/passages finds it; go to /ask; fill the question; click Ask; expect the answer to contain '[1]' and the sources to list the article; click the [1] link; expect the URL /links/<id>"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "The owner without a key is told to add one",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "asks a question with no AI key in settings"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "refuses with 409 no_ai_key before calling the provider"
+        },
+        {
+          "actor": "website",
+          "action": "shows 'add an AI key in settings'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "the AI key removed with DELETE /api/v1/settings/ai"
+        ],
+        "end_state": [
+          "the Ask page shows 'add an AI key in settings' and the fake provider logged no answer request"
+        ],
+        "pseudocode": "in e2e/ask.spec.ts: delete the key; ask; expect the alert; assert fakeAi.requests() holds no answer request since the ask"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "The provider rejects the key while answering",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "asks a question with a key the provider now rejects"
+        },
+        {
+          "actor": "AI provider",
+          "action": "answers 401 with its message"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "ends the stream with ai_key_rejected and marks the key rejected"
+        },
+        {
+          "actor": "website",
+          "action": "shows the provider's message under the answer"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "a saved key, then e2e/fake-ai.ts switched to reject answer requests with 401 'invalid x-api-key'"
+        ],
+        "end_state": [
+          "the Ask page shows 'invalid x-api-key'",
+          "the settings page shows the key as rejected"
+        ],
+        "pseudocode": "in e2e/ask.spec.ts: switch the fake to reject answers; ask; expect the alert; go to /settings; expect the rejected key's message"
+      }
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "@anthropic-ai/sdk",
+      "version": "1.6.0",
+      "verified": true,
+      "symbols": [
+        {
+          "name": "Messages.stream",
+          "import_path": "@anthropic-ai/sdk",
+          "signature": "stream<Params extends MessageStreamParams>(body: Params, options?: RequestOptions): MessageStream; MessageStream implements AsyncIterable<MessageStreamEvent>"
+        },
+        {
+          "name": "RawContentBlockDeltaEvent",
+          "import_path": "@anthropic-ai/sdk",
+          "signature": "{ type: 'content_block_delta'; index: number; delta: TextDelta | ... }; TextDelta { type: 'text_delta'; text: string }"
+        }
+      ]
+    },
+    {
+      "package": "OpenRouter chat completions (HTTP)",
+      "version": "v1",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "POST /chat/completions with stream: true",
+          "import_path": "OPENROUTER_BASE_URL",
+          "signature": "text/event-stream of 'data: {\"choices\": [{\"delta\": {\"content\": string}}]}' lines, ending with 'data: [DONE]'; an error before the stream is a JSON error body with an HTTP status"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "12",
+  "spec_name": "ask_the_library",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/meaning/ask.test.ts src/worker/enrich/providers.test.ts src/worker/search src/web/pages/Ask.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "03",
+      "reason": "asking uses its AI key, its rejected-key handling and its providers"
+    },
+    {
+      "spec": "06",
+      "reason": "the question is written in its query language"
+    },
+    {
+      "spec": "10",
+      "reason": "answers are written from its passages, read through findPassages"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Stream an answer from the owner's provider",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the streaming behaviours to src/worker/enrich/providers.test.ts and confirm they fail",
+        "Teach FakeAi (src/worker/test/ai.ts) to answer a streaming request in the provider's own format: Anthropic's server-sent message events with content_block_delta text deltas for a request with stream true, and OpenRouter's data: lines of choices[0].delta.content ending with data: [DONE]; with the answer, an error status, a refusal, a refused connection and a stall after the first piece settable by a test",
+        "Write streamAnswer(env, call, {system, prompt}, onText) in src/worker/enrich/providers.ts: Anthropic through anthropic(env, key).messages.stream with max_tokens 1024, handing on each text_delta; OpenRouter through POST /chat/completions with stream: true, reading the body line by line and handing on each delta's content until [DONE]; a refusal (stop_reason 'refusal') is failed",
+        "Bound the whole answer by the provider timeout of 60 seconds (setProviderTimeout in tests) and sort a failure with byStatus and fromError as enrichment sorts it: 401, 402, 403 rejected; unreachable, 5xx, timeout unavailable; anything else failed with the provider's message",
+        "Teach e2e/fake-ai.ts the same streaming answers, with POST /__answer_text setting the text of streamed answers and POST /__reject_answers {status, message} making answer requests fail, for the end-to-end flows"
+      ],
+      "touches": [
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/providers.test.ts",
+        "src/worker/test/ai.ts",
+        "e2e/fake-ai.ts",
+        "e2e/helpers.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Refuse a question before the stream starts",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the refusal behaviours to a new src/worker/meaning/ask.test.ts and confirm they fail",
+        "Give parseQuery (src/worker/search/query.ts) the longest query as an option, 200 by default, so that search and passages keep their cap and a question may hold 500 characters",
+        "Mount POST /api/v1/ask in src/worker/app.ts from a new src/worker/meaning/ask.ts, behind the API's authentication and rate limit",
+        "Refuse in this order, before reading anything else: invalid_json through readJson; a question that is missing or not a string as invalid_question; over 500 characters as question_too_long with the message 'a question of at most 500 characters'; parseQuery with a cap of 500, its invalid_filter answered with field 'question'; no free word as invalid_question with 'ask with at least one word'",
+        "Then read the key with getAiSettings: none is 409 no_ai_key 'add an AI key in settings', status 'rejected' is 409 ai_key_rejected with the stored rejected message",
+        "Then retrieve the passages with findPassages(env, user, words, filters, 8); MeaningUnavailable is 503 search_unavailable 'search by meaning is unavailable, try again'",
+        "Document POST /api/v1/ask, its refusals and its event-stream answer in src/worker/api/openapi.ts (the 200 as a text/event-stream response without a JSON schema) and in docs/api.md"
+      ],
+      "touches": [
+        "src/worker/meaning/ask.ts",
+        "src/worker/meaning/ask.test.ts",
+        "src/worker/search/query.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Answer a question from passages, as a stream",
+      "criteria": [
+        "REQ-1",
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the answering behaviours to src/worker/meaning/ask.test.ts and confirm they fail",
+        "Number the sources from 1 in the order of their best passage, one per link, and read each source link from link_views as the stream lists it (toView)",
+        "Build the prompt: the system instruction to answer from the passages only, cite every statement as [n] and answer exactly 'Nothing in your library answers this.' when the passages do not answer; then each passage headed by its source's number, then the question",
+        "Answer with a ReadableStream of server-sent events (Content-Type text/event-stream): event 'sources' first, a 'delta' for each piece streamAnswer hands on, and 'done' at the end, with the owner's decrypted key and model",
+        "With no passage at or above the threshold, stream sources [], the single delta 'Nothing in your library answers this.' and done, without calling the provider",
+        "Record no use; the rate limit already counts the request once",
+        "Describe asking in docs/architecture.md and the answer's events in docs/api.md"
+      ],
+      "touches": [
+        "src/worker/meaning/ask.ts",
+        "src/worker/meaning/ask.test.ts",
+        "docs/architecture.md",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "End the stream with a named error when the provider fails",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the failure behaviours to src/worker/meaning/ask.test.ts and confirm they fail",
+        "On a rejected outcome send the event 'error' {error: 'ai_key_rejected', message} and mark the key with markKeyRejected, as a rejected enrichment does",
+        "On an unavailable outcome send 'error' {error: 'provider_unavailable', message}, and on a failed one 'error' {error: 'provider_failed', message: the provider's message}; never send 'done' after an error, and close the stream",
+        "Document the error events in docs/api.md"
+      ],
+      "touches": [
+        "src/worker/meaning/ask.ts",
+        "src/worker/meaning/ask.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Ask from the Ask page",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Give FakeApi (src/web/test/helpers.tsx) an answer with a raw text body and its own Content-Type, so that a test can answer an event stream; add the Ask page behaviours to a new src/web/pages/Ask.test.tsx and confirm they fail",
+        "Add ask(question, handlers) to src/web/api.ts: POST /api/v1/ask, a JSON error answer thrown as ApiError, and an event-stream answer read with the response body's reader, calling handlers for sources, each delta, done and error",
+        "Add the Ask tab between Tags and Archive to SECTIONS in src/web/App.tsx (a new icon in components/Icon.tsx), and the route /ask to a new src/web/pages/Ask.tsx",
+        "On the Ask page: a text box labelled 'Question' of at most 500 characters and an Ask button; the answer grows as deltas arrive, each [n] rendered as a link to /links/<id of source n>; under it the sources by title and host; a new ask replaces everything shown, and nothing is kept when the page is left",
+        "Style the page with Quire's tokens in src/web/styles.css, and describe the Ask tab in README.md"
+      ],
+      "touches": [
+        "src/web/test/helpers.tsx",
+        "src/web/api.ts",
+        "src/web/App.tsx",
+        "src/web/components/Icon.tsx",
+        "src/web/pages/Ask.tsx",
+        "src/web/pages/Ask.test.tsx",
+        "src/web/styles.css",
+        "README.md"
+      ],
+      "depends_on": [
+        3
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Show why an ask failed",
+      "criteria": [
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the error behaviours to src/web/pages/Ask.test.tsx and confirm they fail",
+        "Show a refusal's message in an alert on the Ask page",
+        "Show a stream's error message in an alert under the part of the answer that arrived, keeping that part"
+      ],
+      "touches": [
+        "src/web/pages/Ask.tsx",
+        "src/web/pages/Ask.test.tsx"
+      ]
+    }
+  ]
+}
