@@ -1,0 +1,733 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "10",
+  "spec_name": "meaning_index",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Queue a link for indexing when its indexed text changes",
+      "rationale": "An index that lags behind the owner's edits answers with text the link no longer has.",
+      "system": "Worker",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "the fetch worker stores a link's reader text, on its first fetch or on a refresh",
+          "action": "send one index message {user_id, link_id} for the link on INDEX_QUEUE after the text is stored",
+          "contract": "exactly one message {user_id, link_id} on INDEX_QUEUE for the link per write that moved its text version",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "INDEX_QUEUE replaced by a recorder (a new recordIndexQueue() in src/worker/test/helpers.ts, beside recordFetchQueue)",
+              "a signed-in user with an AI key the fake provider accepts"
+            ],
+            "pseudocode": "in a new src/worker/meaning/indexing.test.ts, one table over the writes, each row: sent = recordIndexQueue(); perform(write); assert sent.filter(m => m.body.link_id == id).length == expected. Rows: deliverFetches of a first fetch that stores reader text -> 1; deliverFetches of a refresh -> 1; deliverEnrichments storing summary, topic and tags -> 1; PATCH /api/v1/links/{id} with a new title, a new summary, new tags, a new topic, a new note -> 1 each; PATCH /api/v1/tags/{id} renaming a tag carried by 3 links -> 1 for each of the 3; POST /api/v1/topics/{id}/merge of a topic carried by 2 links -> 1 for each of the 2; PATCH with the title the link already has -> 0; POST /api/v1/links/{id}/pin -> 0; POST /api/v1/links/{id}/archive -> 0; GET /api/v1/links/{id}/open -> 0"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "enrichment stores a link's summary, topic or tags",
+          "action": "send one index message {user_id, link_id} for the link on INDEX_QUEUE after they are stored",
+          "contract": "exactly one message {user_id, link_id} on INDEX_QUEUE for the link",
+          "check": {
+            "same_as": "REQ-1.1"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "event_driven",
+          "condition": "the owner's PATCH /api/v1/links/{id} changes the link's title, summary, tags, topic or note",
+          "action": "send one index message {user_id, link_id} for the link on INDEX_QUEUE after the edit is stored",
+          "contract": "exactly one message {user_id, link_id} on INDEX_QUEUE for the link; the PATCH answers as it does today",
+          "check": {
+            "same_as": "REQ-1.1"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "the owner renames or merges a topic or tag",
+          "action": "send one index message {user_id, link_id} on INDEX_QUEUE for every link whose text the change altered: each link carrying the renamed topic or tag, or each link the merge moved onto the survivor, in batches of at most 100 messages",
+          "contract": "one message per carrying link; the rename or merge answers as it does today",
+          "check": {
+            "same_as": "REQ-1.1"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "unwanted",
+          "condition": "a write leaves a link's title, summary, topic, tags, note and reader text as they were (a pin, an archive, a use, a PATCH that sets the values the link already has)",
+          "action": "send no index message for the link",
+          "contract": "no message on INDEX_QUEUE for the link",
+          "check": {
+            "same_as": "REQ-1.1"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "ubiquitous",
+          "action": "make a link's new text returnable by a passage request within 60 seconds (p95) of the write that queued it, outside a backfill",
+          "check": {
+            "same_as": "PATH-1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Cut a link's text into passages and index them",
+      "rationale": "The passage is the unit the index matches and returns, so what goes into passages is what can be found.",
+      "system": "index worker",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "the index worker receives a message for a link of an account not marked for deletion",
+          "action": "cut the link's title, summary, topic, tags and note, then the first 50,000 characters of its reader text, into passages of at most 1,500 characters, embed them with @cf/baai/bge-m3, upsert one vector per passage into the namespace named by the user's id, and store the passages in D1 with the text version they were made from",
+          "contract": "the message is acknowledged; the link's passages in D1 are, in order, its title, summary, topic, tags and note, then its reader text, each at most 1,500 characters and marked with the link's current text version; the index holds one vector per passage, id {link_id}:{version}:{n}, in namespace user_id",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "fake AI and VECTORIZE bindings installed on env by a new src/worker/test/meaning.ts (a deterministic embedder over fixed word groups, an in-memory index with namespaces, and switches to fail or stall each call)",
+              "a new deliverIndexing(bodies, bindings) in src/worker/test/helpers.ts, beside deliverFetches"
+            ],
+            "pseudocode": "in src/worker/meaning/indexing.test.ts, a table over links, each row: r = deliverIndexing([{user_id, link_id}]); assert r.acked == ['m0']; rows = passages of the link in position order; assert rows[0] starts with the title and holds the summary, topic, tags and note; assert every row is at most 1,500 characters and carries the link's text version; assert the fake index holds exactly one vector per row, id `${link_id}:${version}:${n}`, namespace user.id. Rows: an active page with 4,000 characters of reader text and a note -> metadata passage, then reader passages; a pending link with no reader text -> metadata passages only; an unreachable link, a link noted 'not a web page' and a PDF without text -> metadata passages only; an archived link -> indexed like an active one; a link with a 20,000-character note -> the note spread over several metadata passages"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "ubiquitous",
+          "action": "for any reader text, put no character past its first 50,000 characters into a passage, and cut the rest so that every passage is non-empty, at most 1,500 characters, and the passages in order give back the first 50,000 characters apart from the whitespace at the cuts",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in a new src/worker/meaning/cut.test.ts, with fast-check over reader texts of 0 to 500,000 characters built from words, sentences and paragraph breaks (and the boundary lengths 1,499, 1,500, 1,501, 50,000 and 50,001 as explicit examples): ps = cutPassages({title, summary, topic, tags, note: ''}, text).slice(metadataCount); assert ps.every(p => p.length >= 1 && p.length <= 1500); assert normalise(ps.join(' ')) == normalise(text.slice(0, 50000)); a text of 50,001 characters whose last character is a unique marker never shows the marker"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "optional",
+          "condition": "a link has no reader text (pending, unreachable, not a web page, a PDF without text)",
+          "action": "index the link on its title, summary, topic, tags and note alone",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "index the links of every state, archived links included",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "event_driven",
+          "condition": "a link that already has passages is indexed again from changed text",
+          "action": "replace its passages with the new ones in one D1 write and queue the vector ids of its previous passages for deletion",
+          "contract": "the link's passages in D1 are only those of the new text version, none holding the previous text; every previous vector id is in the vector deletion queue",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts: index a link whose note reads about alarms; PATCH its note to text about gardening; deliverIndexing again; assert every passage of the link carries the new version and none holds 'alarms'; assert every previous vector id is in the vector deletion queue and the fake index received the new ids in namespace user.id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Leave a link as it was when its indexing cannot finish",
+      "rationale": "A failed or overtaken index job must never leave half of a link's text, older text, or text of a deleted link behind.",
+      "system": "index worker",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "unwanted",
+          "condition": "Workers AI or Vectorize throws or refuses a call while a link is indexed",
+          "action": "hand the message back for retry and leave the link's passages, row and API view as they were",
+          "contract": "the message is retried, not acknowledged; the link's passages in D1 and the body of GET /api/v1/links/{id}, updated_at included, are unchanged",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts, a table over the failing call {embedding throws, upsert throws}, for a link never indexed and a link indexed on earlier text: before = (passages of the link, GET /api/v1/links/{id}.json); fake.fail(call); r = deliverIndexing([...]); assert r.retried == ['m0'] and r.acked == []; assert (passages, link view) == before"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "unwanted",
+          "condition": "the link's text version moves past the version the job read before the job stores its passages",
+          "action": "store nothing and queue every vector id the job upserted for deletion",
+          "contract": "the message is acknowledged; the link's passages in D1 are unchanged; every id the job upserted is in the vector deletion queue",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts, a table over what happens while the fake embedder runs (its onEmbed hook): {PATCH the link's note, DELETE /api/v1/links/{id}}: r = deliverIndexing([...]); assert r.acked == ['m0']; assert the link's passages are what they were before (none for the deleted link); assert every id the fake index received from this job is in the vector deletion queue"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "the link is deleted while its index job is in flight",
+          "action": "store nothing and queue every vector id the job upserted for deletion, so that nothing of the link remains in the index once the queue is drained",
+          "contract": "the message is acknowledged; no passage of the link in D1; every id the job upserted is in the vector deletion queue",
+          "check": {
+            "same_as": "REQ-3.2"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "a message arrives for a link that no longer exists, or of an account marked for deletion",
+          "action": "acknowledge the message without calling Workers AI or Vectorize and write nothing",
+          "contract": "the message is acknowledged; the fake AI and VECTORIZE bindings record no call; no passage is written",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts, a table over {a deleted link id, a link of an account whose deletion_requested_at is set}: r = deliverIndexing([...]); assert r.acked == ['m0']; assert fake.calls == []; assert count('link_passages', 'link_id = ?', id) == 0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Backfill stale links in the background",
+      "rationale": "The library the owner already has must become findable by meaning without the owner doing anything.",
+      "system": "every-minute run",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the every-minute Cron Trigger (* * * * *) runs",
+          "action": "send, for each user whose account is not marked for deletion, index messages for at most 60 of the user's stale links that were not queued in the last 10 minutes, and record when each was queued",
+          "contract": "at most 60 messages on INDEX_QUEUE per user per run; no link queued twice within 10 minutes; a link with no passages and a link whose passages carry an older text version are both stale",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "INDEX_QUEUE replaced by recordIndexQueue()",
+              "the clock fixed with setNow"
+            ],
+            "pseudocode": "in a new src/worker/meaning/backfill.test.ts, running worker.scheduled with cron '* * * * *' as src/worker/imports/imports.test.ts does: user A has 150 links with no passages, user B has 4 links with no passages and 1 indexed link whose note was then changed, user C (deletion_requested_at set) has 5 links with no passages. Run at t: assert A gets 60 distinct messages, B 5, C 0. Run at t+1 min: assert A gets 60 others, none repeated, B 0. Run at t+2 min: A gets the last 30. Run at t+11 min with nothing indexed: A's first 60 are queued again"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "ubiquitous",
+          "action": "keep each user's backfill independent: one user's stale links never reduce the number of links the same run queues for another user",
+          "check": {
+            "same_as": "REQ-4.1"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "state_driven",
+          "condition": "an account is marked for deletion",
+          "action": "queue none of its links for indexing",
+          "check": {
+            "same_as": "REQ-4.1"
+          }
+        },
+        {
+          "id": "REQ-4.4",
+          "pattern": "ubiquitous",
+          "action": "make every link of a library of 10,000 stale links findable by meaning within 3 hours of the backfill starting",
+          "check": {
+            "same_as": "REQ-4.1"
+          }
+        },
+        {
+          "id": "REQ-4.5",
+          "pattern": "ubiquitous",
+          "system": "index worker",
+          "action": "expose no index or backfill state: indexing a link changes neither its API view nor its place in the stream's change feed",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts: before = GET /api/v1/links/{id}.json and GET /api/v1/links?since=<server time>; deliverIndexing([...]); assert GET /api/v1/links/{id}.json deep-equals before (updated_at included) and the change feed since that time lists nothing"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Return the passages that best answer a question",
+      "rationale": "Passages are what an agent, and later the search and the answers, read from the index.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a client sends GET /api/v1/passages with a q holding at least one free word",
+          "action": "embed the free words joined by single spaces, take the 100 nearest vectors in the user's namespace, keep those whose score is at least the similarity threshold of 0.5 and whose id is a current passage of one of the user's links, and return them best first, recording no use",
+          "contract": "200 {items: [{link_id, title, url, passage, score}], meaning: 'used'}, items ordered by score descending, every score at least 0.5, url the link's original URL; no link_uses row and no change of use_count or last_used_at",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "the fake AI and VECTORIZE bindings of src/worker/test/meaning.ts",
+              "three links indexed through deliverIndexing: an article about Durable Objects alarms, one about Cloudflare Queues, one about growing tomatoes"
+            ],
+            "pseudocode": "in a new src/worker/meaning/passages.test.ts, a table over q: 'run a task later' (no word shared with the alarms article) -> first item is the alarms link; 'tomato soil compost' -> first item is the tomatoes link; 'quarterly tax return' -> items == []; each row: r = GET /api/v1/passages?q=...; assert r.status == 200 and r.json.meaning == 'used'; assert scores descending and >= 0.5; assert items[0].url == the link's original_url and items[0].title == its title; assert count('link_uses') and the links' use_count and last_used_at are unchanged"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "return at most limit passages, limit being 1 to 20 and 8 when absent, and at most 3 passages of one link, giving the rest of the limit to other links",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/passages.test.ts: one link with 6 passages matching the question and 6 other matching links of one passage each; table over limit {absent -> 8 items, 3 of the large link; 2 -> 2 items; 20 -> 9 items, 3 of the large link and one of each other}; each row asserts items.length and that no link_id appears more than 3 times"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "ubiquitous",
+          "action": "apply the prefix filters tag:, topic:, host:, in:, is: and state: to the passages' links as filterConditions applies them to search, leaving archived links out unless a state: filter is given",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/passages.test.ts: four matching links, one archived, one tagged 'infra', one pinned and in workspace 'Research', one on host docs.example; table over q suffix {'' -> the three not archived; 'state:archived' -> the archived one; 'state:any' -> all four; 'tag:infra' -> the tagged one; 'in:Research' and 'is:pinned' -> the pinned one; 'host:docs.example' -> that one}; each row asserts the set of link_ids"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "q has no free word (absent, empty, blank or filters only)",
+          "action": "refuse the request without embedding anything",
+          "contract": "400 {error: 'invalid_question', field: 'q', message: 'ask with at least one word'}; the fake AI binding records no call",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/passages.test.ts, one table over (query string -> status, error, field, message): no q, q='', q='   ', q='tag:infra' -> 400 invalid_question, 'q', 'ask with at least one word'; q of 201 characters -> 400 query_too_long, 'q', 'a query of at most 200 characters'; q='alarms state:bogus' -> 400 invalid_filter, 'q', parseQuery's message; limit=0, limit=21, limit=x -> 400 invalid_limit, 'limit', 'limit must be an integer from 1 to 20'; each row asserts the body exactly and that the fake AI binding recorded no call"
+          }
+        },
+        {
+          "id": "REQ-5.5",
+          "pattern": "unwanted",
+          "condition": "q is over 200 characters or holds a filter value search refuses",
+          "action": "refuse the request as GET /api/v1/search refuses it, without embedding anything",
+          "contract": "400 query_too_long or invalid_filter with field 'q' and parseQuery's message; the fake AI binding records no call",
+          "check": {
+            "same_as": "REQ-5.4"
+          }
+        },
+        {
+          "id": "REQ-5.6",
+          "pattern": "unwanted",
+          "condition": "limit is not an integer from 1 to 20",
+          "action": "refuse the request without embedding anything",
+          "contract": "400 {error: 'invalid_limit', field: 'limit', message: 'limit must be an integer from 1 to 20'}",
+          "check": {
+            "same_as": "REQ-5.4"
+          }
+        },
+        {
+          "id": "REQ-5.7",
+          "pattern": "unwanted",
+          "condition": "Workers AI or Vectorize fails, or the embedding and the query together have not answered within 5 seconds",
+          "action": "answer that search by meaning is unavailable",
+          "contract": "503 {error: 'search_unavailable', message: 'search by meaning is unavailable, try again'}, answered within 7 seconds of the request; never a 500",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/passages.test.ts, a table over {embedding throws, query throws, embedding stalls past 5 s (the test's timeout raised to 15 s)}: fake.fail(call) or fake.stall(call); start = Date.now(); r = GET /api/v1/passages?q=alarms; assert r.status == 503 and r.json deep-equals the contract body; for the stall assert Date.now() - start < 7000"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Give agents passages through the MCP server",
+      "rationale": "An agent has its own model; what it needs from Alexandria is the passages to answer from.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls the tool search_passages with a query and an optional limit",
+          "action": "send GET /api/v1/passages with the query as q and the limit (8 when absent) as the agent's user, and return the API's body",
+          "contract": "a tool result whose structuredContent deep-equals the body of the same GET /api/v1/passages request; no use recorded",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, a new describe 'search_passages' beside 'search_links and list_recent': index links through deliverIndexing; table over (query, limit) {('run a task later', undefined), ('run a task later', 2), ('quarterly tax return', undefined)}: r = mcpTool(secret, 'search_passages', args); direct = api('GET', '/api/v1/passages?q=...&limit=' + (limit ?? 8)); assert !r.isError and r.structuredContent deep-equals direct.json; assert uses(a) unchanged"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "unwanted",
+          "condition": "the API refuses the passage request (invalid_question, query_too_long, invalid_filter) or answers 503 search_unavailable",
+          "action": "return a tool error that carries the API's error envelope",
+          "contract": "isError true and structuredContent deep-equals the API's {error, field?, message}; search_unavailable is never turned into internal_error",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts under 'search_passages', a table over {query 'tag:infra' -> invalid_question; a query of 201 characters -> query_too_long; 'x state:bogus' -> invalid_filter; the fake embedder failing -> search_unavailable}: r = mcpTool(secret, 'search_passages', {query}); assert r.isError; assert r.structuredContent deep-equals the body of the same GET /api/v1/passages"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "ubiquitous",
+          "action": "list search_passages among its tools, with query a required non-empty string and limit an optional integer from 1 to 20, refusing a limit outside it as invalid_arguments",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, extend 'lists exactly the nine tools with their arguments' to the ten tools: assert byName.search_passages.required == ['query'] and properties.limit is an integer with maximum 20; add a row to the existing argument-refusal tests: mcpTool(secret, 'search_passages', {query: 'x', limit: 21}) -> isError with {error: 'invalid_arguments', field: 'limit'}"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "ubiquitous",
+          "action": "tell an agent, in the instructions it receives on initialize, to use search_passages to answer a question from the library and get_link_content to read a whole link",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, extend 'initializes as the token’s user with its instructions': assert instructions mention search_passages for answering a question and get_link_content for reading a whole link, and still name search_links before add_link"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Remove a deleted link's passages and index entries",
+      "rationale": "A link the owner deleted, or decay removed, must stop informing anything at once and leave nothing behind.",
+      "system": "Worker",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "the owner deletes a link, or decay's removal deletes it",
+          "action": "delete the link's passages in the same D1 write that deletes the link, and queue the vector id of every one of them for deletion",
+          "contract": "no passage of the link in D1 once DELETE /api/v1/links/{id} has answered 204 or the decay run has ended; every vector id of the link is in the vector deletion queue",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in a new src/worker/meaning/deletion.test.ts, a table over the deletion path {DELETE /api/v1/links/{id} as the owner, the hourly run removing a link archived remove_days ago (as 'removal by decay' in src/worker/decay/decay.test.ts sets it up)}: index the link with deliverIndexing; ids = its vector ids; perform the deletion; assert count('link_passages', 'link_id = ?', id) == 0; assert every id is in the vector deletion queue"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "event_driven",
+          "condition": "the every-minute run finds vector ids in the vector deletion queue",
+          "action": "delete them from the index with deleteByIds, at most 1,000 ids per call, until the queue is empty, removing each id from the queue once its call has succeeded",
+          "contract": "after the run the fake index holds none of the queued ids and the queue is empty",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/deletion.test.ts: insert 2,500 rows into the vector deletion queue and the matching vectors into the fake index; run worker.scheduled with cron '* * * * *'; assert the fake recorded deleteByIds calls of at most 1,000 ids each, covering all 2,500; assert the queue is empty and the fake index holds none of them"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "deleting vector ids from the index fails",
+          "action": "keep those ids queued for the next run and carry on with the run's backfill",
+          "contract": "the ids whose call failed are still in the queue after the run; the backfill's index messages of the same run are sent",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/deletion.test.ts: queue ids and leave a stale link; fake.fail('deleteByIds'); sent = recordIndexQueue(); run the every-minute cron; assert the ids are still queued and sent holds the stale link; fake.recover(); run again; assert the queue is empty"
+          }
+        },
+        {
+          "id": "REQ-7.4",
+          "pattern": "ubiquitous",
+          "action": "return no passage of a link that no longer exists, even while its vectors are still in the index",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/deletion.test.ts: index the alarms article; DELETE /api/v1/links/{id}; without running the every-minute cron (its vectors still in the fake index), r = GET /api/v1/passages?q=run+a+task+later; assert no item has the link's id"
+          }
+        },
+        {
+          "id": "REQ-7.5",
+          "pattern": "event_driven",
+          "condition": "the account deletion job removes an account",
+          "action": "delete every passage of the account with its other rows and queue their vector ids, so that once the job is done and the next every-minute run has passed, the index holds no vector of the account, within the 10 minutes account deletion promises",
+          "contract": "after runDeletion returns 'done' and one every-minute run: no link_passages row of the user, no vector in the user's namespace in the fake index, and an empty vector deletion queue",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/account/deletion.test.ts under 'the deletion job': index three links of the account with deliverIndexing; mark the account and run the job until 'done' (as the existing tests do); run worker.scheduled with cron '* * * * *'; assert count('link_passages', 'user_id = ?', user.id) == 0, the fake index's namespace user.id is empty and the vector deletion queue is empty; extend the existing check that nothing of the account remains so that it covers the new tables"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Keep each user's index to that user",
+      "rationale": "One user's library must never inform, rank with or appear in another's.",
+      "system": "Worker",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "ubiquitous",
+          "action": "for any passage request, query only the namespace of the requesting user and return only passages of the requesting user's links, even when the index answers with ids of another user",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/passages.test.ts: users A and B each index a link with the same alarms text; assert the fake recorded every query with namespace A.id for A's request; then switch the fake index to ignore namespaces (answering B's ids to A); r = GET /api/v1/passages?q=run+a+task+later as A; assert every item's link_id is A's link"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "ubiquitous",
+          "action": "for any index job, write vectors only into the namespace of the link's owner",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/meaning/indexing.test.ts: users A and B each have two links; deliverIndexing for all four in one batch; assert every vector in the fake index has namespace equal to the user_id of the link named by its id"
+          }
+        },
+        {
+          "id": "REQ-8.3",
+          "pattern": "ubiquitous",
+          "action": "leave the export unchanged: GET /api/v1/export carries no passage, vector id or text version",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/account/export.test.ts: export a library, index its links with deliverIndexing, export again; assert the two documents are equal apart from their export time"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner adds an article and its passage is found by meaning a minute later",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds https://example.com/durable-object-alarms with POST /api/v1/links/batch"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "stores the link and queues its fetch"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the article, stores its reader text and queues the link on INDEX_QUEUE"
+        },
+        {
+          "actor": "index worker",
+          "action": "cuts the link's text into passages, embeds them, upserts their vectors in the owner's namespace and stores the passages in D1"
+        },
+        {
+          "actor": "owner",
+          "action": "requests GET /api/v1/passages?q=run a task later on cloudflare"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "returns a passage of the article with its link id, title and original URL"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the built Worker under wrangler dev",
+          "local D1",
+          "the fetch and index queues and their consumers",
+          "the passages route"
+        ],
+        "setup": [
+          "wrangler dev runs with MEANING_FAKE_URL pointing at e2e/fake-meaning.ts, which stands in for Workers AI and Vectorize, and ORIGIN_PROXY_URL at e2e/fake-origin.ts, which serves the article"
+        ],
+        "end_state": [
+          "within 60 seconds of the add, GET /api/v1/passages returns as its first item a passage of the article, with the new link's id, its title and https://example.com/durable-object-alarms as url"
+        ],
+        "pseudocode": "in a new e2e/passages.spec.ts: signIn(page); [id] = addLinkIds(page, [ALARMS]); poll for up to 60 s: r = page.request.get('/api/v1/passages?q=' + encodeURIComponent('run a task later on cloudflare')); until r.items[0]?.link_id == id; assert r.items[0].url == ALARMS"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "An agent receives passages through search_passages",
+      "steps": [
+        {
+          "actor": "agent",
+          "action": "calls search_passages(\"how do I schedule background work on Cloudflare?\") through /mcp with a personal access token"
+        },
+        {
+          "actor": "MCP server",
+          "action": "sends GET /api/v1/passages with the query as the token's user"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "returns the passages of the Durable Objects article"
+        },
+        {
+          "actor": "MCP server",
+          "action": "returns them as the tool's structured content"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the MCP server",
+          "the passages route",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "the article of PATH-1 is indexed",
+          "a personal access token created on the settings page"
+        ],
+        "end_state": [
+          "the tool result is not an error and its items carry the article's link id, title and URL",
+          "the article's use_count is unchanged"
+        ],
+        "pseudocode": "in e2e/mcp.spec.ts, a new test beside 'searches the library and reads a link’s stored text': client = agent(page, secret); r = call(client, 'search_passages', {query: 'how do I schedule background work on Cloudflare?'}); assert !r.isError and r.structuredContent.items[0] has the article's link_id, title and url; assert d1('SELECT use_count ...') is unchanged"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "The owner deletes a link and it leaves the index",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "deletes the article with DELETE /api/v1/links/{id}"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "deletes the link with its passages and queues their vector ids for deletion"
+        },
+        {
+          "actor": "owner",
+          "action": "requests passages for its subject and receives none of the article"
+        },
+        {
+          "actor": "scheduler",
+          "action": "the every-minute run deletes the queued vector ids from the index"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the built Worker under wrangler dev",
+          "local D1",
+          "the every-minute scheduled handler",
+          "the passages route"
+        ],
+        "setup": [
+          "the article of PATH-1 is indexed"
+        ],
+        "end_state": [
+          "right after the delete, GET /api/v1/passages lists no item of the article",
+          "after the every-minute run, e2e/fake-meaning.ts holds no vector whose id starts with the article's link id"
+        ],
+        "pseudocode": "in e2e/passages.spec.ts: page.request.delete('/api/v1/links/' + id); r = page.request.get('/api/v1/passages?q=...'); assert no item has link_id id; page.request.get('/cdn-cgi/local/scheduled?cron=*+*+*+*+*'); assert (await fakeMeaning.vectors()).every(v => !v.id.startsWith(id))"
+      }
+    },
+    {
+      "id": "PATH-4",
+      "title": "Links stored before the index existed are backfilled",
+      "steps": [
+        {
+          "actor": "scheduler",
+          "action": "the every-minute run queues the owner's links that have no passages"
+        },
+        {
+          "actor": "index worker",
+          "action": "indexes each queued link"
+        },
+        {
+          "actor": "owner",
+          "action": "requests GET /api/v1/passages and receives passages of those links"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the every-minute scheduled handler",
+          "the index queue and its consumer",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "two links of the owner with reader text written straight into local D1 (the d1() helper of e2e/helpers.ts), with no passages"
+        ],
+        "end_state": [
+          "after the every-minute run, GET /api/v1/passages returns passages of both links within 60 seconds"
+        ],
+        "pseudocode": "in e2e/passages.spec.ts: d1(INSERT two links and their link_texts for the signed-in user); page.request.get('/cdn-cgi/local/scheduled?cron=*+*+*+*+*'); poll for up to 60 s until GET /api/v1/passages?q=... lists both link ids"
+      }
+    },
+    {
+      "id": "PATH-5",
+      "title": "The owner deletes the account and the index holds nothing of it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "deletes the account from the settings page"
+        },
+        {
+          "actor": "account deletion worker",
+          "action": "removes the account's rows, its passages among them, and queues their vector ids for deletion"
+        },
+        {
+          "actor": "scheduler",
+          "action": "the every-minute run deletes the queued vector ids from the index"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the account deletion job",
+          "the every-minute scheduled handler",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "the account has links whose passages are indexed"
+        ],
+        "end_state": [
+          "once the deletion has finished and the every-minute run has passed, local D1 holds no link_passages row of the account and e2e/fake-meaning.ts holds no vector in its namespace"
+        ],
+        "pseudocode": "extends 'is deleted from the settings page and nothing of it remains' in e2e/account.spec.ts: before deleting, poll until d1('SELECT COUNT(*) FROM link_passages WHERE user_id = ...') > 0; after the existing wait for the deletion, run '/cdn-cgi/local/scheduled?cron=*+*+*+*+*'; assert the count is 0 and (await fakeMeaning.vectors(userId)).length == 0"
+      }
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "@cloudflare/workers-types",
+      "version": "5.20261107.1",
+      "verified": true,
+      "symbols": [
+        {
+          "name": "Vectorize.query",
+          "import_path": "@cloudflare/workers-types (global)",
+          "signature": "query(vector: VectorFloatArray | number[], options?: VectorizeQueryOptions): Promise<VectorizeMatches>; VectorizeQueryOptions { topK?: number; namespace?: string; returnValues?: boolean; returnMetadata?: boolean | VectorizeMetadataRetrievalLevel; filter?: VectorizeVectorMetadataFilter }; VectorizeMatches { matches: VectorizeMatch[]; count: number }"
+        },
+        {
+          "name": "Vectorize.upsert",
+          "import_path": "@cloudflare/workers-types (global)",
+          "signature": "upsert(vectors: VectorizeVector[]): Promise<VectorizeAsyncMutation>; VectorizeVector { id: string; values: VectorFloatArray | number[]; namespace?: string; metadata?: Record<string, VectorizeVectorMetadata> }"
+        },
+        {
+          "name": "Vectorize.deleteByIds",
+          "import_path": "@cloudflare/workers-types (global)",
+          "signature": "deleteByIds(ids: string[]): Promise<VectorizeAsyncMutation>"
+        },
+        {
+          "name": "Ai.run with @cf/baai/bge-m3",
+          "import_path": "@cloudflare/workers-types (global)",
+          "signature": "run('@cf/baai/bge-m3', { text: string | string[]; truncate_inputs?: boolean }): Promise<Ai_Cf_Baai_Bge_M3_Output>, a union whose embedding form is { shape?: number[]; data?: number[][]; pooling?: 'mean' | 'cls' }"
+        }
+      ]
+    },
+    {
+      "package": "wrangler",
+      "version": "4.158.0",
+      "verified": true,
+      "symbols": [
+        {
+          "name": "wrangler vectorize create",
+          "import_path": "npx wrangler",
+          "signature": "wrangler vectorize create <name> --dimensions <number> --metric euclidean|cosine|dot-product"
+        },
+        {
+          "name": "wrangler vectorize get",
+          "import_path": "npx wrangler",
+          "signature": "wrangler vectorize get <name>"
+        }
+      ]
+    },
+    {
+      "package": "Cloudflare Workers AI and Vectorize service limits",
+      "version": "as of 2026-11",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "@cf/baai/bge-m3 output",
+          "import_path": "env.AI",
+          "signature": "vectors of 1,024 dimensions; at most 100 texts per call"
+        },
+        {
+          "name": "Vectorize.query topK",
+          "import_path": "env.VECTORIZE",
+          "signature": "topK up to 100 with returnValues false and returnMetadata 'none'"
+        },
+        {
+          "name": "Vectorize mutation and id limits",
+          "import_path": "env.VECTORIZE",
+          "signature": "at most 1,000 vectors per upsert and 1,000 ids per deleteByIds; ids of at most 64 bytes; namespaces per index enough for one per user"
+        }
+      ]
+    }
+  ]
+}

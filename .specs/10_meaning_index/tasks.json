@@ -1,0 +1,273 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "10",
+  "spec_name": "meaning_index",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/meaning src/worker/mcp src/worker/account src/worker/fetcher/fetch.test.ts src/worker/enrich src/worker/search/vocabulary.test.ts src/worker/links/links.test.ts src/worker/decay/decay.test.ts"
+  },
+  "dependencies": [
+    {
+      "spec": "02",
+      "reason": "its fetch consumer queues indexing after it stores a link's reader text"
+    },
+    {
+      "spec": "03",
+      "reason": "its enrichment and the owner's edits queue indexing after they store summary, topic, tags or title"
+    },
+    {
+      "spec": "04",
+      "reason": "a link's note is indexed, and its edit through PATCH /api/v1/links/{id} queues indexing"
+    },
+    {
+      "spec": "05",
+      "reason": "decay's removal deletes a link's passages and queues its vectors for deletion"
+    },
+    {
+      "spec": "06",
+      "reason": "passages reuse its query parser and filters, and its renames and merges of topics and tags queue indexing"
+    },
+    {
+      "spec": "08",
+      "reason": "adds the tool search_passages to its MCP server and changes its instructions text"
+    },
+    {
+      "spec": "09",
+      "reason": "its account deletion job removes the account's passages, whose vectors are then drained; the export stays as it is"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Lay down the index's schema, bindings, backend, fakes and passage cutting",
+      "criteria": [
+        "REQ-2.2"
+      ],
+      "steps": [
+        "Add the cutting behaviours to a new src/worker/meaning/cut.test.ts (a fast-check property over reader texts of up to 500,000 characters, with the boundary lengths 1,499, 1,500, 1,501, 50,000 and 50,001 as explicit examples) and confirm they fail",
+        "Write cutPassages in src/worker/meaning/cut.ts: first the link's title, summary, topic, tags (joined by spaces) and note, joined by line breaks and cut like any text, then the first 50,000 characters of the reader text; each piece is cut at the last paragraph break, else the last sentence end, else the last space, before 1,500 characters, a run of 1,500 characters without a space at 1,500; no passage is empty or blank",
+        "Add migrations/0011_meaning_index.sql: link_passages (the vector id as primary key, link_id and user_id referencing links and users ON DELETE CASCADE, the text version, the position, the text); a per-link index state holding the text version, the version its passages were made from and when it was last queued, with ON DELETE CASCADE to its link (the account deletion job leaves tables a trigger inserts into to their triggers); triggers that move the text version on every change of a link's title, summary, topic_id or note, of its link_tags and link_texts rows, and of the name of its topic or tags, as migration 0006 keeps link_search; and vector_deletions (vector_id, user_id), without a foreign key, filled by a trigger after every delete on link_passages. A link without a state row, or without passages, counts as stale, so the links stored before the migration need no rows",
+        "Declare in wrangler.jsonc the ai binding AI, the vectorize binding VECTORIZE on the index alexandria-passages, and the queue alexandria-index as producer INDEX_QUEUE and consumer (max_batch_size 10, max_retries 5), none of them with remote: true and none in the previews block; add AI, VECTORIZE, INDEX_QUEUE, the IndexMessage type {user_id, link_id} and the optional MEANING_FAKE_URL to src/worker/env.ts",
+        "Write src/worker/meaning/backend.ts: one interface {embed(texts), upsert(namespace, vectors), query(namespace, vector, topK), deleteByIds(ids)} over env.AI.run('@cf/baai/bge-m3', {text}) in calls of at most 100 texts (an answer without the data array is a failure) and env.VECTORIZE (query with returnValues false and returnMetadata 'none'; at most 1,000 vectors or ids per call); when MEANING_FAKE_URL is set, the same interface over HTTP to that URL instead, for the end-to-end tests only; and the exported similarity threshold 0.5",
+        "Add src/worker/test/meaning.ts: fake AI and VECTORIZE bindings with a deterministic embedder over a fixed table of word groups (for example later, alarm, schedule, background, cron; cloudflare, worker, durable, queue; tomato, soil, garden, compost), normalised so that texts sharing a group score at least 0.5 and unrelated texts below it, an in-memory index keyed by namespace, a record of every call, fail, stall and recover switches per call, an onEmbed hook and a switch that makes queries ignore namespaces; install them on env before every Worker test from src/worker/test/setup.ts",
+        "Add e2e/fake-meaning.ts, a local HTTP service answering the backend's HTTP form with the same embedder (one module both fakes import) and an in-memory index, with a /__vectors listing for the end-to-end assertions; start it in playwright.config.ts and pass --var MEANING_FAKE_URL to wrangler dev",
+        "Document the AI, VECTORIZE and INDEX_QUEUE bindings and MEANING_FAKE_URL in docs/configuration.md"
+      ],
+      "touches": [
+        "src/worker/meaning/cut.ts",
+        "src/worker/meaning/cut.test.ts",
+        "src/worker/meaning/backend.ts",
+        "migrations/0011_meaning_index.sql",
+        "wrangler.jsonc",
+        "src/worker/env.ts",
+        "src/worker/test/meaning.ts",
+        "src/worker/test/setup.ts",
+        "e2e/fake-meaning.ts",
+        "playwright.config.ts",
+        "docs/configuration.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Index one link per message from INDEX_QUEUE",
+      "criteria": [
+        "REQ-2.1",
+        "REQ-2.3",
+        "REQ-2.4",
+        "REQ-2.5",
+        "REQ-3",
+        "REQ-4.5",
+        "REQ-8.2"
+      ],
+      "steps": [
+        "Add the indexing behaviours to a new src/worker/meaning/indexing.test.ts, with deliverIndexing(bodies, bindings) added to src/worker/test/helpers.ts beside deliverFetches, and confirm they fail",
+        "Route batches of alexandria-index in the queue handler of src/worker/index.ts to a new handleIndexBatch in src/worker/meaning/indexing.ts",
+        "For each message, acknowledge it without calling Workers AI or Vectorize when the account is not active (accountActive), when the link no longer exists, or when its passages already carry its current text version",
+        "Otherwise read the link's title, summary, topic, tags and note from link_views, the first 50,000 characters of its link_texts row and its current text version, and cut them with cutPassages",
+        "Embed the passages and upsert one vector per passage into the namespace named by the user's id, with ids {link_id}:{version}:{n}",
+        "Store the result in one D1 batch whose writes all depend on the link still existing with the text version the job read: delete its previous passages (the trigger queues their vector ids), insert the new ones, record the version its passages now carry",
+        "When that condition no longer holds (the text moved on, or the link was deleted), insert every vector id the job upserted into vector_deletions, store nothing else and acknowledge the message",
+        "When Workers AI or Vectorize throws, hand the message back with retry() and write nothing; in no case touch the links row, so updated_at and the stream's change feed stay as they were"
+      ],
+      "touches": [
+        "src/worker/meaning/indexing.ts",
+        "src/worker/meaning/indexing.test.ts",
+        "src/worker/index.ts",
+        "src/worker/test/helpers.ts"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Queue a link for indexing whenever its indexed text changes",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the table of writes to src/worker/meaning/indexing.test.ts, with recordIndexQueue() added to src/worker/test/helpers.ts beside recordFetchQueue, and confirm it fails",
+        "Write queueIndexing(env, userId, linkIds) in src/worker/meaning/indexing.ts: one message {user_id, link_id} for each given link of the user whose text version is past the version of its passages (or that has none), sent in batches of at most 100 with sendBatch, recording when each was queued",
+        "Call it for the link after the fetch consumer has stored a fetch result (src/worker/fetcher/queue.ts), after storeEnrichment (src/worker/enrich/queue.ts), and after PATCH /api/v1/links/{id} (src/worker/links/routes.ts)",
+        "Call it after a topic or tag is renamed, with every link that carries it, and after a merge, with every link the merge moved onto the survivor (src/worker/search/routes.ts, with those links read through src/worker/search/vocabulary.ts)",
+        "A failed send is logged and never fails the write that triggered it; the link stays stale and the backfill picks it up"
+      ],
+      "touches": [
+        "src/worker/meaning/indexing.ts",
+        "src/worker/meaning/indexing.test.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/fetcher/queue.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/links/routes.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/search/vocabulary.ts"
+      ],
+      "depends_on": [
+        2
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Backfill stale links and drain vector deletions every minute",
+      "criteria": [
+        "REQ-4.1",
+        "REQ-4.2",
+        "REQ-4.3",
+        "REQ-4.4",
+        "REQ-7.2",
+        "REQ-7.3"
+      ],
+      "steps": [
+        "Add the backfill behaviours to a new src/worker/meaning/backfill.test.ts and the drain behaviours to a new src/worker/meaning/deletion.test.ts, running worker.scheduled with cron '* * * * *' as src/worker/imports/imports.test.ts does, and confirm they fail",
+        "Write the drain in src/worker/meaning/backfill.ts: read vector_deletions 1,000 ids at a time, delete them from the index with deleteByIds and remove those rows once the call has succeeded, until the table is empty; on a failed call log it, keep the rows and stop draining for this run",
+        "Write the backfill in the same module: for each user whose account is not marked for deletion, select at most 60 stale links (no passages, or passages of an older text version) not queued in the last 10 minutes, most recently used first, record when each was queued and send their messages with sendBatch; each user is selected and limited on its own",
+        "Run the drain and then the backfill from the every-minute branch of the scheduled handler in src/worker/index.ts beside dispatchAllImports, each in its own try so that a failure of one never stops the others",
+        "Describe the every-minute run's new work in the Cron Triggers section of docs/configuration.md"
+      ],
+      "touches": [
+        "src/worker/meaning/backfill.ts",
+        "src/worker/meaning/backfill.test.ts",
+        "src/worker/meaning/deletion.test.ts",
+        "src/worker/index.ts",
+        "docs/configuration.md"
+      ],
+      "depends_on": [
+        2
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Serve GET /api/v1/passages",
+      "criteria": [
+        "REQ-5",
+        "REQ-8.1"
+      ],
+      "steps": [
+        "Add the passage request behaviours to a new src/worker/meaning/passages.test.ts and confirm they fail",
+        "Mount GET /api/v1/passages in src/worker/app.ts from a new src/worker/meaning/passages.ts, behind the API's authentication and rate limit like every other route",
+        "Refuse in this order, embedding nothing: parseQuery's query_too_long and invalid_filter with field 'q'; no free word as invalid_question with field 'q' and the message 'ask with at least one word'; a limit that is not an integer from 1 to 20 as invalid_limit with field 'limit' and the message 'limit must be an integer from 1 to 20'; an absent limit is 8",
+        "Write findPassages(env, userId, words, filters, limit) in the same module, for the later packages to reuse: embed the free words joined by single spaces, query the 100 nearest vectors in the namespace userId, keep the matches scoring at least the threshold, look their ids up among link_passages joined with the user's links under filterConditions (so another user's id or a deleted link's id finds nothing), order by score descending, then link id and position, keep at most 3 per link and cut to limit",
+        "Race the embedding and the query against a 5-second timer; a throw or the timer answers 503 {error: 'search_unavailable', message: 'search by meaning is unavailable, try again'}",
+        "Answer 200 {items: [{link_id, title, url, passage, score}], meaning: 'used'} with url the link's original_url, recording no use",
+        "Document the route, its parameters, its refusals and its 503 in src/worker/api/openapi.ts and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/meaning/passages.ts",
+        "src/worker/meaning/passages.test.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        2
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Remove the passages and vectors of deleted links and accounts",
+      "criteria": [
+        "REQ-7.1",
+        "REQ-7.4",
+        "REQ-7.5",
+        "REQ-8.3"
+      ],
+      "steps": [
+        "Add the deletion behaviours to src/worker/meaning/deletion.test.ts, the account's to 'the deletion job' in src/worker/account/deletion.test.ts and the export's to src/worker/account/export.test.ts, and confirm the new ones fail",
+        "Delete the link's passages explicitly in the batch of deleteLink (src/worker/links/store.ts) and in decay's removalStatements (src/worker/decay/decay.ts), as link_texts is deleted there, so that the trigger queues their vector ids whatever foreign keys cascade",
+        "Make sure the account deletion job's schema discovery (ownedTables in src/worker/account/deletion.ts) deletes link_passages among the tables that reference links and leaves vector_deletions, which a trigger fills, to the drain; change it only where it does not",
+        "Leave the export (src/worker/account/export.ts) as it is: passages, vector ids and text versions stay out of it"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/decay/decay.ts",
+        "src/worker/account/deletion.ts",
+        "src/worker/meaning/deletion.test.ts",
+        "src/worker/account/deletion.test.ts",
+        "src/worker/account/export.test.ts"
+      ],
+      "depends_on": [
+        4,
+        5
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Offer search_passages through the MCP server",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the search_passages behaviours to src/worker/mcp/mcp.test.ts and extend its tool-list and instructions tests, and confirm they fail",
+        "Add search_passages to TOOLS in src/worker/mcp/tools.ts: input {query: a non-empty string, limit: an optional integer from 1 to 20}, running GET /passages?q=<query>&limit=<limit, 8 when absent> and returning the API's body",
+        "Answer a 503 that carries the API's error envelope as a tool error with that envelope for this tool, where outcomeOf today turns every non-4xx into internal_error; keep internal_error for every other unexpected answer",
+        "Rewrite INSTRUCTIONS in src/worker/mcp/server.ts to tell an agent to use search_passages to answer a question from the library and get_link_content to read a whole link, keeping the advice to try search_links before add_link; update the server's count of tools",
+        "Document the tool in docs/mcp.md and the MCP section of docs/api.md"
+      ],
+      "touches": [
+        "src/worker/mcp/tools.ts",
+        "src/worker/mcp/server.ts",
+        "src/worker/mcp/mcp.test.ts",
+        "docs/mcp.md",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        5
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Write the end-to-end flows and get the account ready for the index",
+      "criteria": [
+        "REQ-1.6"
+      ],
+      "steps": [
+        "Serve https://example.com/durable-object-alarms from e2e/fake-origin.ts: an article about Durable Object alarms that run code at a later time on Cloudflare",
+        "Add a fakeMeaning helper to e2e/helpers.ts that lists the vectors e2e/fake-meaning.ts holds, by namespace",
+        "Write a new e2e/passages.spec.ts with the flows of PATH-1 (the article found by meaning within 60 seconds of its add), PATH-3 (deleted and gone, its vectors drained by the every-minute run through /cdn-cgi/local/scheduled) and PATH-4 (links written straight into local D1 backfilled by the every-minute run)",
+        "Extend e2e/mcp.spec.ts with PATH-2 (search_passages through the MCP client, no use recorded) and the deletion test of e2e/account.spec.ts with PATH-5 (no passage and no vector of the account left)",
+        "In scripts/provision.sh, check that the token can manage Vectorize and create the index alexandria-passages with 1,024 dimensions and the cosine metric when wrangler vectorize get does not find it; name the Vectorize and Workers AI permissions the token needs in its messages and in README.md",
+        "Write docs/adr/05-index-links-by-meaning-with-vectorize-and-workers-ai.md: Vectorize and Workers AI over AI Search, @cf/baai/bge-m3 at 1,024 dimensions and cosine, the provisional threshold of 0.5, one namespace per user, passages in D1 with versioned vector ids, the vector deletion queue, and the fakes",
+        "Describe the index (its tables, the index queue and worker, the backfill and the drain, the passages route) in docs/architecture.md, and run make doc"
+      ],
+      "touches": [
+        "e2e/fake-origin.ts",
+        "e2e/helpers.ts",
+        "e2e/passages.spec.ts",
+        "e2e/mcp.spec.ts",
+        "e2e/account.spec.ts",
+        "scripts/provision.sh",
+        "README.md",
+        "docs/adr/05-index-links-by-meaning-with-vectorize-and-workers-ai.md",
+        "docs/architecture.md",
+        "docs/generated"
+      ],
+      "depends_on": [
+        3,
+        6,
+        7
+      ]
+    }
+  ]
+}
