@@ -113,3 +113,46 @@ describe('the search box', () => {
     expect(api.requests.length).toBe(sent);
   });
 });
+
+describe('searching by meaning on Enter', () => {
+  it.each([
+    {
+      page: '/',
+      address: '/search?q=run%20a%20task%20later&mode=hybrid',
+      request: '/api/v1/search?q=run%20a%20task%20later&mode=hybrid',
+    },
+    {
+      page: '/archive',
+      address: '/archive?q=run%20a%20task%20later&mode=hybrid',
+      request: '/api/v1/search?q=run%20a%20task%20later%20state%3Aarchived&mode=hybrid',
+    },
+  ])(
+    'asks for mode=hybrid and sets the address when Enter is pressed on $page',
+    async ({ page, address, request }) => {
+      const user = userEvent.setup();
+      const fake = pagesApi();
+      renderPage(page, fake);
+      await act(async () => undefined);
+
+      await user.type(searchBox(), 'run a task later{Enter}');
+      // Longer than the pause after a keystroke, which Enter must have cancelled.
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+
+      expect(window.location.pathname + window.location.search).toBe(address);
+      expect(fake.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([request]);
+    },
+  );
+
+  it('does nothing on Enter in an empty box', async () => {
+    const user = userEvent.setup();
+    const fake = pagesApi();
+    renderPage('/', fake);
+    await act(async () => undefined);
+
+    await user.type(searchBox(), '   {Enter}');
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+
+    expect(window.location.pathname + window.location.search).toBe('/');
+    expect(fake.sent('GET', '/api/v1/search')).toEqual([]);
+  });
+});

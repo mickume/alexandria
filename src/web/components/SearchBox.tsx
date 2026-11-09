@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { navigate, queryOf, type Location } from '../App';
-import { searchPath } from '../api';
+import { searchPath, type SearchMode } from '../api';
 import { Icon } from './Icon';
 
 /** How long the box waits after the last keystroke before it searches. */
@@ -19,12 +19,16 @@ function isTextField(target: EventTarget | null): boolean {
   );
 }
 
-/** The address a query leads to from `location`: the Archive page keeps its own search. */
-function addressOf(location: Location, query: string): string {
+/**
+ * The address a query leads to from `location`: the Archive page keeps its own
+ * search. With `mode` the search is by meaning as well as by words.
+ */
+function addressOf(location: Location, query: string, mode?: SearchMode): string {
   if (location.path === '/archive') {
-    return query ? `/archive?q=${encodeURIComponent(query)}` : '/archive';
+    if (!query) return '/archive';
+    return `/archive?q=${encodeURIComponent(query)}${mode ? `&mode=${mode}` : ''}`;
   }
-  return query ? searchPath(query) : '/';
+  return query ? searchPath(query, mode) : '/';
 }
 
 /** The page a location's search box shows the query of: the results page and the Archive page. */
@@ -33,9 +37,10 @@ function showsQuery(location: Location): boolean {
 }
 
 /**
- * The search box in the header of every page. It searches 200 ms after the
- * last keystroke, at /search?q= (on the Archive page, within the archive);
- * an emptied box returns to the stream. '/' typed outside a text field
+ * The search box in the header of every page. It searches by keyword 200 ms
+ * after the last keystroke, at /search?q= (on the Archive page, within the
+ * archive); Enter searches the same query by meaning as well, at
+ * /search?q=&mode=hybrid; an emptied box returns to the stream. '/' typed outside a text field
  * focuses it; Escape in it clears it, returns to the page the search started
  * from and focuses the page's main region. No other key is a shortcut.
  */
@@ -70,9 +75,9 @@ export function SearchBox({ location }: { location: Location }) {
     [],
   );
 
-  function search(query: string) {
+  function search(query: string, mode?: SearchMode) {
     const here = window.location.pathname + window.location.search;
-    const target = addressOf(location, query.trim() ? query : '');
+    const target = addressOf(location, query.trim() ? query : '', mode);
     if (target === here) return;
     if (location.path !== '/search' && location.path !== '/archive') origin.current = here;
     // Typing on the results page refines the search rather than adding history.
@@ -85,6 +90,12 @@ export function SearchBox({ location }: { location: Location }) {
     timer.current = setTimeout(() => search(query), SEARCH_DELAY_MS);
   }
 
+  /** Enter: the same query, now by meaning as well as by words. */
+  function onSubmit() {
+    if (timer.current) clearTimeout(timer.current);
+    if (value.trim()) search(value, 'hybrid');
+  }
+
   function onEscape() {
     if (timer.current) clearTimeout(timer.current);
     setValue('');
@@ -95,7 +106,14 @@ export function SearchBox({ location }: { location: Location }) {
   }
 
   return (
-    <form className="q-input-group search" role="search" onSubmit={(e) => e.preventDefault()}>
+    <form
+      className="q-input-group search"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
       <Icon name="search" size={16} />
       <input
         ref={input}

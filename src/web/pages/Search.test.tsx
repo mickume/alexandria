@@ -117,4 +117,45 @@ describe('the Search page', () => {
       '/api/v1/search?q=queues&cursor=c2',
     );
   });
+
+  it('goes back to searching by keyword when the owner types after a search by meaning', async () => {
+    vi.useFakeTimers();
+    const { api: fake } = renderPage('/search?q=alarms&mode=hybrid', api());
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(fake.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=alarms&mode=hybrid',
+    ]);
+
+    fireEvent.change(searchBox(), { target: { value: 'alarms later' } });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+
+    expect(fake.sent('GET', '/api/v1/search').at(-1)?.path).toBe('/api/v1/search?q=alarms%20later');
+    expect(window.location.pathname + window.location.search).toBe('/search?q=alarms%20later');
+  });
+
+  it('repeats a search by meaning from its address, the next page included', async () => {
+    const second = makeLink({ id: 'q2', title: 'More queues' });
+    const fake = new FakeApi().on('GET', '/api/v1/search', (req) =>
+      req.path.includes('cursor=c2')
+        ? {
+            status: 200,
+            body: {
+              items: [{ link: second, snippet: [] }],
+              workspaces: [],
+              next_cursor: null,
+              meaning: 'used',
+            },
+          }
+        : { status: 200, body: { ...results, next_cursor: 'c2', meaning: 'used' } },
+    );
+    renderPage('/search?q=queues&mode=hybrid', fake);
+    await screen.findByRole('article', { name: 'Cloudflare Queues explained' });
+    await act(async () => screen.getByRole('button', { name: 'More results' }).click());
+    await screen.findByRole('article', { name: 'More queues' });
+
+    expect(fake.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=queues&mode=hybrid',
+      '/api/v1/search?q=queues&cursor=c2&mode=hybrid',
+    ]);
+  });
 });

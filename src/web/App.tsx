@@ -3,6 +3,7 @@ import { Archive } from './pages/Archive';
 import { Import } from './pages/Import';
 import { LinkDetail } from './pages/LinkDetail';
 import { Icon, Mark, type IconName } from './components/Icon';
+import type { SearchMode } from './api';
 import { SearchBox } from './components/SearchBox';
 import { Read, Snapshot } from './pages/Read';
 import { Search } from './pages/Search';
@@ -164,6 +165,11 @@ export function queryOf(location: Location): string {
   return new URLSearchParams(location.search).get('q') ?? '';
 }
 
+/** The search mode a location carries in its mode parameter: 'hybrid', or none. */
+export function modeOf(location: Location): SearchMode | undefined {
+  return new URLSearchParams(location.search).get('mode') === 'hybrid' ? 'hybrid' : undefined;
+}
+
 /** The website: one page per path. */
 export function App() {
   const location = useLocation();
@@ -173,8 +179,9 @@ export function App() {
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
   else if (path === '/workspaces') page = <Workspaces />;
-  else if (path === '/archive') page = <Archive query={queryOf(location)} />;
-  else if (path === '/search') page = <Search query={queryOf(location)} />;
+  else if (path === '/archive')
+    page = <Archive query={queryOf(location)} mode={modeOf(location)} />;
+  else if (path === '/search') page = <Search query={queryOf(location)} mode={modeOf(location)} />;
   else if (path === '/topics') page = <Topics />;
   else if (path === '/tags') page = <Tags />;
   else if (path === '/import') page = <Import />;

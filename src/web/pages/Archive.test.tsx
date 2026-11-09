@@ -82,4 +82,23 @@ describe('the Archive page', () => {
     expect(screen.getByRole('article', { name: 'Kiwi farming' })).toBeTruthy();
     expect(screen.queryByRole('article', { name: 'Other' })).toBeNull();
   });
+
+  it('repeats a search by meaning from its address, among archived links only', async () => {
+    const archived = makeLink({ id: 'k', title: 'Kiwi farming', state: 'archived' });
+    const api = new FakeApi().on('GET', '/api/v1/search', {
+      status: 200,
+      body: {
+        items: [{ link: archived, snippet: [] }],
+        workspaces: [],
+        next_cursor: null,
+        meaning: 'used',
+      },
+    });
+    renderPage('/archive?q=kiwi&mode=hybrid', api);
+
+    expect(await screen.findByRole('article', { name: 'Kiwi farming' })).toBeTruthy();
+    expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+      '/api/v1/search?q=kiwi%20state%3Aarchived&mode=hybrid',
+    ]);
+  });
 });

@@ -334,9 +334,12 @@ export function filterQuery(name: 'topic' | 'tag', value: string): string {
   return `${name}:${/\s/.test(value) ? `"${value}"` : value}`;
 }
 
-/** The website's address of a search. */
-export function searchPath(q: string): string {
-  return `/search?q=${encodeURIComponent(q)}`;
+/** The mode of a search that also finds links by meaning. */
+export type SearchMode = 'hybrid';
+
+/** The website's address of a search, by meaning when `mode` is 'hybrid'. */
+export function searchPath(q: string, mode?: SearchMode): string {
+  return `/search?q=${encodeURIComponent(q)}${mode ? `&mode=${mode}` : ''}`;
 }
 
 /** A piece of a snippet: text, and whether it is a matched word. */
@@ -345,17 +348,32 @@ export interface Segment {
   match: boolean;
 }
 
+/** How a link of a search by meaning was found. */
+export type MatchKind = 'keyword' | 'meaning' | 'both';
+
 /** One page of a search's results. */
 export interface SearchResults {
-  items: { link: Link; snippet: Segment[] }[];
+  items: { link: Link; snippet: Segment[]; match?: MatchKind }[];
   workspaces: { id: string; name: string; snippet: Segment[] }[];
   next_cursor: string | null;
+  /** Only in a search by meaning: whether meaning could be added to the results. */
+  meaning?: 'used' | 'unavailable';
 }
 
-/** Searches the library: free words and prefix filters, one page at a time. */
-export function search(q: string, cursor?: string | null): Promise<SearchResults> {
+/**
+ * Searches the library: free words and prefix filters, one page at a time; by
+ * meaning as well as by words when `mode` is 'hybrid'.
+ */
+export function search(
+  q: string,
+  cursor?: string | null,
+  mode?: SearchMode,
+): Promise<SearchResults> {
   const after = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
-  return request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}${after}`);
+  return request<SearchResults>(
+    'GET',
+    `/search?q=${encodeURIComponent(q)}${after}${mode ? `&mode=${mode}` : ''}`,
+  );
 }
 
 /** The prefix filters of a query, each as written: tag:x, topic:"web development", … */

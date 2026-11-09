@@ -35,6 +35,12 @@ host, address, page text and note, every word matching as the start of a
 word, and lists the matching workspaces above the links. On the Archive page
 it searches the archive.
 
+Press **Enter** to search the same query by meaning as well: it also finds
+links that share no word with it, such as a page saved as "Durable Objects
+alarms" for "scheduling work in the background on Cloudflare". The address
+becomes `/search?q=…&mode=hybrid`, so a reload or a shared address repeats the
+search by meaning; typing again goes back to searching as you type.
+
 Filters narrow a search, and can be combined with words or each other:
 
 | Filter | Keeps |

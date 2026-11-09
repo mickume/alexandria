@@ -6,6 +6,7 @@ import {
   links as linksApi,
   search,
   type Link,
+  type SearchMode,
   type SearchResults,
   type Segment,
 } from '../api';
@@ -56,7 +57,7 @@ interface Found {
 }
 
 /** The results of a search: matching workspaces first, then each link's card with its snippet. */
-export function Search({ query }: { query: string }) {
+export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   const [found, setFound] = useState<Found | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<Link[]>([]);
@@ -64,7 +65,7 @@ export function Search({ query }: { query: string }) {
 
   useEffect(() => {
     let live = true;
-    search(query)
+    search(query, undefined, mode)
       .then((page) => {
         if (!live) return;
         setError(null);
@@ -83,12 +84,12 @@ export function Search({ query }: { query: string }) {
     return () => {
       live = false;
     };
-  }, [query]);
+  }, [query, mode]);
 
   async function more() {
     if (!found?.next) return;
     try {
-      const page = await search(query, found.next);
+      const page = await search(query, found.next, mode);
       setFound({
         ...found,
         snippets: new Map([

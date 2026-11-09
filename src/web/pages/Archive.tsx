@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { links, search, type Link } from '../api';
+import { links, search, type Link, type SearchMode } from '../api';
 import { Toast } from '../components/Toast';
 import { useUndoableDelete } from './Stream';
 
 /** The archived links matching `query`: the search, limited to archived links. */
-async function searchArchive(query: string): Promise<Link[]> {
-  const page = await search(`${query.trim()} state:archived`);
+async function searchArchive(query: string, mode?: SearchMode): Promise<Link[]> {
+  const page = await search(`${query.trim()} state:archived`, undefined, mode);
   return page.items.map((i) => i.link);
 }
 
@@ -13,7 +13,7 @@ async function searchArchive(query: string): Promise<Link[]> {
  * The Archive page: archived links, most recently archived first, to restore
  * or delete; with a query (from the search box), the archived links matching it.
  */
-export function Archive({ query = '' }: { query?: string }) {
+export function Archive({ query = '', mode }: { query?: string; mode?: SearchMode }) {
   const [items, setItems] = useState<Link[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function Archive({ query = '' }: { query?: string }) {
 
   useEffect(() => {
     let live = true;
-    (query.trim() ? searchArchive(query) : links.archived())
+    (query.trim() ? searchArchive(query, mode) : links.archived())
       .then((list) => {
         if (!live) return;
         setItems(list);
@@ -31,7 +31,7 @@ export function Archive({ query = '' }: { query?: string }) {
     return () => {
       live = false;
     };
-  }, [query]);
+  }, [query, mode]);
 
   async function restore(link: Link) {
     setError(null);
