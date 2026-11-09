@@ -2,7 +2,7 @@
 spec_id: "12"
 spec_name: "ask_the_library"
 title: "Ask the library a question and get an answer from its links"
-status: "active"
+status: "sealed"
 created_at: "2026-11-09T08:58:18Z"
 intent_hash: "39e3632883d3815f80b74a272b6973c3753a2ebc1e27ac0463e178e3e9f4c944"
 schema_version: 3

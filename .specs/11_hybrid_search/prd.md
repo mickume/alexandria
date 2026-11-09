@@ -2,7 +2,7 @@
 spec_id: "11"
 spec_name: "hybrid_search"
 title: "Search the library by meaning as well as by words"
-status: "active"
+status: "sealed"
 created_at: "2026-11-09T08:23:01Z"
 intent_hash: "d7b32701ba0da368a0e48cc30274d708e09537d576034a5225a0905c6d713380"
 schema_version: 3

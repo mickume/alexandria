@@ -4,7 +4,7 @@
 
 - **Spec:** `11_hybrid_search` (id `11`, name `hybrid_search`)
 - **Title:** Search the library by meaning as well as by words
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-09T08:23:01Z
 - **Source:** docs/prd/02-find-links-by-meaning-and-ask-the-library.md

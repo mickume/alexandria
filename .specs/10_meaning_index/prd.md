@@ -2,7 +2,7 @@
 spec_id: "10"
 spec_name: "meaning_index"
 title: "Index every link by meaning and return its best passages"
-status: "active"
+status: "sealed"
 created_at: "2026-11-09T07:04:10Z"
 intent_hash: "7527bee18ab166d781e35ea3c21e7ad807b2246a63f197b70e67b5d1f42cbc1a"
 schema_version: 3

@@ -4,7 +4,7 @@
 
 - **Spec:** `12_ask_the_library` (id `12`, name `ask_the_library`)
 - **Title:** Ask the library a question and get an answer from its links
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-09T08:58:18Z
 - **Source:** docs/prd/02-find-links-by-meaning-and-ask-the-library.md

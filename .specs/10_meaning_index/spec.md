@@ -4,7 +4,7 @@
 
 - **Spec:** `10_meaning_index` (id `10`, name `meaning_index`)
 - **Title:** Index every link by meaning and return its best passages
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-09T07:04:10Z
 - **Source:** docs/prd/02-find-links-by-meaning-and-ask-the-library.md
