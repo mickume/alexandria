@@ -6,32 +6,32 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('the Archive page', () => {
-  it('lists archived links with their removal dates, restores one and deletes another after the undo window', async () => {
-    const archived = [
+describe('the Expired page', () => {
+  it('lists expired links with their removal dates, restores one and deletes another after the undo window', async () => {
+    const expired = [
       makeLink({
         id: 'b',
         title: 'Bravo',
-        state: 'archived',
-        archived_at: '2027-03-01T08:00:00.000Z',
+        state: 'expired',
+        expired_at: '2027-03-01T08:00:00.000Z',
         removal_at: '2027-08-28T08:00:00.000Z',
       }),
       makeLink({
         id: 'a',
         title: 'Alpha',
-        state: 'archived',
-        archived_at: '2027-02-01T08:00:00.000Z',
+        state: 'expired',
+        expired_at: '2027-02-01T08:00:00.000Z',
         removal_at: '2027-07-31T08:00:00.000Z',
       }),
     ];
     const api = new FakeApi()
-      .on('GET', '/api/v1/archive', { status: 200, body: { items: archived, next_cursor: null } })
+      .on('GET', '/api/v1/expired', { status: 200, body: { items: expired, next_cursor: null } })
       .on('POST', '/api/v1/links/:id/restore', (_req, { id }) => ({
         status: 200,
-        body: { ...archived.find((l) => l.id === id), state: 'active' },
+        body: { ...expired.find((l) => l.id === id), state: 'active' },
       }))
       .on('DELETE', '/api/v1/links/:id', { status: 204 });
-    renderPage('/archive', api);
+    renderPage('/expired', api);
     const rows = await screen.findAllByRole('article');
     expect(rows.map((r) => r.getAttribute('aria-label'))).toEqual(['Bravo', 'Alpha']);
     expect(within(rows[0]!).getByText('removed on 2027-08-28')).toBeTruthy();
@@ -49,24 +49,43 @@ describe('the Archive page', () => {
     expect(screen.queryByRole('article', { name: 'Alpha' })).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(1);
+    expect(screen.getByText('Nothing has expired.')).toBeTruthy();
   });
 
-  it('searches only archived links and shows the results on the Archive page', async () => {
+  it('says so when nothing has expired', async () => {
+    renderPage(
+      '/expired',
+      new FakeApi().on('GET', '/api/v1/expired', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      }),
+    );
+    expect(await screen.findByText('Nothing has expired.')).toBeTruthy();
+  });
+
+  it('is in the navigation as Expired, and the Archive is gone', async () => {
+    renderPage('/', new FakeApi());
+    const entry = await screen.findByRole('link', { name: 'Expired' });
+    expect(entry.getAttribute('href')).toBe('/expired');
+    expect(screen.queryByRole('link', { name: 'Archive' })).toBeNull();
+  });
+
+  it('searches only expired links and shows the results on the Expired page', async () => {
     vi.useFakeTimers();
-    const archived = makeLink({ id: 'k', title: 'Kiwi farming', state: 'archived' });
+    const expired = makeLink({ id: 'k', title: 'Kiwi farming', state: 'expired' });
     const api = new FakeApi()
-      .on('GET', '/api/v1/archive', {
+      .on('GET', '/api/v1/expired', {
         status: 200,
         body: {
-          items: [makeLink({ id: 'o', title: 'Other', state: 'archived' })],
+          items: [makeLink({ id: 'o', title: 'Other', state: 'expired' })],
           next_cursor: null,
         },
       })
       .on('GET', '/api/v1/search', {
         status: 200,
-        body: { items: [{ link: archived, snippet: [] }], workspaces: [], next_cursor: null },
+        body: { items: [{ link: expired, snippet: [] }], workspaces: [], next_cursor: null },
       });
-    renderPage('/archive', api);
+    renderPage('/expired', api);
     await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole('article', { name: 'Other' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
@@ -74,37 +93,37 @@ describe('the Archive page', () => {
     });
     await act(async () => vi.advanceTimersByTimeAsync(200));
     expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
-      '/api/v1/search?q=kiwi%20state%3Aarchived',
+      '/api/v1/search?q=kiwi%20state%3Aexpired',
     ]);
-    expect(window.location.pathname).toBe('/archive');
+    expect(window.location.pathname).toBe('/expired');
     await act(async () => vi.advanceTimersByTimeAsync(0));
-    expect(screen.getByRole('heading', { name: 'Archive' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Expired' })).toBeTruthy();
     expect(screen.getByRole('article', { name: 'Kiwi farming' })).toBeTruthy();
     expect(screen.queryByRole('article', { name: 'Other' })).toBeNull();
   });
 
-  it('repeats a search by meaning from its address, among archived links only', async () => {
-    const archived = makeLink({ id: 'k', title: 'Kiwi farming', state: 'archived' });
+  it('repeats a search by meaning from its address, among expired links only', async () => {
+    const expired = makeLink({ id: 'k', title: 'Kiwi farming', state: 'expired' });
     const api = new FakeApi().on('GET', '/api/v1/search', {
       status: 200,
       body: {
-        items: [{ link: archived, snippet: [] }],
+        items: [{ link: expired, snippet: [] }],
         workspaces: [],
         next_cursor: null,
         meaning: 'used',
       },
     });
-    renderPage('/archive?q=kiwi&mode=hybrid', api);
+    renderPage('/expired?q=kiwi&mode=hybrid', api);
 
     expect(await screen.findByRole('article', { name: 'Kiwi farming' })).toBeTruthy();
     expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
-      '/api/v1/search?q=kiwi%20state%3Aarchived&mode=hybrid',
+      '/api/v1/search?q=kiwi%20state%3Aexpired&mode=hybrid',
     ]);
   });
 
   it('marks a link found by meaning alone and says when meaning was left out', async () => {
-    const byMeaning = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'archived' });
-    const byWords = makeLink({ id: 'w', title: 'Kiwi farming', state: 'archived' });
+    const byMeaning = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'expired' });
+    const byWords = makeLink({ id: 'w', title: 'Kiwi farming', state: 'expired' });
     const answer = (meaning: 'used' | 'unavailable') => ({
       items: [
         { link: byMeaning, snippet: [], match: 'meaning' },
@@ -116,7 +135,7 @@ describe('the Archive page', () => {
     });
 
     renderPage(
-      '/archive?q=kiwi&mode=hybrid',
+      '/expired?q=kiwi&mode=hybrid',
       new FakeApi().on('GET', '/api/v1/search', { status: 200, body: answer('unavailable') }),
     );
     const card = await screen.findByRole('article', { name: 'Kiwi orchards' });
@@ -128,9 +147,9 @@ describe('the Archive page', () => {
   });
 
   it('shows no line about meaning when meaning was used', async () => {
-    const link = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'archived' });
+    const link = makeLink({ id: 'm', title: 'Kiwi orchards', state: 'expired' });
     renderPage(
-      '/archive?q=kiwi&mode=hybrid',
+      '/expired?q=kiwi&mode=hybrid',
       new FakeApi().on('GET', '/api/v1/search', {
         status: 200,
         body: {

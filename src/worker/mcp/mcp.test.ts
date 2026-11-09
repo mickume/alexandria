@@ -27,7 +27,6 @@ async function agent(email = 'owner@example.test'): Promise<TestUser & { secret:
 const TOOLS = [
   'add_link',
   'add_to_workspace',
-  'archive_link',
   'get_link',
   'get_link_content',
   'list_recent',
@@ -60,7 +59,7 @@ describe('the MCP endpoint', () => {
     expect(tokens.json.items[0].last_used_at).toBe(t);
   });
 
-  it('lists exactly the ten tools with their arguments', async () => {
+  it('lists exactly the nine tools with their arguments', async () => {
     const a = await agent();
     const r = await mcp(a.secret, 'tools/list', {});
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -667,7 +666,7 @@ describe('get_link and get_link_content', () => {
   });
 });
 
-describe('workspaces, pins and the archive', () => {
+describe('workspaces and pins', () => {
   it.each([0, 3, 150])(
     'list_workspaces returns all %i workspaces',
     { timeout: 60_000 },
@@ -777,42 +776,28 @@ describe('workspaces, pins and the archive', () => {
     expect(positions?.n).toBe(30);
   });
 
-  it.each(['active', 'pinned', 'archived'])(
-    'archive_link answers for a %s link as POST /api/v1/links/{id}/archive does',
-    async (state) => {
-      setNow('2026-11-07T10:00:00.000Z');
-      const a = await agent();
-      const [link, twin] = await seedLinks(a, [
-        {
-          url: 'https://link.example',
-          state: state === 'archived' ? 'archived' : 'active',
-          pinPosition: state === 'pinned' ? 1 : null,
-        },
-        {
-          url: 'https://twin.example',
-          state: state === 'archived' ? 'archived' : 'active',
-          pinPosition: state === 'pinned' ? 2 : null,
-        },
-      ]);
-      const r = await mcpTool(a.secret, 'archive_link', { link_id: link });
-      const direct = await api('POST', `/api/v1/links/${twin}/archive`, { as: a.session });
-      expect(Boolean(r.isError)).toBe(direct.status >= 400);
-      const meaning = (body: Record<string, unknown>) => ({
-        keys: Object.keys(body).sort(),
-        state: body.state,
-        pinned: body.pinned,
-        archived_at: body.archived_at,
-        error: body.error,
-        message: body.message,
-      });
-      expect(meaning(r.structuredContent)).toEqual(meaning(direct.json));
-      if (state === 'active') {
-        expect(r.structuredContent.state).toBe('archived');
-        const archive = await api('GET', '/api/v1/archive', { as: a.session });
-        expect(archive.json.items.map((l: { id: string }) => l.id)).toContain(link);
-      }
-    },
-  );
+  it('has no archive_link tool, and calling it changes nothing', async () => {
+    const a = await agent();
+    const [link] = await seedLinks(a, [{ url: 'https://link.example', state: 'active' }]);
+    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first();
+    const list = await mcp(a.secret, 'tools/list', {});
+    expect(list.json.result.tools.map((t: { name: string }) => t.name)).not.toContain(
+      'archive_link',
+    );
+    const r = await mcp(a.secret, 'tools/call', {
+      name: 'archive_link',
+      arguments: { link_id: link },
+    });
+    expect(r.status).toBe(200);
+    expect(r.json.result.isError).toBe(true);
+    expect(r.json.result.structuredContent).toEqual({
+      error: 'not_found',
+      message: 'no such tool',
+    });
+    expect(await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first()).toEqual(
+      before,
+    );
+  });
 });
 
 describe('one user, one contract', () => {
@@ -828,7 +813,6 @@ describe('one user, one contract', () => {
       (_l: string, w: string, mine: { link: string }) => ({ link_id: mine.link, workspace: w }),
     ],
     ['pin_link', (l: string) => ({ link_id: l })],
-    ['archive_link', (l: string) => ({ link_id: l })],
   ] as const)(
     '%s answers for another user’s resource as for one that does not exist',
     async (name, args) => {
@@ -941,18 +925,6 @@ describe('one user, one contract', () => {
       'pin_link',
       () => ({ link_id: 'nope' }),
       () => ['POST', '/api/v1/links/nope/pin'],
-    ],
-    [
-      'archive_link',
-      'archive_link',
-      (l) => ({ link_id: l.ids[0] }),
-      (l) => ['POST', `/api/v1/links/${l.ids[0]}/archive`],
-    ],
-    [
-      'archive_link refused',
-      'archive_link',
-      () => ({ link_id: 'nope' }),
-      () => ['POST', '/api/v1/links/nope/archive'],
     ],
     [
       'add_to_workspace',

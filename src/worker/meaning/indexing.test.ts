@@ -92,8 +92,8 @@ describe('indexing a link by meaning', () => {
       max: 1,
     },
     {
-      name: 'an archived link',
-      article: { ...ARTICLES.tomatoes, state: 'archived' },
+      name: 'an expired link',
+      article: { ...ARTICLES.tomatoes, state: 'expired' },
       min: 2,
       max: 2,
     },
@@ -405,7 +405,6 @@ describe('queueing a link for indexing', () => {
       queued: [],
     },
     { name: 'a pin', write: post('pin'), queued: [] },
-    { name: 'an archive', write: post('archive'), queued: [] },
     {
       name: 'a use',
       write: ({ user, ids }: Library) =>

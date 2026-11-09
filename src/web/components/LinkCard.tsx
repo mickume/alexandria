@@ -132,8 +132,6 @@ export interface CardActions {
   onRefreshing?: (link: Link) => void;
   /** On a workspace's page: take the link out of the workspace. */
   onRemoveFromWorkspace?: (link: Link) => void;
-  /** Archive the link by hand. */
-  onArchive?: (link: Link) => void;
 }
 
 /** The workspaces a link is in, each a chip linking to the workspace's page. */
@@ -400,15 +398,6 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
                 onClick={() => actions.onRemoveFromWorkspace?.(link)}
               >
                 Remove from workspace
-              </button>
-            )}
-            {actions.onArchive && (
-              <button
-                type="button"
-                className="q-menu-item"
-                onClick={() => actions.onArchive?.(link)}
-              >
-                Archive
               </button>
             )}
             <button

@@ -272,13 +272,6 @@ export function Stream() {
     onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
     onDelete: deletes.remove,
     onRefreshing: feed.markRefreshing,
-    onArchive: (link) => {
-      setNotice(null);
-      linksApi
-        .archive(link.id)
-        .then(() => setItems((current) => current.filter((l) => l.id !== link.id)))
-        .catch(() => setNotice('could not archive, try again'));
-    },
     onDragStart: (link) => {
       dragged.current = link;
     },

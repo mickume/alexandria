@@ -387,20 +387,20 @@ describe('the export’s content URLs', () => {
   it.each([
     ['snapshot', 'an HTML link', 'html', false],
     ['snapshot', 'a PDF link', 'pdf', false],
-    ['snapshot', 'an archived HTML link', 'html', true],
+    ['snapshot', 'an expired HTML link', 'html', true],
     ['reader', 'an HTML link', 'html', false],
     ['reader', 'a PDF link', 'pdf', false],
-    ['reader', 'an archived link', 'html', true],
+    ['reader', 'an expired link', 'html', true],
   ] as const)(
     'serve the %s of %s as the link routes do, recording no use',
-    async (kind, _case, type, archived) => {
+    async (kind, _case, type, expired) => {
       const user = await signIn();
       const token = await createToken(user);
       const [id] = await seedLinks(user, [{ url: 'https://stored.example' }]);
       await storeCopies(user, id!, type);
-      if (archived) {
+      if (expired) {
         await env.DB.prepare(
-          "UPDATE links SET state = 'archived', archived_at = '2026-01-01T00:00:00.000Z' WHERE id = ?",
+          "UPDATE links SET state = 'expired', expired_at = '2026-01-01T00:00:00.000Z' WHERE id = ?",
         )
           .bind(id)
           .run();

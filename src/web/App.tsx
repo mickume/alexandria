@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Archive } from './pages/Archive';
+import { Expired } from './pages/Expired';
 import { Ask } from './pages/Ask';
 import { Import } from './pages/Import';
 import { LinkDetail } from './pages/LinkDetail';
@@ -88,7 +88,7 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '/topics', label: 'Topics', icon: 'topics' },
   { to: '/tags', label: 'Tags', icon: 'tags' },
   { to: '/ask', label: 'Ask', icon: 'ask' },
-  { to: '/archive', label: 'Archive', icon: 'archive' },
+  { to: '/expired', label: 'Expired', icon: 'archive' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -181,8 +181,8 @@ export function App() {
   if (path === '/') page = <Stream />;
   else if (path === '/settings') page = <Settings />;
   else if (path === '/workspaces') page = <Workspaces />;
-  else if (path === '/archive')
-    page = <Archive query={queryOf(location)} mode={modeOf(location)} />;
+  else if (path === '/expired')
+    page = <Expired query={queryOf(location)} mode={modeOf(location)} />;
   else if (path === '/ask') page = <Ask />;
   else if (path === '/search') page = <Search query={queryOf(location)} mode={modeOf(location)} />;
   else if (path === '/topics') page = <Topics />;

@@ -38,8 +38,8 @@ settings and secrets, copy `.env.example` to `.env`, fill it in and run
 The search box is in the header of every page. It searches as you type (200
 ms after the last keystroke) over each link's title, summary, tags, topic,
 host, address, page text and note, every word matching as the start of a
-word, and lists the matching workspaces above the links. On the Archive page
-it searches the archive.
+word, and lists the matching workspaces above the links. On the Expired page
+it searches the expired links.
 
 Press **Enter** to search the same query by meaning as well: it also finds
 links that share no word with it, such as a page saved as "Durable Objects
@@ -59,9 +59,9 @@ Filters narrow a search, and can be combined with words or each other:
 | `host:example.com` | links on that host or its subdomains |
 | `in:"Reading list"` | links in that workspace |
 | `is:pinned`, `is:dead` | pinned links; links whose page is gone |
-| `state:archived`, `state:any`, `state:dormant`, … | archived links only; every state; one state |
+| `state:expired`, `state:any`, `state:active`, … | expired links only; every state; one state |
 
-Archived links are left out unless a `state:` filter asks for them. The Topics
+Expired links are left out unless a `state:` filter asks for them. The Topics
 and Tags pages list every topic and tag with its number of links, in
 alphabetical order; each opens its search, and each can be renamed or merged
 into another, chosen from a list in the same order. The topic and tags on a
@@ -82,7 +82,7 @@ which asks first and then goes back to the stream.
 
 ## Ask
 
-The **Ask** tab, between Tags and Archive, answers a question from your own
+The **Ask** tab, between Tags and Expired, answers a question from your own
 links. Type it (at most 500 characters, with the same filters as the search
 box if you like) and press **Ask**: the answer streams in, with a spinner until it is done, written by your own
 AI provider with the key saved under Settings, from the passages of your links

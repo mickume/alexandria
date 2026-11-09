@@ -3,7 +3,7 @@
   "spec_id": "13",
   "spec_name": "points_and_expiry",
   "schema_version": 3,
-  "updated_at": "2026-11-09T15:11:00Z",
+  "updated_at": "2026-11-09T15:16:10Z",
   "tasks": [
     {
       "id": 1,
@@ -23,7 +23,7 @@
     },
     {
       "id": 5,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 6,

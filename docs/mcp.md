@@ -164,7 +164,7 @@ curl -sS https://alexandria.example.com/mcp \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
 ```
 
-A working setup answers JSON whose `result.tools` names the ten tools below.
+A working setup answers JSON whose `result.tools` names the nine tools below.
 Settings then shows the token as just used.
 
 | Answer | Meaning |
@@ -187,7 +187,6 @@ Settings then shows the token as just used.
 | `list_workspaces` | Your workspaces, with their descriptions and link counts |
 | `add_to_workspace` | File a link at the bottom of a workspace (named by its id or its name) |
 | `pin_link` | Pin a link at the top of the stream |
-| `archive_link` | Archive a link: it leaves the stream for the Archive page |
 
 Two behaviours are worth knowing when you direct an agent:
 
@@ -239,8 +238,8 @@ How to use it:
 - **Finding things.** Use `search_links` with a few keywords or a description
   of what you are looking for; it matches by meaning as well as by words. Narrow with
   filters when they help: `tag:rust`, `topic:"web development"`,
-  `host:github.com`, `in:"Reading list"` (a workspace), `is:pinned`. Archived
-  links are left out unless you add `state:archived` or `state:any`.
+  `host:github.com`, `in:"Reading list"` (a workspace), `is:pinned`. Expired
+  links are left out unless you add `state:expired` or `state:any`.
   `list_recent` shows what I have been using lately. Answer with each link's
   title and URL, and say when nothing in the library matches.
 - **Asking.** For a question the library may answer ("what did I save about
@@ -259,7 +258,7 @@ How to use it:
   lower-case, hyphenated (`machine-learning`). Alexandria tags and summarises
   links itself. To file a link into a workspace, use the workspace's name as
   `list_workspaces` shows it; never assume one exists.
-- **Changing things.** Do not pin or archive links unless I ask you to.
+- **Changing things.** Do not pin links unless I ask you to.
 
 Never add links I did not ask for in bulk, and never put the content of
 private or internal pages into the library.

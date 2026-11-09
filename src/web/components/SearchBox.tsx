@@ -20,26 +20,26 @@ function isTextField(target: EventTarget | null): boolean {
 }
 
 /**
- * The address a query leads to from `location`: the Archive page keeps its own
+ * The address a query leads to from `location`: the Expired page keeps its own
  * search. With `mode` the search is by meaning as well as by words.
  */
 function addressOf(location: Location, query: string, mode?: SearchMode): string {
-  if (location.path === '/archive') {
-    if (!query) return '/archive';
-    return `/archive?q=${encodeURIComponent(query)}${mode ? `&mode=${mode}` : ''}`;
+  if (location.path === '/expired') {
+    if (!query) return '/expired';
+    return `/expired?q=${encodeURIComponent(query)}${mode ? `&mode=${mode}` : ''}`;
   }
   return query ? searchPath(query, mode) : '/';
 }
 
-/** The page a location's search box shows the query of: the results page and the Archive page. */
+/** The page a location's search box shows the query of: the results page and the Expired page. */
 function showsQuery(location: Location): boolean {
-  return location.path === '/search' || location.path === '/archive';
+  return location.path === '/search' || location.path === '/expired';
 }
 
 /**
  * The search box in the header of every page. It searches by keyword 200 ms
- * after the last keystroke, at /search?q= (on the Archive page, within the
- * archive); Enter searches the same query by meaning as well, at
+ * after the last keystroke, at /search?q= (on the Expired page, within the
+ * expired links); Enter searches the same query by meaning as well, at
  * /search?q=&mode=hybrid; an emptied box returns to the stream. '/' typed outside a text field
  * focuses it; Escape in it clears it, returns to the page the search started
  * from and focuses the page's main region. No other key is a shortcut.
@@ -79,7 +79,7 @@ export function SearchBox({ location }: { location: Location }) {
     const here = window.location.pathname + window.location.search;
     const target = addressOf(location, query.trim() ? query : '', mode);
     if (target === here) return;
-    if (location.path !== '/search' && location.path !== '/archive') origin.current = here;
+    if (location.path !== '/search' && location.path !== '/expired') origin.current = here;
     // Typing on the results page refines the search rather than adding history.
     navigate(target, { replace: location.path === '/search' && target.startsWith('/search') });
   }
@@ -99,7 +99,7 @@ export function SearchBox({ location }: { location: Location }) {
   function onEscape() {
     if (timer.current) clearTimeout(timer.current);
     setValue('');
-    const back = location.path === '/archive' ? '/archive' : (origin.current ?? '/');
+    const back = location.path === '/expired' ? '/expired' : (origin.current ?? '/');
     origin.current = null;
     if (back !== window.location.pathname + window.location.search) navigate(back);
     document.querySelector<HTMLElement>('main')?.focus();

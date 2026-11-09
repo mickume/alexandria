@@ -677,16 +677,16 @@ export const operations: Operation[] = [
   }),
   {
     method: 'get',
-    path: '/archive',
-    operationId: 'listArchive',
-    summary: 'The archived links, most recently archived first, each with its removal date',
+    path: '/expired',
+    operationId: 'listExpired',
+    summary: 'The expired links, most recently expired first, each with its removal date',
     query: {
-      limit: { description: 'Links per page, 1 to 100 (default 100)', schema: z.string() },
+      limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
     },
     responses: {
       200: {
-        description: 'One page of archived links',
+        description: 'One page of expired links',
         schema: z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
       },
       400: error('invalid_limit or invalid_cursor'),
@@ -962,14 +962,6 @@ export const operations: Operation[] = [
       },
       404: NO_SNAPSHOT,
     },
-  },
-  {
-    method: 'post',
-    path: '/links/{id}/archive',
-    operationId: 'archiveLink',
-    summary:
-      'Archive the link by hand, whatever keeps it from decay; it is unpinned, its workspaces stay',
-    responses: { 200: { description: 'The archived link', schema: LinkWithNote } },
   },
   {
     method: 'post',

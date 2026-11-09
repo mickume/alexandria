@@ -528,19 +528,21 @@ is stored:
 `400 {"error": "invalid_threshold", "field": "start_points", "message": "start_points must be a whole number from 7 to 3650"}`
 (or `remove_days`).
 
-### The archive
+### Expired links
 
-#### `POST /api/v1/links/{id}/archive`
+A link whose points reach 0 expires: it leaves the stream and every list and
+search without a `state:` filter, and waits to be removed. There is no way to
+archive or expire a link by hand: `POST /api/v1/links/{id}/archive` and
+`GET /api/v1/archive` answer `404 {"error": "not_found"}` as any unknown route
+does.
 
-Archives the link by hand, whatever would keep it from decay (stickiness, a
-pin, a workspace): `archived_at` is now, the link is unpinned (the pinned
-positions close up) and keeps its workspaces. `200 <link>`; an archived link
-answers `200` unchanged.
+#### `GET /api/v1/expired`
 
-#### `GET /api/v1/archive`
-
-The archived links, most recently archived first, each with `archived_at` and
-`removal_at`, at most 100 per page: `200 {"items": [...], "next_cursor"}`.
+The owner's expired links, most recently expired first (id descending on
+ties), each with `expired_at` and `removal_at`. Query: `limit` (1 to 100,
+default 50), `cursor`: `200 {"items": [...], "next_cursor"}`. A bad `limit` is
+`400 {"error": "invalid_limit", "field": "limit", "message"}`, and a cursor
+this route did not issue `400 {"error": "invalid_cursor", "field": "cursor", "message"}`.
 
 #### `POST /api/v1/links/{id}/restore`
 
@@ -583,7 +585,7 @@ start of a word, case- and accent-insensitively (`cloud` finds "Cloudflare",
 `cafe` finds "Café"), in the link's title, summary, tags, topic, host,
 original URL, note or reader-view text. Quotes and the full-text engine's
 operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
-plain text. Archived links are left out.
+plain text. Expired links are left out.
 
 ```json
 {
@@ -1057,7 +1059,6 @@ unexpected failure is
 | `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |
 | `add_to_workspace` | `link_id`, `workspace` | `POST /api/v1/workspaces/{id}/links` with `{link_id}`: at the bottom |
 | `pin_link` | `link_id` | `POST /api/v1/links/{id}/pin` without a position (`pin_limit` at 30) |
-| `archive_link` | `link_id` | `POST /api/v1/links/{id}/archive` |
 | `list_recent` | `limit?` (1 to 100, default 20) | the first page of `GET /api/v1/links`; no use |
 
 A `workspace` argument is a workspace's id or its name, compared ignoring

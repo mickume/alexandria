@@ -180,9 +180,8 @@ export const links = {
       'POST',
       `/links/${encodeURIComponent(id)}/check`,
     ),
-  archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
   restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
-  archived: () => request<Page<Link>>('GET', '/archive').then((p) => p.items),
+  expired: () => request<Page<Link>>('GET', '/expired').then((p) => p.items),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>

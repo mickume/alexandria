@@ -71,7 +71,7 @@ account and checks the PKCE verifier as Google does.
   Alexandria's own layout and parts, written with Quire's tokens. Every page
   sits under a light header: the mark and a breadcrumb (Alexandria / the
   section), the search box and a sign-out button, over a row of underlined
-  tabs (Stream, Workspaces, Topics, Tags, Archive, Settings) that scrolls
+  tabs (Stream, Workspaces, Topics, Tags, Ask, Expired, Settings) that scrolls
   sideways on a phone. Page titles are light headings over a hairline. Links
   are the rows of one bordered box (title and actions, a line of facts, a
   two-line summary, the topic as an outlined label and the tags as blue pills;
@@ -84,7 +84,7 @@ account and checks the PKCE verifier as Google does.
   Open open the site in a new tab, through `/api/v1/links/{id}/open` so the
   visit counts as a use. Open, Read (when a copy is stored) and Pin stay on
   the card; Snapshot, Details, Refresh, Add to workspace, Remove from
-  workspace, Archive and Delete are behind its ⋯ More actions button, a
+  workspace and Delete are behind its ⋯ More actions button, a
   disclosure that closes on Escape, on a click elsewhere and once an action
   is chosen. Everywhere else a link appears, its address opens the same way:
   the headline of the link's detail page and a source's title on the Ask page
@@ -277,10 +277,10 @@ never removed. `removal_at` is `expired_at` plus `remove_days`.
 ### Liveness
 
 The same hourly run enqueues one `LIVENESS_QUEUE` message per link due a
-weekly check (`decay/liveness.ts`): kept, active, dormant or pinned, last
+weekly check (`decay/liveness.ts`): not expired, and active or pinned, last
 checked (or, never checked, added) 7 days ago or more, and not enqueued in
 the last 6 hours (`check_enqueued_at`, set in the selecting statement). The
-consumer drops a message for a link deleted, archived or no longer due;
+consumer drops a message for a link deleted, expired or no longer due;
 otherwise it sends HEAD through the fetcher's request path
 (`fetcher/fetch.ts`, `requestFollowing`: blocked addresses refused, at most 5
 redirects, `ORIGIN_PROXY_URL`, and the host gate shared with fetches), and

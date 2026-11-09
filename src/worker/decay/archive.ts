@@ -3,24 +3,30 @@ import { limitReached, notFound, validationError } from '../api/errors';
 import { now } from '../clock';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
-import { getLink, toFullView, toView, unpinStatements, type LinkRow } from '../links/store';
+import { getLink, toFullView, toView, type LinkRow } from '../links/store';
 
-/** Where a page of the archive list ends. */
-interface ArchiveCursor {
-  a: string;
+/** Where a page of the expired list ends: the last link's expiry time and id. */
+interface ExpiredCursor {
+  e: string;
   i: string;
 }
 
-function isArchiveCursor(value: unknown): value is ArchiveCursor {
+function isExpiredCursor(value: unknown): value is ExpiredCursor {
   const c = value as Record<string, unknown> | null;
-  return typeof c === 'object' && c !== null && typeof c.a === 'string' && typeof c.i === 'string';
+  return (
+    typeof c === 'object' &&
+    c !== null &&
+    Object.keys(c).length === 2 &&
+    typeof c.e === 'string' &&
+    typeof c.i === 'string'
+  );
 }
 
-/** The archive, under /api/v1/archive. */
-export const archiveRoutes = new Hono<AppEnv>();
+/** The expired links, under /api/v1/expired. */
+export const expiredRoutes = new Hono<AppEnv>();
 
-archiveRoutes.get('/', async (c) => {
-  const limit = parseLimit(c.req.query('limit'), MAX_LIMIT);
+expiredRoutes.get('/', async (c) => {
+  const limit = parseLimit(c.req.query('limit'));
   if (limit === null) {
     return validationError(
       c,
@@ -30,10 +36,10 @@ archiveRoutes.get('/', async (c) => {
     );
   }
   const raw = c.req.query('cursor');
-  let after: ArchiveCursor | null = null;
+  let after: ExpiredCursor | null = null;
   if (raw !== undefined) {
     const cursor = await decodeCursor(c.env, raw);
-    if (!isArchiveCursor(cursor)) {
+    if (!isExpiredCursor(cursor)) {
       return validationError(
         c,
         'invalid_cursor',
@@ -43,48 +49,30 @@ archiveRoutes.get('/', async (c) => {
     }
     after = cursor;
   }
-  const keyset = after ? 'AND (archived_at < ?3 OR (archived_at = ?3 AND id < ?4))' : '';
+  const keyset = after ? 'AND (expired_at < ?3 OR (expired_at = ?3 AND id < ?4))' : '';
   const statement = c.env.DB.prepare(
-    `SELECT * FROM link_views WHERE user_id = ?1 AND state = 'archived' ${keyset}
-     ORDER BY archived_at DESC, id DESC LIMIT ?2`,
+    `SELECT * FROM link_views WHERE user_id = ?1 AND state = 'expired' ${keyset}
+     ORDER BY expired_at DESC, id DESC LIMIT ?2`,
   );
   const userId = c.get('user').id;
   const rows = await (
-    after ? statement.bind(userId, limit + 1, after.a, after.i) : statement.bind(userId, limit + 1)
+    after ? statement.bind(userId, limit + 1, after.e, after.i) : statement.bind(userId, limit + 1)
   ).all<LinkRow>();
   const items = rows.results.slice(0, limit);
   const last = items.at(-1);
   return c.json({
     items: items.map(toView),
     next_cursor:
-      rows.results.length > limit && last
-        ? await encodeCursor(c.env, { a: last.archived_at, i: last.id })
+      rows.results.length > limit && last?.expired_at
+        ? await encodeCursor(c.env, { e: last.expired_at, i: last.id })
         : null,
   });
 });
 
-/** Archiving and restoring one link by hand, under /api/v1/links. */
-export const archiveLinkRoutes = new Hono<AppEnv>();
+/** Restoring one expired link, under /api/v1/links. */
+export const restoreRoutes = new Hono<AppEnv>();
 
-archiveLinkRoutes.post('/:id/archive', async (c) => {
-  const userId = c.get('user').id;
-  const id = c.req.param('id');
-  const link = await getLink(c.env.DB, userId, id);
-  if (!link) return notFound(c);
-  if (link.state !== 'archived') {
-    const at = now().toISOString();
-    // A pinned link leaves the pinned section with the stream; its workspaces stay.
-    await c.env.DB.batch([
-      ...unpinStatements(c.env.DB, userId, id),
-      c.env.DB.prepare(
-        "UPDATE links SET state = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND user_id = ? AND state <> 'archived'",
-      ).bind(at, at, id, userId),
-    ]);
-  }
-  return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
-});
-
-archiveLinkRoutes.post('/:id/restore', async (c) => {
+restoreRoutes.post('/:id/restore', async (c) => {
   const userId = c.get('user').id;
   const id = c.req.param('id');
   const at = now().toISOString();

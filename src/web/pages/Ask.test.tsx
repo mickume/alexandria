@@ -60,7 +60,7 @@ async function ask(text: string) {
 }
 
 describe('the Ask page', () => {
-  it('has an Ask tab between Tags and Archive that opens a question box and an Ask button', async () => {
+  it('has an Ask tab between Tags and Expired that opens a question box and an Ask button', async () => {
     const user = userEvent.setup();
     renderPage('/', api());
     await screen.findByRole('article', { name: 'Durable Object alarms' });
@@ -72,7 +72,7 @@ describe('the Ask page', () => {
       'Topics',
       'Tags',
       'Ask',
-      'Archive',
+      'Expired',
       'Settings',
       'Import',
     ]);

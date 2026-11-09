@@ -14,7 +14,7 @@ function pagesApi(): FakeApi {
     .on('GET', '/api/v1/links', { status: 200, body: { items: [link], next_cursor: null } })
     .on('GET', '/api/v1/links/:id', { status: 200, body: { ...link, note: '' } })
     .on('GET', '/api/v1/links/:id/history', { status: 200, body: { items: [], next_cursor: null } })
-    .on('GET', '/api/v1/archive', { status: 200, body: { items: [], next_cursor: null } })
+    .on('GET', '/api/v1/expired', { status: 200, body: { items: [], next_cursor: null } })
     .on('GET', '/api/v1/topics', { status: 200, body: { items: [], next_cursor: null } })
     .on('GET', '/api/v1/tags', { status: 200, body: { items: [], next_cursor: null } })
     .on('GET', '/api/v1/search', {
@@ -26,7 +26,7 @@ function pagesApi(): FakeApi {
 const searchBox = () => screen.getByRole('searchbox', { name: 'Search' }) as HTMLInputElement;
 
 describe('the search box', () => {
-  it.each(['/', '/settings', '/topics', '/tags', '/links/l1', '/archive'])(
+  it.each(['/', '/settings', '/topics', '/tags', '/links/l1', '/expired'])(
     "is on %s, and '/' outside a text field focuses it without typing",
     async (page) => {
       const user = userEvent.setup();
@@ -122,9 +122,9 @@ describe('searching by meaning on Enter', () => {
       request: '/api/v1/search?q=run%20a%20task%20later&mode=hybrid',
     },
     {
-      page: '/archive',
-      address: '/archive?q=run%20a%20task%20later&mode=hybrid',
-      request: '/api/v1/search?q=run%20a%20task%20later%20state%3Aarchived&mode=hybrid',
+      page: '/expired',
+      address: '/expired?q=run%20a%20task%20later&mode=hybrid',
+      request: '/api/v1/search?q=run%20a%20task%20later%20state%3Aexpired&mode=hybrid',
     },
   ])(
     'asks for mode=hybrid and sets the address when Enter is pressed on $page',

@@ -381,21 +381,3 @@ describe('the stream with a rejected AI key', () => {
     expect(screen.queryByText(/rejected/)).toBeNull();
   });
 });
-
-describe('archiving from the stream', () => {
-  it('sends the archive and takes the card away', async () => {
-    const all = makeLinks(2).map((l) => ({ ...l, state: 'active' }));
-    const api = new FakeApi()
-      .on('GET', '/api/v1/links', { status: 200, body: { items: all, next_cursor: null } })
-      .on('POST', '/api/v1/links/:id/archive', (_req, { id }) => ({
-        status: 200,
-        body: { ...all.find((l) => l.id === id), state: 'archived' },
-      }));
-    renderPage('/', api);
-    const card = await screen.findByRole('article', { name: 'Title 0' });
-    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
-    await act(async () => within(card).getByRole('button', { name: 'Archive' }).click());
-    expect(api.sent('POST', '/api/v1/links/l0/archive')).toHaveLength(1);
-    await waitFor(() => expect(screen.queryByRole('article', { name: 'Title 0' })).toBeNull());
-  });
-});

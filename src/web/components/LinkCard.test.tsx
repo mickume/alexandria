@@ -34,7 +34,7 @@ describe('a card’s links to the site', () => {
 
 describe('a card’s More actions menu', () => {
   const stored = makeLink({ id: 'abc', state: 'active', has_snapshot: true, title: 'Stored' });
-  const actions = { onPin: noop, onUnpin: noop, onDelete: noop, onArchive: noop };
+  const actions = { onPin: noop, onUnpin: noop, onDelete: noop };
 
   it('keeps Open, Read and Pin on the card and the rest behind it', async () => {
     render(<LinkCard link={stored} actions={actions} />);
@@ -43,7 +43,7 @@ describe('a card’s More actions menu', () => {
     expect(screen.getByRole('button', { name: 'Pin' })).toBeTruthy();
     const trigger = screen.getByRole('button', { name: 'More actions' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    for (const name of ['Refresh', 'Add to workspace', 'Archive', 'Delete']) {
+    for (const name of ['Refresh', 'Add to workspace', 'Delete']) {
       expect(screen.queryByRole('button', { name }), name).toBeNull();
     }
     expect(screen.queryByRole('link', { name: 'Details' })).toBeNull();
@@ -51,9 +51,11 @@ describe('a card’s More actions menu', () => {
 
     await moreActions();
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    for (const name of ['Refresh', 'Add to workspace', 'Archive', 'Delete']) {
+    for (const name of ['Refresh', 'Add to workspace', 'Delete']) {
       expect(screen.getByRole('button', { name }), name).toBeTruthy();
     }
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Details' }).getAttribute('href')).toBe('/links/abc');
     expect(screen.getByRole('link', { name: 'Snapshot' }).getAttribute('href')).toBe(
       '/links/abc/snapshot',
@@ -73,12 +75,12 @@ describe('a card’s More actions menu', () => {
   });
 
   it('closes once an action is chosen', async () => {
-    let archived = 0;
-    render(<LinkCard link={stored} actions={{ ...actions, onArchive: () => (archived += 1) }} />);
+    let deleted = 0;
+    render(<LinkCard link={stored} actions={{ ...actions, onDelete: () => (deleted += 1) }} />);
     await moreActions();
-    await act(async () => screen.getByRole('button', { name: 'Archive' }).click());
-    expect(archived).toBe(1);
-    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    await act(async () => screen.getByRole('button', { name: 'Delete' }).click());
+    expect(deleted).toBe(1);
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 });
 

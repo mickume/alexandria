@@ -4,8 +4,8 @@ import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { Toast } from '../components/Toast';
 import { useUndoableDelete } from './Stream';
 
-/** Archived links as the page lists them, and how a search by meaning found them. */
-interface Archived {
+/** Expired links as the page lists them, and how a search by meaning found them. */
+interface Listed {
   list: Link[];
   /** The ids of the links found by meaning alone. */
   byMeaning: Set<string>;
@@ -13,9 +13,9 @@ interface Archived {
   keywordOnly: boolean;
 }
 
-/** The archived links matching `query`: the search, limited to archived links. */
-async function searchArchive(query: string, mode?: SearchMode): Promise<Archived> {
-  const page = await search(`${query.trim()} state:archived`, undefined, mode);
+/** The expired links matching `query`: the search, limited to expired links. */
+async function searchExpired(query: string, mode?: SearchMode): Promise<Listed> {
+  const page = await search(`${query.trim()} state:expired`, undefined, mode);
   return {
     list: page.items.map((i) => i.link),
     byMeaning: new Set(page.items.filter((i) => i.match === 'meaning').map((i) => i.link.id)),
@@ -24,10 +24,11 @@ async function searchArchive(query: string, mode?: SearchMode): Promise<Archived
 }
 
 /**
- * The Archive page: archived links, most recently archived first, to restore
- * or delete; with a query (from the search box), the archived links matching it.
+ * The Expired page: expired links, most recently expired first, each with the
+ * day it will be removed, to restore or delete; with a query (from the search
+ * box), the expired links matching it.
  */
-export function Archive({ query = '', mode }: { query?: string; mode?: SearchMode }) {
+export function Expired({ query = '', mode }: { query?: string; mode?: SearchMode }) {
   const [items, setItems] = useState<Link[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,19 +39,17 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
   useEffect(() => {
     let live = true;
     (query.trim()
-      ? searchArchive(query, mode)
-      : links
-          .archived()
-          .then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
+      ? searchExpired(query, mode)
+      : links.expired().then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
     )
-      .then((archived) => {
+      .then((listed) => {
         if (!live) return;
-        setItems(archived.list);
-        setByMeaning(archived.byMeaning);
-        setKeywordOnly(archived.keywordOnly);
+        setItems(listed.list);
+        setByMeaning(listed.byMeaning);
+        setKeywordOnly(listed.keywordOnly);
         setLoaded(true);
       })
-      .catch(() => live && setError('could not load the archive'));
+      .catch(() => live && setError('could not load the expired links'));
     return () => {
       live = false;
     };
@@ -67,10 +66,11 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
   }
 
   return (
-    <section className="archive">
-      <h1>Archive</h1>
+    <section className="expired">
+      <h1>Expired</h1>
       <p className="muted">
-        Links you have not used for a long time. Restore one to put it back in the stream.
+        Links whose points ran out. Each is removed on the day shown; restore one, or use it, to put
+        it back in the stream.
       </p>
       {error && (
         <p className="notice" role="alert">
@@ -104,7 +104,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
       </div>
       {loaded && items.length === 0 && (
         <p className="muted">
-          {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing is archived.'}
+          {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing has expired.'}
         </p>
       )}
       <div className="toasts">
