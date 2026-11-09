@@ -52,10 +52,19 @@ function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
   return <div className="markdown" onClick={follow} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+/** A spinner and what is being written, under the part of an answer that has arrived. */
+function Writing({ children }: { children: string }) {
+  return (
+    <p className="ask-progress muted" role="status">
+      <span className="q-spinner" aria-hidden="true" /> {children}
+    </p>
+  );
+}
+
 /**
  * The Ask page: a question to the library, answered by the owner's own AI
- * provider from passages of their links. The answer streams in with each [n] a
- * link to its source, the sources listed under it, and a refusal or a failure
+ * provider from passages of their links. The answer streams in, with a spinner
+ * until it is done and each [n] a link to its source, the sources listed under it, and a refusal or a failure
  * of the stream shown under whatever part of the answer arrived. Once it has
  * arrived, Tell me more asks the same question again for a detailed answer,
  * which streams in under the first with a spinner until it is done and adds
@@ -126,7 +135,8 @@ export function Ask() {
     }
   }
 
-  /** The detailed answer is still arriving. */
+  /** Which answer is still arriving. */
+  const writingAnswer = asking && asked?.detailed === false;
   const writingDetail = asking && asked?.detailed === true;
   const moreable = answered(answer) && !failure && asked !== null && !asked.detailed;
 
@@ -149,19 +159,16 @@ export function Ask() {
           Ask
         </button>
       </form>
-      {answer && (
-        <section className="ask-answer" aria-label="Answer">
-          <Answer text={answer} sources={sources} />
+      {(answer || writingAnswer) && (
+        <section className="ask-answer" aria-label="Answer" aria-busy={writingAnswer}>
+          {answer && <Answer text={answer} sources={sources} />}
+          {writingAnswer && <Writing>Writing an answer…</Writing>}
         </section>
       )}
       {(detail || writingDetail) && (
         <section className="ask-answer" aria-label="Detailed answer" aria-busy={writingDetail}>
           {detail && <Answer text={detail} sources={detailSources ?? sources} />}
-          {writingDetail && (
-            <p className="ask-progress muted" role="status">
-              <span className="q-spinner" aria-hidden="true" /> Writing a detailed answer…
-            </p>
-          )}
+          {writingDetail && <Writing>Writing a detailed answer…</Writing>}
         </section>
       )}
       {failure && (

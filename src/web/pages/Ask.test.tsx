@@ -83,7 +83,7 @@ describe('the Ask page', () => {
     expect(askButton()).toBeTruthy();
   });
 
-  it('shows the answer as it streams in, each [n] a link to its source, and lists the sources', async () => {
+  it('shows the answer as it streams in with a spinner, each [n] a link to its source, and lists the sources', async () => {
     const body = feed();
     const fake = api({ status: 200, headers: sseHeaders, stream: body.stream });
     renderPage('/ask', fake);
@@ -93,6 +93,9 @@ describe('the Ask page', () => {
     expect(fake.sent('POST', '/api/v1/ask').map((r) => r.body)).toEqual([
       { question: 'how do I schedule background work?' },
     ]);
+    const writing = await screen.findByRole('region', { name: 'Answer' });
+    expect(within(writing).getByRole('status').textContent).toContain('Writing an answer');
+    expect(writing.getAttribute('aria-busy')).toBe('true');
     await act(async () => {
       body.send(
         event('sources', { sources: [{ n: 1, link: alarms }] }),
@@ -102,6 +105,7 @@ describe('the Ask page', () => {
     const answer = await screen.findByRole('region', { name: 'Answer' });
     await within(answer).findByText(/Use an alarm/);
     expect(within(answer).queryByRole('link')).toBeNull();
+    expect(within(answer).getByRole('status')).toBeTruthy();
 
     await act(async () => {
       body.send(event('delta', { text: '[1].' }), event('done', {}));
@@ -109,6 +113,8 @@ describe('the Ask page', () => {
     });
     const cited = await within(answer).findByRole('link', { name: '[1]' });
     expect(cited.getAttribute('href')).toBe('/links/l1');
+    expect(within(answer).queryByRole('status')).toBeNull();
+    expect(answer.getAttribute('aria-busy')).toBe('false');
     expect(answer.textContent?.trim()).toBe('Use an alarm [1].');
     const sources = within(screen.getByRole('list', { name: 'Sources' }));
     const site = sources.getByRole('link', { name: 'Durable Object alarms' });
