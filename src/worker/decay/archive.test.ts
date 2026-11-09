@@ -451,22 +451,28 @@ describe('another user’s link', () => {
     setNow(T);
     const a = await signIn('a@example.test', 'A');
     const b = await signIn('b@example.test', 'B');
-    const [link = ''] = await seedLinks(b, [{ url: 'https://b-only.example/', state: 'expired' }]);
-    const origin = new FakeOrigin().byMethod('https://b-only.example/', {
-      HEAD: () => new Response(null, { status: 200 }),
-    });
-    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first();
-    for (const action of ['archive', 'unarchive', 'restore', 'check']) {
-      const r = await api('POST', `/api/v1/links/${link}/${action}`, { as: a.session });
-      const unknown = await api('POST', `/api/v1/links/${crypto.randomUUID()}/${action}`, {
-        as: a.session,
-      });
-      expect([r.status, r.json], action).toEqual([404, { error: 'not_found' }]);
-      expect([unknown.status, unknown.json]).toEqual([404, { error: 'not_found' }]);
+    const theirs = await seedLinks(b, [
+      { url: 'https://b-only.example/', state: 'expired' },
+      { url: 'https://b-kept.example/', state: 'archived' },
+    ]);
+    const origin = new FakeOrigin();
+    for (const url of ['https://b-only.example/', 'https://b-kept.example/']) {
+      origin.byMethod(url, { HEAD: () => new Response(null, { status: 200 }) });
     }
-    expect(await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first()).toEqual(
-      before,
-    );
+    const rows = () =>
+      env.DB.prepare('SELECT * FROM links WHERE user_id = ? ORDER BY id').bind(b.id).all();
+    const before = (await rows()).results;
+    for (const link of theirs) {
+      for (const action of ['archive', 'unarchive', 'restore', 'check']) {
+        const r = await api('POST', `/api/v1/links/${link}/${action}`, { as: a.session });
+        const unknown = await api('POST', `/api/v1/links/${crypto.randomUUID()}/${action}`, {
+          as: a.session,
+        });
+        expect([r.status, r.json], action).toEqual([404, { error: 'not_found' }]);
+        expect([unknown.status, unknown.json]).toEqual([404, { error: 'not_found' }]);
+      }
+    }
+    expect((await rows()).results).toEqual(before);
     expect(origin.log).toEqual([]);
   });
 });

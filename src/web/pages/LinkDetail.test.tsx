@@ -121,6 +121,11 @@ describe('the detail page’s days left', () => {
       },
       text: 'expired: removed in 10 days',
     },
+    {
+      label: 'an archived link',
+      fields: { state: 'archived' as const, points: null },
+      text: 'never expires: archived',
+    },
   ])('shows them for $label', async ({ fields, text }) => {
     renderPage(
       '/links/abc',
@@ -506,6 +511,7 @@ describe('the side column of a link’s detail page', () => {
     fireEvent.click(column.getByRole('button', { name: 'Unarchive' }));
     await column.findByRole('button', { name: 'Archive' });
     expect(column.getByRole('button', { name: 'Pin' })).toBeTruthy();
+    expect(column.queryByRole('button', { name: 'Unarchive' })).toBeNull();
     expect(api.sent('POST', '/api/v1/links/abc/unarchive')).toHaveLength(1);
   });
 

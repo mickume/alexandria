@@ -133,6 +133,26 @@ describe('the Search page', () => {
     expect(window.location.pathname + window.location.search).toBe('/search?q=alarms%20later');
   });
 
+  it('unarchives an archived result in place, which is then no longer dimmed', async () => {
+    const kept = makeLink({ id: 'k1', title: 'Kept page', state: 'archived', points: null });
+    const fake = api({
+      items: [{ link: kept, snippet: [] }],
+      workspaces: [],
+      next_cursor: null,
+    }).on('POST', '/api/v1/links/k1/unarchive', {
+      status: 200,
+      body: { ...kept, state: 'active', points: 60 },
+    });
+    renderPage('/search?q=kept', fake);
+    const card = await screen.findByRole('article', { name: 'Kept page' });
+    expect(card.classList.contains('archived')).toBe(true);
+    await act(async () => within(card).getByRole('button', { name: 'Unarchive' }).click());
+    expect(fake.sent('POST', '/api/v1/links/k1/unarchive')).toHaveLength(1);
+    const after = await screen.findByRole('article', { name: 'Kept page' });
+    expect(after.classList.contains('archived')).toBe(false);
+    expect(within(after).getByRole('button', { name: 'Pin' })).toBeTruthy();
+  });
+
   it('repeats a search by meaning from its address, the next page included', async () => {
     const second = makeLink({ id: 'q2', title: 'More queues' });
     const fake = new FakeApi().on('GET', '/api/v1/search', (req) =>

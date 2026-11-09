@@ -619,8 +619,13 @@ describe('refreshing a link', () => {
       title: 'My title',
       enrichment_status: 'no_key',
     });
+    expect(l.has_snapshot).toBe(true);
     const snapshot = await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`);
     expect(await snapshot?.text()).toBe(changed);
+    const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
+      .bind(id)
+      .first<{ text: string }>();
+    expect(text?.text).toContain('A newer reason');
   });
 
   it.each(['an active link', 'an archived link'])(

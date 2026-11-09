@@ -282,7 +282,7 @@ describe('the filtered link list', () => {
     setNow(T);
     const user = await signIn();
     const at = (ms: number) => new Date(T - ms).toISOString();
-    const [pin, high, low, negative, kept1, kept2, kept3] = await seedLinks(user, [
+    const [pin, high, low, negative, kept1, kept2, kept3, gone] = await seedLinks(user, [
       { url: 'https://pin.example', lastUsedAt: at(DAY), pinPosition: 1, state: 'active' },
       { url: 'https://high.example', lastUsedAt: at(0), useCount: 10, state: 'active' },
       { url: 'https://low.example', lastUsedAt: at(50 * DAY), state: 'active' },
@@ -290,10 +290,11 @@ describe('the filtered link list', () => {
       { url: 'https://kept1.example', lastUsedAt: at(DAY), state: 'archived' },
       { url: 'https://kept2.example', lastUsedAt: at(2 * DAY), state: 'archived' },
       { url: 'https://kept3.example', lastUsedAt: at(3 * DAY), state: 'archived' },
+      { url: 'https://gone.example', lastUsedAt: at(DAY), state: 'expired' },
     ]);
     await intoWorkspace(user, negative!);
     const all = [pin, high, low, negative, kept1, kept2, kept3] as string[];
-    for (const id of all) {
+    for (const id of [...all, gone!]) {
       await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { tags: ['x'] } });
     }
     const seen: string[] = [];
