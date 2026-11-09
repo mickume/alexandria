@@ -88,9 +88,12 @@ export const Link = z.strictObject({
   edited_fields: z.array(z.string()).describe('Fields the owner set by hand'),
   note_preview: z.string().nullable().describe('The note’s first line as plain text'),
   workspaces: z.array(z.strictObject({ id: z.string(), name: z.string() })),
-  sticky: z.boolean().describe('At least 5 uses on 5 UTC days: never dormant or archived by decay'),
-  archived_at: z.string().nullable(),
-  removal_at: z.string().nullable().describe('When an archived link will be removed'),
+  points: z
+    .number()
+    .int()
+    .describe('Start points plus the use count, minus whole days since the last use or boost'),
+  expired_at: z.string().nullable().describe('When the link expired, while it is expired'),
+  removal_at: z.string().nullable().describe('When an expired link will be removed'),
   dead_since: z.string().nullable(),
   last_checked_at: z.string().nullable(),
   last_check_result: z.string().nullable(),

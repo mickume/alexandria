@@ -92,7 +92,11 @@ export interface Link {
   /** The whole note: only on a link read on its own. */
   note?: string;
   sticky: boolean;
-  archived_at: string | null;
+  /** Start points plus the use count, minus the whole days since the last use or boost. */
+  points: number;
+  /** When the link expired, while it is expired. */
+  expired_at: string | null;
+  /** When an expired link will be removed. */
   removal_at: string | null;
   dead_since: string | null;
   last_checked_at: string | null;

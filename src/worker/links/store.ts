@@ -50,6 +50,8 @@ export interface LinkRow {
   /** A JSON array of {id, name} of the link's workspaces, when read through link_views. */
   workspaces_json?: string;
   archived_at: string | null;
+  /** When the link expired, while it is expired. */
+  expired_at: string | null;
   dead_since: string | null;
   liveness_failures: number;
   last_checked_at: string | null;
@@ -59,7 +61,9 @@ export interface LinkRow {
   /** Read through link_views: the stored uses, and the UTC days they fall on. */
   use_events?: number;
   use_days?: number;
-  /** Read through link_views: the link's user's removal threshold. */
+  /** Read through link_views: the link's user's start points. */
+  user_start_points?: number;
+  /** Read through link_views: the link's user's removal delay. */
   user_remove_days?: number;
 }
 
@@ -107,10 +111,11 @@ export interface LinkView {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on the link read on its own. */
   note?: string;
-  /** At least 5 uses on at least 5 UTC days: never dormant or archived by decay. */
-  sticky: boolean;
-  archived_at: string | null;
-  /** When an archived link will be removed. */
+  /** Start points plus the use count, minus the whole days since the last use or boost. */
+  points: number;
+  /** When the link expired, while it is expired. */
+  expired_at: string | null;
+  /** When an expired link will be removed. */
   removal_at: string | null;
   dead_since: string | null;
   last_checked_at: string | null;

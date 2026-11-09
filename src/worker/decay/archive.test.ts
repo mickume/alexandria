@@ -13,6 +13,14 @@ async function pinned(user: TestUser): Promise<[string, number][]> {
   return rows.results.map((r) => [r.id, r.pin_position]);
 }
 
+async function archivedAt(id: string): Promise<string | null | undefined> {
+  return (
+    await env.DB.prepare('SELECT archived_at FROM links WHERE id = ?')
+      .bind(id)
+      .first<{ archived_at: string | null }>()
+  )?.archived_at;
+}
+
 describe('archiving a link by hand', () => {
   it('archives it whatever keeps it from decay, unpins it and keeps its workspaces', async () => {
     setNow(T);
@@ -39,9 +47,8 @@ describe('archiving a link by hand', () => {
     expect(r.json).toMatchObject({
       state: 'archived',
       pinned: false,
-      sticky: true,
-      archived_at: new Date(T).toISOString(),
     });
+    expect(await archivedAt(x)).toBe(new Date(T).toISOString());
     expect(r.json.removal_at).toBe(new Date(T + 180 * 86_400_000).toISOString());
     expect(await pinned(user)).toEqual([[y, 1]]);
     expect(r.json.workspaces.map((ws: { id: string }) => ws.id)).toEqual([w]);
@@ -52,7 +59,8 @@ describe('archiving a link by hand', () => {
     setNow(T + 60_000);
     const again = await api('POST', `/api/v1/links/${x}/archive`, { as: user.session });
     expect(again.status).toBe(200);
-    expect(again.json.archived_at).toBe(new Date(T).toISOString());
+    expect(again.json.state).toBe('archived');
+    expect(await archivedAt(x)).toBe(new Date(T).toISOString());
   });
 });
 
@@ -79,7 +87,9 @@ describe('the archive list', () => {
     expect(r.status).toBe(200);
     expect(r.json.items.map((l: { id: string }) => l.id)).toEqual([b, c, a]);
     for (const l of r.json.items) {
-      expect(Date.parse(l.removal_at) - Date.parse(l.archived_at)).toBe(180 * 86_400_000);
+      expect(Date.parse(l.removal_at) - Date.parse((await archivedAt(l.id))!)).toBe(
+        180 * 86_400_000,
+      );
     }
   });
 
@@ -133,7 +143,7 @@ describe('restoring a link', () => {
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({
       state: 'active',
-      archived_at: null,
+      removal_at: null,
       last_used_at: new Date(t).toISOString(),
       use_count: 3,
     });

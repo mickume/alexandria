@@ -42,8 +42,8 @@ describe('adding a link', () => {
         edited_fields: [],
         note_preview: null,
         workspaces: [],
-        sticky: false,
-        archived_at: null,
+        points: 60,
+        expired_at: null,
         removal_at: null,
         dead_since: null,
         last_checked_at: null,
@@ -137,7 +137,7 @@ describe('adding a batch of links', () => {
     const user = await signIn();
     await seedLinks(user, [
       { url: 'https://old.example', lastUsedAt: '2026-01-01T00:00:00.000Z' },
-      { url: 'https://c.example', lastUsedAt: '2026-01-02T00:00:00.000Z' },
+      { url: 'https://c.example', lastUsedAt: '2026-04-24T08:00:00.000Z', useCount: 2 },
     ]);
     setNow('2026-06-03T08:00:00.000Z');
     const r = await api('POST', '/api/v1/links/batch', {
@@ -156,6 +156,7 @@ describe('adding a batch of links', () => {
     const hosts = (links: { host: string }[]) => links.map((l) => l.host);
     expect(hosts(r.json.added)).toEqual(['a.example', 'b.example']);
     expect(hosts(r.json.boosted)).toEqual(['c.example']);
+    expect(r.json.boosted[0]).toMatchObject({ use_count: 2, points: 62 });
     expect(r.json.invalid).toEqual([{ url: 'nope', error: 'invalid_url' }]);
     const order = await env.DB.prepare(
       'SELECT host FROM links WHERE user_id = ? ORDER BY last_used_at DESC, id DESC',
@@ -267,8 +268,8 @@ describe('reading a link', () => {
       note_preview: null,
       workspaces: [],
       note: '',
-      sticky: false,
-      archived_at: null,
+      points: 60,
+      expired_at: null,
       removal_at: null,
       dead_since: null,
       last_checked_at: null,

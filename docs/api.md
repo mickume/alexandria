@@ -155,10 +155,15 @@ without text, a PDF too large), or `waiting_for_key` (the key was rejected);
 it is `null` before the first fetch. `edited_fields` lists the fields the
 owner set by hand, which enrichment and refresh never overwrite.
 
-Decay adds `sticky` (at least 5 uses on 5 UTC days: never dormant or archived
-by decay), `archived_at`, `removal_at`, `dead_since`, `last_checked_at`,
-`last_check_result` and `decay_note`, one sentence saying the link's decay
-state and why: "unused for 3 days" (in months of 30 days from 60 days),
+Decay adds `points`, `expired_at`, `removal_at`, `dead_since`,
+`last_checked_at`, `last_check_result` and `decay_note`. `points` is an
+integer: the owner's `start_points` plus the link's `use_count`, minus the
+whole 24-hour periods since its `last_used_at`, at the time of the request; it
+can be negative. A use adds 1 to `use_count` and sets `last_used_at` to now; a
+re-paste sets `last_used_at` to now without a use. `expired_at` is when the
+link expired, and null while it is not expired; `removal_at` is `expired_at`
+plus the owner's `remove_days`, or null. `decay_note` is one sentence saying
+the link's decay state and why: "unused for 3 days" (in months of 30 days from 60 days),
 "sticky: 7 uses on 6 days, never archived", "pinned: never archived, unused
 for …", "in a workspace: never archived, unused for …", or "archived on
 2027-03-01, removed on 2027-08-28". A use, a re-paste or a restore makes a

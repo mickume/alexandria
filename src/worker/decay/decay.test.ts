@@ -254,7 +254,6 @@ describe('stickiness', () => {
     setNow(T);
     await evaluateDecay(env, user.id);
     const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
-    expect(link.sticky).toBe(sticky);
     expect(link.state).toBe(sticky ? 'active' : 'archived');
   });
 
@@ -271,6 +270,36 @@ describe('stickiness', () => {
     await evaluateDecay(env, user.id);
     expect(await stateOf(id)).toBe('active');
   });
+});
+
+describe('a link’s points', () => {
+  it.each([
+    { uses: 0, unused: 0, points: 60 },
+    { uses: 0, unused: DAY - 60_000, points: 60 },
+    { uses: 0, unused: DAY, points: 59 },
+    { uses: 10, unused: 5 * DAY, points: 65 },
+    { uses: 0, unused: 61 * DAY, points: -1 },
+    { uses: 3, unused: 200 * DAY, points: -137 },
+  ])(
+    'are start points plus $uses uses minus whole days in $unused ms unused: $points',
+    async ({ uses, unused, points }) => {
+      const user = await signIn();
+      const [id = ''] = await seedLinks(user, [
+        {
+          url: 'https://points.example/',
+          state: 'active',
+          useCount: uses,
+          lastUsedAt: new Date(T - unused).toISOString(),
+        },
+      ]);
+      setNow(T);
+      const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
+      expect(link.points).toBe(points);
+      expect(link.expired_at).toBeNull();
+      expect('sticky' in link).toBe(false);
+      expect('archived_at' in link).toBe(false);
+    },
+  );
 });
 
 describe('why a link is in its state', () => {
@@ -324,8 +353,8 @@ describe('why a link is in its state', () => {
     const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
     expect(link.decay_note).toBe(note);
     for (const field of [
-      'sticky',
-      'archived_at',
+      'points',
+      'expired_at',
       'removal_at',
       'dead_since',
       'last_checked_at',
@@ -403,11 +432,11 @@ describe('archiving by decay', () => {
         (l: { id: string }) => l.id === id,
       ) ?? false;
     if (expected === 'archived') {
-      expect(link.archived_at).toBe(new Date(T).toISOString());
+      expect((await linkRow(id))?.archived_at).toBe(new Date(T).toISOString());
       expect(link.removal_at).toBe(new Date(T + 180 * DAY).toISOString());
       expect([inStream, inArchive]).toEqual([false, true]);
     } else {
-      expect(link.archived_at).toBeNull();
+      expect((await linkRow(id))?.archived_at).toBeNull();
       expect(inStream).toBe(true);
     }
   });

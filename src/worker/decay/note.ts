@@ -14,16 +14,33 @@ function isoDate(t: number): string {
   return new Date(t).toISOString().slice(0, 10);
 }
 
-/** The decay fields of a link as the API shows them: stickiness, archive and liveness dates, and why. */
+/** The start points of a user who never changed them. */
+export const DEFAULT_START_POINTS = 60;
+
+/**
+ * A link's points at time `at`: its user's start points plus its use count,
+ * minus the whole 24-hour periods since its last use or boost (none for a last
+ * use after `at`). They can be negative.
+ */
+export function pointsAt(
+  startPoints: number,
+  useCount: number,
+  lastUsedAt: string,
+  at: number,
+): number {
+  return startPoints + useCount - Math.max(0, Math.floor((at - Date.parse(lastUsedAt)) / DAY_MS));
+}
+
+/** The decay fields of a link as the API shows them: points, expiry and liveness dates, and why. */
 export function decayFields(row: LinkRow) {
   const uses = row.use_events ?? 0;
   const days = row.use_days ?? 0;
   const sticky = uses >= 5 && days >= 5;
   const removeDays = row.user_remove_days ?? 180;
   const archivedAt = row.archived_at ?? null;
-  const removalAt = archivedAt
-    ? new Date(Date.parse(archivedAt) + removeDays * DAY_MS).toISOString()
-    : null;
+  const expiredAt = row.expired_at ?? null;
+  const since = expiredAt ?? archivedAt;
+  const removalAt = since ? new Date(Date.parse(since) + removeDays * DAY_MS).toISOString() : null;
   const unused = unusedFor(
     Math.max(0, Math.floor((now().getTime() - Date.parse(row.last_used_at)) / DAY_MS)),
   );
@@ -40,8 +57,13 @@ export function decayFields(row: LinkRow) {
     decay_note = unused;
   }
   return {
-    sticky,
-    archived_at: archivedAt,
+    points: pointsAt(
+      row.user_start_points ?? DEFAULT_START_POINTS,
+      row.use_count,
+      row.last_used_at,
+      now().getTime(),
+    ),
+    expired_at: expiredAt,
     removal_at: removalAt,
     dead_since: row.dead_since ?? null,
     last_checked_at: row.last_checked_at ?? null,

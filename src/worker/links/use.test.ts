@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { api, count, createToken, setNow, signIn } from '../test/helpers';
+import { api, count, createToken, seedLinks, setNow, signIn } from '../test/helpers';
 
 async function addLink(session: string, url: string): Promise<string> {
   const r = await api('POST', '/api/v1/links', { as: session, body: { url } });
@@ -25,6 +25,18 @@ describe('opening a link', () => {
     expect(r2.status).toBe(302);
     link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
     expect(link.use_count).toBe(2);
+
+    const [old = ''] = await seedLinks(user, [
+      {
+        url: 'https://old.example/',
+        state: 'active',
+        useCount: 4,
+        lastUsedAt: '2026-06-01T12:00:00.000Z',
+      },
+    ]);
+    await api('GET', `/api/v1/links/${old}/open`, { as: user.session });
+    link = (await api('GET', `/api/v1/links/${old}`, { as: user.session })).json;
+    expect([link.use_count, link.points]).toEqual([5, 65]);
   });
 
   it('counts every one of concurrent opens', async () => {
