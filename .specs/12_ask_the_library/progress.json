@@ -3,11 +3,11 @@
   "spec_id": "12",
   "spec_name": "ask_the_library",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-09T09:19:09Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

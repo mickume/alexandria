@@ -8,11 +8,17 @@
  * An enrichment whose request holds a registered marker is answered with that
  * marker's result instead (the last registered marker that matches wins).
  *
+ * A streamed request (stream: true) is a question: it is answered with the text
+ * of POST /__answer_text {text}, a word at a time, or with the error of
+ * POST /__reject_answers {status, message} (no status clears it).
+ *
  * Control: POST /__answer {summary, tags, topic}, POST /__answer_when
- * {contains, result}, GET /__log, GET /health.
+ * {contains, result}, POST /__answer_text, POST /__reject_answers, GET /__log,
+ * GET /health.
  * Run with: node e2e/fake-ai.ts <port>
  */
 import { createServer, type IncomingMessage } from 'node:http';
+import { anthropicStream, openRouterStream } from '../src/worker/test/streams.ts';
 
 const port = Number(process.argv[2] ?? 8792);
 
@@ -37,7 +43,24 @@ function answerFor(body: string): Result {
 }
 
 /** Every provider request: when, which provider, its key header and its body. */
-const log: { at: number; provider: string; auth: string; body: string; enrichment: boolean }[] = [];
+const log: {
+  at: number;
+  provider: string;
+  auth: string;
+  body: string;
+  enrichment: boolean;
+  ask: boolean;
+}[] = [];
+
+/** The text a question is answered with, streamed a word at a time. */
+let answerText = 'Use a Durable Object alarm to schedule background work [1].';
+/** The error every question is answered with, or null. */
+let rejectAnswers: { status: number; message: string } | null = null;
+
+/** The text split into the pieces of a stream: each word with the space after it. */
+function pieces(text: string): string[] {
+  return text.match(/\S+\s*/g) ?? [];
+}
 
 async function readBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -68,17 +91,42 @@ const server = createServer(async (req, res) => {
     return send(200, rule);
   }
 
+  if (url.pathname === '/__answer_text' && req.method === 'POST') {
+    answerText = (JSON.parse(await readBody(req)) as { text: string }).text;
+    return send(200, { text: answerText });
+  }
+  if (url.pathname === '/__reject_answers' && req.method === 'POST') {
+    const rule = JSON.parse(await readBody(req)) as { status?: number; message?: string };
+    rejectAnswers = rule.status
+      ? { status: rule.status, message: rule.message ?? 'rejected' }
+      : null;
+    return send(200, { rejectAnswers });
+  }
+
   const body = await readBody(req);
   const parsed = JSON.parse(body || '{}') as Record<string, unknown>;
   const key = keyOf(req);
   if (url.pathname === '/v1/messages') {
     const enrichment = 'output_config' in parsed || 'tools' in parsed;
-    log.push({ at: Date.now(), provider: 'anthropic', auth: key, body, enrichment });
+    const ask = parsed.stream === true;
+    log.push({ at: Date.now(), provider: 'anthropic', auth: key, body, enrichment, ask });
     if (key !== 'sk-ant-test-1234') {
       return send(401, {
         type: 'error',
         error: { type: 'authentication_error', message: 'invalid x-api-key' },
       });
+    }
+    if (ask && rejectAnswers) {
+      return send(rejectAnswers.status, {
+        type: 'error',
+        error: { type: 'authentication_error', message: rejectAnswers.message },
+      });
+    }
+    if (ask) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      return void res.end(
+        anthropicStream(String(parsed.model), pieces(answerText), false, false).join(''),
+      );
     }
     // As the real API answers for current models: no forced tool call.
     const forced = (parsed.tool_choice as { type?: string } | undefined)?.type;
@@ -105,9 +153,21 @@ const server = createServer(async (req, res) => {
   }
   if (url.pathname === '/openrouter/chat/completions') {
     const enrichment = 'response_format' in parsed;
-    log.push({ at: Date.now(), provider: 'openrouter', auth: key, body, enrichment });
+    const ask = parsed.stream === true;
+    log.push({ at: Date.now(), provider: 'openrouter', auth: key, body, enrichment, ask });
     if (!key.startsWith('sk-or-'))
       return send(401, { error: { code: 401, message: 'No auth credentials found' } });
+    if (ask && rejectAnswers) {
+      return send(rejectAnswers.status, {
+        error: { code: rejectAnswers.status, message: rejectAnswers.message },
+      });
+    }
+    if (ask) {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      return void res.end(
+        openRouterStream(String(parsed.model), pieces(answerText), false, false).join(''),
+      );
+    }
     return send(200, {
       id: 'gen-fake',
       object: 'chat.completion',

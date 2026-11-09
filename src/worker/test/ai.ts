@@ -6,6 +6,7 @@
  */
 import { env } from 'cloudflare:test';
 import { onOutbound } from './outbound';
+import { anthropicStream, openRouterStream } from './streams';
 
 /** An enrichment result as a provider returns it. */
 export interface AiResult {
@@ -22,6 +23,8 @@ export interface AiRequest {
   body: Record<string, unknown>;
   /** Whether it asked for an enrichment (rather than testing a key). */
   enrichment: boolean;
+  /** Whether it asked for a streamed answer to a question. */
+  ask: boolean;
   at: number;
 }
 
@@ -38,10 +41,27 @@ export const DEFAULT_RESULT: AiResult = {
   topic: 'web development',
 };
 
+/** The pieces of text a streamed answer is made of. */
+const DEFAULT_PIECES = ['Use an alarm ', '[1].'];
+
+const encoder = new TextEncoder();
+
+/** A server-sent events body of these chunks, left open after them when `hang` is set. */
+function eventStream(chunks: string[], hang: boolean): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      if (!hang) controller.close();
+    },
+  });
+}
+
 export class FakeAi {
   readonly requests: AiRequest[] = [];
   private enrichAnswer: Answer = { kind: 'result', result: DEFAULT_RESULT };
   private keyAnswer: Answer | null = null;
+  private pieces = DEFAULT_PIECES;
+  private hangAfterPieces = false;
 
   constructor() {
     onOutbound(new URL(env.ANTHROPIC_BASE_URL).origin, (r) => this.handle('anthropic', r));
@@ -51,6 +71,17 @@ export class FakeAi {
   /** Answers enrichments with `result`. */
   answer(result: AiResult): this {
     this.enrichAnswer = { kind: 'result', result };
+    return this;
+  }
+
+  /**
+   * Answers a question with these pieces of text, streamed one by one; with
+   * `hang`, the stream stays open after the last piece, as when a provider stalls.
+   */
+  answerText(pieces: string[], { hang = false } = {}): this {
+    this.pieces = pieces;
+    this.hangAfterPieces = hang;
+    this.enrichAnswer = { kind: 'result', result: DEFAULT_RESULT };
     return this;
   }
 
@@ -87,6 +118,11 @@ export class FakeAi {
     return this;
   }
 
+  /** The requests that asked for a streamed answer to a question. */
+  get asks(): AiRequest[] {
+    return this.requests.filter((r) => r.ask);
+  }
+
   /** The enrichment requests, leaving out key tests. */
   get enrichments(): AiRequest[] {
     return this.requests.filter((r) => r.enrichment);
@@ -98,17 +134,20 @@ export class FakeAi {
       provider === 'anthropic'
         ? 'output_config' in body || 'tools' in body
         : 'response_format' in body;
+    const ask = body.stream === true;
     this.requests.push({
       provider,
       url: request.url,
       headers: request.headers,
       body,
       enrichment,
+      ask,
       at: Date.now(),
     });
-    const answer = enrichment
-      ? this.enrichAnswer
-      : (this.keyAnswer ?? { kind: 'result', result: DEFAULT_RESULT });
+    const answer =
+      enrichment || ask
+        ? this.enrichAnswer
+        : (this.keyAnswer ?? { kind: 'result', result: DEFAULT_RESULT });
     if (answer.kind === 'stall') return new Promise<Response>(() => undefined);
     if (answer.kind === 'refuse') throw new Error('connect ECONNREFUSED');
     if (answer.kind === 'status') {
@@ -119,6 +158,16 @@ export class FakeAi {
       return Response.json(error, { status: answer.status, headers: answer.headers });
     }
     const model = String(body.model ?? 'model');
+    if (ask) {
+      const refusal = answer.kind === 'refusal';
+      const chunks =
+        provider === 'anthropic'
+          ? anthropicStream(model, this.pieces, refusal, this.hangAfterPieces)
+          : openRouterStream(model, this.pieces, refusal, this.hangAfterPieces);
+      return new Response(eventStream(chunks, this.hangAfterPieces), {
+        headers: { 'Content-Type': 'text/event-stream' },
+      });
+    }
     if (provider === 'anthropic') {
       // As the real API answers for current models (Claude Opus 5.5 and the like).
       const forced = (body.tool_choice as { type?: string } | undefined)?.type;

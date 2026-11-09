@@ -246,3 +246,121 @@ export async function enrichWith(
     return fromError(err);
   }
 }
+
+/** What a streamed answer is asked: the instruction, and the passages and question. */
+export interface AnswerRequest {
+  system: string;
+  prompt: string;
+}
+
+/** The most tokens an answer to a question may hold. */
+export const ANSWER_MAX_TOKENS = 1_024;
+
+const DECLINED = { ok: false, kind: 'failed', message: 'the model declined' } as const;
+const NO_ANSWER = { ok: false, kind: 'failed', message: 'the model gave no answer' } as const;
+
+/**
+ * Reads the server-sent events of a streamed OpenRouter chat completion,
+ * handing on each delta's content, until `[DONE]`.
+ */
+async function readOpenRouterStream(
+  body: ReadableStream<Uint8Array>,
+  hand: (text: string) => Promise<void>,
+): Promise<ProviderOutcome<void>> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  let declined = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    pending += decoder.decode(value, { stream: !done });
+    const lines = pending.split('\n');
+    pending = done ? '' : (lines.pop() ?? '');
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice('data:'.length).trim();
+      if (data === '[DONE]') return declined ? DECLINED : { ok: true, value: undefined };
+      let chunk: {
+        error?: unknown;
+        choices?: { delta?: { content?: unknown }; finish_reason?: string | null }[];
+      };
+      try {
+        chunk = JSON.parse(data);
+      } catch {
+        return { ok: false, kind: 'failed', message: 'the answer is not JSON' };
+      }
+      if (chunk.error) return { ok: false, kind: 'failed', message: messageOf(chunk, 'failed') };
+      const choice = chunk.choices?.[0];
+      if (typeof choice?.delta?.content === 'string') await hand(choice.delta.content);
+      if (choice?.finish_reason === 'content_filter') declined = true;
+    }
+    if (done) return declined ? DECLINED : { ok: true, value: undefined };
+  }
+}
+
+/**
+ * Streams the user's provider's answer to a question, handing each piece of
+ * text to `onText` as it arrives: through `messages.stream` of Anthropic's SDK,
+ * and through OpenRouter's chat completions with `stream: true`. The whole
+ * answer has the provider timeout, and a failure is sorted as enrichment's is.
+ */
+export async function streamAnswer(
+  env: Env,
+  call: ProviderCall,
+  request: AnswerRequest,
+  onText: (text: string) => void | Promise<void>,
+): Promise<ProviderOutcome<void>> {
+  let received = false;
+  const hand = async (text: string) => {
+    if (!text) return;
+    received = true;
+    await onText(text);
+  };
+  try {
+    return await withTimeout(async (signal): Promise<ProviderOutcome<void>> => {
+      if (call.provider === 'anthropic') {
+        const stream = anthropic(env, call.apiKey).messages.stream(
+          {
+            model: call.model,
+            max_tokens: ANSWER_MAX_TOKENS,
+            system: request.system,
+            messages: [{ role: 'user', content: request.prompt }],
+          },
+          { signal },
+        );
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            await hand(event.delta.text);
+          }
+        }
+        const message = await stream.finalMessage();
+        if (message.stop_reason === 'refusal') return DECLINED;
+        return received ? { ok: true, value: undefined } : NO_ANSWER;
+      }
+      const response = await fetch(
+        `${env.OPENROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${call.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: call.model,
+            stream: true,
+            max_tokens: ANSWER_MAX_TOKENS,
+            messages: [
+              { role: 'system', content: request.system },
+              { role: 'user', content: request.prompt },
+            ],
+          }),
+          signal,
+        },
+      );
+      if (!response.ok) throw new OpenRouterHttpError(response.status, await response.text());
+      if (!response.body) return NO_ANSWER;
+      const outcome = await readOpenRouterStream(response.body, hand);
+      return outcome.ok && !received ? NO_ANSWER : outcome;
+    });
+  } catch (err) {
+    return fromError(err);
+  }
+}

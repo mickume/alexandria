@@ -92,6 +92,8 @@ export const fakeOrigin = {
 
 /** One request the fake AI provider of e2e/fake-ai.ts received. */
 export interface FakeAiRequest {
+  /** Whether it was a question (a streamed request) rather than an enrichment or a key test. */
+  ask: boolean;
   at: number;
   provider: string;
   auth: string;
@@ -107,6 +109,17 @@ export const fakeAi = {
   },
   async answer(result: { summary: string; tags: string[]; topic: string }): Promise<void> {
     await fetch(`${this.url}/__answer`, { method: 'POST', body: JSON.stringify(result) });
+  },
+  /** Answers questions with `text`, streamed a word at a time. */
+  async answerText(text: string): Promise<void> {
+    await fetch(`${this.url}/__answer_text`, { method: 'POST', body: JSON.stringify({ text }) });
+  },
+  /** Makes the provider reject every question with `status` and `message`; no status lifts it. */
+  async rejectAnswers(status?: number, message?: string): Promise<void> {
+    await fetch(`${this.url}/__reject_answers`, {
+      method: 'POST',
+      body: JSON.stringify({ status, message }),
+    });
   },
   /** Answers every enrichment whose request holds `contains` with `result`. */
   async answerWhen(
