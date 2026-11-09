@@ -972,7 +972,7 @@ unexpected failure is
 | Tool | Arguments | Does |
 |---|---|---|
 | `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
-| `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included; no use |
+| `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included, and `mode=hybrid`: links found by meaning as well as by words, each with `match`, and `meaning` in the body; no use |
 | `search_passages` | `query`, `limit?` (1 to 20, default 8) | `GET /api/v1/passages` with the query as given as `q`: the passages that best match it by meaning, each with its link's id, title and URL; no use. A `search_unavailable` (503) is a tool error with that envelope, not `internal_error` |
 | `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
 | `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |

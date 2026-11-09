@@ -227,11 +227,13 @@ export const TOOLS: Tool[] = [
   {
     name: 'search_links',
     description:
-      'Search the library by keywords, with the prefix filters tag:, topic:, host:, state:, in: and is:. Returns the matching links with a snippet each.',
+      'Search the library by meaning as well as by words: a link is found when it shares the query’s words or when what it is about matches what the query asks, so a question can be asked in your own words. Takes the prefix filters tag:, topic:, host:, state:, in: and is:. Returns the matching links with a snippet and how each matched (match: keyword, meaning or both).',
     input: z.object({ query: z.string().min(1).describe('The search query'), limit: limit(10) }),
     async run(ctx, args: { query: string; limit?: number }) {
       const q = encodeURIComponent(args.query);
-      return outcomeOf(await ctx.call('GET', `/search?q=${q}&limit=${args.limit ?? 10}`));
+      return outcomeOf(
+        await ctx.call('GET', `/search?q=${q}&limit=${args.limit ?? 10}&mode=hybrid`),
+      );
     },
   },
   {

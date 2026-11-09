@@ -77,6 +77,9 @@ describe('the MCP endpoint', () => {
       expect(byName[name]!.properties.limit.type).toBe('integer');
       expect(byName[name]!.required ?? []).not.toContain('limit');
     }
+    const described = tools.find((t) => t.name === 'search_links')!.description;
+    expect(described).toMatch(/meaning/);
+    expect(described).toMatch(/words/);
     expect(byName.search_passages!.required).toEqual(['query']);
     expect(byName.search_passages!.properties.limit).toMatchObject({
       type: 'integer',
@@ -392,11 +395,24 @@ describe('search_links and list_recent', () => {
     expect(r.structuredContent.items).toHaveLength(expected);
     const direct = await api(
       'GET',
-      `/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit ?? 10}`,
+      `/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit ?? 10}&mode=hybrid`,
       { as: a.session },
     );
     expect(r.structuredContent).toEqual(direct.json);
+    expect(r.structuredContent.meaning).toBe('used');
     expect(await uses(a)).toEqual(before);
+  });
+
+  it('search_links finds a link by meaning that shares no word with the query', async () => {
+    const a = await agent();
+    const id = await seedArticle(a, ARTICLES.alarms);
+    await deliverIndexing([{ user_id: a.id, link_id: id }]);
+
+    const r = await mcpTool(a.secret, 'search_links', { query: 'timer delay' });
+
+    expect(r.isError).toBeFalsy();
+    expect(r.structuredContent.items.map((i: { link: { id: string } }) => i.link.id)).toEqual([id]);
+    expect(r.structuredContent.items[0].match).toBe('meaning');
   });
 
   it('list_recent returns the first page of the stream', async () => {
@@ -956,13 +972,13 @@ describe('one user, one contract', () => {
       'search_links',
       'search_links',
       () => ({ query: 'queues' }),
-      () => ['GET', '/api/v1/search?q=queues&limit=10'],
+      () => ['GET', '/api/v1/search?q=queues&limit=10&mode=hybrid'],
     ],
     [
       'search_links refused',
       'search_links',
       () => ({ query: 'x'.repeat(201) }),
-      () => ['GET', `/api/v1/search?q=${'x'.repeat(201)}&limit=10`],
+      () => ['GET', `/api/v1/search?q=${'x'.repeat(201)}&limit=10&mode=hybrid`],
     ],
     ['list_recent', 'list_recent', () => ({}), () => ['GET', '/api/v1/links?limit=20']],
   ];
