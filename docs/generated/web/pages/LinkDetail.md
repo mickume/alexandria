@@ -6,7 +6,9 @@
 
 > **LinkDetail**(`__namedParameters`): `Element` \| `null`
 
-The detail page of one link: both URLs, when it was added, how often it was used, and when.
+The detail page of one link: its note and editable fields, when it was
+added and used, its history, and last its technical details (its addresses
+and the fetch's answer).
 
 #### Parameters
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { FakeApi, makeLink, renderPage } from '../test/helpers';
 
 describe('the link detail page', () => {
-  it('shows both URLs, the added date, the use count and every use', async () => {
+  it('shows the added date, the use count, every use, and after them both URLs under Technical details', async () => {
     const api = new FakeApi()
       .on('GET', '/api/v1/links/abc', {
         status: 200,
@@ -29,13 +29,17 @@ describe('the link detail page', () => {
         },
       });
     renderPage('/links/abc', api);
-    expect(await screen.findByText('https://example.com/a?utm_source=x')).toBeTruthy();
-    expect(screen.getByText('https://example.com/a')).toBeTruthy();
+    const details = await screen.findByRole('region', { name: 'Technical details' });
+    expect(within(details).getByText('https://example.com/a?utm_source=x')).toBeTruthy();
+    expect(within(details).getByText('https://example.com/a')).toBeTruthy();
     expect(screen.getByText(/Added 4 Mar 2026/)).toBeTruthy();
     expect(screen.getByText('used 2 times')).toBeTruthy();
     const history = await screen.findByRole('list', { name: 'History' });
     const rows = within(history).getAllByRole('listitem');
     expect(rows.map((r) => r.textContent)).toEqual(['Opened · 7 Mar 2026', 'Opened · 6 Mar 2026']);
+    expect(
+      history.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

@@ -613,11 +613,8 @@ a.brand:hover span {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: var(--q-space-1) var(--q-space-4);
-  margin: var(--q-space-5) 0;
-  padding: var(--q-space-4);
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-  background: var(--q-bg-subtle);
+  margin: 0;
+  font-size: var(--q-text-sm);
 }
 
 .facts dt {

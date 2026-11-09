@@ -60,7 +60,11 @@ function Facts({ link }: { link: Link }) {
   );
 }
 
-/** The detail page of one link: both URLs, when it was added, how often it was used, and when. */
+/**
+ * The detail page of one link: its note and editable fields, when it was
+ * added and used, its history, and last its technical details (its addresses
+ * and the fetch's answer).
+ */
 export function LinkDetail({ id }: { id: string }) {
   const [link, setLink] = useState<Link | null>(null);
   const [history, setHistory] = useState<LinkEvent[]>([]);
@@ -103,7 +107,6 @@ export function LinkDetail({ id }: { id: string }) {
           {link.topic && <TopicChip topic={link.topic} />}
         </EditableField>
       </section>
-      <Facts link={link} />
       <p className="muted">
         <span>Added {formatDate(link.added_at)}</span> ·{' '}
         {link.fetched_at && <span>fetched {formatDate(link.fetched_at)} · </span>}
@@ -121,6 +124,11 @@ export function LinkDetail({ id }: { id: string }) {
           </li>
         ))}
       </ul>
+      <hr />
+      <section aria-labelledby="facts-heading">
+        <h2 id="facts-heading">Technical details</h2>
+        <Facts link={link} />
+      </section>
     </article>
   );
 }
