@@ -44,6 +44,54 @@ describe('the link detail page', () => {
   });
 });
 
+describe('the detail page’s related links', () => {
+  const page = (related: { status: number; body: unknown }) =>
+    new FakeApi()
+      .on('GET', '/api/v1/links/abc', { status: 200, body: makeLink({ id: 'abc' }) })
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      })
+      .on('GET', '/api/v1/links/abc/related', related);
+
+  it('lists them between the summary and the history, each opening its own page', async () => {
+    const near = makeLink({ id: 'near', title: 'Near in meaning', host: 'near.example' });
+    renderPage('/links/abc', page({ status: 200, body: { items: [{ ...near, score: 0.8 }] } }));
+    const list = await screen.findByRole('list', { name: 'Related links' });
+    const a = within(list).getByRole('link', { name: 'Near in meaning' });
+    expect(a.getAttribute('href')).toBe('/links/near');
+    expect(within(list).getByText('near.example')).toBeTruthy();
+    const history = screen.getByRole('list', { name: 'History' });
+    expect(list.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    {
+      label: 'says so when there are none',
+      answer: { status: 200, body: { items: [] } },
+      shown: true,
+    },
+    {
+      label: 'is left out when they cannot be worked out',
+      answer: { status: 503, body: { error: 'search_unavailable', message: 'x' } },
+      shown: false,
+    },
+  ])('$label', async ({ answer, shown }) => {
+    const api = page(answer);
+    renderPage('/links/abc', api);
+    await screen.findByRole('list', { name: 'History' });
+    await waitFor(() => expect(api.sent('GET', '/api/v1/links/abc/related')).toHaveLength(1));
+    if (shown) {
+      expect(
+        await screen.findByText('Nothing in your library is near this link yet.'),
+      ).toBeTruthy();
+    } else {
+      await act(async () => undefined);
+      expect(screen.queryByRole('heading', { name: 'Related links' })).toBeNull();
+    }
+  });
+});
+
 describe('the detail page’s headline', () => {
   it('opens the site in a new tab, as the stream’s cards do', async () => {
     const api = new FakeApi()

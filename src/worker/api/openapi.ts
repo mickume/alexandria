@@ -1072,6 +1072,20 @@ export const operations: Operation[] = [
   },
   {
     method: 'get',
+    path: '/links/{id}/related',
+    operationId: 'getRelatedLinks',
+    summary: 'The other links nearest in meaning to the link, best first, worked out on request',
+    responses: {
+      200: {
+        description:
+          'At most five links scoring at least the similarity threshold, expired links left out; none when the link is not indexed yet or nothing is near it',
+        schema: z.strictObject({ items: z.array(Link.extend({ score: z.number() })) }),
+      },
+      503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
+    },
+  },
+  {
+    method: 'get',
     path: '/links/{id}/history',
     operationId: 'getLinkHistory',
     summary: 'The link’s uses and fetch attempts, newest first',

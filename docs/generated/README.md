@@ -98,6 +98,7 @@
 - [worker/meaning/cut](worker/meaning/cut.md)
 - [worker/meaning/indexing](worker/meaning/indexing.md)
 - [worker/meaning/passages](worker/meaning/passages.md)
+- [worker/meaning/related](worker/meaning/related.md)
 - [worker/origin](worker/origin.md)
 - [worker/search/hybrid](worker/search/hybrid.md)
 - [worker/search/query](worker/search/query.md)

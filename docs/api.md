@@ -747,6 +747,27 @@ integer from 1 to 20"}`. When Workers AI or Vectorize fails or has not answered
 within 5 seconds: `503 {"error": "search_unavailable", "message": "search by
 meaning is unavailable, try again"}`.
 
+#### `GET /api/v1/links/{id}/related`
+
+The owner's other links nearest in meaning to the link, worked out when they
+are asked for. The link's first passage (its title, summary, topic, tags and
+note) is the question, matched as in `GET /api/v1/passages` with one passage
+of each link; the link itself is left out, and so are expired links.
+
+```json
+{
+  "items": [{ "id": "…", "title": "Cloudflare Queues explained", "…": "…", "score": 0.7071 }]
+}
+```
+
+Items are links as `GET /api/v1/links` returns them, each with `score`, the
+similarity of its best passage, 0.5 or more; best first, at most 5. A link
+that is not indexed yet, or that nothing in the library is near, answers
+`{"items": []}`. The request records no use of any link.
+
+Errors: `404 not_found` for a link that is not the owner's; `503
+search_unavailable` as for passages.
+
 ### Ask
 
 #### `POST /api/v1/ask`

@@ -17,6 +17,7 @@ import { importRoutes } from './imports/routes';
 import { linkRoutes } from './links/routes';
 import { askRoutes } from './meaning/ask';
 import { passageRoutes } from './meaning/passages';
+import { relatedRoutes } from './meaning/related';
 import { mcpRoutes } from './mcp/server';
 import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
 import { workspaceRoutes } from './workspaces/routes';
@@ -39,6 +40,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/links', restoreRoutes);
   api.route('/links', checkRoutes);
   api.route('/links', snapshotRoutes);
+  api.route('/links', relatedRoutes);
   api.route('/links', linkRoutes);
   api.route('/workspaces', workspaceRoutes);
   api.route('/expired', expiredRoutes);

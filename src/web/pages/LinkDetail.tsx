@@ -61,6 +61,47 @@ function Facts({ link }: { link: Link }) {
 }
 
 /**
+ * The links nearest in meaning to this one, each opening its own detail page.
+ * Left out while they load and when they cannot be worked out.
+ */
+function RelatedLinks({ id }: { id: string }) {
+  const [related, setRelated] = useState<Link[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    links
+      .related(id)
+      .then((r) => live && setRelated(r.items))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [id]);
+
+  if (!related) return null;
+  return (
+    <>
+      <hr />
+      <section aria-labelledby="related-heading">
+        <h2 id="related-heading">Related links</h2>
+        {related.length === 0 ? (
+          <p className="muted">Nothing in your library is near this link yet.</p>
+        ) : (
+          <ul className="related-links" aria-label="Related links">
+            {related.map((r) => (
+              <li key={r.id}>
+                <PageLink to={`/links/${r.id}`}>{r.title}</PageLink>
+                <span className="muted">{r.host}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+/**
  * The side column of a link's detail page: its tags, topic and workspaces
  * (each workspace can be left), then the actions: refresh, check, pin or
  * unpin, add to a workspace, and delete after a confirmation, which leaves
@@ -172,7 +213,7 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
 /**
  * The detail page of one link, laid out as an issue is: the title across the
  * top; then its note, editable title and summary, when it was added and used,
- * its history and last its technical details on the left; and its tags,
+ * the links related to it, its history and last its technical details on the left; and its tags,
  * topic, workspaces and actions in a narrower column on the right.
  */
 export function LinkDetail({ id }: { id: string }) {
@@ -217,6 +258,7 @@ export function LinkDetail({ id }: { id: string }) {
             {link.fetched_at && <span>fetched {formatDate(link.fetched_at)} · </span>}
             <span>{link.use_count === 1 ? 'used once' : `used ${link.use_count} times`}</span>
           </p>
+          <RelatedLinks key={link.id} id={link.id} />
           <hr />
           <h2 id="history-heading">History</h2>
           <ul className="history" aria-label="History">

@@ -1224,6 +1224,22 @@ Every expired link, most recently expired first, page after page.
 
 `Promise`\<\{ `status`: `"queued"`; \}\>
 
+##### related
+
+> **related**: (`id`) => `Promise`\<\{ `items`: ([`Link`](#link-1) & `object`)[]; \}\>
+
+The other links nearest in meaning to the link, best first.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `items`: ([`Link`](#link-1) & `object`)[]; \}\>
+
 ##### remove
 
 > **remove**: (`id`, `__namedParameters`) => `Promise`\<`void`\>

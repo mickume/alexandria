@@ -706,6 +706,24 @@ a.brand:hover span {
   padding: var(--q-space-1) 0;
 }
 
+/* Related links: one per line, the title then its host. */
+.related-links {
+  padding: 0;
+  list-style: none;
+}
+
+.related-links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--q-space-2);
+  padding: var(--q-space-1) 0;
+}
+
+.related-links .muted {
+  font-size: var(--q-text-xs);
+}
+
 .editable {
   display: flex;
   flex-direction: column;

@@ -160,6 +160,12 @@ export const links = {
   get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),
   history: (id: string) =>
     request<Page<LinkEvent>>('GET', `/links/${encodeURIComponent(id)}/history`),
+  /** The other links nearest in meaning to the link, best first. */
+  related: (id: string) =>
+    request<{ items: (Link & { score: number })[] }>(
+      'GET',
+      `/links/${encodeURIComponent(id)}/related`,
+    ),
   list: (cursor?: string | null) =>
     request<Page<Link>>('GET', `/links${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   addBatch: (urls: string[]) => request<BatchResult>('POST', '/links/batch', { urls }),

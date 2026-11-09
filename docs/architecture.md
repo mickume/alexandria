@@ -391,6 +391,12 @@ one namespace per user.
   `limit` in all. The embedding and the query together have 5 seconds; a failure
   or the timeout is `503 search_unavailable`. `findPassages` is the function
   other features call. The `search_passages` MCP tool is this route.
+- **Related links** (`meaning/related.ts`). `GET /api/v1/links/{id}/related`
+  takes the link's newest first passage (its title, summary, topic, tags and
+  note) as the question to `findPassages` with one passage a link and no
+  filters, drops the link itself and returns the 5 best other links, worked out
+  on each request; nothing is stored. A link not yet indexed has no first
+  passage and no related links. The detail page shows them above its history.
 - **Deletion.** `deleteLink` and decay's removal delete a link's passages in the
   batch that deletes the link, and a trigger queues each passage's vector in
   `vector_deletions`; the account deletion job deletes `link_passages` like any

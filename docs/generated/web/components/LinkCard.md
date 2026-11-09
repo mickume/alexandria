@@ -121,7 +121,8 @@ On a workspace's page: take the link out of the workspace.
 > **LinkCard**(`__namedParameters`): `Element`
 
 One link in the stream, as a row of a list: title and actions, then host,
-dates and state, the summary, and the labels.
+dates and state, the summary, and the labels. A pinned card shows a pin
+where the site's icon would be.
 
 #### Parameters
 
