@@ -2,6 +2,22 @@
 
 ## Interfaces
 
+### CutPassage
+
+A passage of a link and what it was cut from.
+
+#### Properties
+
+##### kind
+
+> **kind**: [`PassageKind`](#passagekind)
+
+##### text
+
+> **text**: `string`
+
+***
+
 ### LinkText
 
 The text of a link that is indexed besides its reader text.
@@ -28,6 +44,14 @@ The text of a link that is indexed besides its reader text.
 
 > **topic**: `string` \| `null`
 
+## Type Aliases
+
+### PassageKind
+
+> **PassageKind** = `"metadata"` \| `"reader"`
+
+What a passage was cut from: the link's metadata or its reader text.
+
 ## Variables
 
 ### PASSAGE\_MAX
@@ -48,7 +72,7 @@ How much of a link's reader text is cut into passages, in characters.
 
 ### cutPassages()
 
-> **cutPassages**(`link`, `readerText`): `string`[]
+> **cutPassages**(`link`, `readerText`): [`CutPassage`](#cutpassage)[]
 
 The passages of a link: first its title, summary, topic, tags and note, then
 the first READER_TEXT_MAX characters of its reader text.
@@ -65,7 +89,7 @@ the first READER_TEXT_MAX characters of its reader text.
 
 #### Returns
 
-`string`[]
+[`CutPassage`](#cutpassage)[]
 
 ***
 

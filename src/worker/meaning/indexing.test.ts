@@ -131,6 +131,17 @@ describe('indexing a link by meaning', () => {
     expect(stored.sort()).toEqual(passages.map((p) => [p.vector_id, user.id]).sort());
   });
 
+  it('labels each vector with whether it holds the link’s metadata or its reader text', async () => {
+    const user = await signIn();
+    const id = await seedArticle(user, { ...page, note: filler(2_000) });
+    await index(user, id);
+
+    const kinds = (await passagesOf(id)).map(
+      (p) => meaning.index.all().find((v) => v.id === p.vector_id)?.metadata?.kind,
+    );
+    expect(kinds).toEqual(['metadata', 'metadata', 'reader', 'reader', 'reader']);
+  });
+
   it('replaces the passages of a link whose text changed and queues the old vectors for deletion', async () => {
     const user = await signIn();
     const id = await seedArticle(user, { ...ARTICLES.alarms, note: 'Read about alarms later.' });

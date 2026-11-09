@@ -28,7 +28,7 @@ describe('GET /api/v1/links/{id}/related', () => {
     expect(r.status).toBe(200);
     expect(r.json.items.map((i: { id: string }) => i.id)).toEqual([queues]);
     expect(r.json.items[0]).toMatchObject({ title: ARTICLES.queues.title, state: 'active' });
-    expect(r.json.items[0].score).toBeGreaterThanOrEqual(0.5);
+    expect(r.json.items[0].score).toBeGreaterThanOrEqual(0.65);
   });
 
   it.each([
@@ -38,6 +38,27 @@ describe('GET /api/v1/links/{id}/related', () => {
         const [alarms] = await indexed(user, [
           ARTICLES.alarms,
           { ...ARTICLES.queues, state: 'expired' },
+        ]);
+        return alarms!;
+      },
+    },
+    {
+      label: 'a link whose reader text alone is near in meaning',
+      seed: async (user: TestUser) => {
+        const [alarms] = await indexed(user, [
+          ARTICLES.alarms,
+          { ...ARTICLES.tomatoes, text: ARTICLES.alarms.text },
+        ]);
+        return alarms!;
+      },
+    },
+    {
+      label: 'a link whose metadata is near in meaning but below the related threshold',
+      seed: async (user: TestUser) => {
+        // Shares one word group of the two each mentions: a similarity of 0.5.
+        const [alarms] = await indexed(user, [
+          ARTICLES.alarms,
+          { url: 'https://example.com/worker-garden', title: 'A worker in the garden' },
         ]);
         return alarms!;
       },

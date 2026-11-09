@@ -277,10 +277,11 @@ The most passages of one link a request returns.
 > **findPassages**(`env`, `userId`, `words`, `filters`, `limit`, `__namedParameters?`): `Promise`\<[`Passage`](#passage)[]\>
 
 The passages of the user's links that best match the free words by meaning,
-best first: those scoring at least the similarity threshold, of links
-satisfying the filters, at most `perLink` (three) of a link and at most
-`limit` in all, with `deadlineMs` (five seconds) for the embedding and the
-query together. The index is only a guide to which passages to look at: every passage
+best first: those scoring at least `threshold` (the similarity threshold),
+of links satisfying the filters, at most `perLink` (three) of a link and at
+most `limit` in all, with `deadlineMs` (five seconds) for the embedding and
+the query together. `kind` keeps only the passages cut from a link's
+metadata, or only those cut from its reader text; by default both. The index is only a guide to which passages to look at: every passage
 returned is read from the user's own rows, so the vector of a deleted link
 or of another user's link is never returned. Throws MeaningUnavailable.
 
@@ -312,9 +313,17 @@ or of another user's link is never returned. Throws MeaningUnavailable.
 
 `number` = `MEANING_TIMEOUT_MS`
 
+###### kind?
+
+[`PassageKind`](cut.md#passagekind)
+
 ###### perLink?
 
 `number` = `PASSAGES_PER_LINK`
+
+###### threshold?
+
+`number` = `SIMILARITY_THRESHOLD`
 
 #### Returns
 

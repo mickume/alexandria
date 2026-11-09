@@ -42,9 +42,10 @@ The embedding of each text, in order.
 
 ##### query()
 
-> **query**(`namespace`, `vector`, `topK`): `Promise`\<[`VectorMatch`](#vectormatch)[]\>
+> **query**(`namespace`, `vector`, `topK`, `filter?`): `Promise`\<[`VectorMatch`](#vectormatch)[]\>
 
-The `topK` vectors of the namespace nearest to `vector`, nearest first.
+The `topK` vectors of the namespace nearest to `vector`, nearest first,
+among those matching `filter`.
 
 ###### Parameters
 
@@ -59,6 +60,10 @@ The `topK` vectors of the namespace nearest to `vector`, nearest first.
 ###### topK
 
 `number`
+
+###### filter?
+
+[`VectorFilter`](#vectorfilter)
 
 ###### Returns
 
@@ -88,7 +93,7 @@ Stores the vectors in the namespace, replacing those with the same id.
 
 ### PassageVector
 
-A vector to store: the passage's vector id and its embedding.
+A vector to store: the passage's vector id, its embedding and what it was cut from.
 
 #### Properties
 
@@ -96,9 +101,31 @@ A vector to store: the passage's vector id and its embedding.
 
 > **id**: `string`
 
+##### metadata
+
+> **metadata**: `object`
+
+###### kind
+
+> **kind**: [`PassageKind`](cut.md#passagekind)
+
 ##### values
 
 > **values**: `number`[]
+
+***
+
+### VectorFilter
+
+A filter on the vectors a query may return, by their metadata. A property
+is filtered on only once the index has a metadata index on it
+(scripts/provision.sh creates the one on `kind`).
+
+#### Properties
+
+##### kind?
+
+> `optional` **kind?**: [`PassageKind`](cut.md#passagekind)
 
 ***
 

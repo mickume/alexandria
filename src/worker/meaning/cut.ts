@@ -62,15 +62,27 @@ export function cutText(text: string): string[] {
   return passages;
 }
 
+/** What a passage was cut from: the link's metadata or its reader text. */
+export type PassageKind = 'metadata' | 'reader';
+
+/** A passage of a link and what it was cut from. */
+export interface CutPassage {
+  text: string;
+  kind: PassageKind;
+}
+
 /**
  * The passages of a link: first its title, summary, topic, tags and note, then
  * the first READER_TEXT_MAX characters of its reader text.
  */
-export function cutPassages(link: LinkText, readerText: string | null): string[] {
+export function cutPassages(link: LinkText, readerText: string | null): CutPassage[] {
   const metadata = [link.title, link.summary, link.topic, link.tags.join(' '), link.note]
     .filter((part): part is string => !!part && part.trim() !== '')
     .join('\n');
   let reader = (readerText ?? '').slice(0, READER_TEXT_MAX);
   if (reader && startsPair(reader, reader.length - 1)) reader = reader.slice(0, -1);
-  return [...cutText(metadata), ...cutText(reader)];
+  return [
+    ...cutText(metadata).map((text) => ({ text, kind: 'metadata' as const })),
+    ...cutText(reader).map((text) => ({ text, kind: 'reader' as const })),
+  ];
 }

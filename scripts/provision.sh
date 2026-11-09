@@ -62,5 +62,14 @@ if ! wrangler vectorize get "$VECTOR_INDEX" >/dev/null 2>&1; then
   wrangler vectorize create "$VECTOR_INDEX" --dimensions 1024 --metric cosine
 fi
 
+# Related links filter the index on the kind of a passage (metadata or reader
+# text). Vectorize filters only on a property with a metadata index, and only
+# for vectors stored after it exists, so it is created before the migrations
+# that queue links for re-indexing.
+if ! wrangler vectorize list-metadata-index "$VECTOR_INDEX" 2>/dev/null | grep -qw kind; then
+  echo "Creating the metadata index on kind of $VECTOR_INDEX"
+  wrangler vectorize create-metadata-index "$VECTOR_INDEX" --propertyName=kind --type=string
+fi
+
 # Before the deploy, so that new code never meets an old schema.
 wrangler d1 migrations apply "$DATABASE" --remote

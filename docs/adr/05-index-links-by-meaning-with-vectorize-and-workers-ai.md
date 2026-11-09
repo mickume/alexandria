@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (2026-11-09).
+Accepted (2026-11-09). Related links match metadata alone, at their own
+threshold: see [ADR 06](06-relate-links-by-their-metadata-alone.md).
 
 ## Context
 

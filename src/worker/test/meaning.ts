@@ -4,7 +4,7 @@
  * namespace, record every call and fail or stall a call on request.
  */
 import { env } from 'cloudflare:test';
-import { DIMENSIONS, embedText, VectorIndex } from './embedder';
+import { DIMENSIONS, embedText, VectorIndex, type MetadataFilter } from './embedder';
 import { api, seedLinks, type TestUser } from './helpers';
 
 /** The calls the Worker makes to the index and the model. */
@@ -84,7 +84,10 @@ class FakeMeaning {
   };
 
   private vectorize = {
-    query: async (vector: number[], options?: { topK?: number; namespace?: string }) => {
+    query: async (
+      vector: number[],
+      options?: { topK?: number; namespace?: string; filter?: MetadataFilter },
+    ) => {
       const namespace = options?.namespace ?? '';
       await this.enter({ call: 'query', namespace });
       const matches = this.index.query(
@@ -92,17 +95,30 @@ class FakeMeaning {
         vector,
         options?.topK ?? 10,
         this.ignoreNamespaces,
+        options?.filter,
       );
       return { matches, count: matches.length };
     },
-    upsert: async (vectors: { id: string; values: number[]; namespace?: string }[]) => {
+    upsert: async (
+      vectors: {
+        id: string;
+        values: number[];
+        namespace?: string;
+        metadata?: Record<string, string>;
+      }[],
+    ) => {
       await this.enter({
         call: 'upsert',
         namespace: vectors[0]?.namespace,
         ids: vectors.map((v) => v.id),
       });
       this.index.upsert(
-        vectors.map((v) => ({ id: v.id, namespace: v.namespace ?? '', values: [...v.values] })),
+        vectors.map((v) => ({
+          id: v.id,
+          namespace: v.namespace ?? '',
+          values: [...v.values],
+          ...(v.metadata && { metadata: { ...v.metadata } }),
+        })),
       );
       return this.mutation();
     },

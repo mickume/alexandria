@@ -6,8 +6,15 @@
 import { Hono } from 'hono';
 import { refusal, validationError } from '../api/errors';
 import type { AppEnv, Env } from '../env';
+import type { PassageKind } from './cut';
 import { filterConditions, parseQuery, type Filters } from '../search/query';
-import { meaningBackend, QUERY_TOP_K, SIMILARITY_THRESHOLD, type VectorMatch } from './backend';
+import {
+  meaningBackend,
+  QUERY_TOP_K,
+  SIMILARITY_THRESHOLD,
+  type VectorFilter,
+  type VectorMatch,
+} from './backend';
 
 /** The passages a request returns when it names no limit. */
 export const DEFAULT_PASSAGES = 8;
@@ -38,6 +45,7 @@ async function nearest(
   userId: string,
   question: string,
   deadlineMs: number,
+  filter: VectorFilter,
 ): Promise<VectorMatch[]> {
   const backend = meaningBackend(env);
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -50,7 +58,7 @@ async function nearest(
   const search = async () => {
     const [vector] = await backend.embed([question]);
     if (!vector) throw new Error('no embedding of the question');
-    return backend.query(userId, vector, QUERY_TOP_K);
+    return backend.query(userId, vector, QUERY_TOP_K, filter);
   };
   try {
     return await Promise.race([search(), timeout]);
@@ -75,10 +83,11 @@ interface PassageRow {
 
 /**
  * The passages of the user's links that best match the free words by meaning,
- * best first: those scoring at least the similarity threshold, of links
- * satisfying the filters, at most `perLink` (three) of a link and at most
- * `limit` in all, with `deadlineMs` (five seconds) for the embedding and the
- * query together. The index is only a guide to which passages to look at: every passage
+ * best first: those scoring at least `threshold` (the similarity threshold),
+ * of links satisfying the filters, at most `perLink` (three) of a link and at
+ * most `limit` in all, with `deadlineMs` (five seconds) for the embedding and
+ * the query together. `kind` keeps only the passages cut from a link's
+ * metadata, or only those cut from its reader text; by default both. The index is only a guide to which passages to look at: every passage
  * returned is read from the user's own rows, so the vector of a deleted link
  * or of another user's link is never returned. Throws MeaningUnavailable.
  */
@@ -88,10 +97,16 @@ export async function findPassages(
   words: string[],
   filters: Filters,
   limit: number,
-  { deadlineMs = MEANING_TIMEOUT_MS, perLink = PASSAGES_PER_LINK } = {},
+  {
+    deadlineMs = MEANING_TIMEOUT_MS,
+    perLink = PASSAGES_PER_LINK,
+    threshold = SIMILARITY_THRESHOLD,
+    kind,
+  }: { deadlineMs?: number; perLink?: number; threshold?: number; kind?: PassageKind } = {},
 ): Promise<Passage[]> {
-  const matches = (await nearest(env, userId, words.join(' '), deadlineMs)).filter(
-    (m) => m.score >= SIMILARITY_THRESHOLD,
+  const filter: VectorFilter = kind ? { kind } : {};
+  const matches = (await nearest(env, userId, words.join(' '), deadlineMs, filter)).filter(
+    (m) => m.score >= threshold,
   );
   if (matches.length === 0) return [];
   const where = filterConditions(filters);

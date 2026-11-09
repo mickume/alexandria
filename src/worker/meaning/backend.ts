@@ -5,6 +5,7 @@
  * interface speaks HTTP to a local fake instead.
  */
 import type { Env } from '../env';
+import type { PassageKind } from './cut';
 
 /** The embedding model: multilingual, with a window that holds a whole passage. */
 export const EMBEDDING_MODEL = '@cf/baai/bge-m3';
@@ -23,10 +24,20 @@ const EMBED_BATCH = 100;
 /** The most vectors, or ids, one Vectorize mutation carries. */
 export const MUTATION_BATCH = 1_000;
 
-/** A vector to store: the passage's vector id and its embedding. */
+/** A vector to store: the passage's vector id, its embedding and what it was cut from. */
 export interface PassageVector {
   id: string;
   values: number[];
+  metadata: { kind: PassageKind };
+}
+
+/**
+ * A filter on the vectors a query may return, by their metadata. A property
+ * is filtered on only once the index has a metadata index on it
+ * (scripts/provision.sh creates the one on `kind`).
+ */
+export interface VectorFilter {
+  kind?: PassageKind;
 }
 
 /** A vector the index found, with its similarity to the query. */
@@ -41,8 +52,16 @@ export interface MeaningBackend {
   embed(texts: string[]): Promise<number[][]>;
   /** Stores the vectors in the namespace, replacing those with the same id. */
   upsert(namespace: string, vectors: PassageVector[]): Promise<void>;
-  /** The `topK` vectors of the namespace nearest to `vector`, nearest first. */
-  query(namespace: string, vector: number[], topK: number): Promise<VectorMatch[]>;
+  /**
+   * The `topK` vectors of the namespace nearest to `vector`, nearest first,
+   * among those matching `filter`.
+   */
+  query(
+    namespace: string,
+    vector: number[],
+    topK: number,
+    filter?: VectorFilter,
+  ): Promise<VectorMatch[]>;
   /** Removes the vectors with these ids, in whatever namespace. */
   deleteByIds(ids: string[]): Promise<void>;
 }
@@ -74,12 +93,13 @@ function bindingBackend(env: Env): MeaningBackend {
         await env.VECTORIZE.upsert(slice.map((v) => ({ ...v, namespace })));
       });
     },
-    async query(namespace, vector, topK) {
+    async query(namespace, vector, topK, filter = {}) {
       const answer = await env.VECTORIZE.query(vector, {
         topK,
         namespace,
         returnValues: false,
         returnMetadata: 'none',
+        ...(Object.keys(filter).length > 0 && { filter: { ...filter } }),
       });
       return answer.matches.map((m) => ({ id: m.id, score: m.score }));
     },
@@ -109,8 +129,8 @@ function httpBackend(base: string): MeaningBackend {
     async upsert(namespace, vectors) {
       await post('/upsert', { namespace, vectors });
     },
-    async query(namespace, vector, topK) {
-      return (await post<{ matches: VectorMatch[] }>('/query', { namespace, vector, topK }))
+    async query(namespace, vector, topK, filter = {}) {
+      return (await post<{ matches: VectorMatch[] }>('/query', { namespace, vector, topK, filter }))
         .matches;
     },
     async deleteByIds(ids) {

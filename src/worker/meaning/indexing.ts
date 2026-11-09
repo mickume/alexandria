@@ -151,11 +151,11 @@ export async function indexLink(env: Env, message: IndexMessage): Promise<void> 
   );
 
   const backend = meaningBackend(env);
-  const embeddings = await backend.embed(passages);
+  const embeddings = await backend.embed(passages.map((p) => p.text));
   const ids = passages.map((_, n) => `${linkId}:${version}:${n}`);
   await backend.upsert(
     userId,
-    ids.map((id, n) => ({ id, values: embeddings[n]! })),
+    ids.map((id, n) => ({ id, values: embeddings[n]!, metadata: { kind: passages[n]!.kind } })),
   );
 
   await env.DB.batch([
@@ -167,7 +167,7 @@ export async function indexLink(env: Env, message: IndexMessage): Promise<void> 
       `INSERT OR IGNORE INTO link_passages (vector_id, link_id, user_id, version, position, text)
        SELECT ?1 || ':' || CAST(?3 AS INTEGER) || ':' || j.key, ?1, ?2, ?3, j.key, j.value
        FROM json_each(?4) j WHERE ${STILL_CURRENT}`,
-    ).bind(linkId, userId, version, JSON.stringify(passages)),
+    ).bind(linkId, userId, version, JSON.stringify(passages.map((p) => p.text))),
   ]);
   const stored = await env.DB.prepare(
     'SELECT COUNT(*) AS n FROM link_passages WHERE link_id = ? AND version = ?',

@@ -798,8 +798,10 @@ meaning is unavailable, try again"}`.
 
 The owner's other links nearest in meaning to the link, worked out when they
 are asked for. The link's first passage (its title, summary, topic, tags and
-note) is the question, matched as in `GET /api/v1/passages` with one passage
-of each link; the link itself is left out, and so are expired links.
+note) is the question, matched only against the passages cut from the other
+links' title, summary, topic, tags and note, never their reader-view text, with
+one passage of each link; the link itself is left out, and so are expired
+links.
 
 ```json
 {
@@ -808,9 +810,12 @@ of each link; the link itself is left out, and so are expired links.
 ```
 
 Items are links as `GET /api/v1/links` returns them, each with `score`, the
-similarity of its best passage, 0.5 or more; best first, at most 5. A link
-that is not indexed yet, or that nothing in the library is near, answers
-`{"items": []}`. The request records no use of any link.
+similarity of its best passage, 0.65 or more (stricter than the 0.5 of
+passages); best first, at most 5. A link that is not indexed yet, or that
+nothing in the library is near, answers `{"items": []}`, and fewer than 5 is
+usual. A link indexed before related links matched metadata alone is not
+returned as related to another until the backfill has indexed it again. The
+request records no use of any link.
 
 Errors: `404 not_found` for a link that is not the owner's; `503
 search_unavailable` as for passages.

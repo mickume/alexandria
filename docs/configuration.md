@@ -45,7 +45,7 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | `LIVENESS_QUEUE` | Queue `alexandria-liveness` | One message per weekly liveness check. |
 | `INDEX_QUEUE` | Queue `alexandria-index` | One message per link to index by meaning (batch size 10, 5 retries). |
 | `AI` | Workers AI | Computes the embeddings of a link's passages and of a question, with `@cf/baai/bge-m3`. Paid by the deployment's account. `wrangler dev` reaches the real service for it (and so needs a Cloudflare login); `wrangler dev --local` does not, and the call then fails. |
-| `VECTORIZE` | Vectorize index `alexandria-passages` | The embeddings of every user's passages, 1,024 dimensions, cosine, one namespace per user. `scripts/provision.sh` creates it. |
+| `VECTORIZE` | Vectorize index `alexandria-passages` | The embeddings of every user's passages, 1,024 dimensions, cosine, one namespace per user, with a metadata index on `kind`. `scripts/provision.sh` creates both. |
 | `ACCOUNT_QUEUE` | Queue `alexandria-account` | One message per run of an account's deletion job; the job queues its next run until nothing of the account remains (batch size 1, 10 retries). |
 
 ## Cron Triggers
@@ -82,7 +82,8 @@ Two ways deploy the same Worker:
 `scripts/provision.sh` checks that the token can manage D1, Queues, R2 and
 Vectorize (and names the permissions it lacks), creates the D1 database
 `alexandria`, the five queues, the R2 bucket and the Vectorize index
-`alexandria-passages` (1,024 dimensions, cosine) when they do not exist, and
+`alexandria-passages` (1,024 dimensions, cosine) with its metadata index on
+the string property `kind` when they do not exist, and
 applies the D1 migrations, before the deploy. Every step is a no-op when there
 is nothing to do. The token needs Account > Workers Scripts, D1, Queues, Workers
 R2 Storage and Vectorize, each Edit. Workers AI is used through its binding

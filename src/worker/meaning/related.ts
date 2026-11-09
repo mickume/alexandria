@@ -11,6 +11,14 @@ import { findPassages, MeaningUnavailable } from './passages';
 /** The most related links returned. */
 export const RELATED_LINKS = 5;
 
+/**
+ * The similarity (cosine) a link's metadata must reach against the link's own
+ * metadata for the link to count as related: stricter than the threshold of
+ * search, because bge-m3 scores two unrelated texts of one language at up to
+ * about 0.6. Provisional (ADR 06).
+ */
+export const RELATED_SIMILARITY_THRESHOLD = 0.65;
+
 /** A link near in meaning to another, with the similarity of its best passage. */
 export interface RelatedLink {
   id: string;
@@ -19,10 +27,11 @@ export interface RelatedLink {
 
 /**
  * The user's links nearest in meaning to the link, best first: at most
- * RELATED_LINKS, each scoring at least the similarity threshold, expired
- * links left out. The link is matched by its first passage, which holds its
- * title, summary, topic, tags and note; a link not yet indexed has none, and
- * no related links. Throws MeaningUnavailable.
+ * RELATED_LINKS, each scoring at least RELATED_SIMILARITY_THRESHOLD, expired
+ * links left out. The link's first passage, which holds its title, summary,
+ * topic, tags and note, is matched against the passages cut from the other
+ * links' metadata only, never their reader text (ADR 06); a link not yet
+ * indexed has no first passage, and no related links. Throws MeaningUnavailable.
  */
 export async function findRelated(
   env: Env,
@@ -39,6 +48,8 @@ export async function findRelated(
   // One passage per link; the link itself is among them, so ask for one more.
   const passages = await findPassages(env, userId, [first.text], {}, RELATED_LINKS + 1, {
     perLink: 1,
+    threshold: RELATED_SIMILARITY_THRESHOLD,
+    kind: 'metadata',
   });
   return passages
     .filter((p) => p.link_id !== linkId)

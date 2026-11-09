@@ -50,7 +50,11 @@ export interface StoredVector {
   id: string;
   namespace: string;
   values: number[];
+  metadata?: Record<string, string>;
 }
+
+/** A filter on metadata: every property must equal its value, as Vectorize's `$eq`. */
+export type MetadataFilter = Record<string, string>;
 
 /** An in-memory vector index with namespaces. */
 export class VectorIndex {
@@ -63,11 +67,20 @@ export class VectorIndex {
 
   /**
    * The `topK` vectors nearest to `vector`, nearest first, in `namespace` only
-   * unless `anyNamespace` (to model an index that fails to keep users apart).
+   * unless `anyNamespace` (to model an index that fails to keep users apart),
+   * and only those whose metadata matches `filter`: a vector without the
+   * property never matches, as one stored before its metadata index existed.
    */
-  query(namespace: string, vector: number[], topK: number, anyNamespace = false) {
+  query(
+    namespace: string,
+    vector: number[],
+    topK: number,
+    anyNamespace = false,
+    filter: MetadataFilter = {},
+  ) {
     return [...this.vectors.values()]
       .filter((v) => anyNamespace || v.namespace === namespace)
+      .filter((v) => Object.entries(filter).every(([key, value]) => v.metadata?.[key] === value))
       .map((v) => ({ id: v.id, namespace: v.namespace, score: cosine(vector, v.values) }))
       .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1))
       .slice(0, topK);

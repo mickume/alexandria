@@ -5,7 +5,7 @@
  * (src/worker/test/embedder.ts) and keeps vectors in memory by namespace.
  *
  * POST /embed {texts} -> {vectors}, POST /upsert {namespace, vectors},
- * POST /query {namespace, vector, topK} -> {matches}, POST /delete {ids};
+ * POST /query {namespace, vector, topK, filter} -> {matches}, POST /delete {ids};
  * control: GET /__vectors?namespace= lists {id, namespace}, POST /__fail makes
  * /embed and /query answer 503 until POST /__recover, GET /health.
  * Run with: node e2e/fake-meaning.ts <port>
@@ -53,13 +53,23 @@ const server = createServer((req, res) => {
         return send(200, { vectors: (body.texts as string[]).map(embedText) });
       }
       if (url.pathname === '/upsert') {
-        const vectors = body.vectors as { id: string; values: number[] }[];
+        const vectors = body.vectors as {
+          id: string;
+          values: number[];
+          metadata?: Record<string, string>;
+        }[];
         index.upsert(vectors.map((v) => ({ ...v, namespace: body.namespace as string })));
         return send(200, {});
       }
       if (url.pathname === '/query') {
         const matches = index
-          .query(body.namespace as string, body.vector as number[], body.topK as number)
+          .query(
+            body.namespace as string,
+            body.vector as number[],
+            body.topK as number,
+            false,
+            (body.filter ?? {}) as Record<string, string>,
+          )
           .map(({ id, score }) => ({ id, score }));
         return send(200, { matches });
       }

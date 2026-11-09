@@ -382,7 +382,10 @@ one namespace per user.
 - **Passages** (`meaning/cut.ts`). A link is cut into passages of at most 1,500
   characters: its title, summary, topic, tags and note first, then the first
   50,000 characters of its reader text. They are rows of `link_passages`, with
-  the id of the vector made from each: `{link_id}:{version}:{position}`.
+  the id of the vector made from each: `{link_id}:{version}:{position}`. Each
+  vector carries the metadata `kind`, `metadata` or `reader`, after what its
+  passage was cut from; the Vectorize index has a metadata index on `kind`
+  (`scripts/provision.sh`), so a query can be filtered on it.
 - **The text version.** Triggers (`migrations/0011_meaning_index.sql`) move
   `link_index_state.text_version` whenever the title, summary, topic, tags, note
   or reader text changes, or a topic or tag the link carries is renamed. A link
@@ -417,9 +420,13 @@ one namespace per user.
   other features call. The `search_passages` MCP tool is this route.
 - **Related links** (`meaning/related.ts`). `GET /api/v1/links/{id}/related`
   takes the link's newest first passage (its title, summary, topic, tags and
-  note) as the question to `findPassages` with one passage a link and no
-  filters, drops the link itself and returns the 5 best other links, worked out
-  on each request; nothing is stored. A link not yet indexed has no first
+  note) as the question to `findPassages` with one passage a link, no filters,
+  only vectors of `kind` `metadata` and the stricter threshold 0.65
+  (`RELATED_SIMILARITY_THRESHOLD`), drops the link itself and returns the 5 best
+  other links, worked out on each request; nothing is stored
+  ([ADR 06](adr/06-relate-links-by-their-metadata-alone.md)). Migration
+  `0013_reindex_passage_kinds.sql` moved every link's text version, so that the
+  backfill re-indexed the links stored before vectors carried their kind. A link not yet indexed has no first
   passage and no related links. The detail page shows them above its history,
   and says so instead while they load, when there are none and when they
   cannot be worked out.

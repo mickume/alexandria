@@ -16,7 +16,10 @@ const prose = fc
   .map((parts) => parts.join(' '));
 
 describe('cutting reader text into passages', () => {
-  const reader = (text: string) => cutPassages(LINK, text).slice(1);
+  const reader = (text: string) =>
+    cutPassages(LINK, text)
+      .filter((p) => p.kind === 'reader')
+      .map((p) => p.text);
 
   it('keeps every passage non-empty and short, and loses nothing of the first 50,000 characters', () => {
     fc.assert(
@@ -79,23 +82,25 @@ describe('the passages of a link', () => {
       },
       'The body of the article.',
     );
-    expect(passages).toHaveLength(2);
-    expect(passages[0]).toBe(
-      'Durable Object alarms\nRun code later.\nCloudflare\nworkers alarms\nRead before the migration.',
-    );
-    expect(passages[1]).toBe('The body of the article.');
+    expect(passages).toEqual([
+      {
+        text: 'Durable Object alarms\nRun code later.\nCloudflare\nworkers alarms\nRead before the migration.',
+        kind: 'metadata',
+      },
+      { text: 'The body of the article.', kind: 'reader' },
+    ]);
   });
 
   it('is its metadata alone for a link without reader text', () => {
-    expect(cutPassages(LINK, null)).toEqual(['Title']);
-    expect(cutPassages(LINK, '')).toEqual(['Title']);
+    expect(cutPassages(LINK, null)).toEqual([{ text: 'Title', kind: 'metadata' }]);
+    expect(cutPassages(LINK, '')).toEqual([{ text: 'Title', kind: 'metadata' }]);
   });
 
   it('spreads a long note over several passages', () => {
     const note = Array.from({ length: 2_000 }, (_, i) => `note${i}`).join(' ');
     const passages = cutPassages({ ...LINK, note }, null);
     expect(passages.length).toBeGreaterThan(1);
-    expect(passages.every((p) => p.length <= PASSAGE_MAX)).toBe(true);
-    expect(passages[0]!.startsWith('Title\n')).toBe(true);
+    expect(passages.every((p) => p.kind === 'metadata' && p.text.length <= PASSAGE_MAX)).toBe(true);
+    expect(passages[0]!.text.startsWith('Title\n')).toBe(true);
   });
 });
