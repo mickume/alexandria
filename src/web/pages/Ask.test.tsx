@@ -152,4 +152,74 @@ describe('the Ask page', () => {
     expect(screen.queryByText(/Second answer/)).toBeNull();
     expect(screen.queryByRole('list', { name: 'Sources' })).toBeNull();
   });
+
+  it.each([
+    { status: 409, error: 'no_ai_key', message: 'add an AI key in settings' },
+    { status: 409, error: 'ai_key_rejected', message: 'invalid x-api-key' },
+    {
+      status: 503,
+      error: 'search_unavailable',
+      message: 'search by meaning is unavailable, try again',
+    },
+    { status: 400, error: 'invalid_question', message: 'ask with at least one word' },
+  ])('shows the message of a $error refusal in an alert', async ({ status, error, message }) => {
+    const fake = api();
+    fake.on('POST', '/api/v1/ask', { status, body: { error, message } });
+    renderPage('/ask', fake);
+
+    await ask('how do I schedule background work?');
+
+    expect((await screen.findByRole('alert')).textContent).toBe(message);
+    expect(screen.queryByRole('region', { name: 'Answer' })).toBeNull();
+  });
+
+  it('shows the error that ends a stream under the part of the answer that arrived', async () => {
+    const fake = api({
+      status: 200,
+      headers: sseHeaders,
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              event('sources', { sources: [{ n: 1, link: alarms }] }) +
+                event('delta', { text: 'Use an ' }) +
+                event('error', { error: 'provider_unavailable', message: 'timed out' }),
+            ),
+          );
+          controller.close();
+        },
+      }),
+    });
+    renderPage('/ask', fake);
+
+    await ask('how do I schedule background work?');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('timed out');
+    const answer = screen.getByRole('region', { name: 'Answer' });
+    expect(answer.textContent).toBe('Use an ');
+    expect(answer.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('clears an earlier error when the owner asks again', async () => {
+    const refusals = [
+      { status: 409, body: { error: 'no_ai_key', message: 'add an AI key in settings' } },
+      {
+        status: 200,
+        headers: sseHeaders,
+        text:
+          event('sources', { sources: [] }) + event('delta', { text: 'Fine.' }) + event('done', {}),
+      },
+    ];
+    const fake = api();
+    fake.on('POST', '/api/v1/ask', () => refusals.shift()!);
+    renderPage('/ask', fake);
+
+    await ask('first');
+    await screen.findByRole('alert');
+    await ask('second');
+
+    expect(await screen.findByText('Fine.')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });

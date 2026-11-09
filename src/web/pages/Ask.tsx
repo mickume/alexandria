@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link as PageLink } from '../App';
-import { ask, type AskEvent, type AskSource } from '../api';
+import { ApiError, ask, type AskEvent, type AskSource } from '../api';
 
 /** The longest question, in characters. */
 const QUESTION_MAX = 500;
@@ -27,14 +27,16 @@ function Cited({ text, sources }: { text: string; sources: AskSource[] }) {
 /**
  * The Ask page: a question to the library, answered by the owner's own AI
  * provider from passages of their links. The answer streams in with each [n] a
- * link to its source, the sources listed under it. Nothing is kept: asking
- * again, or leaving the page, loses the answer.
+ * link to its source, the sources listed under it, and a refusal or a failure
+ * of the stream shown under whatever part of the answer arrived. Nothing is
+ * kept: asking again, or leaving the page, loses the answer.
  */
 export function Ask() {
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState<string | null>(null);
+  const [answer, setAnswer] = useState('');
   const [sources, setSources] = useState<AskSource[]>([]);
   const [asking, setAsking] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   /** The ask the page is showing: an earlier one that is still streaming is ignored. */
   const current = useRef(0);
 
@@ -44,16 +46,20 @@ export function Ask() {
     const mine = ++current.current;
     setAnswer('');
     setSources([]);
+    setFailure(null);
     setAsking(true);
     const onEvent = (e: AskEvent) => {
       if (mine !== current.current) return;
       if (e.event === 'sources') setSources(e.data.sources);
-      else if (e.event === 'delta') setAnswer((text) => (text ?? '') + e.data.text);
+      else if (e.event === 'delta') setAnswer((text) => text + e.data.text);
+      else if (e.event === 'error') setFailure(e.data.message);
     };
     try {
       await ask(question, onEvent);
-    } catch {
-      // A refusal is shown by the next task.
+    } catch (err) {
+      if (mine === current.current) {
+        setFailure(err instanceof ApiError ? err.message : 'could not ask, try again');
+      }
     } finally {
       if (mine === current.current) setAsking(false);
     }
@@ -78,12 +84,17 @@ export function Ask() {
           Ask
         </button>
       </form>
-      {answer !== null && (
+      {answer && (
         <section className="ask-answer" aria-label="Answer">
           <p>
             <Cited text={answer} sources={sources} />
           </p>
         </section>
+      )}
+      {failure && (
+        <p className="notice" role="alert">
+          {failure}
+        </p>
       )}
       {sources.length > 0 && (
         <ol className="ask-sources" aria-label="Sources">
