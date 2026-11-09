@@ -51,8 +51,28 @@ function decayNote(
   return `${pointsText(points)}: expires in ${points} ${points === 1 ? 'day' : 'days'}`;
 }
 
-/** The decay fields of a link as the API shows them: points, expiry and liveness dates, and why. */
+/**
+ * The decay fields of a link as the API shows them: points, expiry and
+ * liveness dates, and why. An archived link is kept outside decay: it has no
+ * points and no removal date.
+ */
 export function decayFields(row: LinkRow) {
+  const liveness = {
+    dead_since: row.dead_since ?? null,
+    last_checked_at: row.last_checked_at ?? null,
+    last_check_result: row.last_check_result ?? null,
+  };
+  if (row.state === 'archived') {
+    const archivedAt = row.archived_at ?? row.updated_at;
+    return {
+      points: null,
+      archived_at: archivedAt,
+      expired_at: null,
+      removal_at: null,
+      ...liveness,
+      decay_note: `archived on ${isoDate(Date.parse(archivedAt))}: kept until deleted`,
+    };
+  }
   const removeDays = row.user_remove_days ?? 180;
   const expiredAt = row.state === 'expired' ? (row.expired_at ?? null) : null;
   const removalAt = expiredAt
@@ -66,11 +86,10 @@ export function decayFields(row: LinkRow) {
   );
   return {
     points,
+    archived_at: null,
     expired_at: expiredAt,
     removal_at: removalAt,
-    dead_since: row.dead_since ?? null,
-    last_checked_at: row.last_checked_at ?? null,
-    last_check_result: row.last_check_result ?? null,
+    ...liveness,
     decay_note: decayNote(row, points, expiredAt, removalAt),
   };
 }

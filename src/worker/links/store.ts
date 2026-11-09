@@ -108,8 +108,13 @@ export interface LinkView {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on the link read on its own. */
   note?: string;
-  /** Start points plus the use count, minus the whole days since the last use or boost. */
-  points: number;
+  /**
+   * Start points plus the use count, minus the whole days since the last use
+   * or boost; null for an archived link, which decay leaves alone.
+   */
+  points: number | null;
+  /** When the link was archived, while it is archived. */
+  archived_at: string | null;
   /** When the link expired, while it is expired. */
   expired_at: string | null;
   /** When an expired link will be removed. */
@@ -117,7 +122,7 @@ export interface LinkView {
   dead_since: string | null;
   last_checked_at: string | null;
   last_check_result: string | null;
-  /** One sentence: the link's points and when it expires, or when it will be removed. */
+  /** One sentence: the link's points and when it expires, when it will be removed, or that it is kept. */
   decay_note: string;
 }
 

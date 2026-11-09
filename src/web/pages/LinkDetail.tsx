@@ -23,7 +23,7 @@ const DAY_MS = 86_400_000;
 
 /**
  * How long the link has left, as the API's decay note reckons it: a pinned
- * link or one in a workspace never expires, an expired one is removed on its
+ * link, an archived one or one in a workspace never expires, an expired one is removed on its
  * removal date, and any other expires once its points, a day each, run out.
  */
 function daysLeft(link: Link, now: number = Date.now()): string {
@@ -32,6 +32,7 @@ function daysLeft(link: Link, now: number = Date.now()): string {
     const left = Math.max(0, Math.ceil((Date.parse(link.removal_at) - now) / DAY_MS));
     return `expired: removed in ${days(left)}`;
   }
+  if (link.points === null) return 'never expires: archived';
   if (link.pinned) return 'never expires: pinned';
   if (link.workspaces.length > 0) return 'never expires: in a workspace';
   if (link.points <= 0) return 'expires today';

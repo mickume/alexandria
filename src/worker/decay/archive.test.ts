@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { FakeOrigin } from '../test/origin';
-import { api, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  env,
+  recordFetchQueue,
+  seedLinks,
+  setNow,
+  signIn,
+  type TestUser,
+} from '../test/helpers';
 
 const T = Date.parse('2027-06-01T12:00:00.000Z');
 
@@ -13,22 +21,185 @@ async function pinned(user: TestUser): Promise<[string, number][]> {
   return rows.results.map((r) => [r.id, r.pin_position]);
 }
 
-describe('the withdrawn archive', () => {
-  it('answers 404 to archiving a link by hand and to the archive list, and changes no link', async () => {
+/** Puts the link in a new workspace of the user's; returns the workspace's id. */
+async function addToWorkspace(user: TestUser, link: string): Promise<string> {
+  const w = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO workspaces (id, user_id, name, name_key, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).bind(w, user.id, `w-${w}`, `w-${w}`, '2027-01-01T00:00:00.000Z'),
+    env.DB.prepare(
+      'INSERT INTO workspace_links (workspace_id, link_id, position) VALUES (?, ?, 1)',
+    ).bind(w, link),
+  ]);
+  return w;
+}
+
+/** Seeds one link archived at `at`. */
+async function seedArchived(
+  user: TestUser,
+  at: number,
+  opts: { useCount?: number; url?: string } = {},
+): Promise<string> {
+  const [id = ''] = await seedLinks(user, [
+    {
+      url: opts.url ?? `https://kept-${crypto.randomUUID()}.example/`,
+      state: 'archived',
+      useCount: opts.useCount ?? 0,
+      lastUsedAt: new Date(at - 1000).toISOString(),
+    },
+  ]);
+  await env.DB.prepare('UPDATE links SET archived_at = ?, updated_at = ? WHERE id = ?')
+    .bind(new Date(at).toISOString(), new Date(at).toISOString(), id)
+    .run();
+  return id;
+}
+
+describe('archiving a link', () => {
+  it.each(['active', 'pending', 'unreachable', 'expired'])(
+    'archives a %s link at once, unpins it and keeps its workspaces',
+    async (state) => {
+      setNow(T);
+      const user = await signIn();
+      const [link = '', second = '', third = ''] = await seedLinks(user, [
+        { url: 'https://kept.example/', state, pinPosition: 1 },
+        { url: 'https://second.example/', state: 'active', pinPosition: 2 },
+        { url: 'https://third.example/', state: 'active', pinPosition: 3 },
+      ]);
+      if (state === 'expired') {
+        await env.DB.prepare('UPDATE links SET expired_at = ? WHERE id = ?')
+          .bind(new Date(T - 86_400_000).toISOString(), link)
+          .run();
+      }
+      const workspace = await addToWorkspace(user, link);
+      recordFetchQueue();
+      const t = T + 5_000;
+      setNow(t);
+      const r = await api('POST', `/api/v1/links/${link}/archive`, { as: user.session });
+      expect(r.status).toBe(200);
+      expect(r.json).toMatchObject({
+        id: link,
+        state: 'archived',
+        archived_at: new Date(t).toISOString(),
+        expired_at: null,
+        pinned: false,
+        pin_position: null,
+        workspaces: [{ id: workspace }],
+      });
+      expect(await pinned(user)).toEqual([
+        [second, 1],
+        [third, 2],
+      ]);
+    },
+  );
+
+  it('queues one refresh of its page, without touching the refresh window', async () => {
     setNow(T);
     const user = await signIn();
-    const [x = ''] = await seedLinks(user, [
-      { url: 'https://x.example/', state: 'active', pinPosition: 1 },
+    const recently = new Date(T - 60_000).toISOString();
+    const [link = '', fresh = ''] = await seedLinks(user, [
+      { url: 'https://kept.example/', state: 'active' },
+      { url: 'https://fresh.example/', state: 'active' },
     ]);
-    const r = await api('POST', `/api/v1/links/${x}/archive`, { as: user.session });
-    expect([r.status, r.json]).toEqual([404, { error: 'not_found' }]);
-    expect(await pinned(user)).toEqual([[x, 1]]);
-    expect(
-      (await env.DB.prepare('SELECT state FROM links WHERE id = ?').bind(x).first())?.state,
-    ).toBe('active');
-    const list = await api('GET', '/api/v1/archive', { as: user.session });
-    expect([list.status, list.json]).toEqual([404, { error: 'not_found' }]);
+    await env.DB.prepare('UPDATE links SET refresh_requested_at = ? WHERE id = ?')
+      .bind(recently, link)
+      .run();
+    const sent = recordFetchQueue();
+    await api('POST', `/api/v1/links/${link}/archive`, { as: user.session });
+    expect(sent).toEqual([
+      { body: { user_id: user.id, link_id: link, refresh: true }, delaySeconds: undefined },
+    ]);
+    const row = await env.DB.prepare('SELECT refresh_requested_at FROM links WHERE id = ?')
+      .bind(link)
+      .first<{ refresh_requested_at: string | null }>();
+    expect(row?.refresh_requested_at).toBe(recently);
+
+    await api('POST', `/api/v1/links/${fresh}/archive`, { as: user.session });
+    const refresh = await api('POST', `/api/v1/links/${fresh}/refresh`, { as: user.session });
+    expect(refresh.status).toBe(202);
   });
+
+  it('changes nothing and queues nothing for a link already archived', async () => {
+    setNow(T);
+    const user = await signIn();
+    const earlier = T - 86_400_000;
+    const id = await seedArchived(user, earlier);
+    const sent = recordFetchQueue();
+    const r = await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({
+      state: 'archived',
+      archived_at: new Date(earlier).toISOString(),
+      updated_at: new Date(earlier).toISOString(),
+    });
+    expect(sent).toEqual([]);
+  });
+
+  it('keeps the link archived and says so in its history when the refresh cannot be queued', async () => {
+    setNow(T);
+    const user = await signIn();
+    const [id = ''] = await seedLinks(user, [{ url: 'https://kept.example/', state: 'active' }]);
+    env.FETCH_QUEUE = {
+      send: () => Promise.reject(new Error('the queue is down')),
+    } as unknown as typeof env.FETCH_QUEUE;
+    const r = await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
+    expect(r.status).toBe(200);
+    expect(r.json.state).toBe('archived');
+    const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
+    expect(history.json.items).toContainEqual(
+      expect.objectContaining({
+        kind: 'fetch',
+        outcome: 'failed',
+        reason: 'refresh before archiving could not be queued',
+      }),
+    );
+  });
+});
+
+describe('unarchiving a link', () => {
+  it('makes it active with its points reset, without counting a use or pinning it', async () => {
+    setNow(T);
+    const user = await signIn();
+    const id = await seedArchived(user, T - 300 * 86_400_000, { useCount: 3 });
+    const t = T + 5_000;
+    setNow(t);
+    const r = await api('POST', `/api/v1/links/${id}/unarchive`, { as: user.session });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({
+      state: 'active',
+      archived_at: null,
+      pinned: false,
+      use_count: 3,
+      last_used_at: new Date(t).toISOString(),
+      points: 63,
+    });
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    expect(stream.json.items.map((l: { id: string }) => l.id)).toContain(id);
+  });
+
+  it.each(['active', 'pending', 'unreachable', 'expired'])(
+    'is refused for a %s link',
+    async (state) => {
+      setNow(T);
+      const user = await signIn();
+      const [id = ''] = await seedLinks(user, [{ url: 'https://here.example/', state }]);
+      const before = await env.DB.prepare(
+        'SELECT state, last_used_at, expired_at, archived_at FROM links WHERE id = ?',
+      )
+        .bind(id)
+        .first();
+      const r = await api('POST', `/api/v1/links/${id}/unarchive`, { as: user.session });
+      expect(r.status).toBe(409);
+      expect(r.json).toEqual({ error: 'not_archived', message: 'this link is not archived' });
+      expect(
+        await env.DB.prepare(
+          'SELECT state, last_used_at, expired_at, archived_at FROM links WHERE id = ?',
+        )
+          .bind(id)
+          .first(),
+      ).toEqual(before);
+    },
+  );
 });
 
 /** Seeds expired links for `user`, each expired at its own time. */
@@ -183,7 +354,7 @@ describe('restoring a link', () => {
 });
 
 describe('another user’s link', () => {
-  it('is answered as one that does not exist by archive, restore and check', async () => {
+  it('is answered as one that does not exist by archive, unarchive, restore and check', async () => {
     setNow(T);
     const a = await signIn('a@example.test', 'A');
     const b = await signIn('b@example.test', 'B');
@@ -192,7 +363,7 @@ describe('another user’s link', () => {
       HEAD: () => new Response(null, { status: 200 }),
     });
     const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(link).first();
-    for (const action of ['archive', 'restore', 'check']) {
+    for (const action of ['archive', 'unarchive', 'restore', 'check']) {
       const r = await api('POST', `/api/v1/links/${link}/${action}`, { as: a.session });
       const unknown = await api('POST', `/api/v1/links/${crypto.randomUUID()}/${action}`, {
         as: a.session,

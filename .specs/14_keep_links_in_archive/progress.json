@@ -3,11 +3,11 @@
   "spec_id": "14",
   "spec_name": "keep_links_in_archive",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-09T17:05:56Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

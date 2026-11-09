@@ -191,6 +191,7 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     note_preview: null,
     workspaces: [],
     points: 60,
+    archived_at: null,
     expired_at: null,
     removal_at: null,
     dead_since: null,

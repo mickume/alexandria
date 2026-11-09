@@ -91,7 +91,11 @@ export const Link = z.strictObject({
   points: z
     .number()
     .int()
-    .describe('Start points plus the use count, minus whole days since the last use or boost'),
+    .nullable()
+    .describe(
+      'Start points plus the use count, minus whole days since the last use or boost; null for an archived link',
+    ),
+  archived_at: z.string().nullable().describe('When the link was archived, while it is archived'),
   expired_at: z.string().nullable().describe('When the link expired, while it is expired'),
   removal_at: z.string().nullable().describe('When an expired link will be removed'),
   dead_since: z.string().nullable(),
@@ -972,6 +976,30 @@ export const operations: Operation[] = [
     responses: {
       200: { description: 'The restored link', schema: LinkWithNote },
       409: error('not_expired: "this link is not expired"'),
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/archive',
+    operationId: 'archiveLink',
+    summary:
+      'Archive a link: kept for good, out of the stream and out of decay, unpinned, in its workspaces still; a refresh of its page is queued',
+    responses: {
+      200: {
+        description:
+          'The archived link; a link already archived is returned unchanged and nothing is queued',
+        schema: LinkWithNote,
+      },
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/unarchive',
+    operationId: 'unarchiveLink',
+    summary: 'Bring an archived link back: active, last used now, use count unchanged, not pinned',
+    responses: {
+      200: { description: 'The unarchived link', schema: LinkWithNote },
+      409: error('not_archived: "this link is not archived"'),
     },
   },
   {

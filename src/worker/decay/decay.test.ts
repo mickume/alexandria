@@ -153,7 +153,7 @@ describe('a link’s points', () => {
       expect(link.points).toBe(points);
       expect(link.expired_at).toBeNull();
       expect('sticky' in link).toBe(false);
-      expect('archived_at' in link).toBe(false);
+      expect(link.archived_at).toBeNull();
     },
   );
 });
@@ -207,12 +207,27 @@ describe('why a link is in its state', () => {
       },
       note: 'expired on 2027-03-01, removed on 2027-08-27',
     },
-  ])('is said for a link $label', async ({ setup, note }) => {
+    {
+      label: 'archived on 2027-03-01, in a workspace',
+      setup: async (u: TestUser) => {
+        const id = await seedAged(u, 400, { state: 'archived', member: true });
+        await env.DB.prepare(
+          "UPDATE links SET archived_at = '2027-03-01T08:00:00.000Z' WHERE id = ?",
+        )
+          .bind(id)
+          .run();
+        return id;
+      },
+      note: 'archived on 2027-03-01: kept until deleted',
+      fields: { points: null, removal_at: null, archived_at: '2027-03-01T08:00:00.000Z' },
+    },
+  ])('is said for a link $label', async ({ setup, note, fields }) => {
     setNow(T);
     const user = await signIn();
     const id = await setup(user);
     const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
     expect(link.decay_note).toBe(note);
+    expect(link).toMatchObject(fields ?? {});
   });
 });
 

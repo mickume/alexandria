@@ -3,7 +3,7 @@ import { limitReached, notFound, validationError } from '../api/errors';
 import { now } from '../clock';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
-import { getLink, toFullView, toView, type LinkRow } from '../links/store';
+import { getLink, toFullView, toView, unpinStatements, type LinkRow } from '../links/store';
 
 /** Where a page of the expired list ends: the last link's expiry time and id. */
 interface ExpiredCursor {
@@ -86,6 +86,73 @@ restoreRoutes.post('/:id/restore', async (c) => {
   if (!restored) {
     if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
     return limitReached(c, 'not_expired', 'this link is not expired');
+  }
+  return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
+});
+
+/** Why the history of an archived link holds a failed fetch it never made. */
+export const ARCHIVE_REFRESH_NOT_QUEUED = 'refresh before archiving could not be queued';
+
+/** Archiving and unarchiving one link, under /api/v1/links. */
+export const archiveLinkRoutes = new Hono<AppEnv>();
+
+/**
+ * Archives a link that is not archived: it leaves the stream and decay at
+ * once, unpinned, in its workspaces still, and a fetch of its page is queued
+ * as a refresh, outside the refresh window. A link already archived is
+ * answered as it is.
+ */
+archiveLinkRoutes.post('/:id/archive', async (c) => {
+  const db = c.env.DB;
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const link = await getLink(db, userId, id);
+  if (!link) return notFound(c);
+  if (link.state === 'archived') return c.json(toFullView(link));
+  const at = now().toISOString();
+  await db.batch([
+    ...unpinStatements(db, userId, id),
+    db
+      .prepare(
+        `UPDATE links SET state = 'archived', archived_at = ?1, expired_at = NULL, updated_at = ?1
+         WHERE id = ?2 AND user_id = ?3 AND state <> 'archived'`,
+      )
+      .bind(at, id, userId),
+  ]);
+  try {
+    await c.env.FETCH_QUEUE.send({ user_id: userId, link_id: id, refresh: true });
+  } catch (err) {
+    console.error('the refresh of an archived link could not be queued', err);
+    await db
+      .prepare(
+        `INSERT INTO link_events (link_id, user_id, kind, at, outcome, http_status, reason)
+         VALUES (?1, ?2, 'fetch', ?3, 'failed', NULL, ?4)`,
+      )
+      .bind(id, userId, at, ARCHIVE_REFRESH_NOT_QUEUED)
+      .run();
+  }
+  const archived = await getLink(db, userId, id);
+  return archived ? c.json(toFullView(archived)) : notFound(c);
+});
+
+/**
+ * Brings an archived link back to the stream as active. Like a restore, it is
+ * a boost, not a use: last used is now, the use count stays, and the link is
+ * not pinned again.
+ */
+archiveLinkRoutes.post('/:id/unarchive', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const at = now().toISOString();
+  const unarchived = await c.env.DB.prepare(
+    `UPDATE links SET state = 'active', archived_at = NULL, last_used_at = ?1, updated_at = ?1
+     WHERE id = ?2 AND user_id = ?3 AND state = 'archived' RETURNING id`,
+  )
+    .bind(at, id, userId)
+    .first();
+  if (!unarchived) {
+    if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
+    return limitReached(c, 'not_archived', 'this link is not archived');
   }
   return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
 });

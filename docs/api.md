@@ -155,9 +155,9 @@ without text, a PDF too large), or `waiting_for_key` (the key was rejected);
 it is `null` before the first fetch. `edited_fields` lists the fields the
 owner set by hand, which enrichment and refresh never overwrite.
 
-Decay adds `points`, `expired_at`, `removal_at`, `dead_since`,
+Decay adds `points`, `archived_at`, `expired_at`, `removal_at`, `dead_since`,
 `last_checked_at`, `last_check_result` and `decay_note`. `points` is an
-integer: the owner's `start_points` plus the link's `use_count`, minus the
+integer (null for an archived link): the owner's `start_points` plus the link's `use_count`, minus the
 whole 24-hour periods since its `last_used_at`, at the time of the request; it
 can be negative. A use adds 1 to `use_count` and sets `last_used_at` to now; a
 re-paste sets `last_used_at` to now without a use. `expired_at` is when the
@@ -169,6 +169,9 @@ pinned link; "in a workspace: never expires, 12 points" for a link in a
 workspace; otherwise "42 points: expires in 42 days" ("1 point: expires in 1
 day"), or "0 points: expires today" at 0 points or below. A use or a re-paste of an expired link
 makes it `active` again in the same request and clears `expired_at`.
+`archived_at` is when the link was archived, and null while it is not
+archived. An archived link is kept outside decay: `points` and `removal_at`
+are null, and `decay_note` is "archived on 2027-03-01: kept until deleted".
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
@@ -540,9 +543,7 @@ is stored:
 
 A link whose points reach 0 expires: it leaves the stream and every list and
 search without a `state:` filter, and waits to be removed. There is no way to
-archive or expire a link by hand: `POST /api/v1/links/{id}/archive` and
-`GET /api/v1/archive` answer `404 {"error": "not_found"}` as any unknown route
-does.
+expire a link by hand.
 
 #### `GET /api/v1/expired`
 
@@ -558,6 +559,32 @@ Brings an expired link back: `active`, `last_used_at` now (a boost, not a
 use: the use count stays), `expired_at` cleared. `200 <link>`. A link that is
 not expired:
 `409 {"error": "not_expired", "message": "this link is not expired"}`, and
+nothing changes. Another user's link, or one that does not exist: `404`.
+
+### Archive
+
+The owner archives a link to keep it for good: it leaves the stream and decay,
+and is refreshed once.
+
+#### `POST /api/v1/links/{id}/archive`
+
+Archives a link in any state but `archived`, at once: `state` `archived`,
+`archived_at` now, `expired_at` cleared; the link is unpinned and the pin
+positions after it close up; its workspaces are kept. A fetch of its page is
+then queued as a refresh, outside the 10-minute refresh window (which it
+neither waits for nor starts). `200 <link>`, without waiting for the fetch.
+When the fetch cannot be queued the link stays archived and its history gets a
+failed fetch event with the reason "refresh before archiving could not be
+queued". A link already archived: `200 <link>`, unchanged, and nothing is
+queued. Another user's link, or one that does not exist: `404`.
+
+#### `POST /api/v1/links/{id}/unarchive`
+
+Brings an archived link back: `active`, `archived_at` cleared, `last_used_at`
+now (a boost, not a use: the use count stays, so its points are
+`start_points` plus its use count). It is not pinned again. `200 <link>`. A
+link that is not archived:
+`409 {"error": "not_archived", "message": "this link is not archived"}`, and
 nothing changes. Another user's link, or one that does not exist: `404`.
 
 ### Liveness

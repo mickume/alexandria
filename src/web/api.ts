@@ -91,8 +91,10 @@ export interface Link {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on a link read on its own. */
   note?: string;
-  /** Start points plus the use count, minus the whole days since the last use or boost. */
-  points: number;
+  /** Start points plus the use count, minus the whole days since the last use or boost; null when archived. */
+  points: number | null;
+  /** When the link was archived, while it is archived. */
+  archived_at: string | null;
   /** When the link expired, while it is expired. */
   expired_at: string | null;
   /** When an expired link will be removed. */
@@ -186,6 +188,8 @@ export const links = {
       `/links/${encodeURIComponent(id)}/check`,
     ),
   restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
+  archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
+  unarchive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/unarchive`),
   /** Every expired link, most recently expired first, page after page. */
   expired: async () => {
     const all: Link[] = [];
