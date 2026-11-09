@@ -115,7 +115,9 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           <ul className="detail-workspaces" aria-label="Workspaces">
             {link.workspaces.map((w) => (
               <li key={w.id}>
-                <PageLink to={`/workspaces/${w.id}`}>{w.name}</PageLink>
+                <PageLink to={`/workspaces/${w.id}`} className="q-label workspace-chip">
+                  {w.name}
+                </PageLink>
                 <button
                   type="button"
                   className="q-btn q-btn--sm q-btn--invisible q-btn--icon"

@@ -143,7 +143,7 @@ export function WorkspaceChips({ workspaces }: { workspaces: { id: string; name:
     <ul className="workspace-chips" aria-label="Workspaces">
       {workspaces.map((w) => (
         <li key={w.id}>
-          <PageLink to={`/workspaces/${w.id}`} className="q-label">
+          <PageLink to={`/workspaces/${w.id}`} className="q-label workspace-chip">
             {w.name}
           </PageLink>
         </li>

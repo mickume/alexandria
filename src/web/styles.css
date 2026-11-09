@@ -438,6 +438,15 @@ a.brand:hover span {
   margin-top: var(--q-space-2);
 }
 
+/* A workspace chip is purple, so it is not taken for a topic (grey) or a tag (blue); like them, it does not change on hover. */
+.workspace-chip,
+.workspace-chip:hover {
+  border-color: var(--q-done-muted);
+  background: var(--q-done-subtle);
+  color: var(--q-done-fg);
+  text-decoration: none;
+}
+
 /* Actions: small quiet buttons at the end of a row, or under a link's facts. */
 .card-actions {
   display: flex;
