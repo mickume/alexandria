@@ -71,14 +71,28 @@ export function findUrl(line: string): string | null {
 }
 
 /**
+ * The URL lines of a text: split at '\n' (a '\r' before it ends the address
+ * like any whitespace), lines whose first non-blank character is '#' skipped,
+ * and from each other line its first http or https address (findUrl), with
+ * its 1-based line number. Lines without one are left out. An import file and
+ * a paste into the website's add input are both read this way.
+ */
+export function urlLines(text: string): ImportLine[] {
+  const lines: ImportLine[] = [];
+  text.split('\n').forEach((raw, i) => {
+    if (raw.trimStart().startsWith('#')) return;
+    const url = findUrl(raw);
+    if (url) lines.push({ line: i + 1, url });
+  });
+  return lines;
+}
+
+/**
  * Reads an import file. Refuses a declared type other than text/plain or
  * text/markdown (unless the file is named *.txt or *.md), bytes that are not
  * UTF-8 and a NUL byte (unsupported_file); a file over 2 MB or 5,000 URL lines
  * (import_too_large); and a file with no URL line (no_urls). Otherwise drops
- * a byte-order mark, splits at '\n' or '\r\n', skips lines whose first
- * non-blank character is '#', and takes from each other line its first http
- * or https address (findUrl), with its line number. Lines without one are
- * ignored.
+ * a byte-order mark and reads the URL lines (urlLines).
  */
 export function parseImportFile(
   bytes: Uint8Array,
@@ -92,12 +106,7 @@ export function parseImportFile(
     return { ok: false, error: 'unsupported_file' };
   }
   const text = decoded.startsWith('\ufeff') ? decoded.slice(1) : decoded;
-  const lines: ImportLine[] = [];
-  text.split('\n').forEach((raw, i) => {
-    if (raw.trimStart().startsWith('#')) return;
-    const url = findUrl(raw);
-    if (url) lines.push({ line: i + 1, url });
-  });
+  const lines = urlLines(text);
   if (lines.length > MAX_IMPORT_URLS) return { ok: false, error: 'import_too_large' };
   if (lines.length === 0) return { ok: false, error: 'no_urls' };
   return { ok: true, lines };

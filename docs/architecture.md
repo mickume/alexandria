@@ -53,7 +53,9 @@ The end-to-end tests point `GOOGLE_AUTH_URL` and `GOOGLE_TOKEN_URL` at
 account and checks the PKCE verifier as Google does.
 - **The website** (`src/web/`): a React single-page application built by Vite.
   `main.tsx` mounts `App.tsx`, which picks the page for the current path:
-  `pages/SignIn`, `pages/Stream` (the add input, the cards, infinite scroll,
+  `pages/SignIn`, `pages/Stream` (the add input, which reads a paste line by
+  line as an import file is read, through `urlLines` of
+  `src/worker/imports/parse.ts`; the cards, infinite scroll,
   pinning by drag, deleting with undo), `pages/LinkDetail` and
   `pages/Settings` (tokens), `pages/Import` (the drop zone, the workspace to
   add the links to, which can be a new one, and the import's progress,

@@ -6,9 +6,11 @@
 
 > **AddLinks**(`__namedParameters`): `Element`
 
-The add input at the top of the stream. A paste of one or more URLs,
-separated by whitespace or newlines, is sent as one batch when the owner
-presses Enter; `onAdded` receives the added and boosted links.
+The add input at the top of the stream. When the owner presses Enter, the
+paste is read as an import file is (`urlLines`): line by line, lines
+starting with # skipped, and the first http or https address of each other
+line kept. Those addresses go as one batch; `onAdded` receives the added and
+boosted links. A paste without one sends nothing and stays in the box.
 
 #### Parameters
 

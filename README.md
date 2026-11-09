@@ -4,6 +4,10 @@ My personal library: a private library of web links for one person at a time.
 Paste links, keep them in a stream ordered by use, and reach everything through
 a token-authenticated HTTP API.
 
+The box at the top of the stream reads a paste as an import file is read: line
+by line, lines starting with `#` skipped, and the first `http://` or
+`https://` address of every other line added; the rest of the text is ignored.
+
 It runs as one Cloudflare Worker (Hono) with a D1 database and a React website
 built with Vite.
 

@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
+import { urlLines } from '../../worker/imports/parse';
 import { ApiError, links, type Link } from '../api';
 
 /** The messages a batch's outcome shows the owner. */
@@ -15,9 +16,11 @@ function messagesFor(result: Awaited<ReturnType<typeof links.addBatch>>): string
 }
 
 /**
- * The add input at the top of the stream. A paste of one or more URLs,
- * separated by whitespace or newlines, is sent as one batch when the owner
- * presses Enter; `onAdded` receives the added and boosted links.
+ * The add input at the top of the stream. When the owner presses Enter, the
+ * paste is read as an import file is (`urlLines`): line by line, lines
+ * starting with # skipped, and the first http or https address of each other
+ * line kept. Those addresses go as one batch; `onAdded` receives the added and
+ * boosted links. A paste without one sends nothing and stays in the box.
  */
 export function AddLinks({ onAdded }: { onAdded: (links: Link[]) => void }) {
   const [text, setText] = useState('');
@@ -25,8 +28,12 @@ export function AddLinks({ onAdded }: { onAdded: (links: Link[]) => void }) {
   const [messages, setMessages] = useState<string[]>([]);
 
   async function submit() {
-    const urls = text.split(/\s+/).filter(Boolean);
-    if (urls.length === 0 || busy) return;
+    if (busy || !text.trim()) return;
+    const urls = urlLines(text).map((l) => l.url);
+    if (urls.length === 0) {
+      setMessages(['no http:// or https:// address found']);
+      return;
+    }
     setBusy(true);
     try {
       const result = await links.addBatch(urls);
