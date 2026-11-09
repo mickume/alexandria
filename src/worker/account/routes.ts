@@ -16,7 +16,7 @@ const NO_CONTENT = { error: 'no_content' };
 
 /**
  * A link's stored snapshot, exactly as GET /api/v1/links/{id}/snapshot serves
- * it, archived links included, recording no use: fetching a backup is not
+ * it, expired links included, recording no use: fetching a backup is not
  * using the library.
  */
 exportRoutes.get('/links/:id/snapshot', async (c) => {

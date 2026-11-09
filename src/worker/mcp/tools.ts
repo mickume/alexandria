@@ -73,7 +73,7 @@ const limit = (fallback: number) =>
 const listRecent: Tool = {
   name: 'list_recent',
   description:
-    'The links the owner used most recently: the first page of the stream, pinned links first, then by last use.',
+    'The top of the stream: pinned links first, then the links with the most points (used most, and most recently).',
   input: z.object({ limit: limit(20) }),
   async run(ctx, args: { limit?: number }) {
     return outcomeOf(await ctx.call('GET', `/links?limit=${args.limit ?? 20}`));
@@ -216,7 +216,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'add_link',
     description:
-      'Add a link to the library, or move a link already in it to the top. Optionally tag it (a manual tag edit) and file it into a workspace.',
+      'Add a link to the library, or boost a link already in it (its days unused start again). Optionally tag it (a manual tag edit) and file it into a workspace.',
     input: z.object({
       url: z.string().describe('The web address to keep'),
       tags: z.array(z.string()).optional().describe('Tags: single words or hyphenated phrases'),

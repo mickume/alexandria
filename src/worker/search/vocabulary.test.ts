@@ -20,7 +20,7 @@ describe('the topics and tags lists', () => {
       const other = await signIn('other@example.test');
       const [l1, l2, l3, l4] = await seedLinks(user, [
         { url: 'https://one.example/', addedAt: '2026-01-01T00:00:00.000Z' },
-        { url: 'https://two.example/', addedAt: '2026-01-02T00:00:00.000Z', state: 'archived' },
+        { url: 'https://two.example/', addedAt: '2026-01-02T00:00:00.000Z', state: 'expired' },
         { url: 'https://three.example/', addedAt: '2026-01-03T00:00:00.000Z' },
         { url: 'https://four.example/', addedAt: '2026-01-04T00:00:00.000Z' },
       ]);

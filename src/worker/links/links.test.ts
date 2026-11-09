@@ -156,7 +156,11 @@ describe('adding a batch of links', () => {
     const hosts = (links: { host: string }[]) => links.map((l) => l.host);
     expect(hosts(r.json.added)).toEqual(['a.example', 'b.example']);
     expect(hosts(r.json.boosted)).toEqual(['c.example']);
-    expect(r.json.boosted[0]).toMatchObject({ use_count: 2, points: 62 });
+    expect(r.json.boosted[0]).toMatchObject({
+      use_count: 2,
+      points: 62,
+      last_used_at: expect.stringMatching(/^2026-06-03T0[78]:/),
+    });
     expect(r.json.invalid).toEqual([{ url: 'nope', error: 'invalid_url' }]);
     const order = await env.DB.prepare(
       'SELECT host FROM links WHERE user_id = ? ORDER BY last_used_at DESC, id DESC',
@@ -169,6 +173,15 @@ describe('adding a batch of links', () => {
       'c.example',
       'old.example',
     ]);
+    const single = await api('POST', '/api/v1/links', {
+      as: user.session,
+      body: { url: 'https://c.example' },
+    });
+    expect(single.json.link).toMatchObject({
+      use_count: 2,
+      last_used_at: '2026-06-03T08:00:00.000Z',
+      points: 62,
+    });
   });
 
   it.each([

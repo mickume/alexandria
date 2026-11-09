@@ -16,7 +16,7 @@ export const INSTRUCTIONS =
   "Alexandria is the owner's private library of web links. Use it to find links the owner kept " +
   'and to file new ones. Try search_links before add_link, to avoid adding a link the library ' +
   'already has (the server de-duplicates anyway: adding a URL already in the library only ' +
-  'moves it to the top). To answer a question from the library, use search_passages: it ' +
+  'boosts it). To answer a question from the library, use search_passages: it ' +
   "returns the passages of the owner's links that best match the question by meaning, each with " +
   "its link's id, title and URL. Use get_link_content to read a whole link.";
 

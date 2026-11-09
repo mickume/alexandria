@@ -196,6 +196,10 @@ describe('the stream', () => {
     const r = await api('GET', `/api/v1/links?${q}`, { as: user.session });
     expect(r.status).toBe(400);
     expect(r.json).toEqual({ error, field, message: expect.any(String) });
+    if (query.includes('order by last use')) {
+      const search = await api('GET', `/api/v1/search?q=state%3Aany&${q}`, { as: user.session });
+      expect([search.status, search.json.error]).toEqual([400, 'invalid_cursor']);
+    }
   });
 });
 

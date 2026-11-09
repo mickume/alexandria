@@ -318,7 +318,25 @@ describe('removal by decay', () => {
         user.id,
         'text',
       ),
+      env.DB.prepare(
+        "INSERT INTO link_events (link_id, user_id, kind, at, outcome) VALUES (?, ?, 'fetch', ?, 'ok')",
+      ).bind(gone, user.id, '2026-01-01T00:00:00.000Z'),
+      env.DB.prepare(
+        'INSERT INTO link_passages (vector_id, link_id, user_id, version, position, text) VALUES (?, ?, ?, 1, 0, ?)',
+      ).bind(`${gone}-0`, gone, user.id, 'a passage'),
+      env.DB.prepare("INSERT INTO tags (id, user_id, name) VALUES ('t-gone', ?, 'gone')").bind(
+        user.id,
+      ),
+      env.DB.prepare(
+        "INSERT INTO link_tags (link_id, tag_id, position) VALUES (?, 't-gone', 0)",
+      ).bind(gone),
     ]);
+    for (const table of ['link_events', 'link_passages', 'link_tags']) {
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE link_id = ?`)
+        .bind(gone)
+        .first<{ n: number }>();
+      expect(row?.n, table).toBe(1);
+    }
     for (const id of [gone, kept])
       await env.SNAPSHOTS.put(`u/${user.id}/l/${id}/snapshot`, '<html>stored</html>');
     await evaluateDecay(env, user.id);

@@ -180,7 +180,18 @@ export const links = {
       `/links/${encodeURIComponent(id)}/check`,
     ),
   restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
-  expired: () => request<Page<Link>>('GET', '/expired').then((p) => p.items),
+  /** Every expired link, most recently expired first, page after page. */
+  expired: async () => {
+    const all: Link[] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+      const page: Page<Link> = await request('GET', `/expired?limit=100${query}`);
+      all.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return all;
+  },
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>

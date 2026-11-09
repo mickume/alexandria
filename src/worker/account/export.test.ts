@@ -123,8 +123,8 @@ describe('GET /api/v1/export', () => {
       'active',
       'active',
       'unreachable',
-      'dormant',
-      'archived',
+      'active',
+      'expired',
       'active',
       'active',
       'active',
@@ -147,7 +147,7 @@ describe('GET /api/v1/export', () => {
     )
       .bind(ids[3])
       .run();
-    await env.DB.prepare("UPDATE links SET archived_at = '2026-01-01T00:00:00.000Z' WHERE id = ?")
+    await env.DB.prepare("UPDATE links SET expired_at = '2026-01-01T00:00:00.000Z' WHERE id = ?")
       .bind(ids[6])
       .run();
     await env.DB.prepare("UPDATE links SET dead_since = '2026-01-01T00:00:00.000Z' WHERE id = ?")

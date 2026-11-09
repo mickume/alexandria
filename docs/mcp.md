@@ -180,10 +180,10 @@ Settings then shows the token as just used.
 |---|---|
 | `search_links` | Find links by meaning as well as by words, with the search box's filters: `tag:`, `topic:`, `host:`, `in:` (a workspace), `is:pinned`, `is:dead`, `state:`. Each result says how it matched (`match`: `keyword`, `meaning` or `both`) |
 | `search_passages` | Answer a question from the library: the passages of your links that best match it by meaning, each with its link's id, title and URL. Takes the same filters |
-| `list_recent` | The links you used most recently: the top of the stream, pinned links first |
+| `list_recent` | The top of the stream: pinned links first, then the links with the most points (used most, and most recently) |
 | `get_link` | A link's metadata: addresses, title, summary, tags, topic, state and dates |
 | `get_link_content` | The stored text of a page or PDF (`format: "text"`), or the page's snapshot HTML (`format: "html"`) |
-| `add_link` | Keep a new link, optionally with tags and into a workspace; a link already in the library only moves to the top |
+| `add_link` | Keep a new link, optionally with tags and into a workspace; a link already in the library is boosted: its days unused start again |
 | `list_workspaces` | Your workspaces, with their descriptions and link counts |
 | `add_to_workspace` | File a link at the bottom of a workspace (named by its id or its name) |
 | `pin_link` | Pin a link at the top of the stream |
@@ -191,12 +191,12 @@ Settings then shows the token as just used.
 Two behaviours are worth knowing when you direct an agent:
 
 - **Reading content counts as using the link.** `get_link_content` records a
-  use, as opening the reader view does, which moves the link to the top of
-  the stream and resets its decay. `search_links`, `search_passages`,
+  use, as opening the reader view does, which adds a point and resets the
+  days the link has gone unused, so it rises in the stream. `search_links`, `search_passages`,
   `list_recent` and `get_link` record nothing. Ask the agent to read a link's content only when
   it needs more than the summary.
 - **Adding is safe to repeat.** `add_link` with an address already in the
-  library stores nothing new: it moves that link to the top (and applies the
+  library stores nothing new: it boosts that link (and applies the
   tags and workspace you gave). New links are fetched, summarised, tagged and
   given a topic in the background, so a link just added has no summary yet.
 
@@ -240,7 +240,7 @@ How to use it:
   filters when they help: `tag:rust`, `topic:"web development"`,
   `host:github.com`, `in:"Reading list"` (a workspace), `is:pinned`. Expired
   links are left out unless you add `state:expired` or `state:any`.
-  `list_recent` shows what I have been using lately. Answer with each link's
+  `list_recent` shows the links I use most, and most recently. Answer with each link's
   title and URL, and say when nothing in the library matches.
 - **Asking.** For a question the library may answer ("what did I save about
   X?", "how did that article say to do Y?"), use `search_passages` with the
@@ -250,7 +250,7 @@ How to use it:
 - **Reading.** Search results and `get_link` carry the summary, which is
   usually enough. Call `get_link_content` with `format: "text"` only when you
   need the page itself (to quote it or answer a detailed question): it counts
-  as me using the link and moves it to the top of my stream. Prefer the stored
+  as me using the link and raises it in my stream. Prefer the stored
   text to fetching the live page, which may have changed or gone.
 - **Saving.** When I ask you to save, keep or bookmark a link, or when we find
   a source clearly worth keeping during a task, search first, then use

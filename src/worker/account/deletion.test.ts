@@ -222,7 +222,7 @@ async function driveDeletion(queue: { body: { user_id: string } }[], bindings = 
 
 /** Fills a user's library with every kind of data the packages keep. */
 async function everything(user: TestUser, prefix: string) {
-  const states = ['pending', 'active', 'dormant', 'archived', 'unreachable', 'active'];
+  const states = ['pending', 'active', 'active', 'expired', 'unreachable', 'active'];
   const ids = await seedLinks(
     user,
     states.map((state, i) => ({ url: `https://${prefix}${i}.example`, state, useCount: i })),

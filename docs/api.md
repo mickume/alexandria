@@ -198,8 +198,8 @@ others `boosted`.
 
 Body `{"urls": ["<url>", …]}` with 1 to 100 entries. Each valid URL is added
 or boosted as above; repeats (after normalisation) collapse to their first
-occurrence; the first URL gets the latest `last_used_at`, so the batch appears
-in the stream in the order given.
+occurrence; the first URL gets the latest `last_used_at`, so among links of
+equal points the batch appears in the stream in the order given.
 
 - `200 {"added": [<link>], "boosted": [<link>], "invalid": [{"url": <input>, "error": "invalid_url" | "library_full"}]}`
 - `400 {"error": "no_urls" | "too_many_urls", "field": "urls", "message"}`;
@@ -277,7 +277,7 @@ already pinned link stays where it is. At most 30 links are pinned.
 #### `DELETE /api/v1/links/{id}/pin`
 
 Unpins the link: `200 <link>` with `pinned: false` and `pin_position: null`.
-It returns to its place by last use, and the remaining positions close up.
+It returns to its place by points, and the remaining positions close up.
 
 #### `DELETE /api/v1/links/{id}`
 
@@ -885,8 +885,9 @@ trailing punctuation (`.,;:!?*_~`) or an unbalanced `)`, so Markdown such as
 Each URL line is normalised as `POST /api/v1/links` does. A new URL is added
 as a pending link (its host as provisional title), last used at the import
 time minus one millisecond per line, so that the stream lists the file in
-order, the first line highest, above every link used before the import (when
-a link was used within that span, the import's times start that much later). A URL already in the library, or on an earlier
+order, the first line highest, among the links of equal points (each new link
+has the start points; a link used more ranks above them; when a link was used
+within that span, the import's times start that much later). A URL already in the library, or on an earlier
 line, is a duplicate: reported, neither added nor boosted. An address the
 normaliser rejects (`http://localhost/x`, `https://`) is invalid. When the library (20,000 links) is full, the
 import stops at the first new URL with no room: that line and every later

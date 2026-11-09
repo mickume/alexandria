@@ -329,8 +329,8 @@ describe('the decay section of the settings page', () => {
     const remove = screen.getByLabelText('Remove after expiring (days)') as HTMLInputElement;
     await waitFor(() => expect(start.value).toBe('60'));
     expect(remove.value).toBe('180');
-    expect(screen.queryByLabelText(/Archive after/)).toBeNull();
-    expect(screen.queryByLabelText(/Dormant after/)).toBeNull();
+    const section = start.closest('section')!;
+    expect(section.querySelectorAll('input[type="number"]')).toHaveLength(2);
     expect(
       screen.getByText(
         'Points a link starts with and goes back to when used, plus one per use; it loses one a day',

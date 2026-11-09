@@ -592,7 +592,7 @@ describe('search over 10,000 links', () => {
             sentence(),
             pick(topics).id,
             i % 10 === 0 ? sentence() : '',
-            i % 7 === 0 ? 'archived' : 'active',
+            i % 7 === 0 ? 'expired' : 'active',
             at,
             at,
             i < 20 ? i + 1 : null,

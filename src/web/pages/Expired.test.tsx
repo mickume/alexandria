@@ -52,6 +52,26 @@ describe('the Expired page', () => {
     expect(screen.getByText('Nothing has expired.')).toBeTruthy();
   });
 
+  it('lists every expired link, page after page', async () => {
+    const page = (ids: string[], next: string | null) => ({
+      status: 200,
+      body: {
+        items: ids.map((id) => makeLink({ id, title: `Link ${id}`, state: 'expired' })),
+        next_cursor: next,
+      },
+    });
+    const api = new FakeApi().on('GET', '/api/v1/expired', (req) =>
+      req.path.includes('cursor=c2') ? page(['b'], null) : page(['a'], 'c2'),
+    );
+    renderPage('/expired', api);
+    expect(await screen.findByRole('article', { name: 'Link b' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: 'Link a' })).toBeTruthy();
+    expect(api.sent('GET', '/api/v1/expired').map((r) => r.path)).toEqual([
+      '/api/v1/expired?limit=100',
+      '/api/v1/expired?limit=100&cursor=c2',
+    ]);
+  });
+
   it('says so when nothing has expired', async () => {
     renderPage(
       '/expired',
@@ -68,6 +88,13 @@ describe('the Expired page', () => {
     const entry = await screen.findByRole('link', { name: 'Expired' });
     expect(entry.getAttribute('href')).toBe('/expired');
     expect(screen.queryByRole('link', { name: 'Archive' })).toBeNull();
+  });
+
+  it('has no Archive page any more', async () => {
+    renderPage('/archive', new FakeApi());
+    await screen.findByRole('link', { name: 'Expired' });
+    expect(screen.queryByRole('heading', { name: 'Archive' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Expired' })).toBeNull();
   });
 
   it('searches only expired links and shows the results on the Expired page', async () => {

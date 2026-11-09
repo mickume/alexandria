@@ -499,7 +499,7 @@ describe('a workspace and its links', () => {
     const user = await signIn();
     const [a = '', b = ''] = await seedLinks(user, [
       { url: 'https://a.example/' },
-      { url: 'https://b.example/', state: 'archived' },
+      { url: 'https://b.example/', state: 'expired' },
     ]);
     const w = await workspace(user, 'W');
     await seedMembers(w, [a, b]);
@@ -516,7 +516,7 @@ describe('a workspace and its links', () => {
       ]),
     ).toEqual([
       [a, 1, 'pending'],
-      [b, 2, 'archived'],
+      [b, 2, 'expired'],
     ]);
     expect(l.json.next_cursor).toBeNull();
   });

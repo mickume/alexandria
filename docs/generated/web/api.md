@@ -1130,6 +1130,8 @@ Uploads a text or Markdown file of URLs, one per line that holds one, adding its
 
 > **expired**: () => `Promise`\<[`Link`](#link-1)[]\>
 
+Every expired link, most recently expired first, page after page.
+
 ###### Returns
 
 `Promise`\<[`Link`](#link-1)[]\>

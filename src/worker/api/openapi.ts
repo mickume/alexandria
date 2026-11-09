@@ -901,7 +901,8 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/links',
     operationId: 'listLinks',
-    summary: 'The stream: pinned links by position, then the rest by last use, newest first',
+    summary:
+      'The stream: pinned links by position, then the rest by points, then last use, newest first',
     query: {
       limit: { description: 'Links per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
@@ -1118,7 +1119,7 @@ export const operations: Operation[] = [
     method: 'delete',
     path: '/links/{id}/pin',
     operationId: 'unpinLink',
-    summary: 'Unpin the link; it returns to its place by last use',
+    summary: 'Unpin the link; it returns to its place by points',
     responses: { 200: { description: 'The unpinned link', schema: Link } },
   },
 ];

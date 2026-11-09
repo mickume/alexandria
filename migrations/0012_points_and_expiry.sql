@@ -9,7 +9,7 @@ ALTER TABLE users DROP COLUMN dormant_days;
 -- A link expires when its points run out, not after a fixed time.
 ALTER TABLE users DROP COLUMN archive_days;
 
--- What package 05 called archived is expired, from the same date, so its
+-- What decay used to call archived is expired, from the same date, so its
 -- removal date does not change; there is no dormant state any more.
 ALTER TABLE links ADD COLUMN expired_at TEXT;
 UPDATE links SET state = 'expired', expired_at = archived_at, archived_at = NULL
