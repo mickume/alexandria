@@ -1,0 +1,454 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "11",
+  "spec_name": "hybrid_search",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Choose the search mode, keeping keyword search as it is",
+      "rationale": "Existing clients and the search box while typing must get today's answers byte for byte.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a client sends GET /api/v1/search with no mode or with mode=keyword",
+          "action": "answer exactly as keyword search answers today",
+          "contract": "the same status, headers and body bytes for no mode and mode=keyword; the body holds no match and no meaning field",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in a new src/worker/search/hybrid.test.ts, a table over queries {'cloudflare queues', 'tag:infra', '', 'cloudflare state:any'}: a = GET /api/v1/search?q=...; b = GET /api/v1/search?q=...&mode=keyword; assert a.status == b.status and await a.response.text() == await b.response.text(); assert the JSON has no 'meaning' key and no item has a 'match' key; the existing tests of 'GET /api/v1/search' in src/worker/search/search.test.ts pass unchanged"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "unwanted",
+          "condition": "mode is neither keyword nor hybrid",
+          "action": "refuse the request",
+          "contract": "400 {error: 'invalid_mode', field: 'mode', message: 'mode takes keyword, hybrid'}",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, a table over mode {'', 'HYBRID', 'semantic', 'keyword,hybrid'}: r = GET /api/v1/search?q=alarms&mode=...; assert r.status == 400 and r.json deep-equals the contract body; the fake AI binding recorded no call"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "event_driven",
+          "condition": "a client sends GET /api/v1/search with mode=hybrid and a query of filters only, or an empty query",
+          "action": "answer as mode=keyword answers it, with meaning: 'used' added, without embedding anything",
+          "contract": "the keyword answer's items, workspaces and next_cursor, plus meaning: 'used'; items carry no match field",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, a table over q {'', '   ', 'tag:infra', 'state:archived'}: k = GET ...&mode=keyword; h = GET ...&mode=hybrid; assert h.json deep-equals {...k.json, meaning: 'used'}; the fake AI binding recorded no call"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "unwanted",
+          "condition": "a cursor issued for one mode is sent with the other mode",
+          "action": "refuse the cursor",
+          "contract": "400 {error: 'invalid_cursor', field: 'cursor', message: 'the cursor was not issued by this API'}",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts: with 3 matching links and limit=1, take next_cursor from a keyword page and from a hybrid page; assert GET ...&mode=hybrid&cursor=<keyword cursor> and GET ...&mode=keyword&cursor=<hybrid cursor> both answer the contract; query_too_long, invalid_filter and invalid_limit answer with mode=hybrid as the existing refusal tests of src/worker/search/search.test.ts expect them without it"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Rank keyword and meaning matches in one ranking",
+      "rationale": "Meaning must add what words miss without losing what words find or burying an exact name.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a client sends GET /api/v1/search with mode=hybrid and at least one free word",
+          "action": "return, in one ranking, the links that match the free words by keyword, by meaning (their best passage reaching the similarity threshold), or both",
+          "contract": "200 {items, workspaces, next_cursor, meaning: 'used'}; a link that shares no word with the query but whose passage matches by meaning is among the items",
+          "check": {
+            "kind": "integration",
+            "setup": [
+              "package 10's fake AI and VECTORIZE bindings (src/worker/test/meaning.ts)",
+              "the articles ARTICLES.alarms, ARTICLES.queues and ARTICLES.tomatoes seeded with seedArticle and indexed with deliverIndexing"
+            ],
+            "pseudocode": "in src/worker/search/hybrid.test.ts: r = GET /api/v1/search?q=run+a+task+later&mode=hybrid; assert r.status == 200 and r.json.meaning == 'used'; assert the alarms link is among the items while GET ...&mode=keyword finds none of the three; r = GET ...?q=quarterly+tax+return&mode=hybrid; assert items == []"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "ubiquitous",
+          "action": "for any hybrid query, return every link the keyword search of the same query returns, across all its pages",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, over the queries {'cloudflare', 'cloudflare queues', 'alarm', 'tomatoes compost'} against a library of 30 links (keyword and meaning matches mixed, some indexed, some not): collect every page of mode=keyword and of mode=hybrid with limit=5; assert the hybrid ids are a superset of the keyword ids and hold no id twice"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "ubiquitous",
+          "action": "for any hybrid query, never rank a link whose keyword match is on its title, tags or topic below a link found by meaning alone",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts: a link titled 'Cloudflare Queues explained' (keyword on title), one tagged 'queues' with an unrelated title (keyword on tags), one whose note alone says 'cloudflare queues' (keyword on note), and three meaning-only links whose text is all words of the Cloudflare group with neither 'cloudflare' nor 'queues' (score 1 against the query); for the queries {'cloudflare queues', 'queues'}: items = GET ...&mode=hybrid; assert every item with match 'meaning' comes after the title-matched and tag-matched links"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "break ties in the hybrid ranking as keyword search breaks them: pinned links first by position, then the more recently used, then by id",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts: three meaning-only links with the same text (so the same score), one pinned, the other two used a day apart; GET /api/v1/search?q=run+a+task+later&mode=hybrid; assert their order is pinned, more recently used, other"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "ubiquitous",
+          "action": "apply the prefix filters to links found by meaning exactly as to keyword matches, leaving archived links out unless a state: filter is given",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts: four meaning-only alarm links, one archived, one tagged 'infra', one in workspace 'Research', one on host docs.example; table over the query suffix {'' -> the three not archived; 'state:archived' -> the archived one; 'tag:infra'; 'in:Research'; 'host:docs.example'}: q = 'run a task later ' + suffix; assert the set of item ids"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "event_driven",
+          "condition": "a client pages through a hybrid search with the next_cursor of each page",
+          "action": "return every result once across the pages, with the matching workspaces on the first page only",
+          "contract": "the concatenated pages hold each id once and equal the ranking of one request with limit 100; workspaces is [] after the first page",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, extending the paging of 'pages the results with the cursor, 50 by default and at most 100' in src/worker/search/search.test.ts to mode=hybrid: 12 matching links (keyword, meaning and both) and a workspace named 'Cloudflare'; pages of limit=5 until next_cursor is null; assert the ids equal those of one request with limit=100, each once; assert the first page lists the workspace and the others list none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Say how each result matched",
+      "rationale": "A client and the website must be able to tell a meaning match from a keyword match.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "ubiquitous",
+          "action": "give each item of a hybrid response a field match: 'keyword' for a keyword match only, 'meaning' for a meaning match only, 'both' for a link found both ways",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts: a link titled 'Alarm clocks' that is not indexed (keyword only), an indexed link whose text says 'schedule a task for later' without the word 'alarm' (meaning only), and an indexed link titled 'Durable Object alarms' (both); r = GET /api/v1/search?q=alarm&mode=hybrid; assert match is 'keyword', 'meaning' and 'both' for the three links respectively"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "ubiquitous",
+          "action": "give a meaning match the start of its best passage as its snippet, at most 32 words with no word marked, and keyword and both matches the snippet keyword search gives",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, on the library of the match test: the meaning item's snippet is one segment {text, match: false} whose text is the first at most 32 words of its best passage; the keyword and both items' snippets equal their snippets in the mode=keyword answer"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "ubiquitous",
+          "action": "carry a top-level field meaning in every hybrid response: 'used' when meaning was added, 'unavailable' when it could not be",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Answer with keyword results when meaning is unavailable",
+      "rationale": "A slow or failing index must never block or break a search.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "unwanted",
+          "condition": "Workers AI or Vectorize fails, or the embedding and the query together have not answered within 600 ms, during a hybrid search",
+          "action": "answer with the keyword results of the query",
+          "contract": "200 with the keyword answer's items, each match: 'keyword', its workspaces and a hybrid next_cursor, and meaning: 'unavailable', within 1.5 seconds of the request; never a 5xx",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, a table over {the embedding fails, the query fails, the embedding stalls}: meaning.fail(call) or meaning.stall(call); start = Date.now(); r = GET /api/v1/search?q=cloudflare+queues&mode=hybrid; assert r.status == 200, r.json.meaning == 'unavailable', every item's match == 'keyword', the item ids equal those of mode=keyword; assert Date.now() - start < 1500"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Answer within the targets",
+      "rationale": "Search by meaning is acceptable a little slower than keyword search, and keyword search must not slow down.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "ubiquitous",
+          "action": "answer a hybrid search in under 800 ms at the 95th percentile for a library of 10,000 links",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/hybrid.test.ts, beside 'answers within 500 ms at the 95th percentile' of 'search over 10,000 links' in src/worker/search/search.test.ts: 10,000 links seeded as that test seeds them, with one passage each written straight to link_passages and its vector put in the fake index; time 100 hybrid queries mixing keyword and meaning matches; assert the 95th percentile is under 800 ms"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "keep keyword search under 500 ms at the 95th percentile for a library of 10,000 links",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "the existing test 'answers within 500 ms at the 95th percentile' under 'search over 10,000 links' in src/worker/search/search.test.ts keeps passing unchanged"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "Search by meaning on Enter in the website's search box",
+      "rationale": "A Workers AI call per keystroke is wasted; Enter is the owner asking for a deeper search.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the owner presses Enter in the search box with a query in it",
+          "action": "search the same query with mode=hybrid and set the address to /search?q=<query>&mode=hybrid, or /archive?q=<query>&mode=hybrid on the Archive page",
+          "contract": "one GET /api/v1/search?q=<query>&mode=hybrid (with state:archived appended on the Archive page); the address carries mode=hybrid",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/components/SearchBox.test.tsx, a table over the page {'/', '/archive'}: renderPage(page, api) with a FakeApi answering GET /api/v1/search; type 'run a task later' and press Enter before 200 ms pass; assert the address is /search?q=run%20a%20task%20later&mode=hybrid (or /archive?...&mode=hybrid) and the FakeApi received the mode=hybrid request (with state:archived on the Archive page) and no keyword request for the same query afterwards"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "event_driven",
+          "condition": "the owner types in the search box after a search by meaning",
+          "action": "search by keyword 200 ms after the last keystroke, with mode dropped from the address",
+          "contract": "a GET /api/v1/search without mode; the address is /search?q=<query> (or /archive?q=<query>)",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Search.test.tsx, beside 'searches 200 ms after the last keystroke and shows workspaces, then cards with snippets': start at /search?q=alarms&mode=hybrid; typeSlowly(' later'); advance 200 ms; assert the last request path is /api/v1/search?q=alarms%20later and the address /search?q=alarms%20later"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "event_driven",
+          "condition": "the website opens an address carrying mode=hybrid (a reload or a shared address)",
+          "action": "repeat the search by meaning, its More results pages included",
+          "contract": "every GET /api/v1/search the page sends carries mode=hybrid",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Search.test.tsx, extending 'loads the next page of results': renderPage('/search?q=alarms&mode=hybrid', api) with a first page whose next_cursor is set; click More results; assert both requests carry mode=hybrid; in src/web/pages/Archive.test.tsx extend 'searches only archived links and shows the results on the Archive page' with renderPage('/archive?q=alarms&mode=hybrid') and assert its request carries mode=hybrid and state:archived"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "Show how a hybrid result matched",
+      "rationale": "The owner should see why a link with none of the query's words was found, and when meaning was left out.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "state_driven",
+          "condition": "a hybrid results page (Search or Archive) shows an item whose match is 'meaning'",
+          "action": "mark it 'by meaning' beside its snippet, and mark no keyword or both item",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Search.test.tsx: a FakeApi hybrid answer with items of match 'meaning', 'keyword' and 'both'; renderPage('/search?q=later&mode=hybrid'); assert the text 'by meaning' appears exactly once, in the meaning item's row, beside its snippet; the same answer on /archive?q=later&mode=hybrid in src/web/pages/Archive.test.tsx shows it once too"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "state_driven",
+          "condition": "a hybrid results page shows an answer whose meaning is 'unavailable'",
+          "action": "show the line 'Showing keyword matches only.' above the results",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/web/pages/Search.test.tsx, a table over meaning {'unavailable' -> the line is shown above the results list, 'used' -> not shown} and a keyword answer (no meaning field) -> not shown; assert with getByText / queryByText"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-8",
+      "title": "Let agents search by meaning with search_links",
+      "rationale": "An agent sends whole queries, so it always gets meaning as well as words.",
+      "system": "MCP server",
+      "criteria": [
+        {
+          "id": "REQ-8.1",
+          "pattern": "event_driven",
+          "condition": "an agent calls search_links with a query and an optional limit",
+          "action": "send GET /api/v1/search with the query, the limit and mode=hybrid as the agent's user, and return the API's body",
+          "contract": "structuredContent deep-equals the body of GET /api/v1/search?q=<query>&limit=<limit, 10>&mode=hybrid; no use recorded",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, change the table 'search_links %j with limit %s' and the 'search_links' and 'search_links refused' rows of 'one user, one contract' to compare with GET /api/v1/search?q=...&limit=...&mode=hybrid, and add a row: query 'run a task later' against the indexed ARTICLES.alarms -> one item, match 'meaning'"
+          }
+        },
+        {
+          "id": "REQ-8.2",
+          "pattern": "ubiquitous",
+          "action": "describe search_links to agents as matching by meaning as well as by words",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/mcp/mcp.test.ts, extend 'lists exactly the ten tools with their arguments': assert the description of search_links mentions meaning and words"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner presses Enter and finds an article by meaning",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds https://example.com/durable-object-alarms"
+        },
+        {
+          "actor": "index worker",
+          "action": "indexes the fetched article's passages"
+        },
+        {
+          "actor": "owner",
+          "action": "types 'run a task later on cloudflare' in the search box and presses Enter"
+        },
+        {
+          "actor": "website",
+          "action": "sets the address to /search?q=run+a+task+later+on+cloudflare&mode=hybrid and requests GET /api/v1/search with mode=hybrid"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "fuses the keyword and meaning rankings and returns the article with match 'meaning' and a passage as its snippet"
+        },
+        {
+          "actor": "website",
+          "action": "shows the article marked 'by meaning' beside the snippet"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1",
+          "the fetch and index queues and their consumers"
+        ],
+        "setup": [
+          "wrangler dev runs with MEANING_FAKE_URL pointing at e2e/fake-meaning.ts and ORIGIN_PROXY_URL at e2e/fake-origin.ts"
+        ],
+        "end_state": [
+          "the address is /search?q=run+a+task+later+on+cloudflare&mode=hybrid and the article's row shows 'by meaning' and words of the article"
+        ],
+        "pseudocode": "in a new e2e/hybrid.spec.ts: signIn(page); addLinkIds(page, [ALARMS]); wait until GET /api/v1/passages finds it; fill the search box and press Enter; expect(page).toHaveURL(/mode=hybrid/); expect the row of the article to show 'by meaning'"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "A title match stays first in a search by meaning",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "searches 'cloudflare queues' and presses Enter"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "ranks the link titled 'Cloudflare Queues explained' first, as keyword search does"
+        },
+        {
+          "actor": "website",
+          "action": "shows it first"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "https://docs.example/queues ('Cloudflare Queues explained') is added and fetched"
+        ],
+        "end_state": [
+          "the first result row of /search?q=cloudflare+queues&mode=hybrid is 'Cloudflare Queues explained'"
+        ],
+        "pseudocode": "in e2e/hybrid.spec.ts: add and wait for the page; search and press Enter; expect the first row's title to be 'Cloudflare Queues explained'"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "Workers AI is unreachable and the search falls back to keywords",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "searches 'cloudflare queues' by meaning while Workers AI is unreachable"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "answers with the keyword results and meaning 'unavailable'"
+        },
+        {
+          "actor": "website",
+          "action": "shows the keyword results with the line 'Showing keyword matches only.'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the website in Chromium",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "e2e/fake-meaning.ts is switched to fail with POST /__fail, and back with POST /__recover afterwards"
+        ],
+        "end_state": [
+          "the page shows 'Showing keyword matches only.' and 'Cloudflare Queues explained' among the results"
+        ],
+        "pseudocode": "in e2e/hybrid.spec.ts: fakeMeaning.fail(); search 'cloudflare queues' and press Enter; expect the line and the row; fakeMeaning.recover()"
+      }
+    },
+    {
+      "id": "PATH-4",
+      "title": "An agent finds an article by meaning with search_links",
+      "steps": [
+        {
+          "actor": "agent",
+          "action": "calls search_links('run a task later') through /mcp with a personal access token"
+        },
+        {
+          "actor": "MCP server",
+          "action": "sends GET /api/v1/search with mode=hybrid as the token's user"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "returns the article with match 'meaning'"
+        },
+        {
+          "actor": "MCP server",
+          "action": "returns the body as the tool's structured content"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "the MCP server",
+          "the built Worker under wrangler dev",
+          "local D1"
+        ],
+        "setup": [
+          "an indexed article about Durable Object alarms",
+          "a personal access token"
+        ],
+        "end_state": [
+          "the tool result lists the article with match 'meaning' and meaning 'used'"
+        ],
+        "pseudocode": "in e2e/mcp.spec.ts, beside 'searches the library and reads a link’s stored text': call(client, 'search_links', {query: 'run a task later'}); expect an item for the article with match 'meaning'; delete the article afterwards, as the specs share one library"
+      }
+    }
+  ]
+}
