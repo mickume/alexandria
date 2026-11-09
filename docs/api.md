@@ -810,7 +810,7 @@ links.
 ```
 
 Items are links as `GET /api/v1/links` returns them, each with `score`, the
-similarity of its best passage, 0.65 or more (stricter than the 0.5 of
+similarity of its best passage, 0.7 or more (stricter than the 0.5 of
 passages); best first, at most 5. A link that is not indexed yet, or that
 nothing in the library is near, answers `{"items": []}`, and fewer than 5 is
 usual. A link indexed before related links matched metadata alone is not

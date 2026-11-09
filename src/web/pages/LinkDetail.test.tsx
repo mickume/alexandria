@@ -44,7 +44,7 @@ describe('the link detail page', () => {
   });
 });
 
-describe('the detail page’s related links', () => {
+describe('the detail page’s similar links', () => {
   const page = (related: { status: number; body: unknown }) =>
     new FakeApi()
       .on('GET', '/api/v1/links/abc', { status: 200, body: makeLink({ id: 'abc' }) })
@@ -54,13 +54,14 @@ describe('the detail page’s related links', () => {
       })
       .on('GET', '/api/v1/links/abc/related', related);
 
-  it('lists them between the summary and the history, each opening its own page', async () => {
+  it('lists them between the summary and the history, each with its likeness and opening its own page', async () => {
     const near = makeLink({ id: 'near', title: 'Near in meaning', host: 'near.example' });
-    renderPage('/links/abc', page({ status: 200, body: { items: [{ ...near, score: 0.8 }] } }));
-    const list = await screen.findByRole('list', { name: 'Related links' });
+    renderPage('/links/abc', page({ status: 200, body: { items: [{ ...near, score: 0.8162 }] } }));
+    const list = await screen.findByRole('list', { name: 'Similar links' });
     const a = within(list).getByRole('link', { name: 'Near in meaning' });
     expect(a.getAttribute('href')).toBe('/links/near');
     expect(within(list).getByText('near.example')).toBeTruthy();
+    expect(within(list).getByText('82% similar')).toBeTruthy();
     const history = screen.getByRole('list', { name: 'History' });
     expect(list.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -74,12 +75,12 @@ describe('the detail page’s related links', () => {
     {
       label: 'says so when they cannot be worked out',
       answer: { status: 503, body: { error: 'search_unavailable', message: 'x' } },
-      text: 'Related links can’t be worked out right now.',
+      text: 'Similar links can’t be worked out right now.',
     },
   ])('$label', async ({ answer, text }) => {
     renderPage('/links/abc', page(answer));
     expect(await screen.findByText(text)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Related links' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Similar links' })).toBeTruthy();
   });
 
   it('says it is looking for them while they load', async () => {
@@ -91,7 +92,7 @@ describe('the detail page’s related links', () => {
       })
       .on('GET', '/api/v1/links/abc/related', () => new Promise(() => undefined));
     renderPage('/links/abc', api);
-    expect(await screen.findByText('Looking for related links…')).toBeTruthy();
+    expect(await screen.findByText('Looking for similar links…')).toBeTruthy();
   });
 });
 

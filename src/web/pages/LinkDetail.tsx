@@ -81,12 +81,15 @@ function Facts({ link }: { link: Link }) {
 }
 
 /**
- * The links nearest in meaning to this one, each opening its own detail page.
- * The section is always there: it says so while they load, when there are
- * none, and when they cannot be worked out.
+ * The links nearest in meaning to this one ("similar links"), each with its
+ * likeness and opening its own detail page. The section is always there: it
+ * says so while they load, when there are none, and when they cannot be worked
+ * out.
  */
 function RelatedLinks({ id }: { id: string }) {
-  const [related, setRelated] = useState<Link[] | 'loading' | 'failed'>('loading');
+  const [related, setRelated] = useState<(Link & { score: number })[] | 'loading' | 'failed'>(
+    'loading',
+  );
 
   useEffect(() => {
     let live = true;
@@ -103,19 +106,20 @@ function RelatedLinks({ id }: { id: string }) {
     <>
       <hr />
       <section aria-labelledby="related-heading">
-        <h2 id="related-heading">Related links</h2>
+        <h2 id="related-heading">Similar links</h2>
         {related === 'loading' ? (
-          <p className="muted">Looking for related links…</p>
+          <p className="muted">Looking for similar links…</p>
         ) : related === 'failed' ? (
-          <p className="muted">Related links can’t be worked out right now.</p>
+          <p className="muted">Similar links can’t be worked out right now.</p>
         ) : related.length === 0 ? (
           <p className="muted">Nothing in your library is near this link yet.</p>
         ) : (
-          <ul className="related-links" aria-label="Related links">
+          <ul className="related-links" aria-label="Similar links">
             {related.map((r) => (
               <li key={r.id}>
                 <PageLink to={`/links/${r.id}`}>{r.title}</PageLink>
                 <span className="muted">{r.host}</span>
+                <span className="muted">{Math.round(r.score * 100)}% similar</span>
               </li>
             ))}
           </ul>

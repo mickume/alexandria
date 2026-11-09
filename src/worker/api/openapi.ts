@@ -1125,7 +1125,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'At most five links whose metadata scores at least 0.65 against the link’s, expired links left out; none when the link is not indexed yet or nothing is near it',
+          'At most five links whose metadata scores at least 0.7 against the link’s, expired links left out; none when the link is not indexed yet or nothing is near it',
         schema: z.strictObject({ items: z.array(Link.extend({ score: z.number() })) }),
       },
       503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),

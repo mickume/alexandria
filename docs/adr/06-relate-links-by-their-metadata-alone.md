@@ -32,11 +32,12 @@ ADR 05, 0.5. In a real library most of the five links shown were unrelated
   reader-text passage can make a link related. Filtering in Vectorize, not in
   D1 after the query, matters: of the 100 nearest vectors, reader-text passages
   could fill all 100 places.
-- **Related links have their own, stricter threshold**, 0.65 cosine
+- **Related links have their own, stricter threshold**, 0.7 cosine
   (`RELATED_SIMILARITY_THRESHOLD`, `meaning/related.ts`), provisional like
   ADR 05's. It was chosen from bge-m3's usual scores, not measured against the
-  library; each related link's score is in the API answer, so it can be tuned
-  once the library is re-indexed. Fewer than five related links, or none, is
+  library (first 0.65, raised to 0.7 by the owner the same day); each related
+  link's score is in the API answer, so it can be tuned once the library is
+  re-indexed. Fewer than five related links, or none, is
   the expected answer when nothing is related.
 - **Search by meaning, passages and asking are unchanged**: they still match
   every passage, at 0.5.

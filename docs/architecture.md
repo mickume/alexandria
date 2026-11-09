@@ -421,15 +421,16 @@ one namespace per user.
 - **Related links** (`meaning/related.ts`). `GET /api/v1/links/{id}/related`
   takes the link's newest first passage (its title, summary, topic, tags and
   note) as the question to `findPassages` with one passage a link, no filters,
-  only vectors of `kind` `metadata` and the stricter threshold 0.65
+  only vectors of `kind` `metadata` and the stricter threshold 0.7
   (`RELATED_SIMILARITY_THRESHOLD`), drops the link itself and returns the 5 best
   other links, worked out on each request; nothing is stored
   ([ADR 06](adr/06-relate-links-by-their-metadata-alone.md)). Migration
   `0013_reindex_passage_kinds.sql` moved every link's text version, so that the
-  backfill re-indexed the links stored before vectors carried their kind. A link not yet indexed has no first
-  passage and no related links. The detail page shows them above its history,
-  and says so instead while they load, when there are none and when they
-  cannot be worked out.
+  backfill re-indexed the links stored before vectors carried their kind. A
+  link not yet indexed has no first passage and no related links. The detail
+  page shows them as "Similar links" above its history, each with its score as
+  a percentage ("82% similar"), and says so instead while they load, when there
+  are none and when they cannot be worked out.
 - **Deletion.** `deleteLink` and decay's removal delete a link's passages in the
   batch that deletes the link, and a trigger queues each passage's vector in
   `vector_deletions`; the account deletion job deletes `link_passages` like any

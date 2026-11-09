@@ -17,7 +17,7 @@ export const RELATED_LINKS = 5;
  * search, because bge-m3 scores two unrelated texts of one language at up to
  * about 0.6. Provisional (ADR 06).
  */
-export const RELATED_SIMILARITY_THRESHOLD = 0.65;
+export const RELATED_SIMILARITY_THRESHOLD = 0.7;
 
 /** A link near in meaning to another, with the similarity of its best passage. */
 export interface RelatedLink {

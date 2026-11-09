@@ -28,7 +28,7 @@ describe('GET /api/v1/links/{id}/related', () => {
     expect(r.status).toBe(200);
     expect(r.json.items.map((i: { id: string }) => i.id)).toEqual([queues]);
     expect(r.json.items[0]).toMatchObject({ title: ARTICLES.queues.title, state: 'active' });
-    expect(r.json.items[0].score).toBeGreaterThanOrEqual(0.65);
+    expect(r.json.items[0].score).toBeGreaterThanOrEqual(0.7);
   });
 
   it.each([
@@ -55,12 +55,18 @@ describe('GET /api/v1/links/{id}/related', () => {
     {
       label: 'a link whose metadata is near in meaning but below the related threshold',
       seed: async (user: TestUser) => {
-        // Shares one word group of the two each mentions: a similarity of 0.5.
-        const [alarms] = await indexed(user, [
-          ARTICLES.alarms,
-          { url: 'https://example.com/worker-garden', title: 'A worker in the garden' },
+        // Shares two word groups of the three each mentions: a similarity of 2/3.
+        const [link] = await indexed(user, [
+          {
+            url: 'https://example.com/garden-alarms',
+            title: 'Durable Object alarms in the garden',
+          },
+          {
+            url: 'https://example.com/scheduled-bread',
+            title: 'Cloudflare Workers schedule bread',
+          },
         ]);
-        return alarms!;
+        return link!;
       },
     },
     {

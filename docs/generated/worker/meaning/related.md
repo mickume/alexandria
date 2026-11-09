@@ -28,7 +28,7 @@ The most related links returned.
 
 ### RELATED\_SIMILARITY\_THRESHOLD
 
-> `const` **RELATED\_SIMILARITY\_THRESHOLD**: `0.65` = `0.65`
+> `const` **RELATED\_SIMILARITY\_THRESHOLD**: `0.7` = `0.7`
 
 The similarity (cosine) a link's metadata must reach against the link's own
 metadata for the link to count as related: stricter than the threshold of

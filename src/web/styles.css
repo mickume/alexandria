@@ -724,7 +724,7 @@ a.brand:hover span {
   padding: var(--q-space-1) 0;
 }
 
-/* Related links: one per line, the title then its host. */
+/* Similar links: one per line, the title, then its host and likeness. */
 .related-links {
   padding: 0;
   list-style: none;
