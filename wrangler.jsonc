@@ -63,4 +63,19 @@
     "FIRECRAWL_API_URL": "https://api.firecrawl.dev",
   },
   "observability": { "enabled": true },
+  // Workers Builds runs `wrangler preview` for branches other than main, and
+  // that command refuses to run without this block. A Preview gets only what
+  // is listed here: the public endpoints above, and none of the production
+  // database, bucket, queues or Durable Object, so that a branch can never
+  // touch real data. A Preview therefore serves the website, but signing in
+  // and the API do not work in it.
+  "previews": {
+    "vars": {
+      "GOOGLE_AUTH_URL": "https://accounts.google.com/o/oauth2/v2/auth",
+      "GOOGLE_TOKEN_URL": "https://oauth2.googleapis.com/token",
+      "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+      "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+      "FIRECRAWL_API_URL": "https://api.firecrawl.dev",
+    },
+  },
 }
