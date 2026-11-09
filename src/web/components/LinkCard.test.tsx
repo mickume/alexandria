@@ -132,6 +132,19 @@ describe('a card’s fetch results', () => {
       favicon: true,
     },
     {
+      label: 'a pinned link, with a pin for its icon',
+      link: makeLink({
+        id: 'pin',
+        state: 'active',
+        pinned: true,
+        pin_position: 1,
+        favicon_url: 'https://art.example/i.png',
+      }),
+      texts: [],
+      roles: ['Pinned'],
+      read: false,
+    },
+    {
       label: 'an unreachable link',
       link: makeLink({ id: 'un', state: 'unreachable', state_reason: 'timed out' }),
       texts: ['unreachable: timed out'],
@@ -160,11 +173,12 @@ describe('a card’s fetch results', () => {
       texts: ['no text in this PDF'],
       read: true,
     },
-  ])('shows $label as it is', async ({ link: l, texts, read, favicon }) => {
+  ])('shows $label as it is', async ({ link: l, texts, roles, read, favicon }) => {
     const { container } = render(
       <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
     );
     for (const text of texts) expect(screen.getByText(text)).toBeTruthy();
+    for (const name of roles ?? []) expect(screen.getByRole('img', { name })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Read' }) !== null).toBe(read);
     await moreActions();
     expect(screen.queryByRole('link', { name: 'Snapshot' }) !== null).toBe(read);
@@ -181,7 +195,7 @@ describe('a card’s fetch results', () => {
 });
 
 describe('an enriched card', () => {
-  it('shows the summary in two lines that expand, a chip per tag, and the topic', () => {
+  it('shows the summary in one line that expands, a chip per tag, and the topic', () => {
     const summary = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
     const l = makeLink({
       id: 'rich',

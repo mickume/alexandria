@@ -247,7 +247,7 @@ function NoKeyBanner() {
   );
 }
 
-/** The stream: the home page. Pinned links first, then the rest by last use. */
+/** The stream: the home page. The pinned links in a list of their own on top, then the rest by points. */
 export function Stream() {
   const { items, setItems, loaded, refresh, loadMore } = useStreamPages();
   const deletes = useUndoableDelete(items, setItems);
@@ -298,10 +298,19 @@ export function Stream() {
           {notice}
         </p>
       )}
+      <div className="cards pinned-cards">
+        {items
+          .filter((link) => link.pinned)
+          .map((link) => (
+            <LinkCard key={link.id} link={link} actions={actions} />
+          ))}
+      </div>
       <div className="cards">
-        {items.map((link) => (
-          <LinkCard key={link.id} link={link} actions={actions} />
-        ))}
+        {items
+          .filter((link) => !link.pinned)
+          .map((link) => (
+            <LinkCard key={link.id} link={link} actions={actions} />
+          ))}
       </div>
       {loaded && items.length === 0 && (
         <p className="muted empty q-blankslate">Nothing here yet. Paste a link above to start.</p>

@@ -105,6 +105,10 @@ describe('pinning on the stream page', () => {
     await waitFor(() =>
       expect(titles()).toEqual(['Title 0', 'Title 1', 'Title 2', 'Title 3', 'Title 4']),
     );
+    // The pinned links are a list of their own, above the rest.
+    const lists = screen.getAllByRole('article').map((c) => c.parentElement);
+    expect(new Set(lists.slice(0, 4)).size).toBe(1);
+    expect(lists[4]).not.toBe(lists[0]);
 
     const third = screen.getByRole('article', { name: 'Title 2' });
     const first = screen.getByRole('article', { name: 'Title 0' });

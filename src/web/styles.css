@@ -257,7 +257,7 @@ a.brand:hover span {
 
 /*
  * Links are the rows of one bordered box: the title and its actions, a line
- * of facts, the summary in two lines, then the labels. The row under the
+ * of facts, the summary in one line, then the labels. The row under the
  * pointer is shaded; its actions show on hover or focus, and always on a
  * touch screen.
  */
@@ -396,8 +396,8 @@ a.brand:hover span {
 .summary-text.clamped {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   overflow: hidden;
 }
 
@@ -432,10 +432,6 @@ a.brand:hover span {
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.workspace-chips {
-  margin-top: var(--q-space-2);
 }
 
 /* A workspace chip is purple, so it is not taken for a topic (grey) or a tag (blue); like them, it does not change on hover. */
@@ -544,9 +540,22 @@ a.brand:hover span {
   box-shadow: none;
 }
 
+/* A pinned card is faintly tinted, a shade under the hover of a row, and grabbable. */
 .card.pinned {
-  box-shadow: inset 3px 0 0 var(--q-accent-emphasis);
+  background: color-mix(in srgb, var(--q-accent-subtle) 50%, transparent);
   cursor: grab;
+}
+
+.card.pinned:hover,
+.card.pinned:focus-within {
+  background: var(--q-accent-subtle);
+}
+
+.pin-mark {
+  flex: none;
+  align-self: center;
+  font-size: 0.875rem;
+  line-height: 1;
 }
 
 .note-preview {

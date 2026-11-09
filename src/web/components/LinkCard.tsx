@@ -57,8 +57,8 @@ export function RefreshButton({
 }
 
 /**
- * A summary shown in two lines, with a control that shows all of it. The
- * control is left out once the text is seen to fit in the two lines; where
+ * A summary shown in one line, with a control that shows all of it. The
+ * control is left out once the text is seen to fit in the line; where
  * nothing can be measured, it stays.
  */
 function Summary({ text }: { text: string }) {
@@ -290,11 +290,12 @@ export function TagChips({ tags }: { tags: string[] }) {
   );
 }
 
-/** The topic and the tags. */
-function Labels({ link }: { link: Link }) {
-  if (link.tags.length === 0 && !link.topic) return null;
+/** The workspaces, the topic and the tags, in one row. */
+function Labels({ link, workspaces }: { link: Link; workspaces: { id: string; name: string }[] }) {
+  if (link.tags.length === 0 && !link.topic && workspaces.length === 0) return null;
   return (
     <div className="card-labels">
+      <WorkspaceChips workspaces={workspaces} />
       {link.topic && <TopicChip topic={link.topic} />}
       {link.tags.length > 0 && <TagChips tags={link.tags} />}
     </div>
@@ -317,7 +318,8 @@ function pinDragProps(link: Link, actions: CardActions) {
 
 /**
  * One link in the stream, as a row of a list: title and actions, then host,
- * dates and state, the summary, and the labels.
+ * dates and state, the summary, and the labels. A pinned card shows a pin
+ * where the site's icon would be.
  */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const [memberOf, setMemberOf] = useState(link.workspaces);
@@ -330,18 +332,24 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       {link.note_preview && <p className="note-preview">{link.note_preview}</p>}
       <div className="card-top">
         <div className="card-head">
-          {link.favicon_url && (
-            <img
-              className="favicon"
-              src={link.favicon_url}
-              alt=""
-              width={16}
-              height={16}
-              // A site without a usable icon shows none rather than a broken image.
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
+          {link.pinned ? (
+            <span className="pin-mark" role="img" aria-label="Pinned">
+              📌
+            </span>
+          ) : (
+            link.favicon_url && (
+              <img
+                className="favicon"
+                src={link.favicon_url}
+                alt=""
+                width={16}
+                height={16}
+                // A site without a usable icon shows none rather than a broken image.
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            )
           )}
           <SiteLink
             link={link}
@@ -412,8 +420,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
       {link.enrichment_status === 'failed' && (
         <EnrichmentFailed link={link} onQueued={actions.onRefreshing} />
       )}
-      <Labels link={link} />
-      <WorkspaceChips workspaces={memberOf} />
+      <Labels link={link} workspaces={memberOf} />
     </article>
   );
 }
