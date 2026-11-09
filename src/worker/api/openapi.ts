@@ -595,6 +595,32 @@ export const operations: Operation[] = [
       503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
     },
   },
+  {
+    method: 'post',
+    path: '/ask',
+    operationId: 'ask',
+    summary:
+      'Ask the library a question; the owner’s AI provider answers from passages of their links, streamed',
+    body: z.strictObject({
+      question: z
+        .string()
+        .describe(
+          'The question: free words, with the filters tag:, topic:, host:, state:, in: and is:, at most 500 characters',
+        ),
+    }),
+    responses: {
+      200: {
+        description:
+          'A stream of server-sent events: one sources {sources: [{n, link}]}, then delta {text} events citing sources as [n], then done {}; or, once started, one error {error, message} (ai_key_rejected, provider_unavailable or provider_failed) and no done',
+        mediaType: 'text/event-stream',
+      },
+      400: error(
+        'invalid_json, invalid_question (field question), question_too_long (field question) or invalid_filter (field question)',
+      ),
+      409: error('no_ai_key, or ai_key_rejected with the provider’s message'),
+      503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
+    },
+  },
   ...(['topics', 'tags'] as const).map((kind): Operation => ({
     method: 'get',
     path: `/${kind}`,

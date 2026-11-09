@@ -58,15 +58,15 @@ function asFilter(term: string): { name: FilterName; value: string } | null {
  * Splits a query into free words and prefix filters: `tag:`, `topic:`,
  * `host:`, `state:`, `in:` and `is:`, case-insensitive, each followed by one
  * word or a double-quoted phrase. Every other term, another `word:value` and
- * an unclosed quote included, is a free word. Refuses a query over 200
- * characters, and a `state:` or `is:` value the filter does not take.
+ * an unclosed quote included, is a free word. Refuses a query over `max`
+ * characters (200 unless given), and a `state:` or `is:` value the filter does not take.
  */
-export function parseQuery(q: string): ParsedQuery {
-  if (q.length > QUERY_MAX) {
+export function parseQuery(q: string, max = QUERY_MAX): ParsedQuery {
+  if (q.length > max) {
     return {
       ok: false,
       error: 'query_too_long',
-      message: `a query of at most ${QUERY_MAX} characters`,
+      message: `a query of at most ${max} characters`,
     };
   }
   const words: string[] = [];

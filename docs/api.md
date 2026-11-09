@@ -728,6 +728,38 @@ integer from 1 to 20"}`. When Workers AI or Vectorize fails or has not answered
 within 5 seconds: `503 {"error": "search_unavailable", "message": "search by
 meaning is unavailable, try again"}`.
 
+### Ask
+
+#### `POST /api/v1/ask`
+
+Asks the library a question, which the owner's own AI provider answers from
+passages of the owner's own links: `{"question": "<text>"}`, at most 500
+characters, written in the search query language. Its free words are the
+question, and the prefix filters narrow the passages exactly as in
+`GET /api/v1/passages`. The provider is the one saved under settings, called
+with the owner's key and model; nothing about the question or the answer is
+stored. An ask counts once against the 600 requests a minute and records no use
+of the links it cites.
+
+Every refusal that can be known before the provider is called is answered as
+JSON, in this order, and calls neither the provider nor (from the key check on)
+the index:
+
+- `400 {"error": "invalid_json", …}` for a body that is not a JSON object;
+- `400 {"error": "invalid_question", "field": "question", "message": "ask with
+  at least one word"}` for a question that is missing, not text, empty, blank or
+  only filters;
+- `400 {"error": "question_too_long", "field": "question", "message": "a
+  question of at most 500 characters"}`;
+- `400 {"error": "invalid_filter", "field": "question", "message"}` naming the
+  filter, as in search;
+- `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`;
+- `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
+  while the saved key is marked rejected;
+- `503 {"error": "search_unavailable", "message": "search by meaning is
+  unavailable, try again"}` when Workers AI or Vectorize fails or takes over 5
+  seconds.
+
 ### Topics and tags
 
 The topics and tags enrichment and the owner's edits give links. A topic or
