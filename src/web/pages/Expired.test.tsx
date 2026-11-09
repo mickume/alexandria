@@ -83,18 +83,10 @@ describe('the Expired page', () => {
     expect(await screen.findByText('Nothing has expired.')).toBeTruthy();
   });
 
-  it('is in the navigation as Expired, and the Archive is gone', async () => {
+  it('is in the navigation as Expired', async () => {
     renderPage('/', new FakeApi());
     const entry = await screen.findByRole('link', { name: 'Expired' });
     expect(entry.getAttribute('href')).toBe('/expired');
-    expect(screen.queryByRole('link', { name: 'Archive' })).toBeNull();
-  });
-
-  it('has no Archive page any more', async () => {
-    renderPage('/archive', new FakeApi());
-    await screen.findByRole('link', { name: 'Expired' });
-    expect(screen.queryByRole('heading', { name: 'Archive' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Expired' })).toBeNull();
   });
 
   it('searches only expired links and shows the results on the Expired page', async () => {

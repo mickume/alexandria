@@ -73,6 +73,7 @@ describe('the Ask page', () => {
       'Tags',
       'Ask',
       'Expired',
+      'Archive',
       'Settings',
       'Import',
     ]);

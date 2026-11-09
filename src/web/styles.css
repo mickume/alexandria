@@ -540,6 +540,20 @@ a.brand:hover span {
   box-shadow: none;
 }
 
+/*
+ * An archived link is dimmed wherever it is shown: its title takes the muted
+ * colour (which keeps the contrast of muted text) and its icon goes grey.
+ */
+.card.archived .card-title {
+  color: var(--q-fg-muted);
+  font-weight: var(--q-weight-medium);
+}
+
+.card.archived .favicon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
 /* A pinned card is faintly tinted, a shade under the hover of a row, and grabbable. */
 .card.pinned {
   background: color-mix(in srgb, var(--q-accent-subtle) 50%, transparent);

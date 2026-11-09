@@ -4,8 +4,8 @@ import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { Toast } from '../components/Toast';
 import { useUndoableDelete } from './Stream';
 
-/** Expired links as the page lists them, and how a search by meaning found them. */
-interface Listed {
+/** Links as the Expired or Archive page lists them, and how a search by meaning found them. */
+export interface Listed {
   list: Link[];
   /** The ids of the links found by meaning alone. */
   byMeaning: Set<string>;
@@ -13,9 +13,13 @@ interface Listed {
   keywordOnly: boolean;
 }
 
-/** The expired links matching `query`: the search, limited to expired links. */
-async function searchExpired(query: string, mode?: SearchMode): Promise<Listed> {
-  const page = await search(`${query.trim()} state:expired`, undefined, mode);
+/** The links in `state` matching `query`: the search, limited to that state. */
+export async function searchInState(
+  state: 'expired' | 'archived',
+  query: string,
+  mode?: SearchMode,
+): Promise<Listed> {
+  const page = await search(`${query.trim()} state:${state}`, undefined, mode);
   return {
     list: page.items.map((i) => i.link),
     byMeaning: new Set(page.items.filter((i) => i.match === 'meaning').map((i) => i.link.id)),
@@ -39,7 +43,7 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
   useEffect(() => {
     let live = true;
     (query.trim()
-      ? searchExpired(query, mode)
+      ? searchInState('expired', query, mode)
       : links.expired().then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
     )
       .then((listed) => {

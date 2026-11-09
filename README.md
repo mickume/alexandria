@@ -39,7 +39,7 @@ The search box is in the header of every page. It searches as you type (200
 ms after the last keystroke) over each link's title, summary, tags, topic,
 host, address, page text and note, every word matching as the start of a
 word, and lists the matching workspaces above the links. On the Expired page
-it searches the expired links.
+it searches the expired links, and on the Archive page the archived links.
 
 Press **Enter** to search the same query by meaning as well: it also finds
 links that share no word with it, such as a page saved as "Durable Objects
