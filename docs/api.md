@@ -573,6 +573,10 @@ Archives a link in any state but `archived`, at once: `state` `archived`,
 positions after it close up; its workspaces are kept. A fetch of its page is
 then queued as a refresh, outside the 10-minute refresh window (which it
 neither waits for nor starts). `200 <link>`, without waiting for the fetch.
+That fetch is a refresh like any other: on success it replaces the snapshot
+and the reader text and enriches the link again, keeping the fields the owner
+edited, and the link stays `archived`; on failure the link keeps what it had
+and its history records the failure.
 When the fetch cannot be queued the link stays archived and its history gets a
 failed fetch event with the reason "refresh before archiving could not be
 queued". A link already archived: `200 <link>`, unchanged, and nothing is

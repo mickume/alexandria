@@ -597,33 +597,67 @@ describe('refreshing a link', () => {
     );
   });
 
-  it('keeps everything the link had when the refresh fails', async () => {
-    const url = 'https://steady.example/';
+  it('takes a new copy of an archived link, enriches it again and keeps it archived', async () => {
+    const url = 'https://kept.example/';
     const origin = new FakeOrigin().page(url, blogArticle);
     const user = await signIn();
     const { id } = await addAndFetch(user, url);
-    const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
-    origin.status(url, 500);
+    await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { title: 'My title' } });
+    await env.DB.prepare('UPDATE links SET enrichment_status = NULL WHERE id = ?').bind(id).run();
     const sent = recordFetchQueue();
-    await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session });
+    const archived = await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
+    const changed = blogArticle.replace('The first reason', 'A newer reason');
+    origin.page(url, changed);
+    const t = '2026-10-04T12:00:00.000Z';
+    setNow(t);
     await deliverFetches([sent[0]!.body]);
-    const after = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
-    expect({ ...after, refresh_requested_at: null, updated_at: null }).toEqual({
-      ...before,
-      refresh_requested_at: null,
-      updated_at: null,
+    const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(l).toMatchObject({
+      state: 'archived',
+      archived_at: archived.json.archived_at,
+      fetched_at: t,
+      title: 'My title',
+      enrichment_status: 'no_key',
     });
-    expect(await (await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`))?.text()).toBe(
-      blogArticle,
-    );
-    const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
-    expect(history.json.items[0]).toMatchObject({
-      kind: 'fetch',
-      outcome: 'failed',
-      reason: 'HTTP 500',
-    });
-    expect(sent).toHaveLength(1);
+    const snapshot = await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`);
+    expect(await snapshot?.text()).toBe(changed);
   });
+
+  it.each(['an active link', 'an archived link'])(
+    'keeps everything %s had when the refresh fails',
+    async (label) => {
+      const url = 'https://steady.example/';
+      const origin = new FakeOrigin().page(url, blogArticle);
+      const user = await signIn();
+      const { id } = await addAndFetch(user, url);
+      const sent = recordFetchQueue();
+      if (label === 'an archived link') {
+        await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
+      }
+      const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
+      origin.status(url, 500);
+      if (label === 'an active link') {
+        await api('POST', `/api/v1/links/${id}/refresh`, { as: user.session });
+      }
+      await deliverFetches([sent[0]!.body]);
+      const after = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
+      expect({ ...after, refresh_requested_at: null, updated_at: null }).toEqual({
+        ...before,
+        refresh_requested_at: null,
+        updated_at: null,
+      });
+      expect(await (await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`))?.text()).toBe(
+        blogArticle,
+      );
+      const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
+      expect(history.json.items[0]).toMatchObject({
+        kind: 'fetch',
+        outcome: 'failed',
+        reason: 'HTTP 500',
+      });
+      expect(sent).toHaveLength(1);
+    },
+  );
 });
 
 describe('an unreachable link', () => {

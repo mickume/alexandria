@@ -139,7 +139,8 @@ export function titleFromUrl(url: string): string {
 
 /**
  * Writes a successful fetch: the objects first, then the link's row and its
- * text in one D1 batch. Returns false when the link was deleted meanwhile, in
+ * text in one D1 batch. The link becomes active, unless it is archived, which
+ * it stays: the refresh that archiving queues must not undo it. Returns false when the link was deleted meanwhile, in
  * which case nothing is left behind. When a write fails, the objects this
  * attempt wrote are removed and the error is thrown, leaving the row as it was.
  */
@@ -159,7 +160,8 @@ async function writeFetched(
     const at = now().toISOString();
     const [update] = await env.DB.batch([
       env.DB.prepare(
-        `UPDATE links SET state = 'active', state_reason = NULL, fetch_attempts = 0,
+        `UPDATE links SET state = CASE WHEN state = 'archived' THEN 'archived' ELSE 'active' END,
+           state_reason = NULL, fetch_attempts = 0,
            title = CASE WHEN EXISTS (SELECT 1 FROM json_each(edited_fields) WHERE value = 'title')
                    THEN title ELSE ?1 END,
            final_url = ?2,
