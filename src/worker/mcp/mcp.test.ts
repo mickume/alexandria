@@ -808,8 +808,6 @@ describe('workspaces, pins and the archive', () => {
       expect(meaning(r.structuredContent)).toEqual(meaning(direct.json));
       if (state === 'active') {
         expect(r.structuredContent.state).toBe('archived');
-        const stream = await api('GET', '/api/v1/links', { as: a.session });
-        expect(stream.json.items.map((l: { id: string }) => l.id)).not.toContain(link);
         const archive = await api('GET', '/api/v1/archive', { as: a.session });
         expect(archive.json.items.map((l: { id: string }) => l.id)).toContain(link);
       }

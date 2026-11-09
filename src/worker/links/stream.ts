@@ -21,12 +21,12 @@ function cursorAt(row: LinkRow): StreamCursor {
     : { s: 'u', l: row.last_used_at, i: row.id };
 }
 
-/** The stream's own restriction: every link but the archived ones. */
-export const NOT_ARCHIVED: Conditions = { sql: ["l.state <> 'archived'"], params: [] };
+/** The stream's own restriction: every link but the expired ones. */
+export const NOT_EXPIRED: Conditions = { sql: ["l.state <> 'expired'"], params: [] };
 
 /**
  * One page of the user's stream: the links that satisfy `where` (by default,
- * those not archived), the pinned ones first by pin position, then the rest
+ * those not expired), the pinned ones first by pin position, then the rest
  * by last use, newest first, with the id breaking ties. Returns the page and
  * the cursor of the next one, if any.
  */
@@ -35,7 +35,7 @@ export async function listStream(
   userId: string,
   limit: number,
   after: StreamCursor | null,
-  where: Conditions = NOT_ARCHIVED,
+  where: Conditions = NOT_EXPIRED,
 ): Promise<{ items: LinkRow[]; next: StreamCursor | null }> {
   const rows: LinkRow[] = [];
   const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
@@ -89,7 +89,7 @@ export function parseTimestamp(value: string): Date | null {
 }
 
 /**
- * The user's links that are not archived and changed at or after `since`,
+ * The user's links that are not expired and changed at or after `since`,
  * oldest change first. A link changed in the very millisecond of `since` may
  * come again; the website replaces cards in place, so a repeat is harmless,
  * while a missed change would leave a card pending.
@@ -97,7 +97,7 @@ export function parseTimestamp(value: string): Date | null {
 export async function listChanged(db: D1Database, userId: string, since: Date): Promise<LinkRow[]> {
   const rows = await db
     .prepare(
-      `SELECT * FROM link_views WHERE user_id = ? AND state <> 'archived' AND updated_at >= ?
+      `SELECT * FROM link_views WHERE user_id = ? AND state <> 'expired' AND updated_at >= ?
        ORDER BY updated_at, id LIMIT ?`,
     )
     .bind(userId, since.toISOString(), CHANGES_LIMIT)

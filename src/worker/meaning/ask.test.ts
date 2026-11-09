@@ -312,6 +312,13 @@ describe('an answer to a question', () => {
     const [tagged] = await indexed(user, [
       { url: 'https://a.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
       { url: 'https://b.example/', title: 'Alarm plain', text: null },
+      {
+        url: 'https://c.example/',
+        title: 'Alarm expired',
+        text: null,
+        tags: ['infra'],
+        state: 'expired',
+      },
     ]);
 
     const sent = events(
@@ -323,6 +330,7 @@ describe('an answer to a question', () => {
     ]);
     expect(promptOf(ai.asks[0]!.body)).toContain('Alarm tagged');
     expect(promptOf(ai.asks[0]!.body)).not.toContain('Alarm plain');
+    expect(promptOf(ai.asks[0]!.body)).not.toContain('Alarm expired');
     expect(promptOf(ai.asks[0]!.body)).not.toContain('tag:infra');
   });
 

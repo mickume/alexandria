@@ -80,10 +80,11 @@ async function liveness(id: string) {
 describe('scheduling liveness checks', () => {
   it.each([
     { label: 'active, checked 7 days ago', seed: { checkedDaysAgo: 7 }, due: true },
+    { label: 'active, checked 8 days ago', seed: { checkedDaysAgo: 8 }, due: true },
     {
-      label: 'dormant, checked 8 days ago',
-      seed: { state: 'dormant', checkedDaysAgo: 8 },
-      due: true,
+      label: 'expired, checked 8 days ago',
+      seed: { state: 'expired', checkedDaysAgo: 8 },
+      due: false,
     },
     {
       label: 'pinned unreachable, checked 10 days ago',
@@ -94,8 +95,8 @@ describe('scheduling liveness checks', () => {
     { label: 'active, never checked, added 7 days ago', seed: { addedDaysAgo: 7 }, due: true },
     { label: 'active, never checked, added 2 days ago', seed: { addedDaysAgo: 2 }, due: false },
     {
-      label: 'archived, checked 30 days ago',
-      seed: { state: 'archived', checkedDaysAgo: 30 },
+      label: 'pinned and expired, checked 30 days ago',
+      seed: { state: 'expired', pinned: true, checkedDaysAgo: 30 },
       due: false,
     },
     {
@@ -131,7 +132,7 @@ describe('scheduling liveness checks', () => {
     if (due) expect(row?.check_enqueued_at).toBe(new Date(T).toISOString());
   });
 
-  it.each(['a deleted link', 'an archived link', 'a link checked an hour ago'])(
+  it.each(['a deleted link', 'an expired link', 'a link checked an hour ago'])(
     'drops the message of %s',
     async (label) => {
       setNow(T);
@@ -141,8 +142,8 @@ describe('scheduling liveness checks', () => {
       origin.page('https://dropped.example/', 'ok');
       if (label === 'a deleted link')
         await env.DB.prepare('DELETE FROM links WHERE id = ?').bind(id).run();
-      if (label === 'an archived link')
-        await env.DB.prepare("UPDATE links SET state = 'archived', archived_at = ? WHERE id = ?")
+      if (label === 'an expired link')
+        await env.DB.prepare("UPDATE links SET state = 'expired', expired_at = ? WHERE id = ?")
           .bind(new Date(T).toISOString(), id)
           .run();
       if (label === 'a link checked an hour ago')
@@ -478,19 +479,26 @@ describe('checking a link on demand', () => {
     );
   }, 15_000);
 
-  it('is refused for an archived link', async () => {
+  it('is refused for an expired link, without a request to its address', async () => {
     setNow(T);
     const user = await signIn();
     const id = await seedChecked(user, {
-      state: 'archived',
-      url: 'https://archived-check.example/',
+      state: 'expired',
+      checkedDaysAgo: 10,
+      url: 'https://expired-check.example/',
     });
-    const origin = new FakeOrigin().byMethod('https://archived-check.example/', {
+    const origin = new FakeOrigin().byMethod('https://expired-check.example/', {
       HEAD: () => new Response(null, { status: 200 }),
     });
+    const before = await env.DB.prepare('SELECT last_checked_at FROM links WHERE id = ?')
+      .bind(id)
+      .first();
     const r = await api('POST', `/api/v1/links/${id}/check`, { as: user.session });
     expect(r.status).toBe(409);
-    expect(r.json).toEqual({ error: 'link_archived', message: 'archived links are not checked' });
+    expect(r.json).toEqual({ error: 'link_expired', message: 'expired links are not checked' });
     expect(origin.log).toEqual([]);
+    expect(
+      await env.DB.prepare('SELECT last_checked_at FROM links WHERE id = ?').bind(id).first(),
+    ).toEqual(before);
   });
 });

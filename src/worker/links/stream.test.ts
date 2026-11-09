@@ -5,19 +5,33 @@ type Item = { id: string };
 const ids = (items: Item[]) => items.map((i) => i.id);
 
 describe('the stream', () => {
-  it('lists pinned links first, then the rest by last use, without archived links', async () => {
+  it('lists pinned links first, then the rest by last use, without expired links', async () => {
     const user = await signIn();
-    const [t1, t2, t3, archived] = await seedLinks(user, [
+    const [t1, t2, t3, expired] = await seedLinks(user, [
       { url: 'https://t1.example', lastUsedAt: '2026-01-01T00:00:00.000Z', pinPosition: 1 },
       { url: 'https://t2.example', lastUsedAt: '2026-01-02T00:00:00.000Z' },
       { url: 'https://t3.example', lastUsedAt: '2026-01-03T00:00:00.000Z' },
-      { url: 'https://gone.example', lastUsedAt: '2026-01-04T00:00:00.000Z', state: 'archived' },
+      { url: 'https://gone.example', lastUsedAt: '2026-01-04T00:00:00.000Z', state: 'expired' },
     ]);
     const r = await api('GET', '/api/v1/links', { as: user.session });
     expect(r.status).toBe(200);
     expect(ids(r.json.items)).toEqual([t1, t3, t2]);
-    expect(ids(r.json.items)).not.toContain(archived);
+    expect(ids(r.json.items)).not.toContain(expired);
     expect(r.json.next_cursor).toBeNull();
+  });
+
+  it('leaves expired links out of the change feed', async () => {
+    const user = await signIn();
+    const [active, expired] = await seedLinks(user, [
+      { url: 'https://kept.example', lastUsedAt: '2026-03-01T00:00:00.000Z', state: 'active' },
+      { url: 'https://gone.example', lastUsedAt: '2026-03-01T00:00:00.000Z', state: 'expired' },
+    ]);
+    const r = await api('GET', '/api/v1/links?changed_since=2026-01-01T00:00:00.000Z', {
+      as: user.session,
+    });
+    expect(r.status).toBe(200);
+    expect(ids(r.json.items)).toEqual([active]);
+    expect(ids(r.json.items)).not.toContain(expired);
   });
 
   it.each([
@@ -147,19 +161,29 @@ describe('the filtered link list', () => {
 
   it('applies state and repeated parameters together', async () => {
     const user = await signIn();
-    const [active, archived] = await seedLinks(user, [
+    const [pending, active, unreachable, expired] = await seedLinks(user, [
+      { url: 'https://p.example/', state: 'pending' },
       { url: 'https://a.example/', state: 'active' },
-      { url: 'https://x.example/', state: 'archived' },
+      { url: 'https://u.example/', state: 'unreachable' },
+      { url: 'https://x.example/', state: 'expired' },
     ]);
     const list = async (params: string) =>
       ids((await api('GET', `/api/v1/links?${params}`, { as: user.session })).json.items);
-    expect(await list('state=archived')).toEqual([archived]);
-    expect((await list('state=any')).sort()).toEqual([active, archived].sort());
+    expect(await list('state=pending')).toEqual([pending]);
+    expect(await list('state=active')).toEqual([active]);
+    expect(await list('state=unreachable')).toEqual([unreachable]);
+    expect(await list('state=expired')).toEqual([expired]);
+    expect((await list('')).sort()).toEqual([pending, active, unreachable].sort());
+    expect((await list('state=any')).sort()).toEqual(
+      [pending, active, unreachable, expired].sort(),
+    );
     expect(await list('state=any&state=active')).toEqual([active]);
   });
 
   it.each([
     ['state=gone', 'state'],
+    ['state=dormant', 'state'],
+    ['state=archived', 'state'],
     ['is=starred', 'is'],
     ['state=', 'state'],
   ])('refuses %s, naming the parameter', async (params, field) => {

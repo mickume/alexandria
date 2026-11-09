@@ -13,7 +13,8 @@ export type LinkEvent =
 
 /**
  * Records one use of a user's link: increments its use count, sets its last
- * use to now and stores a use event, in one transaction. Every way of opening
+ * use to now, makes an expired link active again and stores a use event, in
+ * one transaction. Every way of opening
  * a link (the open endpoint, and later reads, snapshots and MCP) goes through
  * here. Returns the link's normalised URL, or null when the user has no such link.
  */
@@ -27,7 +28,7 @@ export async function recordUse(
     db
       .prepare(
         `UPDATE links SET use_count = use_count + 1, last_used_at = ?1, updated_at = ?1,
-           state = CASE WHEN state = 'dormant' THEN 'active' ELSE state END
+           state = CASE WHEN state = 'expired' THEN 'active' ELSE state END, expired_at = NULL
          WHERE id = ?2 AND user_id = ?3 RETURNING url`,
       )
       .bind(at, linkId, userId),

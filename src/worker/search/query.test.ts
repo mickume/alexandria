@@ -30,21 +30,26 @@ describe('parseQuery', () => {
     });
   });
 
-  it.each(['state:gone', 'is:starred', 'state:', 'is:', 'state:""'])(
-    'refuses the filter %j, naming it',
-    (query) => {
-      const parsed = parseQuery(`kiwi ${query}`);
-      expect(parsed).toMatchObject({ ok: false, error: 'invalid_filter' });
-      expect(parsed.ok ? '' : parsed.message).toContain(query);
-    },
-  );
+  it.each([
+    'state:gone',
+    'state:dormant',
+    'state:archived',
+    'is:starred',
+    'state:',
+    'is:',
+    'state:""',
+  ])('refuses the filter %j, naming it', (query) => {
+    const parsed = parseQuery(`kiwi ${query}`);
+    expect(parsed).toMatchObject({ ok: false, error: 'invalid_filter' });
+    expect(parsed.ok ? '' : parsed.message).toContain(query);
+  });
 
   it('accepts every state and is value, in any case', () => {
     expect(
-      parseQuery('state:Pending state:active state:unreachable state:dormant state:archived'),
+      parseQuery('state:Pending state:active state:unreachable state:Expired state:any'),
     ).toMatchObject({
       ok: true,
-      filters: { state: ['pending', 'active', 'unreachable', 'dormant', 'archived'] },
+      filters: { state: ['pending', 'active', 'unreachable', 'expired', 'any'] },
     });
     expect(parseQuery('IS:DEAD')).toMatchObject({ ok: true, filters: { is: ['dead'] } });
   });

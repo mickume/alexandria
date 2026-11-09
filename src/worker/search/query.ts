@@ -12,7 +12,7 @@ export type FilterName = (typeof FILTER_NAMES)[number];
 export type Filters = Partial<Record<FilterName, string[]>>;
 
 /** The values `state:` accepts. */
-export const STATE_VALUES = ['pending', 'active', 'unreachable', 'dormant', 'archived', 'any'];
+export const STATE_VALUES = ['pending', 'active', 'unreachable', 'expired', 'any'];
 /** The values `is:` accepts. */
 export const IS_VALUES = ['pinned', 'dead'];
 
@@ -96,7 +96,7 @@ export interface Conditions {
  * The conditions that select the links satisfying every filter: a tag or
  * topic with that name and the workspace with that name, ignoring case; a
  * host equal to the value or ending in '.' and the value; pinned; dead.
- * Archived links are left out unless a `state:` filter is given: `archived`
+ * Expired links are left out unless a `state:` filter is given: `expired`
  * selects only them, `any` every state, another value that state.
  */
 export function filterConditions(filters: Filters): Conditions {
@@ -127,7 +127,7 @@ export function filterConditions(filters: Filters): Conditions {
     sql.push(value === 'pinned' ? 'l.pin_position IS NOT NULL' : 'l.dead_since IS NOT NULL');
   }
   const states = filters.state ?? [];
-  if (states.length === 0) sql.push("l.state <> 'archived'");
+  if (states.length === 0) sql.push("l.state <> 'expired'");
   for (const state of states.filter((s) => s !== 'any')) {
     sql.push('l.state = ?');
     params.push(state);

@@ -139,7 +139,7 @@ const FILTER_PARAMETERS: Operation['query'] = {
   host: { description: 'Links on this host or a subdomain of it', schema: z.string() },
   state: {
     description:
-      'pending, active, unreachable, dormant, archived or any; without it, archived links are left out',
+      'pending, active, unreachable, expired or any; without it, expired links are left out',
     schema: z.string(),
   },
   in: { description: 'Links in the workspace with this name (ignoring case)', schema: z.string() },
@@ -915,7 +915,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'One page of the stream (archived links left out); with changed_since, the changed links and the server time to ask from next',
+          'One page of the stream (expired links left out); with changed_since, the changed links and the server time to ask from next',
         schema: z.union([
           z.strictObject({ items: z.array(Link), next_cursor: z.string().nullable() }),
           z.strictObject({ items: z.array(Link), server_time: z.string() }),
@@ -975,10 +975,10 @@ export const operations: Operation[] = [
     method: 'post',
     path: '/links/{id}/restore',
     operationId: 'restoreLink',
-    summary: 'Bring an archived link back: active, last used now, use count unchanged',
+    summary: 'Bring an expired link back: active, last used now, use count unchanged',
     responses: {
       200: { description: 'The restored link', schema: LinkWithNote },
-      409: error('not_archived: "this link is not archived"'),
+      409: error('not_expired: "this link is not expired"'),
     },
   },
   {
@@ -996,7 +996,7 @@ export const operations: Operation[] = [
           link: LinkWithNote,
         }),
       },
-      409: error('link_archived: "archived links are not checked"'),
+      409: error('link_expired: "expired links are not checked"'),
       429: {
         ...error('checked_recently: "already checked recently", or rate_limited'),
         headers: {

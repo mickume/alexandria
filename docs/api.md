@@ -166,8 +166,8 @@ plus the owner's `remove_days`, or null. `decay_note` is one sentence saying
 the link's decay state and why: "unused for 3 days" (in months of 30 days from 60 days),
 "sticky: 7 uses on 6 days, never archived", "pinned: never archived, unused
 for …", "in a workspace: never archived, unused for …", or "archived on
-2027-03-01, removed on 2027-08-28". A use, a re-paste or a restore makes a
-`dormant` link `active` again at once.
+2027-03-01, removed on 2027-08-28". A use or a re-paste of an expired link
+makes it `active` again in the same request and clears `expired_at`.
 
 Every URL that enters the library is normalised the same way: whitespace is
 trimmed; `https://` is added when there is no scheme; only `http` and `https`
@@ -206,7 +206,7 @@ in the stream in the order given.
 
 #### `GET /api/v1/links`
 
-The stream: the links that are not archived, the pinned ones first in pin
+The stream: the links that are not expired, the pinned ones first in pin
 position order, then the rest by `last_used_at`, newest first, with the id
 breaking ties. Query: `limit` (1 to 100, default 50), `cursor`.
 
@@ -221,11 +221,11 @@ The filters of the search (below) narrow the list as query parameters, in
 the same stream order: `tag`, `topic`, `host`, `state`, `in` and `is`, each
 with the meaning of its prefix filter; repeated parameters all apply
 (`?tag=cloudflare&tag=queues`). A `state` other than pending, active,
-unreachable, dormant, archived or any, or an `is` other than pinned or dead,
+unreachable, expired or any, or an `is` other than pinned or dead,
 is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
 
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
-every link that is not archived and changed at or after that time (every
+every link that is not expired and changed at or after that time (every
 write to a link sets its `updated_at`), oldest change first, with the
 server's time to ask from next:
 `200 {"items": [<link>], "server_time": "…"}`. A link changed in the very
@@ -467,7 +467,7 @@ Deletes the workspace, its note and its memberships, keeping every link:
 
 #### `GET /api/v1/workspaces/{id}/links`
 
-The members in their order, whatever their state (archived ones included),
+The members in their order, whatever their state (expired ones included),
 each a link as in the stream plus its `position`, at most 100 per page:
 `200 {"items": [...], "next_cursor"}`.
 
@@ -544,13 +544,15 @@ The archived links, most recently archived first, each with `archived_at` and
 
 #### `POST /api/v1/links/{id}/restore`
 
-Brings an archived link back: `active`, `last_used_at` now (a boost, not a
-use: the use count stays), no archive date. `200 <link>`, or
-`409 {"error": "not_archived", "message": "this link is not archived"}`.
+Brings an expired link back: `active`, `last_used_at` now (a boost, not a
+use: the use count stays), `expired_at` cleared. `200 <link>`. A link that is
+not expired:
+`409 {"error": "not_expired", "message": "this link is not expired"}`, and
+nothing changes. Another user's link, or one that does not exist: `404`.
 
 ### Liveness
 
-Every kept link (active, dormant or pinned, not archived) is checked weekly:
+Every active or pinned link that is not expired is checked weekly:
 HEAD, then a headers-only GET when the HEAD fails, 10 seconds each, at most 5
 redirects, never more than one request per second to one host. A final 2xx
 passes. Three failed weekly checks in a row set `dead_since`; a later pass
@@ -566,8 +568,8 @@ clears `dead_since` and the failure count; a failure is stored as the last
 result but does not count towards the three. At most one per link per 10
 minutes:
 `429 {"error": "checked_recently", "message": "already checked recently"}`
-with `Retry-After`. An archived link:
-`409 {"error": "link_archived", "message": "archived links are not checked"}`.
+with `Retry-After`. An expired link, without any request to its address:
+`409 {"error": "link_expired", "message": "expired links are not checked"}`.
 
 ### Search
 
@@ -623,9 +625,10 @@ every filter given applies:
 | `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
 | `in:<workspace>` | in the workspace with that name, ignoring case |
 | `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
-| `state:<state>` | in that state: `pending`, `active`, `unreachable` or `dormant`; `archived` keeps only archived links, `any` every state |
+| `state:<state>` | in that state: `pending`, `active` or `unreachable`; `expired` keeps only expired links, `any` every state |
 
-Without a `state:` filter archived links are left out. Any other `word:` is
+Without a `state:` filter expired links are left out; `state:dormant` and
+`state:archived` are refused as any unknown value is. Any other `word:` is
 a free word. A query of filters only lists the matching links in stream
 order, each snippet `[]`, with the stream's cursor.
 
@@ -692,7 +695,7 @@ they mean and not by the words they share with it. `?q=<question>`, at most
 200 characters, with `limit` (1 to 20, default 8). The question is written in
 the search query language: its free words are the question (they are joined by
 single spaces and embedded), and the prefix filters narrow the links exactly
-as in `GET /api/v1/search`, with archived links left out unless a `state:`
+as in `GET /api/v1/search`, with expired links left out unless a `state:`
 filter says otherwise.
 
 ```json
@@ -811,7 +814,7 @@ deletion) is deleted: it is neither listed nor offered to enrichment again.
 #### `GET /api/v1/topics`
 
 Every topic that has a link, with the number of its links in any state
-(archived included) and the added date of its newest link, newest first:
+(expired included) and the added date of its newest link, newest first:
 `200 {"items": [{"id", "name", "count", "newest_added_at"}], "next_cursor"}`,
 with `limit` (1 to 100, default 50) and `cursor`.
 
@@ -969,7 +972,7 @@ The whole library as one JSON document, sent as a download
 }
 ```
 
-Every link is there, in every state (archived included), as
+Every link is there, in every state (expired included), as
 `GET /api/v1/links/{id}` returns it, with `snapshot_url` and `reader_url`
 (`null` when nothing of that kind is stored). A workspace's `link_ids` are in
 its manual order. The document is sent as it is read: when reading fails
@@ -983,7 +986,7 @@ reports.
 The `snapshot_url` and `reader_url` of an export entry: the link's stored
 snapshot and reader view exactly as `GET /api/v1/links/{id}/snapshot` and
 `GET /api/v1/links/{id}/reader` serve them (same status, headers and body),
-archived links included, with the same credentials, but **recording no use**,
+expired links included, with the same credentials, but **recording no use**,
 so that fetching a backup does not reset the library's decay. A link of the
 user with nothing of that kind stored answers `404 {"error": "no_content"}`;
 another user's link and an unknown id answer `404 {"error": "not_found"}`.

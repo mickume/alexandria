@@ -51,10 +51,6 @@ describe('archiving a link by hand', () => {
     expect(await archivedAt(x)).toBe(new Date(T).toISOString());
     expect(await pinned(user)).toEqual([[y, 1]]);
     expect(r.json.workspaces.map((ws: { id: string }) => ws.id)).toEqual([w]);
-    const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items.map(
-      (l: { id: string }) => l.id,
-    );
-    expect(stream).not.toContain(x);
     setNow(T + 60_000);
     const again = await api('POST', `/api/v1/links/${x}/archive`, { as: user.session });
     expect(again.status).toBe(200);
@@ -123,43 +119,55 @@ describe('restoring a link', () => {
     const user = await signIn();
     const [pin = '', old = ''] = await seedLinks(user, [
       { url: 'https://pinned.example/', state: 'active', pinPosition: 1 },
-      { url: 'https://old.example/', state: 'active', useCount: 3 },
+      {
+        url: 'https://old.example/',
+        state: 'expired',
+        useCount: 3,
+        lastUsedAt: new Date(T - 300 * 86_400_000).toISOString(),
+      },
       {
         url: 'https://other.example/',
         state: 'active',
         lastUsedAt: new Date(T - 1000).toISOString(),
       },
     ]);
-    await api('POST', `/api/v1/links/${old}/archive`, { as: user.session });
+    await env.DB.prepare('UPDATE links SET expired_at = ? WHERE id = ?')
+      .bind(new Date(T - 10 * 86_400_000).toISOString(), old)
+      .run();
     const t = T + 5_000;
     setNow(t);
     const r = await api('POST', `/api/v1/links/${old}/restore`, { as: user.session });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({
       state: 'active',
+      expired_at: null,
       removal_at: null,
       last_used_at: new Date(t).toISOString(),
       use_count: 3,
+      points: 63,
     });
     const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items.map(
       (l: { id: string }) => l.id,
     );
     expect(stream.slice(0, 2)).toEqual([pin, old]);
-    expect((await api('GET', '/api/v1/archive', { as: user.session })).json.items).toEqual([]);
   });
 
-  it.each(['active', 'dormant', 'pending'])('is refused for a %s link', async (state) => {
+  it.each(['active', 'pending', 'unreachable'])('is refused for a %s link', async (state) => {
     setNow(T);
     const user = await signIn();
     const [id = ''] = await seedLinks(user, [{ url: 'https://here.example/', state }]);
-    const before = await env.DB.prepare('SELECT state, last_used_at FROM links WHERE id = ?')
+    const before = await env.DB.prepare(
+      'SELECT state, last_used_at, expired_at FROM links WHERE id = ?',
+    )
       .bind(id)
       .first();
     const r = await api('POST', `/api/v1/links/${id}/restore`, { as: user.session });
     expect(r.status).toBe(409);
-    expect(r.json).toEqual({ error: 'not_archived', message: 'this link is not archived' });
+    expect(r.json).toEqual({ error: 'not_expired', message: 'this link is not expired' });
     expect(
-      await env.DB.prepare('SELECT state, last_used_at FROM links WHERE id = ?').bind(id).first(),
+      await env.DB.prepare('SELECT state, last_used_at, expired_at FROM links WHERE id = ?')
+        .bind(id)
+        .first(),
     ).toEqual(before);
   });
 });
@@ -169,7 +177,7 @@ describe('another user’s link', () => {
     setNow(T);
     const a = await signIn('a@example.test', 'A');
     const b = await signIn('b@example.test', 'B');
-    const [link = ''] = await seedLinks(b, [{ url: 'https://b-only.example/', state: 'archived' }]);
+    const [link = ''] = await seedLinks(b, [{ url: 'https://b-only.example/', state: 'expired' }]);
     const origin = new FakeOrigin().byMethod('https://b-only.example/', {
       HEAD: () => new Response(null, { status: 200 }),
     });

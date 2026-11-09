@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { api, count, createToken, seedLinks, setNow, signIn } from '../test/helpers';
+import { readerKey, snapshotKey } from '../fetcher/snapshots';
+import { api, count, createToken, env, seedLinks, setNow, signIn } from '../test/helpers';
 
 async function addLink(session: string, url: string): Promise<string> {
   const r = await api('POST', '/api/v1/links', { as: session, body: { url } });
@@ -50,6 +51,42 @@ describe('opening a link', () => {
     const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
     expect(link.use_count).toBe(10);
     expect(await count('link_uses', 'link_id = ?', id)).toBe(10);
+  });
+});
+
+describe('using an expired link', () => {
+  it.each([
+    { label: 'an open', method: 'GET', path: (id: string) => `/api/v1/links/${id}/open` },
+    { label: 'a read', method: 'GET', path: (id: string) => `/api/v1/links/${id}/reader` },
+    {
+      label: 'a snapshot view',
+      method: 'GET',
+      path: (id: string) => `/api/v1/links/${id}/snapshot`,
+    },
+    { label: 'a re-paste', method: 'POST', path: () => '/api/v1/links' },
+  ])('makes it active again by $label', async ({ method, path }) => {
+    const user = await signIn();
+    const url = 'https://expired.example';
+    const [id = ''] = await seedLinks(user, [{ url, state: 'expired' }]);
+    await env.DB.prepare(
+      "UPDATE links SET expired_at = ?, content_kind = 'html', has_snapshot = 1 WHERE id = ?",
+    )
+      .bind('2026-01-01T00:00:00.000Z', id)
+      .run();
+    await env.SNAPSHOTS.put(snapshotKey(user.id, id), '<html><body>kept</body></html>');
+    await env.SNAPSHOTS.put(
+      readerKey(user.id, id),
+      JSON.stringify({ title: 'T', byline: null, html: '<p>kept</p>' }),
+    );
+    const r = await api(method, path(id), {
+      as: user.session,
+      ...(method === 'POST' ? { body: { url } } : {}),
+    });
+    expect(r.status).toBeLessThan(400);
+    const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect([link.state, link.expired_at]).toEqual(['active', null]);
+    const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items;
+    expect(stream.map((l: { id: string }) => l.id)).toContain(id);
   });
 });
 

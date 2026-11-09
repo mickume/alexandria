@@ -112,7 +112,7 @@ describe('GET /api/v1/passages', () => {
 
   it.each([
     { filter: '', expected: [1, 2, 3] },
-    { filter: 'state:archived', expected: [0] },
+    { filter: 'state:expired', expected: [0] },
     { filter: 'state:any', expected: [0, 1, 2, 3] },
     { filter: 'tag:infra', expected: [1] },
     { filter: 'in:Research', expected: [2] },
@@ -121,7 +121,7 @@ describe('GET /api/v1/passages', () => {
   ])('applies the filter "$filter" as search does', async ({ filter, expected }) => {
     const user = await signIn();
     const ids = await indexed(user, [
-      { url: 'https://a.example/', title: 'Alarm archived', state: 'archived' },
+      { url: 'https://a.example/', title: 'Alarm expired', state: 'expired' },
       { url: 'https://b.example/', title: 'Alarm tagged', tags: ['infra'] },
       { url: 'https://c.example/', title: 'Alarm pinned' },
       { url: 'https://docs.example/alarm', title: 'Alarm on docs' },

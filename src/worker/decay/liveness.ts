@@ -57,12 +57,9 @@ export async function checkLink(
   return probe(env, url, 'GET', timeoutMs);
 }
 
-/** Whether a link is one the weekly checks cover: kept, and active, dormant or pinned. */
+/** Whether a link is one the weekly checks cover: not expired, and active or pinned. */
 export function isCheckable(link: Pick<LinkRow, 'state' | 'pin_position'>): boolean {
-  return (
-    link.state !== 'archived' &&
-    (link.state === 'active' || link.state === 'dormant' || link.pin_position !== null)
-  );
+  return link.state !== 'expired' && (link.state === 'active' || link.pin_position !== null);
 }
 
 /** Whether a link's weekly check is due at `t`. */
@@ -96,7 +93,7 @@ async function recordCheck(
 }
 
 /**
- * The LIVENESS_QUEUE consumer. A message for a link deleted, archived or no
+ * The LIVENESS_QUEUE consumer. A message for a link deleted, expired or no
  * longer due is dropped. Anything that fails for Alexandria's own reasons
  * hands the message back to the queue and changes nothing.
  */
@@ -130,8 +127,8 @@ export async function handleLivenessBatch(
 }
 
 /**
- * Enqueues the weekly check of every link that is due: kept, active, dormant
- * or pinned, last checked (or, never checked, added) 7 days ago or more, and
+ * Enqueues the weekly check of every link that is due: not expired, and
+ * active or pinned, last checked (or, never checked, added) 7 days ago or more, and
  * not enqueued in the last 6 hours. The enqueue time is recorded in the same
  * statement that selects the links.
  */
@@ -141,7 +138,7 @@ export async function enqueueDueChecks(env: Env): Promise<void> {
     `UPDATE links SET check_enqueued_at = ?1 WHERE id IN (
        SELECT id FROM links
        WHERE user_id IN (SELECT id FROM users WHERE deletion_requested_at IS NULL)
-         AND state <> 'archived' AND (state IN ('active', 'dormant') OR pin_position IS NOT NULL)
+         AND state <> 'expired' AND (state = 'active' OR pin_position IS NOT NULL)
          AND COALESCE(last_checked_at, added_at) <= ?2
          AND (check_enqueued_at IS NULL OR check_enqueued_at <= ?3)
        LIMIT 1000)
@@ -170,8 +167,8 @@ checkRoutes.post('/:id/check', async (c) => {
   const id = c.req.param('id');
   const link = await getLink(c.env.DB, userId, id);
   if (!link) return notFound(c);
-  if (link.state === 'archived')
-    return limitReached(c, 'link_archived', 'archived links are not checked');
+  if (link.state === 'expired')
+    return limitReached(c, 'link_expired', 'expired links are not checked');
   const t = now();
   const claimed = await c.env.DB.prepare(
     `UPDATE links SET last_manual_check_at = ?1 WHERE id = ?2 AND user_id = ?3

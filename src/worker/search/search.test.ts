@@ -262,13 +262,15 @@ describe('GET /api/v1/search', () => {
     });
   });
 
-  it('matches without regard to accents and leaves archived links out', async () => {
+  it('matches without regard to accents and leaves expired links out', async () => {
     const user = await signIn();
     const cafe = await add(user, 'https://cafe.example/');
     await patch(user, cafe, { title: 'Café culture' });
-    const archived = await add(user, 'https://old.example/');
-    await patch(user, archived, { title: 'Cafe history' });
-    await api('POST', `/api/v1/links/${archived}/archive`, { as: user.session });
+    const expired = await add(user, 'https://old.example/');
+    await patch(user, expired, { title: 'Cafe history' });
+    await env.DB.prepare("UPDATE links SET state = 'expired', expired_at = ? WHERE id = ?")
+      .bind('2026-01-01T00:00:00.000Z', expired)
+      .run();
     expect(await foundIds(user, 'culture cafe')).toEqual([cafe]);
     expect(await foundIds(user, 'CAFÉ')).toEqual([cafe]);
   });
@@ -468,20 +470,20 @@ describe('filters', () => {
     },
   );
 
-  it('keeps archived links out unless state:archived or state:any asks for them', async () => {
+  it('keeps expired links out unless state:expired or state:any asks for them', async () => {
     const user = await signIn();
-    const [p, a, d, x] = await seedLinks(user, [
+    const [p, a, u, x] = await seedLinks(user, [
       { url: 'https://kiwi-p.example/', state: 'pending' },
       { url: 'https://kiwi-a.example/', state: 'active' },
-      { url: 'https://kiwi-d.example/', state: 'dormant' },
-      { url: 'https://kiwi-x.example/', state: 'archived' },
+      { url: 'https://kiwi-u.example/', state: 'unreachable' },
+      { url: 'https://kiwi-x.example/', state: 'expired' },
     ]);
     const sorted = async (q: string) => [...(await foundIds(user, q))].sort();
-    expect(await sorted('kiwi')).toEqual([p, a, d].sort());
-    expect(await sorted('kiwi state:archived')).toEqual([x]);
-    expect(await sorted('kiwi state:any')).toEqual([p, a, d, x].sort());
-    expect(await sorted('kiwi state:dormant')).toEqual([d]);
-    expect(await sorted('state:archived')).toEqual([x]);
+    expect(await sorted('kiwi')).toEqual([p, a, u].sort());
+    expect(await sorted('kiwi state:expired')).toEqual([x]);
+    expect(await sorted('kiwi state:any')).toEqual([p, a, u, x].sort());
+    expect(await sorted('kiwi state:unreachable')).toEqual([u]);
+    expect(await sorted('state:expired')).toEqual([x]);
   });
 
   it('lists a filter-only query in stream order without snippets', async () => {
@@ -499,7 +501,7 @@ describe('filters', () => {
     expect(r.json.workspaces).toEqual([]);
   });
 
-  it('follow every change to pins, workspaces and the archive', async () => {
+  it('follow every change to pins, workspaces and expiry', async () => {
     const user = await signIn();
     const id = await add(user, 'https://moving.example/');
     const has = async (q: string) => (await foundIds(user, q)).includes(id);
@@ -520,12 +522,14 @@ describe('filters', () => {
     await del(`/workspaces/${ws}/links/${id}`);
     expect(await has('in:work')).toBe(false);
 
-    expect(await has('state:archived')).toBe(false);
-    await post(`/links/${id}/archive`);
-    expect(await has('state:archived')).toBe(true);
+    expect(await has('state:expired')).toBe(false);
+    await env.DB.prepare("UPDATE links SET state = 'expired', expired_at = ? WHERE id = ?")
+      .bind('2026-01-01T00:00:00.000Z', id)
+      .run();
+    expect(await has('state:expired')).toBe(true);
     expect(await has('moving')).toBe(false);
     await post(`/links/${id}/restore`);
-    expect(await has('state:archived')).toBe(false);
+    expect(await has('state:expired')).toBe(false);
     expect(await has('moving')).toBe(true);
   });
 });

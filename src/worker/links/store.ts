@@ -204,7 +204,8 @@ export interface NewLink {
 
 /**
  * The statement that adds `link` for `userId` at time `at`, or boosts the link
- * the user already has for the same normalised URL. It relies on the unique
+ * the user already has for the same normalised URL, making it active again
+ * when it had expired. It relies on the unique
  * index on (user_id, url), so concurrent adds of one URL store one link; it
  * inserts only while the library is under LIBRARY_LIMIT, and returns no row
  * when the library is full.
@@ -220,7 +221,8 @@ function addStatement(db: D1Database, userId: string, link: NewLink, at: string,
           OR EXISTS (SELECT 1 FROM links WHERE user_id = ?2 AND url = ?3)
        ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at,
          updated_at = excluded.updated_at,
-         state = CASE WHEN links.state = 'dormant' THEN 'active' ELSE links.state END
+         state = CASE WHEN links.state = 'expired' THEN 'active' ELSE links.state END,
+         expired_at = NULL
        RETURNING *`,
     )
     .bind(id, userId, link.url, link.original, host, at, LIBRARY_LIMIT);

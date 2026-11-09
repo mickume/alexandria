@@ -62,7 +62,7 @@ describe('the search mode', () => {
     },
   );
 
-  it.each(['', '   ', 'tag:infra', 'state:archived', 'host:example.com'])(
+  it.each(['', '   ', 'tag:infra', 'state:expired', 'host:example.com'])(
     'answers the query "%s" of filters only or nothing as keyword does, with meaning used',
     async (query) => {
       const user = await signIn();
@@ -117,7 +117,12 @@ async function allPages(user: TestUser, query: string, mode: string, limit = 5) 
 describe('a search by meaning', () => {
   it('finds a link that shares no word with the query, and a query unrelated to everything finds nothing', async () => {
     const user = await signIn();
-    const [alarms] = await seed(user, [ARTICLES.alarms, ARTICLES.queues, ARTICLES.tomatoes]);
+    const [alarms] = await seed(user, [
+      ARTICLES.alarms,
+      ARTICLES.queues,
+      ARTICLES.tomatoes,
+      { ...ARTICLES.alarms, url: `${ARTICLES.alarms.url}-expired`, state: 'expired' },
+    ]);
 
     const keyword = await search(user, 'timer delay', '&mode=keyword');
     const hybrid = await search(user, 'timer delay', '&mode=hybrid');
@@ -224,14 +229,14 @@ describe('a search by meaning', () => {
 
   it.each([
     { suffix: '', expected: [1, 2, 3] },
-    { suffix: 'state:archived', expected: [0] },
+    { suffix: 'state:expired', expected: [0] },
     { suffix: 'tag:infra', expected: [1] },
     { suffix: 'in:Research', expected: [2] },
     { suffix: 'host:docs.example', expected: [3] },
   ])('applies the filter "$suffix" to links found by meaning', async ({ suffix, expected }) => {
     const user = await signIn();
     const ids = await seed(user, [
-      { url: 'https://a.example/', title: 'Alarm archived', text: null, state: 'archived' },
+      { url: 'https://a.example/', title: 'Alarm expired', text: null, state: 'expired' },
       { url: 'https://b.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
       { url: 'https://c.example/', title: 'Alarm filed', text: null },
       { url: 'https://docs.example/alarm', title: 'Alarm on docs', text: null },
@@ -469,7 +474,7 @@ describe('hybrid search over 10,000 links', () => {
             `https://${host}/p${i}`,
             host,
             text,
-            i % 7 === 0 ? 'archived' : 'active',
+            i % 7 === 0 ? 'expired' : 'active',
             at,
             at,
             i < 20 ? i + 1 : null,

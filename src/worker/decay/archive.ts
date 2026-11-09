@@ -90,14 +90,14 @@ archiveLinkRoutes.post('/:id/restore', async (c) => {
   const at = now().toISOString();
   // Restoring is a boost, not a use: last used is now, the use count stays.
   const restored = await c.env.DB.prepare(
-    `UPDATE links SET state = 'active', archived_at = NULL, last_used_at = ?1, updated_at = ?1
-     WHERE id = ?2 AND user_id = ?3 AND state = 'archived' RETURNING id`,
+    `UPDATE links SET state = 'active', expired_at = NULL, last_used_at = ?1, updated_at = ?1
+     WHERE id = ?2 AND user_id = ?3 AND state = 'expired' RETURNING id`,
   )
     .bind(at, id, userId)
     .first();
   if (!restored) {
     if (!(await getLink(c.env.DB, userId, id))) return notFound(c);
-    return limitReached(c, 'not_archived', 'this link is not archived');
+    return limitReached(c, 'not_expired', 'this link is not expired');
   }
   return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
 });
