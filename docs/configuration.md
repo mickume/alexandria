@@ -62,8 +62,8 @@ Two ways deploy the same Worker:
   and, inside Workers Builds (`WORKERS_CI=1`), gets the account ready with
   `scripts/provision.sh`. Wrangler then bundles the Worker itself. The default
   Workers Builds settings (no build command, deploy command
-  `npx wrangler deploy`, and `npx wrangler versions upload` for other
-  branches) work as they are.
+  `npx wrangler deploy`, and `npx wrangler preview` for other branches) work
+  as they are.
 - **`npm run deploy`** (`scripts/deploy.sh`) from a checkout, with
   `CLOUDFLARE_API_TOKEN` set (and `CLOUDFLARE_ACCOUNT_ID` when the token cannot
   list its accounts): builds with Vite, runs `scripts/provision.sh`, and deploys
@@ -80,6 +80,15 @@ Set the per-deployment settings once (above), with the secrets below, and add
 `<the site's origin>/auth/google/callback` (for example
 `https://alexandria.<subdomain>.workers.dev/auth/google/callback`) as an
 authorised redirect URI of the Google OAuth client.
+
+### Previews
+
+Workers Builds builds every branch other than `main` with
+`npx wrangler preview`, which runs only when `wrangler.jsonc` has a `previews`
+block. A Preview gets only what that block lists: the public endpoints of
+`vars`, and none of the production D1 database, R2 bucket, queues or Durable
+Object, so that a branch never touches real data. A Preview therefore serves
+the website, but signing in and the API do not work in it.
 
 ## Development environment
 
