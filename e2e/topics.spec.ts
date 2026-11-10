@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, cardOf, fakeAi, saveAiKey, signIn } from './helpers';
+import { addLinkIds, cardOf, d1, fakeAi, saveAiKey, signIn } from './helpers';
 
 /** Files the link `id` under `topic`, a name or a path, through the API. */
 async function fileUnder(page: Page, id: string, topic: string): Promise<void> {
@@ -125,4 +125,37 @@ test('a new link is enriched into a new sub-topic of an existing topic', async (
     .at(-1)!;
   expect(enrichment.body).toContain('Software engineering');
   expect(enrichment.body).not.toContain('Software engineering (');
+});
+
+test('the owner splits a topic of 25 links from the Topics page', async ({ page }) => {
+  await fakeAi.splitInto(['Novels', 'Poetry', 'Essays']);
+  await signIn(page);
+  await saveAiKey(page);
+  const ids = await addLinkIds(
+    page,
+    Array.from({ length: 25 }, (_, i) => `https://shelf.example/book-${i}`),
+  );
+  for (const id of ids) await fileUnder(page, id, 'Bookshelf');
+  // Filed by hand, the links would count as the owner's edits, which a split leaves.
+  d1(
+    `UPDATE links SET edited_fields = '[]' WHERE id IN (${ids.map((id) => `'${id}'`).join(', ')})`,
+  );
+
+  await page.goto('/topics');
+  await row(page, 'Bookshelf').getByRole('button', { name: 'Split' }).click();
+  for (const [name, count] of [
+    ['Essays', '8'],
+    ['Novels', '9'],
+    ['Poetry', '8'],
+  ] as const) {
+    await expect(row(page, name)).toHaveAttribute('data-level', '2', { timeout: 30_000 });
+    await expect(row(page, name).getByRole('cell').nth(1)).toHaveText(count);
+  }
+  const order = await names(page);
+  const at = order.indexOf('Bookshelf');
+  expect(order.slice(at, at + 4)).toEqual(['Bookshelf', 'Essays', 'Novels', 'Poetry']);
+
+  await page.goto('/search?q=topic%3Apoetry');
+  const results = page.getByRole('list', { name: 'Results' });
+  await expect(results.getByRole('article')).toHaveCount(8);
 });
