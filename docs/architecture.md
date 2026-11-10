@@ -32,6 +32,7 @@ browser ──► Worker (src/worker/index.ts)
   - `links/`: URL normalisation (`normalize.ts`), the link store with adding,
     pinning and deleting (`store.ts`), the stream (`stream.ts`), uses and
     history (`use.ts`), and the routes.
+  - `stats/`: the library statistics (`stats.ts`) and their route.
 
 The stream (`links/stream.ts`, `listStream`) lists the pinned links by pin
 position, then every other link by its points descending, then `last_used_at`
@@ -589,6 +590,20 @@ use recording are the API's by construction. The server registers the tools
 with `registerTool` (for `tools/list`) and handles `tools/call` itself, so
 that argument errors and unexpected failures are tool errors in the API's
 envelope.
+
+## Statistics
+
+`GET /api/v1/stats` (`stats/routes.ts`, `stats/stats.ts`, `computeStats`)
+computes the owner's statistics live from the rows the library stores; nothing
+is precomputed or kept in step. The answer is a list of sections (`SECTIONS`),
+each naming the read-only statements it needs and how it turns their rows into
+its part of the answer. Every statement of every section runs in one D1 batch
+at one instant, after one shared count over the owner's links (`linkCounts`),
+so the numbers describe one moment and cost one round trip, even at the
+20,000-link limit. Every statement is bound to the owner's id. An error in any
+statement or section reaches `app.onError`, which answers
+`500 {"error": "internal"}`: there is no partial answer. `statsHooks` is the
+test seam that makes a section fail.
 
 ## Export and account deletion
 

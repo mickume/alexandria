@@ -283,6 +283,65 @@ export const PassageResults = z.strictObject({
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
 
+const count = z.number().int();
+
+/** The owner's library statistics, computed at the time of the request. */
+export const Stats = z.strictObject({
+  library: z.strictObject({
+    total: count,
+    by_state: z.strictObject({
+      pending: count,
+      active: count,
+      unreachable: count,
+      expired: count,
+      archived: count,
+    }),
+    pinned: count,
+    in_workspace: count.describe('Links in at least one workspace'),
+    limit: count.describe('The most links a library holds'),
+  }),
+  content: z.strictObject({
+    by_kind: z.strictObject({ html: count, pdf: count, other: count, unfetched: count }),
+    with_snapshot: count,
+    reader_empty: count.describe('Links whose reader view has no text'),
+  }),
+  topics: z.strictObject({
+    total: count,
+    by_level: z.strictObject({ '1': count, '2': count, '3': count }),
+    links_without_topic: count,
+    largest: z
+      .array(
+        z.strictObject({
+          id: z.string(),
+          name: z.string(),
+          path: z.array(z.string()).describe('The names from the top level down'),
+          count: count.describe('Links filed directly under the topic'),
+        }),
+      )
+      .describe('At most 10, most links first, ties by name'),
+  }),
+  tags: z.strictObject({
+    total: count,
+    used_once: count,
+    links_without_tags: count,
+    top: z
+      .array(z.strictObject({ id: z.string(), name: z.string(), count }))
+      .describe('At most 10, most links first, ties by name'),
+  }),
+  workspaces: z.strictObject({
+    total: count,
+    largest: z
+      .array(z.strictObject({ id: z.string(), name: z.string(), count }))
+      .describe('At most 10, most links first, ties by name'),
+  }),
+  hosts: z.strictObject({
+    distinct: count,
+    top: z
+      .array(z.strictObject({ host: z.string(), count }))
+      .describe('At most 10, most links first, ties by host'),
+  }),
+});
+
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');
 
 /** The answers any authenticated operation may give, added to each. */
@@ -1282,6 +1341,17 @@ export const operations: Operation[] = [
     operationId: 'unpinLink',
     summary: 'Unpin the link; it returns to its place by points',
     responses: { 200: { description: 'The unpinned link', schema: Link } },
+  },
+  {
+    method: 'get',
+    path: '/stats',
+    operationId: 'getStats',
+    summary:
+      'The owner’s library statistics, computed at the time of the request; query parameters are ignored',
+    responses: {
+      200: { description: 'Every section of the statistics', schema: Stats },
+      500: error('A section could not be computed: {"error": "internal"}; no partial result'),
+    },
   },
 ];
 

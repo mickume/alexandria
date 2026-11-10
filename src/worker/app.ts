@@ -20,6 +20,7 @@ import { passageRoutes } from './meaning/passages';
 import { relatedRoutes } from './meaning/related';
 import { mcpRoutes } from './mcp/server';
 import { searchRoutes, tagRoutes, topicRoutes } from './search/routes';
+import { statsRoutes } from './stats/routes';
 import { workspaceRoutes } from './workspaces/routes';
 
 /** The JSON API under /api/v1/; every route needs an authenticated user. */
@@ -53,6 +54,7 @@ function createApi(): Hono<AppEnv> {
   api.route('/ask', askRoutes);
   api.route('/topics', topicRoutes);
   api.route('/tags', tagRoutes);
+  api.route('/stats', statsRoutes);
   api.all('*', notFound);
   return api;
 }

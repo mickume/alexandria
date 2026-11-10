@@ -1134,6 +1134,65 @@ invalid line (`line 57: not-a-url`), the workspace
 Both answer `404 {"error": "not_found"}` for an id that is not one of the
 user's imports.
 
+### Statistics
+
+#### `GET /api/v1/stats`
+
+The owner's library statistics, computed at the time of the request from what
+the library stores, as one JSON object; query parameters are ignored and
+nothing is changed. Every count covers only the owner's own links, and a link
+counts in every group it belongs to. A failure while computing any section
+answers `500 {"error": "internal"}`, with no partial result.
+
+```json
+{
+  "library": {
+    "total": 8,
+    "by_state": { "pending": 2, "active": 3, "unreachable": 1, "expired": 1, "archived": 1 },
+    "pinned": 1,
+    "in_workspace": 1,
+    "limit": 20000
+  },
+  "content": {
+    "by_kind": { "html": 2, "pdf": 1, "other": 1, "unfetched": 4 },
+    "with_snapshot": 1,
+    "reader_empty": 1
+  },
+  "topics": {
+    "total": 3,
+    "by_level": { "1": 1, "2": 1, "3": 1 },
+    "links_without_topic": 4,
+    "largest": [
+      { "id": "…", "name": "Testing", "path": ["Software engineering", "Testing"], "count": 2 }
+    ]
+  },
+  "tags": {
+    "total": 2,
+    "used_once": 1,
+    "links_without_tags": 5,
+    "top": [{ "id": "…", "name": "rust", "count": 2 }]
+  },
+  "workspaces": { "total": 1, "largest": [{ "id": "…", "name": "Trip", "count": 1 }] },
+  "hosts": { "distinct": 3, "top": [{ "host": "example.com", "count": 4 }] }
+}
+```
+
+- `library`: every link (`total`), in each state (every state present, adding
+  up to `total`), pinned, in at least one workspace, and the 20,000-link limit.
+- `content`: links by `content_kind` (`unfetched` for none yet), with a
+  snapshot, and with an empty reader view.
+- `topics`: every topic, by level, links with no topic, and the 10 topics with
+  the most links filed directly under them, each with its path from the top
+  level down.
+- `tags`: every tag, tags on exactly one link, links with no tag, and the 10
+  tags on the most links.
+- `workspaces`: every workspace and the 10 with the most links.
+- `hosts`: the distinct hosts and the 10 with the most links.
+
+Every list holds at most 10 entries, most first; ties are broken by name (or
+host), A to Z. An empty library answers every count 0 (`limit` aside) and
+every list `[]`.
+
 ### Export
 
 #### `GET /api/v1/export`
