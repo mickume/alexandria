@@ -8,6 +8,7 @@ import {
   deliverEnrichments,
   deliverFetches,
   env,
+  placeTopic,
   recordEnrichQueue,
   recordFetchQueue,
   seedLinks,
@@ -55,14 +56,27 @@ describe('editing a link', () => {
     { body: { topic: '' }, error: 'invalid_topic', field: 'topic' },
     { body: { topic: 't'.repeat(101) }, error: 'invalid_topic', field: 'topic' },
     { body: { title: 'ok', topic: '' }, error: 'invalid_topic', field: 'topic' },
+    { body: { topic: 'A > B > C > D' }, error: 'invalid_topic', field: 'topic' },
+    { body: { topic: 'A > > B' }, error: 'invalid_topic', field: 'topic' },
+    { body: { topic: 'A >' }, error: 'invalid_topic', field: 'topic' },
+    { body: { topic: '> A' }, error: 'invalid_topic', field: 'topic' },
+    { body: { topic: `A > ${'t'.repeat(101)}` }, error: 'invalid_topic', field: 'topic' },
   ])('refuses $body whole', async ({ body, error, field }) => {
     const user = await signIn();
     const [id = ''] = await seedLinks(user, [{ url: URL, state: 'active' }]);
     const before = await get(user, id);
     const r = await patch(user, id, body);
     expect(r.status).toBe(400);
-    expect(r.json).toEqual({ error, field, message: expect.any(String) });
+    expect(r.json).toEqual({
+      error,
+      field,
+      message:
+        error === 'invalid_topic'
+          ? 'a topic or a path of up to three topics separated by >, each 1 to 100 characters'
+          : expect.any(String),
+    });
     expect(await get(user, id)).toEqual(before);
+    expect(await count('topics', 'user_id = ?', user.id)).toBe(0);
   });
 
   it.each([
@@ -114,6 +128,64 @@ describe('editing a link', () => {
       (await count('tags', 'user_id = ?', user.id)) +
       (await count('topics', 'user_id = ?', user.id));
     expect(after - before).toBe(created);
+  });
+});
+
+describe('a typed topic path', () => {
+  it.each([
+    { topic: 'Gardening', path: ['Gardening'] },
+    { topic: 'software ENGINEERING', path: ['Software engineering'] },
+    { topic: 'Software engineering > Unit tests', path: ['Software engineering', 'Unit tests'] },
+    { topic: 'Hobbies > Woodwork > Joinery', path: ['Hobbies', 'Woodwork', 'Joinery'] },
+    { topic: 'SE > Mocks', path: ['Software engineering', 'Mocks'] },
+    { topic: 'Testings', path: ['Testings'] },
+    { topic: '  Software engineering>Testing  ', path: ['Software engineering', 'Testing'] },
+    { topic: 'Cooking > Testing', path: ['Software engineering', 'Testing'] },
+    {
+      topic: 'Cooking > Testing > Mutation',
+      path: ['Software engineering', 'Testing', 'Mutation'],
+    },
+    { topic: 'Fuzzing > Corpus', path: ['Software engineering', 'Testing', 'Corpus'] },
+  ])('files the link under $topic as $path', async ({ topic, path }) => {
+    const user = await signIn();
+    const [se = '', testing = '', fuzzing = '', cooking = '', id = ''] = await seedLinks(user, [
+      { url: 'https://se.example/' },
+      { url: 'https://testing.example/' },
+      { url: 'https://fuzzing.example/' },
+      { url: 'https://cooking.example/' },
+      { url: URL },
+    ]);
+    await patch(user, se, { topic: 'Software engineering' });
+    await patch(user, testing, { topic: 'Testing' });
+    await patch(user, fuzzing, { topic: 'Fuzzing' });
+    await patch(user, cooking, { topic: 'Cooking' });
+    await placeTopic(user, 'Testing', 'Software engineering');
+    await placeTopic(user, 'Fuzzing', 'Testing');
+    await env.DB.prepare(
+      `INSERT INTO topic_aliases (user_id, name, topic_id)
+       SELECT user_id, 'SE', id FROM topics WHERE user_id = ? AND name = 'Software engineering'`,
+    )
+      .bind(user.id)
+      .run();
+
+    const r = await patch(user, id, { topic });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({
+      topic: path.at(-1),
+      topic_path: path,
+      edited_fields: ['topic'],
+    });
+    const names = await env.DB.prepare(
+      'SELECT lower(name) AS name, COUNT(*) AS n FROM topics WHERE user_id = ? GROUP BY lower(name) HAVING n > 1',
+    )
+      .bind(user.id)
+      .all();
+    expect(names.results).toEqual([]);
+    expect((await get(user, fuzzing)).topic_path).toEqual([
+      'Software engineering',
+      'Testing',
+      'Fuzzing',
+    ]);
   });
 });
 

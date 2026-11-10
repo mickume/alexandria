@@ -402,14 +402,25 @@ for here is not retried.
 
 Edits any of `title` (1 to 500 characters), `summary` (at most 2,000),
 `tags` (a list of at most 20 names, each non-empty once normalised as
-enrichment's tags are) and `topic` (1 to 100 characters). Tag and topic
-names reuse the user's existing ones (case ignored, spaces read as hyphens).
-Each given field is recorded in `edited_fields` for good: later enrichment,
-re-runs and refreshes never overwrite it.
+enrichment's tags are) and `topic`: one topic name, or a path of up to three
+names separated by `>`, such as `"Software engineering > Testing"`, each name
+1 to 100 characters (spaces around `>` are trimmed). Tag names reuse the
+user's existing ones (case ignored, spaces read as hyphens). A topic path is
+resolved name by name, from the first: a name that is one of the user's topics
+or an alias of one, matched the same way, is that topic where it already is in
+the tree (it is never moved), and the next name belongs under it; any other
+name is created as typed under the topic before it, or at the top level for
+the first name. A new topic that would be at level 4, under an existing
+level-3 topic, is created beside that topic instead. The link is filed under
+the topic of the last name. Each given field is recorded in `edited_fields`
+for good: later enrichment, re-runs and refreshes never overwrite it.
 
 - `200 <link>`
 - `400 {"error": "invalid_title" | "invalid_summary" | "invalid_tags" | "invalid_topic", "field", "message"}`;
-  nothing is changed when any field is invalid.
+  nothing is changed when any field is invalid. A topic of more than three
+  names, an empty name or one over 100 characters is `invalid_topic` with the
+  message "a topic or a path of up to three topics separated by >, each 1 to
+  100 characters".
 
 ### Firecrawl settings
 

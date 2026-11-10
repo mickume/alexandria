@@ -54,17 +54,7 @@ async function resolve(
     .bind(userId)
     .all<{ id: string; name: string }>();
   const byKey = new Map(rows.results.map((r) => [nameKey(r.name), r.id]));
-  // Each row under its own near key; the first name in order wins a shared key.
-  const byNearKey = new Map<string, string>();
-  const addNear = (name: string, id: string) => {
-    const [own = ''] = nearKeys(name);
-    if (!byNearKey.has(own)) byNearKey.set(own, id);
-  };
-  if (near) for (const r of rows.results) addNear(r.name, r.id);
-  const nearId = (name: string) => {
-    const k = nearKeys(name).find((key) => byNearKey.has(key));
-    return k === undefined ? undefined : byNearKey.get(k);
-  };
+  const { add: addNear, find: nearId } = nearIndex(near ? rows.results : []);
   const ids: string[] = [];
   for (const name of names) {
     const key = nameKey(name);
@@ -87,15 +77,101 @@ async function resolve(
   return ids;
 }
 
-/** The id of the user's topic named `name` (or, with `near`, a near name), created when there is none. */
+/**
+ * Rows by their near keys (nearKeys): each row under its own, the first in
+ * order winning a shared key, and a name's id found under any of its keys.
+ */
+function nearIndex(rows: { id: string; name: string }[]) {
+  const byNearKey = new Map<string, string>();
+  const add = (name: string, id: string) => {
+    const [own = ''] = nearKeys(name);
+    if (!byNearKey.has(own)) byNearKey.set(own, id);
+  };
+  for (const r of rows) add(r.name, r.id);
+  const find = (name: string) => {
+    const k = nearKeys(name).find((key) => byNearKey.has(key));
+    return k === undefined ? undefined : byNearKey.get(k);
+  };
+  return { add, find };
+}
+
+/** The deepest level of the topic tree: a top-level topic is level 1. */
+export const TOPIC_LEVELS = 3;
+
+/** The id of the user's topic named `name` (or, with `near`, a near name), created at the top level when there is none. */
 export async function resolveTopic(
   db: D1Database,
   userId: string,
   name: string,
   options: ResolveOptions = {},
 ): Promise<string> {
-  const [id] = await resolve(db, 'topics', userId, [name], options);
-  return id!;
+  return resolveTopicPath(db, userId, [name], options);
+}
+
+/**
+ * The id of the topic a path of names leads to in the user's topic tree,
+ * resolving the names from the first. A name equal to a topic's name or to an
+ * alias (nameKey), or with `near` a near name, is that topic wherever it is
+ * in the tree, and the next name belongs under it. Any other name is created
+ * as given under the topic the name before it led to (at the top level for
+ * the first), or, where that would be below the third level, beside it.
+ */
+export async function resolveTopicPath(
+  db: D1Database,
+  userId: string,
+  names: string[],
+  { near = false }: ResolveOptions = {},
+): Promise<string> {
+  const [rows, aliases] = await db.batch<{ id: string; name: string; parent_id: string | null }>([
+    db
+      .prepare('SELECT id, name, parent_id FROM topics WHERE user_id = ? ORDER BY name')
+      .bind(userId),
+    db
+      .prepare(
+        'SELECT name, topic_id AS id, NULL AS parent_id FROM topic_aliases WHERE user_id = ?',
+      )
+      .bind(userId),
+  ]);
+  const topics = rows?.results ?? [];
+  const parents = new Map(topics.map((t) => [t.id, t.parent_id]));
+  const byKey = new Map(topics.map((t) => [nameKey(t.name), t.id]));
+  const byAlias = new Map((aliases?.results ?? []).map((a) => [nameKey(a.name), a.id]));
+  const { add: addNear, find: nearId } = nearIndex(near ? topics : []);
+  const level = (id: string | null): number => {
+    let n = 0;
+    for (let at = id; at !== null && at !== undefined; at = parents.get(at) ?? null) n++;
+    return n;
+  };
+
+  let parent: string | null = null;
+  for (const name of names) {
+    const key = nameKey(name);
+    let id = byKey.get(key) ?? byAlias.get(key) ?? (near ? nearId(name) : undefined);
+    if (!id) {
+      const under: string | null =
+        parent !== null && level(parent) >= TOPIC_LEVELS ? (parents.get(parent) ?? null) : parent;
+      const [, found]: D1Result<{ id: string; parent_id: string | null }>[] = await db.batch<{
+        id: string;
+        parent_id: string | null;
+      }>([
+        db
+          .prepare(
+            'INSERT OR IGNORE INTO topics (id, user_id, name, parent_id) VALUES (?, ?, ?, ?)',
+          )
+          .bind(crypto.randomUUID(), userId, name, under),
+        db
+          .prepare('SELECT id, parent_id FROM topics WHERE user_id = ? AND name = ? COLLATE NOCASE')
+          .bind(userId, name),
+      ]);
+      const row: { id: string; parent_id: string | null } = found!.results[0]!;
+      id = row.id;
+      parents.set(id, row.parent_id);
+      byKey.set(key, id);
+      if (near) addNear(name, id);
+    }
+    parent = id;
+  }
+  return parent!;
 }
 
 /**

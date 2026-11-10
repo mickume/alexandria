@@ -1116,7 +1116,14 @@ export const operations: Operation[] = [
       title: z.string().min(1).max(500).optional(),
       summary: z.string().max(2000).optional(),
       tags: z.array(z.string()).max(20).optional(),
-      topic: z.string().min(1).max(100).optional(),
+      topic: z
+        .string()
+        .min(1)
+        .max(306)
+        .optional()
+        .describe(
+          'A topic name, or a path of up to three names separated by >, each 1 to 100 characters',
+        ),
       note: z.string().optional().describe('Markdown, at most 20,000 characters; empty clears it'),
     }),
     responses: {
