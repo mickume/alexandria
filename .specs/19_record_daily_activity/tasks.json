@@ -1,0 +1,223 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "19",
+  "spec_name": "record_daily_activity",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/stats src/web/pages/Stats.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "18",
+      "reason": "extends the stats module, its routes and the Stats page"
+    },
+    {
+      "spec": "01",
+      "reason": "counts links added, used and deleted"
+    },
+    {
+      "spec": "02",
+      "reason": "counts fetch events by outcome"
+    },
+    {
+      "spec": "03",
+      "reason": "counts enrichment results and records the provider calls' tokens"
+    },
+    {
+      "spec": "05",
+      "reason": "counts decay's expirations and removals and records the size in the hourly run"
+    },
+    {
+      "spec": "07",
+      "reason": "counts links added by an import"
+    },
+    {
+      "spec": "09",
+      "reason": "account deletion removes the daily records"
+    },
+    {
+      "spec": "12",
+      "reason": "counts Ask questions and records Ask's provider call"
+    },
+    {
+      "spec": "14",
+      "reason": "counts archive, unarchive and restore"
+    },
+    {
+      "spec": "17",
+      "reason": "records the split's provider call"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Store the daily record and serve GET /api/v1/stats/history",
+      "criteria": [
+        "REQ-6"
+      ],
+      "steps": [
+        "Create src/worker/stats/history.test.ts with the task's behaviours (the days answered, recorded_since and null days, invalid days, 401 and owner isolation, removal with the account) and confirm they fail; record events in them by writing counters through the new recorder directly until later tasks wire it into the routes",
+        "Add the next free migration (migrations/0018_daily_stats.sql unless another has taken it) with a table of one row per user and UTC day holding every counter and the six size columns (null until recorded), and a table of one row per user, day, purpose and model holding calls, input_tokens, output_tokens and calls_without_usage; both with a user_id column, so account deletion (src/worker/account/deletion.ts, which finds tables by their user_id column) removes them",
+        "Create src/worker/stats/daily.ts: the UTC day of a stored time (its first 10 characters); a function that returns a D1 statement adding n to one counter of a user's day (an upsert), so callers put it in the same batch as the change it counts; a statement form that adds only when a given SQL condition holds, for counting a row the same batch inserts; and the read of a range of days",
+        "Add GET /history to statsRoutes in src/worker/stats/routes.ts: days defaults to 30, must match a whole number from 1 to 365, else 400 invalid_days with field 'days' and the message 'days is a whole number from 1 to 365'",
+        "Answer one entry per UTC day from days−1 ago to today, oldest first, filling days without a row with 0 counters, size null and ai []; recorded_since is the owner's earliest recorded day or null, and every counter before it is null",
+        "Declare the route and its 200, 400 and 401 answers in src/worker/api/openapi.ts",
+        "Document the route in docs/api.md and the daily record (what is counted, when, UTC days, never decreasing) in docs/architecture.md beside the statistics section"
+      ],
+      "touches": [
+        "migrations/0018_daily_stats.sql",
+        "src/worker/stats/daily.ts",
+        "src/worker/stats/routes.ts",
+        "src/worker/stats/history.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Count the owner's link events",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Create src/worker/stats/daily.test.ts with the task's behaviours (describe 'counting link events') and confirm they fail",
+        "In src/worker/links/store.ts make adding a link a batch: before the upsert of addStatement, a statement adding 1 to restored when the user's link with that URL exists in the expired state; after it, a statement adding 1 to added when a link with the new id exists; addLinks puts every link's statements in its one batch",
+        "In src/worker/imports/imports.ts count each link importLines inserts into added in the same batch as the insert",
+        "In recordUse (src/worker/links/use.ts) add 1 to used, and 1 to restored when the link was expired before the use, in the same batch",
+        "In src/worker/decay/archive.ts count POST .../restore into restored, POST .../archive into archived and POST .../unarchive into unarchived, each conditioned on the update having changed the link, in the same batch",
+        "In deleteLink (src/worker/links/store.ts) add 1 to deleted in the batch, conditioned on the link existing before the delete",
+        "Count each event on the UTC day of the time stored with it"
+      ],
+      "touches": [
+        "src/worker/links/store.ts",
+        "src/worker/links/use.ts",
+        "src/worker/imports/imports.ts",
+        "src/worker/decay/archive.ts",
+        "src/worker/stats/daily.test.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Count decay's expirations and removals",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/daily.test.ts (describe 'counting decay') and confirm they fail",
+        "In evaluateDecay (src/worker/decay/decay.ts) add to the batch, before the expiry statement, a statement adding to expired the number of links the expiry statement will expire (the same conditions), and before the removal statements one adding to removed the number of removable links, so the counts commit or roll back with the evaluation",
+        "Keep the conditions in one place, shared by the count and the statement it counts, so they cannot differ"
+      ],
+      "touches": [
+        "src/worker/decay/decay.ts",
+        "src/worker/stats/daily.test.ts"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Count fetches, enrichments and Ask questions",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/daily.test.ts (describe 'counting background work') and confirm they fail",
+        "Wherever eventStatement's insert runs (src/worker/fetcher/queue.ts, and the archive refresh in src/worker/decay/archive.ts), add 1 to fetch_ok or fetch_failed in the same batch, conditioned on the event row being inserted, so a redelivered message that writes no event counts nothing",
+        "In src/worker/enrich/queue.ts add 1 to enriched in storeEnrichment's batch and 1 to enrichment_failed where recordFailedEnrichment stores the failed status",
+        "In askRoutes (src/worker/meaning/ask.ts) add 1 to asks once the question has passed validation and the key checks, before the answer starts streaming"
+      ],
+      "touches": [
+        "src/worker/fetcher/queue.ts",
+        "src/worker/decay/archive.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/meaning/ask.ts",
+        "src/worker/stats/daily.test.ts"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Record the end-of-day library size",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/daily.test.ts (describe 'end-of-day size') and confirm they fail",
+        "In runScheduled (src/worker/decay/cron.ts), when the run starts between 00:00 and 01:00 UTC, record for every user without deletion_requested_at the total and per-state counts of their links under the previous UTC day, before decay runs, writing only where that day's size is still null",
+        "Never write a size for a day outside that window"
+      ],
+      "touches": [
+        "src/worker/decay/cron.ts",
+        "src/worker/stats/daily.ts",
+        "src/worker/stats/daily.test.ts"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Record AI token usage",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Teach FakeAi (src/worker/test/ai.ts) and the fake streams (src/worker/test/streams.ts) to report a usage the test sets, including Anthropic cache tokens and an OpenRouter stream's last-chunk usage or none; keep the e2e fake (e2e/fake-ai.ts) reporting usage on every answer",
+        "Add the task's behaviours to src/worker/stats/daily.test.ts (describe 'AI usage') and confirm they fail",
+        "In src/worker/enrich/providers.ts read the usage of every answer: Anthropic message.usage (input_tokens + cache_creation_input_tokens + cache_read_input_tokens, output_tokens; for streamAnswer the finalMessage), OpenRouter usage.prompt_tokens and completion_tokens, and for an OpenRouter stream the usage of its last chunk (ask for it with the request's usage option if the API needs it, confirming against OpenRouter's documentation since the shape is unverified)",
+        "Give testKey, enrichWith, splitWith and streamAnswer a purpose (key_test, enrich, split, ask) and the user's id, and after each call ends record one call under the UTC day, purpose and ai model, adding the tokens, or calls_without_usage when there are none (failures and timeouts included)",
+        "Record outside the call's own result: catch and log a failed usage write so the enrichment, answer, split or key check is unchanged; expose a test hook that makes the write throw",
+        "Document what is recorded in docs/architecture.md's AI section"
+      ],
+      "touches": [
+        "src/worker/test/ai.ts",
+        "src/worker/test/streams.ts",
+        "e2e/fake-ai.ts",
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/routes.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/meaning/ask.ts",
+        "src/worker/stats/daily.ts",
+        "src/worker/stats/daily.test.ts",
+        "docs/architecture.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Show the Trends section on the Stats page",
+      "criteria": [
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/web/pages/Stats.test.tsx (describe 'Trends') and confirm they fail",
+        "Add the history response type and stats.history(days) to src/web/api.ts",
+        "Add the Trends section after Activity in src/web/pages/Stats.tsx with a range picker (Last 7, 30, 90, 365 days; 30 by default) that requests the history again on each pick, loading independently of GET /api/v1/stats",
+        "Draw added against removed, expired and deleted per day; uses per day; fetch success rate per day (fetch_ok over fetch_ok + fetch_failed, no bar on a day without fetches); enrichments and Ask questions per day; the size per day as a line per state; and AI tokens per day as stacked input and output bars, reusing package 18's bar chart component and adding a line variant, each with its screen-reader table",
+        "Below the token chart, a table of the range's totals by purpose and model (calls, input tokens, output tokens)",
+        "Show days before recorded_since as an empty area labelled 'not recorded yet', the caption 'includes links that have since been removed', and on failure \"Couldn't load trends\" with Try again inside the section only",
+        "Extend e2e/stats.spec.ts with the package's two browser paths"
+      ],
+      "touches": [
+        "src/web/api.ts",
+        "src/web/pages/Stats.tsx",
+        "src/web/pages/Stats.test.tsx",
+        "src/web/components/BarChart.tsx",
+        "src/web/styles.css",
+        "e2e/stats.spec.ts"
+      ],
+      "depends_on": [
+        1
+      ]
+    }
+  ]
+}

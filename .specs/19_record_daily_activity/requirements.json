@@ -1,0 +1,521 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "19",
+  "spec_name": "record_daily_activity",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Counting the owner's link events",
+      "rationale": "What the owner did to the library is counted on the day it happened and stays counted.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "a link is added to the owner's library by pasting, the API, the MCP server or an import",
+          "action": "add 1 to that UTC day's added counter for each new link, and nothing for a link already in the library",
+          "contract": "GET /api/v1/stats/history?days=1 returns days[0].added increased by the number of new links",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new src/worker/stats/daily.test.ts, describe 'counting link events', a table over the ways a link enters: POST /api/v1/links (new: +1; the same URL again: +0), POST /api/v1/links/batch with 3 new and 1 duplicate (+3), the MCP add_link tool (mcpTool, +1), POST /api/v1/imports of a 5-line file with 1 duplicate (+4): setNow a fixed instant; act; r = GET /api/v1/stats/history?days=1; assert r.json.days[0].added equals the expected total"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "event_driven",
+          "condition": "a use of one of the owner's links is recorded",
+          "action": "add 1 to that day's used counter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events': GET /api/v1/links/{id}/open twice and POST a use through the MCP server once; assert days[0].used == 3"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "event_driven",
+          "condition": "an expired link becomes active again through a use, a re-paste or POST /api/v1/links/{id}/restore",
+          "action": "add 1 to that day's restored counter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events', a table over the ways an expired link comes back: a use (GET /api/v1/links/{id}/open), a re-paste (POST /api/v1/links with its URL), POST /api/v1/links/{id}/restore: seed an expired link; act; assert days[0].restored == 1 and, for the re-paste, days[0].added == 0"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "the owner archives, unarchives or deletes a link and the change is stored",
+          "action": "add 1 to that day's archived, unarchived or deleted counter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events', a table over POST /api/v1/links/{id}/archive (archived), POST .../unarchive (unarchived), DELETE /api/v1/links/{id} (deleted): act on a seeded link; assert the matching counter == 1 and the other two 0; a refused archive (an expired link, 409) or a delete of an unknown id (404) adds nothing"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "ubiquitous",
+          "action": "for any recorded day, never decrease a counter when a link it counted is later deleted, restored, archived or loses its history",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events': add 2 links and use one on day 1 (setNow); setNow day 2; delete both; assert GET /api/v1/stats/history?days=2 gives day 1 {added: 2, used: 1} unchanged and day 2 {deleted: 2}"
+          }
+        },
+        {
+          "id": "REQ-1.6",
+          "pattern": "ubiquitous",
+          "action": "count each event on the UTC day of the time stored for it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events': setNow('2026-11-09T23:59:59.999Z'); add a link; setNow('2026-11-10T00:00:00.000Z'); add a link; assert GET /api/v1/stats/history?days=2 gives '2026-11-09' added 1 and '2026-11-10' added 1"
+          }
+        },
+        {
+          "id": "REQ-1.7",
+          "pattern": "unwanted",
+          "condition": "the change an event would count is refused or not stored",
+          "action": "count nothing for that event",
+          "contract": "every counter of the day is unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting link events': with the library at 20,000 links (seedLinks), POST /api/v1/links with a new URL answers 409 library_full; assert days[0].added == 0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Counting decay's expirations and removals",
+      "rationale": "Links decay expires or removes stay counted after they are gone.",
+      "system": "scheduler",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a decay evaluation for the owner expires or removes links",
+          "action": "add to that day's expired counter the number of links the evaluation expired and to its removed counter the number it removed, in the same transaction as the evaluation",
+          "contract": "GET /api/v1/stats/history?days=1 returns days[0].expired and days[0].removed equal to the links expired and removed",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new describe 'counting decay' in src/worker/stats/daily.test.ts, extending the setup of src/worker/decay/decay.test.ts: seed 3 unprotected links past their points and 2 expired links past remove_days; evaluateDecay(env, user); assert days[0].expired == 3 and days[0].removed == 2; run evaluateDecay again at once and assert both are unchanged"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "unwanted",
+          "condition": "a decay evaluation fails and is rolled back",
+          "action": "count no expiration and no removal of that evaluation",
+          "contract": "the links keep their states and the day's expired and removed counters are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting decay': through decayHooks.afterSelect make the evaluation's batch fail (as src/worker/decay/decay.test.ts does for its rollback test); assert the links are unchanged and days[0].expired == 0 and days[0].removed == 0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Counting fetches, enrichments and Ask questions",
+      "rationale": "The owner sees how background work and Ask went each day, whatever happens to the links later.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "a fetch event is recorded for one of the owner's links",
+          "action": "add 1 to that day's fetch_ok or fetch_failed counter, matching the event's outcome",
+          "contract": "days[0].fetch_ok and days[0].fetch_failed equal the ok and failed events GET /api/v1/links/{id}/history shows for that day",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new describe 'counting background work' in src/worker/stats/daily.test.ts: onOutbound answers one URL 200 and another 503 three times; add both and deliverFetches until settled; assert days[0].fetch_ok == 1 and days[0].fetch_failed == 3; archiving a link whose refresh cannot be queued adds 1 to fetch_failed (as src/worker/decay/archive.test.ts provokes it)"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "ubiquitous",
+          "action": "count a fetch message delivered again for a fetch already recorded only once",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting background work': deliverFetches the same message twice for a link already fetched; assert days[0].fetch_ok equals the number of ok events in the link's history"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "an enrichment of one of the owner's links stores its result or ends failed",
+          "action": "add 1 to that day's enriched counter for each stored result and 1 to its enrichment_failed counter for each failure stored",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting background work': FakeAi answers one link's enrichment and fails another's twice (provider_failed, retried once); deliverEnrichments; assert days[0].enriched == 1 and days[0].enrichment_failed == 2"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "event_driven",
+          "condition": "POST /api/v1/ask accepts a question and starts its answer",
+          "action": "add 1 to that day's asks counter",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'counting background work', a table over questions: answered by FakeAi (+1), with no passage so 'Nothing in your library answers this.' (+1), the provider failing mid-answer (+1), an empty question answered 400 (+0), no AI key answered 409 (+0): POST /api/v1/ask; read the stream to its end; assert days[0].asks equals the sum"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "Recording the end-of-day library size",
+      "rationale": "The library's size over time cannot be rebuilt from the counters.",
+      "system": "scheduler",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the hourly run starts between 00:00 and 01:00 UTC",
+          "action": "record for every owner not being deleted, under the UTC day that just ended, the total of their links and the count in each state pending, active, unreachable, expired and archived, once per day",
+          "contract": "days[i].size for the ended day is {total, pending, active, unreachable, expired, archived}, recorded once",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new describe 'end-of-day size' in src/worker/stats/daily.test.ts: seed links in each state; setNow('2026-11-10T00:05:00Z'); runScheduled(env) from src/worker/decay/cron.ts; runScheduled again at 00:50; assert GET /api/v1/stats/history?days=2 gives '2026-11-09'.size == {total, pending, active, unreachable, expired, archived} as seeded, and '2026-11-10'.size == null; an owner with deletion_requested_at set has no size recorded"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "unwanted",
+          "condition": "no hourly run starts between 00:00 and 01:00 UTC on a day",
+          "action": "leave that day's size null, never filling it in later",
+          "contract": "days[i].size == null for the day that ended before that window",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'end-of-day size': setNow('2026-11-10T02:00:00Z'); runScheduled(env); assert '2026-11-09'.size == null; setNow('2026-11-11T00:10:00Z'); runScheduled(env); assert '2026-11-09'.size is still null and '2026-11-10'.size is recorded"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "Recording AI token usage",
+      "rationale": "The owner sees what their AI key spends, by purpose and model.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "a call to the owner's AI provider ends, successfully or not",
+          "action": "record the call under the UTC day it ends, its purpose (enrich, split, ask or key_test) and the model it used: one more call, the input and output tokens the provider reported added to the sums, or one more call without usage when the answer reported none",
+          "contract": "days[0].ai holds one {purpose, model, calls, input_tokens, output_tokens, calls_without_usage} per purpose and model used that day",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new describe 'AI usage' in src/worker/stats/daily.test.ts: teach FakeAi (src/worker/test/ai.ts and the streams in src/worker/test/streams.ts) to report a usage a test sets; a table over (purpose, how) = (key_test, PUT /api/v1/settings/ai), (enrich, deliverEnrichments), (split, POST /api/v1/topics/{id}/split on 20 links), (ask, POST /api/v1/ask streamed): FakeAi reports input 120, output 30; act; assert days[0].ai contains {purpose, model: the owner's ai_model, calls: 1, input_tokens: 120, output_tokens: 30, calls_without_usage: 0}"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "ubiquitous",
+          "action": "take the tokens from Anthropic as usage.input_tokens plus cache_creation_input_tokens and cache_read_input_tokens when present, and usage.output_tokens, from the final message for a streamed answer, and from OpenRouter as usage.prompt_tokens and usage.completion_tokens",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'AI usage', a table over providers and answers: Anthropic {input 100, cache_creation 20, cache_read 5, output 10} -> (125, 10); Anthropic streamed with message_start input 50 and message_delta output 7 -> (50, 7); OpenRouter {prompt 40, completion 9} -> (40, 9); OpenRouter streamed with usage in the last chunk -> its numbers; OpenRouter streamed without usage -> calls_without_usage 1: assert the recorded sums"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "unwanted",
+          "condition": "a provider call fails, times out or answers without usage",
+          "action": "record one call without usage under its purpose and model, adding nothing to the token sums",
+          "contract": "calls and calls_without_usage both increase by 1; input_tokens and output_tokens are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'AI usage': FakeAi answers an enrichment 503 and then times out on a retry (setProviderTimeout); assert days[0].ai has {purpose: 'enrich', calls: 2, input_tokens: 0, output_tokens: 0, calls_without_usage: 2}"
+          }
+        },
+        {
+          "id": "REQ-5.4",
+          "pattern": "unwanted",
+          "condition": "writing the usage record fails",
+          "action": "keep the call's own result as if nothing had been recorded, losing only that call's usage",
+          "contract": "the call's outcome (the enrichment stored, the answer streamed, the split applied, the key verified) is unchanged; no usage row is added",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/daily.test.ts in 'AI usage': through a test hook on the usage recorder make it throw; deliverEnrichments for a link; assert the link is enriched with FakeAi's result and days[0].ai is []"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "The daily history API",
+      "rationale": "The owner and the page read the recorded days in one request.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the owner sends GET /api/v1/stats/history with days from 1 to 365, or without days",
+          "action": "answer with recorded_since and one entry per UTC day from N−1 days ago to today, oldest first, every day present, each with every counter, the size and the AI usage",
+          "contract": "HTTP 200 {recorded_since: 'YYYY-MM-DD' | null, days: [{day, added, used, expired, removed, deleted, archived, unarchived, restored, fetch_ok, fetch_failed, enriched, enrichment_failed, asks, size: {total, pending, active, unreachable, expired, archived} | null, ai: [{purpose, model, calls, input_tokens, output_tokens, calls_without_usage}]}]}; 30 days when days is absent",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in a new src/worker/stats/history.test.ts, describe 'daily history': setNow; record events on today and 3 days ago (through the routes, as in src/worker/stats/daily.test.ts); r = GET /api/v1/stats/history?days=5; assert r.status == 200, r.json.days.length == 5 from 4 days ago to today, the two days with events carry their counts, the others 0 with size null and ai []; without days the answer has 30 entries"
+          }
+        },
+        {
+          "id": "REQ-6.2",
+          "pattern": "ubiquitous",
+          "action": "give recorded_since as the first day anything was recorded for the owner, or null, and every counter of a day before it as null, not 0",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/history.test.ts in 'daily history': with nothing recorded, assert recorded_since == null and every counter of every day null; record one event 2 days ago; assert recorded_since is that day, the days before it have null counters and the days from it on have numbers"
+          }
+        },
+        {
+          "id": "REQ-6.3",
+          "pattern": "unwanted",
+          "condition": "days is not a whole number from 1 to 365",
+          "action": "refuse the request, reading nothing",
+          "contract": "HTTP 400 {\"error\": \"invalid_days\", \"field\": \"days\", \"message\": \"days is a whole number from 1 to 365\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/history.test.ts in 'daily history', a table over days = 0, 366, -1, 1.5, 'x', '': r = GET /api/v1/stats/history?days=<v>; assert r.status == 400 and r.json == {error: 'invalid_days', field: 'days', message: 'days is a whole number from 1 to 365'}"
+          }
+        },
+        {
+          "id": "REQ-6.4",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/stats/history arrives with no valid session or token",
+          "action": "answer as every route under /api/v1/ answers without credentials",
+          "contract": "HTTP 401 {\"error\": \"unauthorized\"}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/history.test.ts in 'daily history': without a session or token, assert 401 {error: 'unauthorized'}; owner B's request never includes owner A's counts"
+          }
+        },
+        {
+          "id": "REQ-6.5",
+          "pattern": "event_driven",
+          "condition": "the owner's account is deleted",
+          "action": "delete every daily record of the owner with the rest of the account",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/stats/history.test.ts in 'daily history', extending src/worker/account/deletion.test.ts's flow: record events for the owner; confirm the deletion and deliverAccount until done; assert count(<each daily-record table>, 'user_id = ?', id) == 0; the export (GET /api/v1/export) of another owner is unchanged"
+          }
+        },
+        {
+          "id": "REQ-6.6",
+          "pattern": "ubiquitous",
+          "action": "describe GET /api/v1/stats/history with its 200, 400 and 401 answers in the OpenAPI document served at GET /api/v1/openapi.json",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "src/worker/api/openapi.test.ts fails when a registered route is missing from the document or a response the tests receive is not declared; the history tests' responses are checked by it once the route is registered"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-7",
+      "title": "The Trends section",
+      "rationale": "The owner sees how the library and its AI spend change over time.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-7.1",
+          "pattern": "event_driven",
+          "condition": "the owner opens /stats, or picks the last 7, 30, 90 or 365 days (30 by default)",
+          "action": "request GET /api/v1/stats/history with that range and show a Trends section after Activity with: added against removed, expired and deleted per day as one chart; uses per day; fetch success rate per day; enrichments and Ask questions per day; the library's size per day as a line per state; AI tokens per day, input and output, as stacked bars with a table of the range's totals by purpose and model",
+          "contract": "one GET /api/v1/stats/history?days=<7|30|90|365> per load and per pick",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stats.test.tsx, a new describe 'Trends': FakeApi answers GET /api/v1/stats and GET /api/v1/stats/history?days=30 with fixed bodies; renderPage('/stats'); assert the Trends heading follows Activity, the six charts are present with one bar or point per day, and the totals table lists each (purpose, model) with its summed calls, input and output tokens; pick 'Last 90 days' and assert api.sent('GET', '/api/v1/stats/history')'s last request has days=90"
+          }
+        },
+        {
+          "id": "REQ-7.2",
+          "pattern": "ubiquitous",
+          "action": "show the days before recorded_since as an empty area labelled 'not recorded yet', and the caption 'includes links that have since been removed' under the Trends charts",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stats.test.tsx in 'Trends': with recorded_since 10 days ago in a 30-day answer; assert the text 'not recorded yet' is shown on each chart's first 20 days and the caption is shown"
+          }
+        },
+        {
+          "id": "REQ-7.3",
+          "pattern": "unwanted",
+          "condition": "GET /api/v1/stats/history fails",
+          "action": "show 'Couldn't load trends' with a Try again button inside the Trends section, leaving the other sections shown",
+          "contract": "the Trends section shows \"Couldn't load trends\" and Try again; the other sections are unaffected",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Stats.test.tsx in 'Trends': FakeApi answers the history 500 then 200; assert the text \"Couldn't load trends\" and the Library section both shown; press its Try again; assert the charts are shown"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "Decay expires and removes a link, and Trends still counts it",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds a link that has run out of points"
+        },
+        {
+          "actor": "scheduler",
+          "action": "runs the hourly decay run, which expires the link and counts it"
+        },
+        {
+          "actor": "scheduler",
+          "action": "runs decay again after remove_days, which removes the link and counts it"
+        },
+        {
+          "actor": "owner",
+          "action": "opens Stats"
+        },
+        {
+          "actor": "website",
+          "action": "requests GET /api/v1/stats/history?days=30"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "answers with today's expired 1 and removed 1"
+        },
+        {
+          "actor": "website",
+          "action": "shows them in the Trends chart while the link is no longer in the library"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "hourly scheduled handler",
+          "D1 database"
+        ],
+        "setup": [
+          "wrangler dev as make e2e runs it"
+        ],
+        "end_state": [
+          "the link is no longer in the library",
+          "Trends shows 1 expired and 1 removed today"
+        ],
+        "pseudocode": "in e2e/stats.spec.ts (from package 18): signIn; addLinkIds one URL; d1(UPDATE links SET last_used_at = daysAgo(61)); runScheduled(page); d1(UPDATE links SET expired_at = daysAgo(181)) and d1(UPDATE users SET last_decay_at = daysAgo(1)); runScheduled(page); goto /stats; expect the Trends chart's today tooltip to read expired 1 and removed 1; expect d1('SELECT COUNT(*) FROM links') == 0"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "The owner's AI calls show as token usage",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "saves an AI key the fake provider accepts"
+        },
+        {
+          "actor": "owner",
+          "action": "adds a link"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches it"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "asks the AI provider to enrich it and records the call's tokens"
+        },
+        {
+          "actor": "AI provider",
+          "action": "answers with a result and its usage"
+        },
+        {
+          "actor": "owner",
+          "action": "asks one question on the Ask page"
+        },
+        {
+          "actor": "website",
+          "action": "shows on the Stats page today's tokens and the totals table with key_test, enrich and ask under the owner's model"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "fetch worker",
+          "enrichment worker",
+          "D1 database"
+        ],
+        "setup": [
+          "the e2e fake AI provider reports a usage on every answer"
+        ],
+        "end_state": [
+          "the AI totals table lists key_test, enrich and ask, each with 1 call and the fake provider's tokens"
+        ],
+        "pseudocode": "in e2e/stats.spec.ts: signIn; saveAiKey(page); addLinks one fake-origin URL; wait for it to be enriched (e2e/enrichment.spec.ts's wait); ask one question on /ask and wait for the answer; goto /stats; expect the AI totals table rows key_test, enrich and ask with calls 1"
+      }
+    },
+    {
+      "id": "PATH-3",
+      "title": "The hourly run after midnight records the day's size",
+      "steps": [
+        {
+          "actor": "scheduler",
+          "action": "starts the hourly run at 00:05 UTC"
+        },
+        {
+          "actor": "scheduler",
+          "action": "records each owner's library size for the day that ended"
+        },
+        {
+          "actor": "owner",
+          "action": "sends GET /api/v1/stats/history?days=2"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "answers with yesterday's size"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "hourly scheduled handler",
+          "Alexandria API",
+          "D1 database"
+        ],
+        "setup": [
+          "the Worker test environment with the clock set by setNow, since wrangler dev runs on the real clock"
+        ],
+        "end_state": [
+          "yesterday's entry carries size {total, pending, active, unreachable, expired, archived} equal to the seeded library"
+        ],
+        "pseudocode": "in src/worker/stats/daily.test.ts: seed links; setNow('2026-11-10T00:05:00Z'); call the Worker's scheduled handler (src/worker/index.ts) with the cron '0 * * * *'; r = api GET /api/v1/stats/history?days=2; assert r.json.days[0].day == '2026-11-09' and its size equals the seeded counts"
+      }
+    }
+  ],
+  "external_apis": [
+    {
+      "package": "@anthropic-ai/sdk",
+      "version": "1.6.0",
+      "verified": true,
+      "symbols": [
+        {
+          "name": "Usage",
+          "import_path": "@anthropic-ai/sdk/resources/messages/messages",
+          "signature": "interface Usage { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number | null; cache_read_input_tokens: number | null; … }"
+        },
+        {
+          "name": "MessageStream.finalMessage",
+          "import_path": "@anthropic-ai/sdk/lib/MessageStream",
+          "signature": "finalMessage(): Promise<ParsedMessage<ParsedT>>"
+        }
+      ]
+    },
+    {
+      "package": "OpenRouter chat completions HTTP API",
+      "version": "v1",
+      "verified": false,
+      "symbols": [
+        {
+          "name": "usage",
+          "import_path": "POST {OPENROUTER_BASE_URL}/chat/completions",
+          "signature": "response body usage: {prompt_tokens: number, completion_tokens: number, total_tokens: number}; a streamed answer carries it in its last chunk"
+        }
+      ]
+    }
+  ]
+}

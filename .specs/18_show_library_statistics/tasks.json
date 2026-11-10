@@ -1,0 +1,197 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "18",
+  "spec_name": "show_library_statistics",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/stats src/web/pages/Stats.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "03",
+      "reason": "counts enrichment statuses and reads the AI key status and the background throttle"
+    },
+    {
+      "spec": "05",
+      "reason": "counts by the decay and liveness rules, and shares the liveness-due selection of the hourly run"
+    },
+    {
+      "spec": "07",
+      "reason": "reports imports with their progress, as GET /api/v1/imports/{id} computes it"
+    },
+    {
+      "spec": "10",
+      "reason": "counts stale links by the meaning index's stale rule and the vectors waiting deletion"
+    },
+    {
+      "spec": "13",
+      "reason": "computes points as pointsAt and the expiry statement do"
+    },
+    {
+      "spec": "14",
+      "reason": "counts the archived state and keeps archived links out of decay's numbers"
+    },
+    {
+      "spec": "15",
+      "reason": "counts topics per level and lists topic paths"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Serve the library statistics through GET /api/v1/stats",
+      "criteria": [
+        "REQ-1",
+        "REQ-6"
+      ],
+      "steps": [
+        "Create src/worker/stats/stats.test.ts with the task's behaviours (library sections, empty library, owner isolation, top-10 lists with ties, the route's 401, read-only answer, 20,000-link timing, internal failure) using api(), signIn(), seedLinks(), placeTopic() and setNow() from src/worker/test/helpers.ts, and confirm they fail",
+        "Create src/worker/stats/stats.ts: a function that computes the whole statistics object for one user at one instant (now() from src/worker/clock.ts), one section per function, every query bound to the user's id; this task fills library, content, topics, tags, workspaces and hosts",
+        "Count topics per level from parent_id (a level-1 topic has no parent, level 2's parent has none, level 3 otherwise) and build each listed topic's path from the top level down, as topic_path is built for links",
+        "Order every top-10 list by count descending, then name (or host) A to Z, and return at most 10 entries",
+        "Expose a test hook on the stats computation (an exported object of optional callbacks, as decayHooks in src/worker/decay/decay.ts) so a test can make a section throw; let the error reach app.onError so the answer is 500 {error: 'internal'}",
+        "Create src/worker/stats/routes.ts with statsRoutes (GET /) and register it in src/worker/app.ts as api.route('/stats', statsRoutes), after authentication and the rate limit like every other route; ignore query parameters",
+        "Declare the route, its 200 body and its 401 in src/worker/api/openapi.ts so src/worker/api/openapi.test.ts accepts every response the tests receive",
+        "Document GET /api/v1/stats in docs/api.md, section by section, and add a Statistics section to docs/architecture.md saying the numbers are computed live from the stored rows"
+      ],
+      "touches": [
+        "src/worker/stats/stats.ts",
+        "src/worker/stats/routes.ts",
+        "src/worker/stats/stats.test.ts",
+        "src/worker/app.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Add the expiry outlook and health sections",
+      "criteria": [
+        "REQ-2",
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/stats.test.ts (describes 'expiry outlook' and 'health') and confirm they fail",
+        "Compute points in SQL exactly as the decay expiry statement does (start_points + use_count minus whole 24-hour periods since last_used_at, counted in integer milliseconds with epochMs from src/worker/decay/decay.ts), so every bucket agrees with pointsAt and the link's decay_note",
+        "Fill expiry.expiring and expiry.points_histogram over unprotected links only (state active, pending or unreachable, pin_position null, in no workspace), with the six ranges always present in order",
+        "Fill expiry.protected_at_risk, expiry.awaiting_removal (removal_at = expired_at + remove_days; cumulative within 7 and 30 days; past removals in both) and expiry.settings from the users row",
+        "Fill health.unreachable with its top-5 reasons, health.dead from liveness_failures and dead_since, health.enrichment with every status key and 'none' for null plus failed_by_reason, and health.ai_key from ai_key_status ('none' when no key is stored)",
+        "Extend the OpenAPI body and docs/api.md with the two sections"
+      ],
+      "touches": [
+        "src/worker/stats/stats.ts",
+        "src/worker/stats/stats.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Add the background backlog section",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/stats.test.ts (describe 'background backlog') and confirm they fail",
+        "Fill fetch_pending, fetch_retrying (fetch_attempts > 0) and enrichment_queued",
+        "List the imports with links waiting or in progress, newest first, at most 10, using importProgress from src/worker/imports/imports.ts for each so the numbers equal GET /api/v1/imports/{id}",
+        "Count stale links with IS_STALE from src/worker/meaning/indexing.ts over the owner's links left-joined with link_index_state, and the owner's vector_deletions rows",
+        "Count liveness-due links with the same conditions as enqueueDueChecks in src/worker/decay/liveness.ts (CHECK_INTERVAL_MS, ENQUEUE_WINDOW_MS), sharing the condition text between the two rather than copying it",
+        "Give throttle_clear_at as the later of throttle_next_at and import_window_end when it is after now, as an ISO string, else null",
+        "Extend the OpenAPI body and docs/api.md with the section"
+      ],
+      "touches": [
+        "src/worker/stats/stats.ts",
+        "src/worker/stats/stats.test.ts",
+        "src/worker/decay/liveness.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Add the activity section",
+      "criteria": [
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/stats/stats.test.ts (describe 'activity') and confirm they fail",
+        "Build the 30 UTC days ending today and fill added_per_day from links.added_at and uses_per_day from link_uses.at, grouping by the first 10 characters of the stored time, with 0 for days that have none",
+        "Fill added_last_7_days and added_last_30_days over the same UTC days",
+        "Fill most_used from link_uses in the last 30 days (uses descending, then the latest use first, at most 10, with each link's title and host) and never_used from use_count = 0",
+        "Fill fetches from link_events of kind 'fetch' in the last 30 days with the top-5 failure reasons, and imports from the owner's last 10 imports' stored counts",
+        "Extend the OpenAPI body and docs/api.md with the section"
+      ],
+      "touches": [
+        "src/worker/stats/stats.ts",
+        "src/worker/stats/stats.test.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Show the Stats page with its tab, loading, refresh and error",
+      "criteria": [
+        "REQ-7.1",
+        "REQ-7.2",
+        "REQ-7.6"
+      ],
+      "steps": [
+        "Add the task's behaviours to a new src/web/pages/Stats.test.tsx with renderPage and FakeApi from src/web/test/helpers.tsx, and confirm they fail",
+        "Add the statistics response type and stats.get() to src/web/api.ts",
+        "Add a 'stats' icon to src/web/components/Icon.tsx and the Stats section between Archive and Settings in SECTIONS of src/web/App.tsx, routing /stats to the new page",
+        "Create src/web/pages/Stats.tsx: load once on mount with a spinner (q-spinner), a Refresh button that loads again, no timer; on failure show \"Couldn't load statistics\" in the pages' error style (q-flash--danger) with Try again",
+        "Render the sections Library, Expiry, Background work, Health and Activity in that order from Quire boxes, tables (q-table, q-table-number) and counters",
+        "Mention the Stats page in docs/api.md's website pages and in README.md's feature list"
+      ],
+      "touches": [
+        "src/web/api.ts",
+        "src/web/App.tsx",
+        "src/web/components/Icon.tsx",
+        "src/web/pages/Stats.tsx",
+        "src/web/pages/Stats.test.tsx",
+        "src/web/styles.css",
+        "docs/api.md",
+        "README.md"
+      ],
+      "depends_on": [
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Link the counts, draw the charts and write the captions",
+      "criteria": [
+        "REQ-7.3",
+        "REQ-7.4",
+        "REQ-7.5"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/web/pages/Stats.test.tsx and confirm they fail",
+        "Link each count with Link from src/web/App.tsx (or a plain anchor for the import report download): expired to /expired, archived to /archive, topics and tags to searchPath(filterQuery(...)) from src/web/api.ts, workspaces to /workspaces/{id}, most-used links to /links/{id}",
+        "Add a small bar chart component in src/web/components/ drawn as inline SVG with Quire colour tokens: one rect per entry with a <title> '<day or range>: <count>', and beside it a visually hidden (q-sr-only) table of the same numbers; use it for added per day, uses per day and the points histogram",
+        "Show the empty states 'No topics yet', 'No tags yet', 'No workspaces yet' and 'No imports yet', the caption 'counts only links still in your library' under each activity series, and the throttle line ('background work clears in about N minutes', N rounded up, or 'background work is idle')",
+        "Add the e2e test file e2e/stats.spec.ts with the three execution paths, using signIn, addLinks, addLinkIds, d1, daysAgo, runMinute and runScheduled from e2e/helpers.ts"
+      ],
+      "touches": [
+        "src/web/pages/Stats.tsx",
+        "src/web/pages/Stats.test.tsx",
+        "src/web/components/BarChart.tsx",
+        "src/web/styles.css",
+        "e2e/stats.spec.ts"
+      ]
+    }
+  ]
+}
