@@ -291,6 +291,52 @@ const Reason = z.strictObject({ reason: z.string(), count });
 /** The count of one UTC day. */
 const DayCount = z.strictObject({ day: z.string().describe('YYYY-MM-DD'), count });
 
+const counter = count.nullable().describe('null before the first recorded day');
+
+/** The owner's daily record, as GET /api/v1/stats/history answers it. */
+export const StatsHistory = z.strictObject({
+  recorded_since: z.string().nullable().describe('The first day recorded, or null'),
+  days: z.array(
+    z.strictObject({
+      day: z.string().describe('YYYY-MM-DD, a UTC day'),
+      added: counter,
+      used: counter,
+      expired: counter,
+      removed: counter,
+      deleted: counter,
+      archived: counter,
+      unarchived: counter,
+      restored: counter,
+      fetch_ok: counter,
+      fetch_failed: counter,
+      enriched: counter,
+      enrichment_failed: counter,
+      asks: counter,
+      size: z
+        .strictObject({
+          total: count,
+          pending: count,
+          active: count,
+          unreachable: count,
+          expired: count,
+          archived: count,
+        })
+        .nullable()
+        .describe('The library at the end of the day; null when not recorded'),
+      ai: z.array(
+        z.strictObject({
+          purpose: z.enum(['enrich', 'split', 'ask', 'key_test']),
+          model: z.string(),
+          calls: count,
+          input_tokens: count,
+          output_tokens: count,
+          calls_without_usage: count,
+        }),
+      ),
+    }),
+  ),
+});
+
 /** The owner's library statistics, computed at the time of the request. */
 export const Stats = z.strictObject({
   library: z.strictObject({
@@ -1427,6 +1473,23 @@ export const operations: Operation[] = [
     operationId: 'unpinLink',
     summary: 'Unpin the link; it returns to its place by points',
     responses: { 200: { description: 'The unpinned link', schema: Link } },
+  },
+  {
+    method: 'get',
+    path: '/stats/history',
+    operationId: 'getStatsHistory',
+    summary:
+      'The owner’s daily record: per UTC day, the events counted, the library’s size at the end of the day and the AI token usage',
+    query: {
+      days: {
+        description: 'How many days, today included: a whole number from 1 to 365 (default 30)',
+        schema: z.string(),
+      },
+    },
+    responses: {
+      200: { description: 'Every day of the range, oldest first', schema: StatsHistory },
+      400: error('invalid_days (field days): "days is a whole number from 1 to 365"'),
+    },
   },
   {
     method: 'get',

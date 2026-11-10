@@ -605,6 +605,21 @@ statement or section reaches `app.onError`, which answers
 `500 {"error": "internal"}`: there is no partial answer. `statsHooks` is the
 test seam that makes a section fail.
 
+### The daily record
+
+`daily_stats` holds one row per user and UTC day with a counter per event
+(`stats/daily.ts`, `COUNTERS`) and the library's size at the end of the day;
+`daily_ai_usage` one row per user, day, purpose and model with the provider
+calls and their tokens. A counter is added by `countStatement`, an upsert put in
+the same D1 batch as the change it counts and conditioned on that change's
+own result read in the batch (the inserted row exists, the state changed, the
+event row was written), so a change that fails or is rolled back is never
+counted, and a stored one is counted exactly once, a redelivered message
+included. Counters only grow; nothing deletes a row but the account's
+deletion, which finds both tables by their `user_id` column.
+`GET /api/v1/stats/history` (`readHistory`) answers a range of days, filling
+the days without a row.
+
 ## Export and account deletion
 
 `GET /api/v1/export` (`account/export.ts`) streams the library as one JSON

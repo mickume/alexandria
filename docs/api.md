@@ -1299,6 +1299,59 @@ Every list holds at most 10 entries (5 for reasons), most first; ties are
 broken by name (or host, or reason), A to Z ignoring case. An empty library
 answers every count 0 (`limit` aside) and every list `[]`.
 
+#### `GET /api/v1/stats/history`
+
+The owner's daily record: for each UTC day, how many events of each kind
+happened in the library, the library's size at the end of the day, and the
+tokens the owner's AI provider calls used. Query: `days`, a whole number from 1
+to 365 (default 30); any other value answers
+`400 {"error": "invalid_days", "field": "days", "message": "days is a whole number from 1 to 365"}`.
+
+```json
+{
+  "recorded_since": "2026-11-07",
+  "days": [
+    {
+      "day": "2026-11-10",
+      "added": 3,
+      "used": 0,
+      "expired": 0,
+      "removed": 2,
+      "deleted": 0,
+      "archived": 0,
+      "unarchived": 0,
+      "restored": 0,
+      "fetch_ok": 0,
+      "fetch_failed": 0,
+      "enriched": 0,
+      "enrichment_failed": 0,
+      "asks": 0,
+      "size": null,
+      "ai": [
+        {
+          "purpose": "enrich",
+          "model": "claude-opus-5-5",
+          "calls": 2,
+          "input_tokens": 300,
+          "output_tokens": 40,
+          "calls_without_usage": 0
+        }
+      ]
+    }
+  ]
+}
+```
+
+`days` holds one entry per UTC day from `days − 1` days ago to today, oldest
+first, every day present. `recorded_since` is the first day anything was
+recorded for the owner, or `null`; every counter of a day before it is `null`
+("not recorded"), and a recorded day on which nothing happened has 0.
+`size` is the library at the end of the day (`total` and each state), or `null`
+when it was not recorded. `ai` lists, by purpose (`enrich`, `split`, `ask`,
+`key_test`) and model, the calls made, the input and output tokens the
+provider reported, and the calls whose answer reported none. A counter never
+goes down: deleting a link leaves the days that counted it as they were.
+
 ### Export
 
 #### `GET /api/v1/export`
