@@ -34,6 +34,21 @@ export function setNow(t: Date | number | string): void {
   setClock(typeof t === 'string' ? new Date(t) : t);
 }
 
+/** Empties the database of every trigger, view and table, so the migrations can be applied from the start. */
+export async function emptySchema(): Promise<void> {
+  const objects = await env.DB.prepare(
+    `SELECT type, name FROM sqlite_master
+     WHERE type IN ('trigger', 'view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
+       -- A full-text index's shadow tables go with the index itself.
+       AND (type <> 'table' OR sql NOT LIKE 'CREATE TABLE ''%')
+     ORDER BY CASE type WHEN 'trigger' THEN 0 WHEN 'view' THEN 1 ELSE 2 END, rowid DESC`,
+  ).all<{ type: string; name: string }>();
+  await env.DB.batch([
+    env.DB.prepare('PRAGMA defer_foreign_keys = on'),
+    ...objects.results.map((o) => env.DB.prepare(`DROP ${o.type.toUpperCase()} "${o.name}"`)),
+  ]);
+}
+
 /** A response with its parsed JSON body, when it has one. */
 export interface ApiResponse {
   status: number;

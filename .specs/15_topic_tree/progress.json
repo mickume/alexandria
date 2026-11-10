@@ -3,11 +3,11 @@
   "spec_id": "15",
   "spec_name": "topic_tree",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-10T08:15:52Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

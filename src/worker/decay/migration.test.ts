@@ -1,23 +1,8 @@
 import { applyD1Migrations } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { api, env, seedLinks, setNow, signIn } from '../test/helpers';
+import { api, emptySchema, env, seedLinks, setNow, signIn } from '../test/helpers';
 
 const DAY = 86_400_000;
-
-/** Empties the database of every trigger, view and table, so the migrations can be applied from the start. */
-async function emptySchema(): Promise<void> {
-  const objects = await env.DB.prepare(
-    `SELECT type, name FROM sqlite_master
-     WHERE type IN ('trigger', 'view', 'table') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'
-       -- A full-text index's shadow tables go with the index itself.
-       AND (type <> 'table' OR sql NOT LIKE 'CREATE TABLE ''%')
-     ORDER BY CASE type WHEN 'trigger' THEN 0 WHEN 'view' THEN 1 ELSE 2 END, rowid DESC`,
-  ).all<{ type: string; name: string }>();
-  await env.DB.batch([
-    env.DB.prepare('PRAGMA defer_foreign_keys = on'),
-    ...objects.results.map((o) => env.DB.prepare(`DROP ${o.type.toUpperCase()} "${o.name}"`)),
-  ]);
-}
 
 describe('carrying a library over to points and expiry', () => {
   it('makes archived links expired on their archive date, dormant ones active, and keeps each user’s thresholds', async () => {

@@ -129,6 +129,7 @@ account and checks the PKCE verifier as Google does.
 | `link_passages` | per link: the passages it is cut into for search by meaning, each with its vector id and the text version it was made from (see Search by meaning) |
 | `link_index_state` | per link: the text version, which triggers move whenever the indexed text changes, and when the link was last queued for indexing |
 | `vector_deletions` | the ids of vectors to delete from the Vectorize index, filled by a trigger on every deleted passage |
+| `topics`, `tags` | per user: the names a link is filed under; a topic's `parent_id` places it in the topic tree (at most three levels) |
 | `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
 
 Every query of a user's resources is filtered by the authenticated user, so
@@ -350,7 +351,11 @@ Triggers keep the index current, so no writer can forget it:
 
 Three more triggers delete a topic or tag whose last link loses it: a
 `link_tags` row deleted (an edit, a merge, decay's removal, or a link deleted,
-through the cascade), a link's topic changed, and a link deleted. Writers
+through the cascade), a link's topic changed, and a link deleted. Topics form
+a tree of at most three levels (`topics.parent_id`): a topic goes only when it
+has no link and no child topic, and its parent and grandparent go with it when
+that leaves them the same way. D1 runs without recursive triggers, so the two
+topic triggers delete those ancestors themselves, the grandparent first. Writers
 therefore never empty a link's tags before setting them:
 `enrich/vocabulary.ts`'s `setTagsStatements` removes only the tags the link
 loses and upserts the rest with their positions.

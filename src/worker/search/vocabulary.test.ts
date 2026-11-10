@@ -145,6 +145,66 @@ describe('the topics and tags lists', () => {
       expect(vocabulary[kind].map((e) => e.name.toLowerCase())).toContain('kept');
     });
 
+    describe('and so is each parent it leaves with no link and no child', () => {
+      const writes = [
+        {
+          write: "editing the link's topic away",
+          act: (u: TestUser, id: string) => patch(u, id, { topic: 'Other' }),
+        },
+        {
+          write: 'deleting the link',
+          act: async (u: TestUser, id: string) => {
+            await api('DELETE', `/api/v1/links/${id}`, { as: u.session });
+          },
+        },
+        {
+          write: 'decay removing the link',
+          act: async (_u: TestUser, id: string) => {
+            await env.DB.prepare(
+              "UPDATE links SET state = 'expired', expired_at = '2020-01-01T00:00:00.000Z' WHERE id = ?",
+            )
+              .bind(id)
+              .run();
+            const { runScheduled } = await import('../decay/cron');
+            await runScheduled(env);
+          },
+        },
+      ];
+      const trees = [
+        { tree: 'only C has a link', extra: {}, left: [] },
+        { tree: 'A has a link of its own', extra: { A: true }, left: ['A'] },
+        { tree: 'B has a second child D with a link', extra: { D: true }, left: ['A', 'B', 'D'] },
+      ];
+      it.each(writes.flatMap((w) => trees.map((t) => ({ ...w, ...t }))))(
+        '$write when $tree',
+        async ({ act, extra, left }) => {
+          const user = await signIn();
+          const [onC, onA, onD] = await seedLinks(user, [
+            { url: 'https://c.example/' },
+            { url: 'https://a.example/' },
+            { url: 'https://d.example/' },
+          ]);
+          // Each topic is created by a link, placed, and the placing links moved on.
+          await patch(user, onC!, { topic: 'C' });
+          await patch(user, onA!, { topic: 'A' });
+          await patch(user, onD!, { topic: 'B' });
+          await setParent(user, 'B', 'A');
+          await setParent(user, 'C', 'B');
+          if ('D' in extra) {
+            await patch(user, onD!, { topic: 'D' });
+            await setParent(user, 'D', 'B');
+          } else {
+            await api('DELETE', `/api/v1/links/${onD}`, { as: user.session });
+          }
+          if (!('A' in extra)) await api('DELETE', `/api/v1/links/${onA}`, { as: user.session });
+          expect(await topicNames(user)).toEqual(['A', 'B', 'C', ...('D' in extra ? ['D'] : [])]);
+
+          await act(user, onC!);
+          expect((await topicNames(user)).filter((n) => n !== 'Other')).toEqual(left);
+        },
+      );
+    });
+
     it('keeps a tag that an edit keeps', async () => {
       const user = await signIn();
       const [only] = await seedLinks(user, [{ url: 'https://only.example/' }]);
@@ -155,6 +215,35 @@ describe('the topics and tags lists', () => {
     });
   });
 });
+
+/** Puts the user's topic `child` under their topic `parent`. */
+async function setParent(user: TestUser, child: string, parent: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE topics SET parent_id = (SELECT id FROM topics WHERE user_id = ?1 AND name = ?3)
+     WHERE user_id = ?1 AND name = ?2`,
+  )
+    .bind(user.id, child, parent)
+    .run();
+}
+
+/** The name of the parent of the user's topic `name`, or null at the top level. */
+async function parentOf(user: TestUser, name: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    `SELECT p.name FROM topics t LEFT JOIN topics p ON p.id = t.parent_id
+     WHERE t.user_id = ? AND t.name = ?`,
+  )
+    .bind(user.id, name)
+    .first<{ name: string | null }>();
+  return row!.name;
+}
+
+/** The names of the user's topics, in order. */
+async function topicNames(user: TestUser): Promise<string[]> {
+  const rows = await env.DB.prepare('SELECT name FROM topics WHERE user_id = ? ORDER BY name')
+    .bind(user.id)
+    .all<{ name: string }>();
+  return rows.results.map((r) => r.name);
+}
 
 /** The user's topic or tag named `name`, by its id. */
 async function idOf(user: TestUser, kind: 'topics' | 'tags', name: string): Promise<string> {
@@ -230,6 +319,23 @@ describe('renaming a topic or tag', () => {
     });
     expect(same.status).toBe(200);
     expect(await aliases(user, 'tag')).toEqual([]);
+
+    // A child elsewhere in the tree holds its name as firmly as a top-level topic.
+    const [l3, l4] = await seedLinks(user, [
+      { url: 'https://three.example/' },
+      { url: 'https://four.example/' },
+    ]);
+    await patch(user, l3!, { topic: 'Rust' });
+    await patch(user, l4!, { topic: 'Languages' });
+    await setParent(user, 'Rust', 'Languages');
+    const child = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'A')}`, {
+      as: user.session,
+      body: { name: 'rust' },
+    });
+    expect(child.status).toBe(409);
+    expect(child.json.error).toBe('name_taken');
+    expect(await linkLabels(user, l1!)).toEqual({ tags: ['js'], topic: 'A' });
+    expect(await parentOf(user, 'Rust')).toBe('Languages');
   });
 
   it.each([
