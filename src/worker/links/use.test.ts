@@ -201,6 +201,14 @@ describe('the boost of a use', () => {
     { useBoost: 50, uses: 5, decayed: 6 * DAY, points: 63, decayFrom: iso(T - 3 * DAY) },
     { useBoost: 100, uses: 3, decayed: 20 * DAY, points: 64, decayFrom: iso(T) },
     { useBoost: 10, uses: 0, decayed: 30 * DAY, points: 34, decayFrom: iso(T - 27 * DAY) },
+    // 33% of 10 days and 7 ms is 285,120,002.31 ms, rounded down to the millisecond.
+    {
+      useBoost: 33,
+      uses: 0,
+      decayed: 10 * DAY + 7,
+      points: 55,
+      decayFrom: iso(T - 10 * DAY - 7 + 285_120_002),
+    },
   ])(
     'wins back $useBoost% of $decayed ms of decay on the first use of a UTC day',
     async ({ useBoost, uses, decayed, points, decayFrom }) => {

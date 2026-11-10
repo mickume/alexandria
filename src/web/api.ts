@@ -95,7 +95,7 @@ export interface Link {
   workspaces: { id: string; name: string }[];
   /** The whole note: only on a link read on its own. */
   note?: string;
-  /** Start points plus the use count, minus the whole days since the last use or boost; null when archived. */
+  /** Start points plus the use count, minus the whole days since decay_from; null when archived. */
   points: number | null;
   /** When the link was archived, while it is archived. */
   archived_at: string | null;

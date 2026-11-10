@@ -602,7 +602,7 @@ The whole note: only on a link read on its own.
 
 > **points**: `number` \| `null`
 
-Start points plus the use count, minus the whole days since the last use or boost; null when archived.
+Start points plus the use count, minus the whole days since decay_from; null when archived.
 
 ##### removal\_at
 

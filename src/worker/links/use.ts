@@ -13,7 +13,7 @@ import { epochMs, isoFromMs } from '../decay/decay';
 const DECAY_FROM_AFTER_USE = `CASE
     WHEN state = 'expired' THEN ?1
     WHEN substr(last_used_at, 1, 10) < substr(?1, 1, 10) THEN ${isoFromMs(
-      `${epochMs('decay_from')} + MAX(0, ?4 - ${epochMs('decay_from')})
+      `${epochMs('decay_from')} + MAX(0, CAST(?4 AS INTEGER) - ${epochMs('decay_from')})
          * (SELECT use_boost FROM users WHERE id = ?3) / 100`,
     )}
     ELSE decay_from
