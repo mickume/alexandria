@@ -1,0 +1,288 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "17",
+  "spec_name": "split_a_topic",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Splitting a topic",
+      "rationale": "One request that sees every link of an oversized topic at once divides it into consistent sub-topics.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "the owner sends POST /api/v1/topics/{id}/split for one of their topics at level 1 or 2 with 20 to 500 links filed directly under it, holding a verified AI key",
+          "action": "send one request to the owner's provider, wait for its answer, and apply it before answering: resolve each sub-topic name that a link is filed under as the last name of the topic's own path with near names (an existing child or any existing topic is reused where it is, otherwise a new child of the topic is created), file each link under its sub-topic, and leave under the topic the links the answer files under ''",
+          "contract": "HTTP 200 {topic: {id, name, parent_id, count, subtree_count}, children: [{id, name, count}] (every child of the topic after the split, by name), moved: <the number of links whose topic changed>}",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the owner has 25 links filed directly under 'Software engineering' (filed through SQL, so none counts as edited), its child 'Testing' with one link, and a top-level 'Databases' with one link, and a verified key",
+              "FakeAi answers the split with the sub-topics ['Testing', 'Databases', 'Compilers', 'Unused'] and files 10 links under 'Testing', 5 under 'Databases', 5 under 'Compilers' and 5 under ''"
+            ],
+            "pseudocode": "in src/worker/search/vocabulary.test.ts, a new describe 'splitting a topic': assert FakeAi received no request before the split; r = POST /api/v1/topics/{Software engineering}/split; assert r.status == 200 and r.json == {topic: {id, name: 'Software engineering', parent_id: null, count: 5, subtree_count: 21}, children: [{name: 'Compilers', count: 5}, {name: 'Testing', count: 11}] (with ids), moved: 20}; assert GET /api/v1/topics shows 'Databases' still top-level with 6 links, 'Compilers' a child of 'Software engineering', and no topic 'Unused'; assert FakeAi received exactly one split request"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "ubiquitous",
+          "action": "send the provider, for a split, each sent link's id, title and summary and the names of the topic's existing children, and ask for 2 to 10 sub-topic names and, for each link, the name of its sub-topic or '' to leave it under the topic, through a structured result of that shape, and nothing else of the owner",
+          "contract": "the request holds every sent link's id, title and summary, the children's names and the topic's name; it holds no link filed elsewhere, no other user's data and not the owner's email or name; its structured result asks for {subtopics: string[], links: [{id: string, subtopic: string}]}",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic', with the setup of REQ-1.1: body = JSON.stringify(the FakeAi split request's body); assert it holds each of the 25 link ids with its title and summary, the name 'Testing' as an existing child, and the instruction to give 2 to 10 sub-topics and '' to leave a link; assert it holds neither the id of the link under 'Databases' nor 'owner@example.test' nor the owner's name; assert the request's schema has the properties subtopics and links"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "ubiquitous",
+          "action": "count every link filed directly under the topic toward the 20 and 500 limits, and neither send nor move the links whose topic the owner edited",
+          "contract": "the edited links' ids are absent from the request and the links stay under the topic",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "17 links filed directly under the topic through SQL and 3 whose topic the owner edited to it"
+            ],
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic': FakeAi files every link it is sent under 'Rust'; r = POST split; assert r.status == 200 (20 links counted) and r.json.moved == 17; assert the request holds none of the 3 edited links' ids and they are still filed directly under the topic"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "a split moves links to sub-topics",
+          "action": "mark each moved link as changed and update it for word and meaning search",
+          "contract": "GET /api/v1/links?changed_since=<a time before the split> returns exactly the moved links; a word of a sub-topic's name finds the links filed under it; INDEX_QUEUE receives one message for each moved link",
+          "check": {
+            "kind": "integration",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic', with the setup of REQ-1.1: t = now; advance the clock; record the index queue; POST split; assert GET /api/v1/links?changed_since=t lists exactly the 20 moved links; assert the word index finds the 5 'Compilers' links by 'compilers' (the indexed() query of src/worker/search/search.test.ts, or a search for 'compilers'); assert the recorded index messages are the 20 moved links"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "ubiquitous",
+          "action": "create only the sub-topics a link is filed under, leaving no proposed sub-topic as an empty topic",
+          "check": {
+            "same_as": "REQ-1.1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Splits refused before the provider is asked",
+      "rationale": "A split that cannot happen must not spend the owner's AI credit or change anything.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "unwanted",
+          "condition": "fewer than 20 links are filed directly under the topic",
+          "action": "refuse the split without calling the provider and change nothing",
+          "contract": "HTTP 409 {error: 'too_few_links', message: 'a topic needs at least 20 links to be split'}; no provider request; every topic and link as it was",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic', one table of refusals checked in this order, each asserting the status and body, that FakeAi received no request, and that GET /api/v1/topics and the topic's links are unchanged: {19 links -> 409 too_few_links}, {501 links -> 409 too_many_links 'a topic with more than 500 links cannot be split at once'}, {a level-3 topic with 25 links -> 409 too_deep 'topics are at most three levels deep'}, {no key -> 409 no_ai_key 'add an AI key in settings'}, {a key marked rejected with the message 'invalid x-api-key' -> 409 ai_key_rejected 'invalid x-api-key'}, {another user's topic -> 404 not_found}, {an unknown id -> 404 not_found}; and the boundaries {20 links} and {500 links} split (200)"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "unwanted",
+          "condition": "more than 500 links are filed directly under the topic",
+          "action": "refuse the split without calling the provider and change nothing",
+          "contract": "HTTP 409 {error: 'too_many_links', message: 'a topic with more than 500 links cannot be split at once'}; no provider request",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "unwanted",
+          "condition": "the topic is at level 3",
+          "action": "refuse the split without calling the provider and change nothing",
+          "contract": "HTTP 409 {error: 'too_deep', message: 'topics are at most three levels deep'}; no provider request",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "unwanted",
+          "condition": "the owner has no AI key",
+          "action": "refuse the split without calling the provider and change nothing",
+          "contract": "HTTP 409 {error: 'no_ai_key', message: 'add an AI key in settings'}; no provider request",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "the owner's key is marked rejected",
+          "action": "refuse the split without calling the provider and change nothing",
+          "contract": "HTTP 409 {error: 'ai_key_rejected', message: <the provider's stored message>}; no provider request",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "unwanted",
+          "condition": "the topic is not one of the owner's",
+          "action": "refuse the split and change nothing",
+          "contract": "HTTP 404 {error: 'not_found'}; no provider request",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "The provider's failures and unusable answers",
+      "rationale": "A split either applies the whole answer or nothing, and says why it did not.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "unwanted",
+          "condition": "the provider rejects the key during a split",
+          "action": "mark the key rejected and refuse the split, changing no topic or link",
+          "contract": "HTTP 409 {error: 'ai_key_rejected', message: <the provider's message>}; GET /api/v1/settings/ai shows the key rejected; every topic and link as it was",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic', with 25 links under the topic and a verified key, a table of provider failures, each asserting the status and body and that the topic's links and GET /api/v1/topics are unchanged: {FakeAi answers 401 'invalid x-api-key' -> 409 ai_key_rejected 'invalid x-api-key', and the key is shown rejected}, {FakeAi answers 500 -> 503 provider_unavailable}, {FakeAi stalls past a provider timeout shortened with setProviderTimeout -> 503 provider_unavailable}, {FakeAi refuses (the model declines) -> 502 provider_failed}; message is the provider outcome's message"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "unwanted",
+          "condition": "the provider cannot be reached, answers with a 5xx status, or gives no answer within 60 seconds",
+          "action": "refuse the split and change nothing",
+          "contract": "HTTP 503 {error: 'provider_unavailable', message: <the provider outcome's message>}",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "unwanted",
+          "condition": "the provider fails in any other way: a 4xx other than a rejected key, a rate limit, a refusal, an answer that is not the structured result",
+          "action": "refuse the split and change nothing",
+          "contract": "HTTP 502 {error: 'provider_failed', message: <the provider outcome's message>}",
+          "check": {
+            "same_as": "REQ-3.1"
+          }
+        },
+        {
+          "id": "REQ-3.4",
+          "pattern": "unwanted",
+          "condition": "the answer is not usable: fewer than 2 or more than 10 sub-topics, a sub-topic name that is empty, longer than 100 characters or holds >, a link id that was not sent, or a link filed under a name that is not among the proposed sub-topics",
+          "action": "refuse the split and change nothing",
+          "contract": "HTTP 502 {error: 'provider_failed', message: \"the provider's split could not be used\"}; every topic and link as it was",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/search/vocabulary.test.ts in 'splitting a topic', a table of answers, each asserting r.status == 502, r.json == {error: 'provider_failed', message: \"the provider's split could not be used\"}, and that GET /api/v1/topics and the topic's links are unchanged: {one sub-topic}, {eleven sub-topics}, {a sub-topic ''}, {a sub-topic of 101 characters}, {a sub-topic 'A > B'}, {a link id that was not sent}, {a link filed under 'Elsewhere', not proposed}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "The Split action on the Topics page",
+      "rationale": "The owner breaks up a topic where they already rearrange the tree.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "state_driven",
+          "condition": "a topic has at least 20 links filed directly under it",
+          "action": "offer Split on its row of the Topics page, and on no row whose topic has fewer",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the fake API lists 'Software engineering' with count 25, its child 'Testing' with count 19, and 'Cooking' with count 20"
+            ],
+            "pseudocode": "in src/web/pages/Topics.test.tsx: assert the rows of 'Software engineering' and 'Cooking' offer a 'Split' button and the row of 'Testing' does not"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "the owner presses Split on a row",
+          "action": "send POST /api/v1/topics/{id}/split, show 'Splitting…' on the row with its actions disabled until the answer arrives, and on success load the tree again",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Topics.test.tsx: the fake API holds the split answer until released; press 'Split' on 'Software engineering'; assert the row shows 'Splitting…' and its Rename, Merge, Move under… and Split buttons are disabled; release the answer (200); assert the fake API received POST /api/v1/topics/{id}/split once and a second GET /api/v1/topics, and the row no longer shows 'Splitting…'"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "the split fails",
+          "action": "show the error's message above the list and give the row its actions back",
+          "contract": "an alert above the table holding the API's message, such as 'add an AI key in settings'; the rows are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Topics.test.tsx: the fake API answers the split with 409 {error: 'no_ai_key', message: 'add an AI key in settings'}; press 'Split'; assert screen.getByRole('alert') holds 'add an AI key in settings', the rows are as before and the row's Split button is enabled again"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner splits a topic of 25 links from the Topics page",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the Topics page and presses Split on a topic with 25 links, holding a verified AI key"
+        },
+        {
+          "actor": "website",
+          "action": "sends POST /api/v1/topics/{id}/split and shows 'Splitting…' on the row"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "sends the 25 links' titles and summaries to the owner's provider"
+        },
+        {
+          "actor": "AI provider",
+          "action": "proposes three sub-topics and files each link under one of them"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "creates the three sub-topics under the topic, files the links under them and answers with the result"
+        },
+        {
+          "actor": "website",
+          "action": "loads the tree again and shows the three sub-topics under the topic with their counts"
+        },
+        {
+          "actor": "owner",
+          "action": "searches for one of the sub-topics and sees the links filed under it"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Worker API",
+          "D1 database",
+          "word search index"
+        ],
+        "setup": [
+          "wrangler dev is running with the fake Google provider and the fake AI provider; the owner is signed in with the Anthropic key the fake accepts",
+          "the owner has 25 links filed under 'Bookshelf' whose topic counts as not edited",
+          "the fake AI answers a split with the sub-topics 'Novels', 'Poetry' and 'Essays', filing the links it is sent round-robin under them"
+        ],
+        "end_state": [
+          "the Topics page shows 'Bookshelf' with 'Essays', 'Novels' and 'Poetry' indented under it, with 8, 9 and 8 links",
+          "the search topic:poetry lists the 8 links filed under 'Poetry'"
+        ],
+        "pseudocode": "extends e2e/topics.spec.ts: fakeAi.splitInto(['Novels', 'Poetry', 'Essays']); signIn(page); saveAiKey(page); ids = addLinkIds(page, 25 URLs); PATCH each to 'Bookshelf'; d1(\"UPDATE links SET edited_fields = '[]' WHERE id IN (…)\"); page.goto('/topics'); press 'Split' on the 'Bookshelf' row; expect the rows 'Essays', 'Novels' and 'Poetry' at data-level 2 under 'Bookshelf' with their counts; page.goto('/search?q=topic%3Apoetry'); expect 8 cards"
+      }
+    }
+  ]
+}

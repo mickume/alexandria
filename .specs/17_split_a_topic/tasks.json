@@ -1,0 +1,107 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "17",
+  "spec_name": "split_a_topic",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/search/vocabulary.test.ts src/worker/enrich src/web/pages/Topics.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "03",
+      "reason": "calls the owner's AI provider with their key and model through a second structured-result schema beside enrichment's"
+    },
+    {
+      "spec": "12",
+      "reason": "answers with Ask's key checks and provider error codes"
+    },
+    {
+      "spec": "15",
+      "reason": "extends the topics routes, the topic tree and the Topics page's row actions"
+    },
+    {
+      "spec": "16",
+      "reason": "resolves the sub-topic names with near names, as enrichment resolves its paths"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Split a topic through the API",
+      "criteria": [
+        "REQ-1",
+        "REQ-2"
+      ],
+      "steps": [
+        "Teach FakeAi (src/worker/test/ai.ts) to tell a split request from an enrichment by the structured result it asks for, and to answer it with a scripted {subtopics, links} built from the link ids the request holds; then add the task's behaviours to src/worker/search/vocabulary.test.ts and confirm they fail",
+        "Add to src/worker/enrich/providers.ts a SPLIT_SCHEMA ({subtopics: string[], links: [{id: string, subtopic: string}]}, no nullable fields) and a call that asks the owner's provider for it, sharing enrichWith's structured-output code, timeout (PROVIDER_TIMEOUT_MS) and failure sorting; give it enough max_tokens for 500 assignments (16,384)",
+        "Add the split's prompt, beside buildPrompt in src/worker/enrich/enrich.ts: the topic's name, its existing children's names, each sent link's id, title and summary, and the instructions to propose 2 to 10 sub-topics and to give each link the name of its sub-topic or '' to leave it under the topic",
+        "Add POST /:id/split to the topics routes only (topicRoutes in src/worker/search/routes.ts). Refuse in this order: a topic that is not the owner's (404 not_found); a topic at level 3 (409 too_deep, 'topics are at most three levels deep'); fewer than 20 links filed directly under it (409 too_few_links, 'a topic needs at least 20 links to be split'); more than 500 (409 too_many_links, 'a topic with more than 500 links cannot be split at once'); no key (409 no_ai_key, 'add an AI key in settings'); a key marked rejected (409 ai_key_rejected with its stored message, as src/worker/meaning/ask.ts answers). Every link filed directly under the topic counts toward the limits",
+        "Send the provider the links filed directly under the topic whose edited_fields do not hold 'topic', and the children's names; decrypt the key as enrichment does (getAiSettings, decryptKey)",
+        "Apply the answer in src/worker/search/vocabulary.ts: for each sub-topic name some link is filed under, resolve it with resolveTopicPath over the topic's own path followed by the name, with near names; then in one batch file each link under its sub-topic, mark every moved link changed (updated_at now), and leave the links filed under '' where they are; queue the moved links for meaning indexing",
+        "Answer 200 {topic: {id, name, parent_id, count, subtree_count}, children: [{id, name, count}] (every child of the topic, by name), moved: <links whose topic changed>}",
+        "Document the operation in src/worker/api/openapi.ts (so every response the tests receive matches it) and docs/api.md, and add a note to docs/architecture.md's topic section that a split is one provider request applied at once"
+      ],
+      "touches": [
+        "src/worker/test/ai.ts",
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/enrich.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/search/vocabulary.test.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Refuse a split on the provider's failures and on an unusable answer",
+      "criteria": [
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/search/vocabulary.test.ts, and confirm they fail",
+        "Sort the provider's outcome as Ask does: rejected marks the key rejected (markKeyRejected) and answers 409 ai_key_rejected with the provider's message; unavailable (unreachable, 5xx, no answer within the provider timeout) answers 503 provider_unavailable; any other failure answers 502 provider_failed, each with the outcome's message",
+        "Validate the answer before anything is written: 2 to 10 sub-topics, each 1 to 100 characters once its spaces are collapsed and without '>'; every link id among the ids sent; every link's sub-topic '' or one of the proposed names (ignoring case). Anything else answers 502 provider_failed \"the provider's split could not be used\" and changes nothing",
+        "Document the failures in src/worker/api/openapi.ts and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/routes.ts",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/api/openapi.ts",
+        "src/worker/search/vocabulary.test.ts",
+        "docs/api.md"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Offer Split on the Topics page",
+      "criteria": [
+        "REQ-4"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/web/pages/Topics.test.tsx, and confirm they fail",
+        "Add vocabulary.split(id) to src/web/api.ts",
+        "In VocabularyList (src/web/components/VocabularyList.tsx), offer a 'Split' button on a topic row whose count (links filed directly under it) is at least 20; pressing it calls vocabulary.split, shows 'Splitting…' on the row and disables the row's buttons until the answer, then loads the tree again, or puts the error's message in the alert above the list and gives the row its buttons back",
+        "Keep the Tags page without Split, and Row under 100 lines",
+        "Teach the end-to-end fake provider (e2e/fake-ai.ts) to answer a split, filing the links it is sent round-robin under scripted sub-topics, with fakeAi.splitInto(names) in e2e/helpers.ts, for the end-to-end flow",
+        "Say in the README's Topics paragraph that a topic with at least 20 links can be split"
+      ],
+      "touches": [
+        "src/web/api.ts",
+        "src/web/components/VocabularyList.tsx",
+        "src/web/pages/Topics.test.tsx",
+        "e2e/fake-ai.ts",
+        "e2e/helpers.ts",
+        "e2e/topics.spec.ts",
+        "README.md"
+      ],
+      "depends_on": [
+        1
+      ]
+    }
+  ]
+}
