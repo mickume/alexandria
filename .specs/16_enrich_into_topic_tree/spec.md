@@ -4,7 +4,7 @@
 
 - **Spec:** `16_enrich_into_topic_tree` (id `16`, name `enrich_into_topic_tree`)
 - **Title:** File enriched links into the topic tree
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-10T09:09:38Z
 - **Source:** docs/prd/04-arrange-topics-in-a-hierarchy.md

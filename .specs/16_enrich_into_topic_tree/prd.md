@@ -2,7 +2,7 @@
 spec_id: "16"
 spec_name: "enrich_into_topic_tree"
 title: "File enriched links into the topic tree"
-status: "active"
+status: "sealed"
 created_at: "2026-11-10T09:09:38Z"
 intent_hash: "d2d0662212cc4156150aab3a046b25763bd0fa21ee181da3749719970d7fd2e0"
 schema_version: 3

@@ -4,7 +4,7 @@
 
 - **Spec:** `17_split_a_topic` (id `17`, name `split_a_topic`)
 - **Title:** Split an oversized topic into sub-topics in one action
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-10T09:51:33Z
 - **Source:** docs/prd/04-arrange-topics-in-a-hierarchy.md

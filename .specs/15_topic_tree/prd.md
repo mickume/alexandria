@@ -2,7 +2,7 @@
 spec_id: "15"
 spec_name: "topic_tree"
 title: "Arrange topics in a tree of up to three levels"
-status: "active"
+status: "sealed"
 created_at: "2026-11-10T07:42:01Z"
 intent_hash: "38ccb0f93d90bbfbc4705569513dc05ce6879646bd42837ce59fff540f5e7deb"
 schema_version: 3

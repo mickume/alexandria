@@ -4,7 +4,7 @@
 
 - **Spec:** `15_topic_tree` (id `15`, name `topic_tree`)
 - **Title:** Arrange topics in a tree of up to three levels
-- **Status:** active
+- **Status:** sealed
 - **Schema version:** 3
 - **Created:** 2026-11-10T07:42:01Z
 - **Source:** docs/prd/04-arrange-topics-in-a-hierarchy.md

@@ -2,7 +2,7 @@
 spec_id: "17"
 spec_name: "split_a_topic"
 title: "Split an oversized topic into sub-topics in one action"
-status: "active"
+status: "sealed"
 created_at: "2026-11-10T09:51:33Z"
 intent_hash: "e55d352b9c53a5bf0e2a0af6ed232a14345690dc745b1861bdb361d7e60ba0c7"
 schema_version: 3
