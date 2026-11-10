@@ -244,6 +244,44 @@ describe('storing a fetched web page', () => {
     expect(await objectsUnder(prefix)).toEqual([]);
   });
 
+  it.each([
+    { label: 'its Content-Type', type: 'text/html; charset=windows-1252', meta: '' },
+    { label: 'its <meta charset>', type: 'text/html', meta: '<meta charset="windows-1252">' },
+  ])('reads a page in the encoding $label declares, and stores it as UTF-8', async (c) => {
+    // "Café" in windows-1252: é is the single byte 0xE9.
+    const bytes = Uint8Array.from(
+      `<!doctype html><html><head>${c.meta}<title>Caf\u00e9</title></head><body><p>Hi</p></body></html>`,
+      (ch) => ch.charCodeAt(0),
+    );
+    new FakeOrigin().serve(
+      'https://latin.example/',
+      () => new Response(bytes, { headers: { 'Content-Type': c.type } }),
+    );
+    const user = await signIn();
+    const { id, prefix } = await addAndFetch(user, 'https://latin.example/');
+    const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(l.title).toBe('Caf\u00e9');
+    const snapshot = await env.SNAPSHOTS.get(`${prefix}snapshot`);
+    expect(await snapshot?.text()).toContain('<title>Caf\u00e9</title>');
+  });
+
+  it('keeps a page nested too deep to read, with a note and without retrying', async () => {
+    const deep = `<!doctype html><html><head><title>Deep</title></head><body>${'<div>'.repeat(1_000)}x</body></html>`;
+    new FakeOrigin().page('https://deep.example/nested-page', deep);
+    const user = await signIn();
+    const { id, prefix, delivery } = await addAndFetch(user, 'https://deep.example/nested-page');
+    expect(delivery).toEqual({ acked: ['m0'], retried: [] });
+    const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(l).toMatchObject({
+      state: 'active',
+      title: 'Deep',
+      has_snapshot: true,
+      enrichment_status: 'skipped',
+    });
+    expect(l.notes).toContain('page could not be read');
+    expect(await objectsUnder(prefix)).toEqual([`${prefix}snapshot`]);
+  });
+
   it.each(['before delivery', 'while the origin holds the response'])(
     'writes nothing for a link deleted %s',
     async (when) => {
@@ -506,6 +544,52 @@ describe('a failed first fetch', () => {
       ok: false,
       reason: 'HTTP 522',
     });
+  });
+});
+
+describe('a fetch that fails for a link changed meanwhile', () => {
+  it('leaves a link archived during its first fetch archived', async () => {
+    const user = await signIn();
+    const sent = recordFetchQueue();
+    const r = await api('POST', '/api/v1/links', {
+      as: user.session,
+      body: { url: 'https://slow.example/' },
+    });
+    const id: string = r.json.link.id;
+    new FakeOrigin().serve('https://slow.example/', async () => {
+      await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
+      return new Response('no', { status: 500 });
+    });
+    await deliverFetches([sent[0]!.body]);
+    const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+    expect(l).toMatchObject({ state: 'archived', state_reason: null });
+    expect(await count('link_events', "link_id = ? AND outcome = 'failed'", id)).toBe(1);
+  });
+
+  it('keeps the copy a link has when the write of a refresh fails', async () => {
+    const url = 'https://kept.example/';
+    const origin = new FakeOrigin().page(url, blogArticle);
+    const user = await signIn();
+    const { id, prefix } = await addAndFetch(user, url);
+    origin.page(url, blogArticle.replace('The first reason', 'A newer reason'));
+    const { retried } = await deliverFetches([{ user_id: user.id, link_id: id, refresh: true }], {
+      DB: failingDatabase(env.DB),
+    });
+    expect(retried).toEqual(['m0']);
+    expect((await objectsUnder(prefix)).sort()).toEqual([
+      `${prefix}reader.json`,
+      `${prefix}snapshot`,
+    ]);
+  });
+
+  it('drops the reader view of an earlier fetch when the page has no article any more', async () => {
+    const url = 'https://thinned.example/';
+    const origin = new FakeOrigin().page(url, blogArticle);
+    const user = await signIn();
+    const { id, prefix } = await addAndFetch(user, url);
+    origin.page(url, ARTICLE);
+    await deliverFetches([{ user_id: user.id, link_id: id, refresh: true }]);
+    expect(await objectsUnder(prefix)).toEqual([`${prefix}snapshot`]);
   });
 });
 

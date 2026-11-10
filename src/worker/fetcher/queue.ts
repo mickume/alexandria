@@ -2,14 +2,14 @@ import { now } from '../clock';
 import type { Env, FetchMessage } from '../env';
 import { accountActive } from '../account/deletion';
 import { afterFetch } from '../enrich/queue';
-import { getLink, parseStrings, type LinkRow } from '../links/store';
+import { getLink, ownerEdited, parseStrings, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
 import { indexReaderTextStatement } from '../search/search';
-import { fetchPage, type FetchFailed, type FetchOk } from './fetch';
+import { decodeHtml, fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
-import { extractMetadata } from './html';
+import { extractMetadata, type PageMetadata } from './html';
 import { readPdf } from './pdf';
-import { capText, extractReader } from './reader';
+import { capText, extractReader, type ReaderView } from './reader';
 import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
 
 /** Failed attempts of a link's first fetch before it is given up as unreachable. */
@@ -60,19 +60,31 @@ async function recordFailure(
     ]);
     return;
   }
-  const attempts = failure.final ? MAX_ATTEMPTS : link.fetch_attempts + 1;
-  const state = attempts >= MAX_ATTEMPTS ? 'unreachable' : 'pending';
-  await env.DB.batch([
+  // Counted and decided on the row as it is now: a link archived or fetched
+  // while this attempt ran keeps its state, and gets only the event.
+  const after = `(CASE WHEN ?1 THEN ${MAX_ATTEMPTS} ELSE fetch_attempts + 1 END)`;
+  const [updated] = await env.DB.batch<{ state: string; fetch_attempts: number }>([
     env.DB.prepare(
-      `UPDATE links SET state = ?1, state_reason = ?2, fetch_attempts = ?3, updated_at = ?4,
-         title = CASE WHEN EXISTS (SELECT 1 FROM json_each(edited_fields) WHERE value = 'title')
-                 THEN title ELSE ?5 END
-       WHERE id = ?6 AND user_id = ?7`,
-    ).bind(state, failure.reason, attempts, at, titleFromUrl(link.url), link.id, link.user_id),
+      `UPDATE links SET
+         state = CASE WHEN ${after} >= ${MAX_ATTEMPTS} THEN 'unreachable' ELSE 'pending' END,
+         state_reason = ?2, fetch_attempts = ${after}, updated_at = ?3,
+         title = CASE WHEN ${ownerEdited('title')}
+                 THEN title ELSE ?4 END
+       WHERE id = ?5 AND user_id = ?6 AND state = 'pending'
+       RETURNING state, fetch_attempts`,
+    ).bind(
+      failure.final ? 1 : 0,
+      failure.reason,
+      at,
+      titleFromUrl(link.url),
+      link.id,
+      link.user_id,
+    ),
     event,
   ]);
-  const delaySeconds = RETRY_DELAYS_SECONDS[attempts - 1];
-  if (state === 'pending' && delaySeconds !== undefined) {
+  const row = updated?.results[0];
+  const delaySeconds = row ? RETRY_DELAYS_SECONDS[row.fetch_attempts - 1] : undefined;
+  if (row?.state === 'pending' && delaySeconds !== undefined) {
     await env.FETCH_QUEUE.send({ user_id: link.user_id, link_id: link.id }, { delaySeconds });
   }
 }
@@ -162,7 +174,7 @@ async function writeFetched(
       env.DB.prepare(
         `UPDATE links SET state = CASE WHEN state = 'archived' THEN 'archived' ELSE 'active' END,
            state_reason = NULL, fetch_attempts = 0,
-           title = CASE WHEN EXISTS (SELECT 1 FROM json_each(edited_fields) WHERE value = 'title')
+           title = CASE WHEN ${ownerEdited('title')}
                    THEN title ELSE ?1 END,
            final_url = ?2,
            http_status = ?3, description = ?4, favicon_url = ?5, language = ?6, fetched_at = ?7,
@@ -201,24 +213,51 @@ async function writeFetched(
     if (!fetched.hasSnapshot) {
       // A fetch that keeps no snapshot replaces whatever an earlier fetch stored.
       await deleteLinkObjects(env, link.user_id, link.id);
+    } else if (fetched.readerEmpty) {
+      // Nor does the reader view of an earlier fetch outlive a page without one.
+      await env.SNAPSHOTS.delete(readerKey(link.user_id, link.id));
     }
     return true;
   } catch (err) {
-    if (written.length > 0) await env.SNAPSHOTS.delete(written).catch(() => undefined);
+    // A link that had a copy keeps what is there: the objects written took the
+    // place of that copy, and deleting them would leave it with none.
+    if (written.length > 0 && !link.has_snapshot) {
+      await env.SNAPSHOTS.delete(written).catch(() => undefined);
+    }
     throw err;
   }
 }
 
+/** The note on a page stored without metadata or reader view, because it could not be parsed. */
+export const UNREADABLE_NOTE = 'page could not be read';
+
 /** Stores a fetched web page: its metadata, the snapshot and the reader view. */
 async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint8Array }) {
-  const html = new TextDecoder().decode(result.body);
-  const meta = extractMetadata(html, result.finalUrl);
-  const reader = extractReader(html, result.finalUrl);
+  const { html, utf8 } = decodeHtml(result.body, result.charset);
+  // A page that cannot be parsed, or is nested too deep to read, is still a
+  // page: it keeps its snapshot, with a note, and trying again would end the
+  // same way.
+  let meta: PageMetadata = {
+    title: titleFromUrl(result.finalUrl),
+    description: null,
+    faviconUrl: `${new URL(result.finalUrl).origin}/favicon.ico`,
+    language: null,
+  };
+  let reader: ReaderView = { title: null, byline: null, html: null, text: '', empty: true };
+  let unreadable = false;
+  try {
+    meta = extractMetadata(html, result.finalUrl);
+    reader = extractReader(html, result.finalUrl);
+  } catch (err) {
+    console.error('a fetched page could not be read', err);
+    unreadable = true;
+  }
   const stored: StoredReader = { title: reader.title, byline: reader.byline, html: reader.html };
   const objects: StoredObject[] = [
     {
       key: snapshotKey(link.user_id, link.id),
-      body: result.body,
+      // Stored as UTF-8, as it is served: the bytes when they are UTF-8 already.
+      body: utf8 ? result.body : html,
       contentType: 'text/html; charset=utf-8',
     },
   ];
@@ -244,6 +283,7 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
       notes: [
         ...(result.via === 'firecrawl' ? [FIRECRAWL_NOTE] : []),
         ...(result.truncated ? ['truncated'] : []),
+        ...(unreadable ? [UNREADABLE_NOTE] : []),
       ],
       text: reader.empty ? null : capText(reader.text),
     },
@@ -330,21 +370,22 @@ async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<bo
  */
 async function processFetch(env: Env, message: Message<FetchMessage>): Promise<void> {
   const { user_id, link_id } = message.body;
-  // An account being deleted is fetched for no more.
-  if (!(await accountActive(env.DB, user_id))) return message.ack();
-  const link = await getLink(env.DB, user_id, link_id);
-  if (!link) {
-    await deleteLinkObjects(env, user_id, link_id);
-    message.ack();
-    return;
-  }
-  let result = await fetchPage(env, link.url);
-  if (!result.ok && result.final) {
-    result = await fetchThroughFirecrawl(env, user_id, link.url, result);
-  }
-  // Nor is anything written for it when its deletion began during the fetch.
-  if (!(await accountActive(env.DB, user_id))) return message.ack();
+  // Whatever fails here fails this message alone: the others of its batch go on.
   try {
+    // An account being deleted is fetched for no more.
+    if (!(await accountActive(env.DB, user_id))) return message.ack();
+    const link = await getLink(env.DB, user_id, link_id);
+    if (!link) {
+      await deleteLinkObjects(env, user_id, link_id);
+      message.ack();
+      return;
+    }
+    let result = await fetchPage(env, link.url);
+    if (!result.ok && result.final) {
+      result = await fetchThroughFirecrawl(env, user_id, link.url, result);
+    }
+    // Nor is anything written for it when its deletion began during the fetch.
+    if (!(await accountActive(env.DB, user_id))) return message.ack();
     if (result.ok) {
       if (await storeResult(env, link, result)) {
         const stored = await getLink(env.DB, link.user_id, link.id);

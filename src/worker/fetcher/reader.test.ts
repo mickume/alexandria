@@ -71,6 +71,17 @@ describe('the reader view', () => {
     expect(r.text.startsWith(stored)).toBe(true);
   });
 
+  it('keeps no comment, which a browser may end where the parser does not', () => {
+    const page = blogArticle.replace(
+      'The first reason',
+      '<!-- x --!><img src=x onerror=alert(1)>--> The first reason',
+    );
+    const view = extractReader(page, 'https://news.example/a');
+    expect(view.empty).toBe(false);
+    expect(view.html).not.toContain('<!--');
+    expect(view.html).not.toContain('onerror');
+  });
+
   it('never contains active content or unsafe addresses, whatever the page holds', () => {
     const dangerous = fc.constantFrom(
       '<script>alert(1)</script>',

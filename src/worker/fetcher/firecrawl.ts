@@ -206,6 +206,8 @@ export async function scrape(
       finalUrl: finalUrl.href,
       status: statusCode,
       contentType: 'text/html',
+      // Firecrawl's answer is JSON: the page is UTF-8 now, whatever its own <meta> says.
+      charset: 'utf-8',
       kind: 'html',
       body: truncated ? encoded.subarray(0, PAGE_LIMIT) : encoded,
       truncated,

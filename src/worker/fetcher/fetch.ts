@@ -22,6 +22,8 @@ export interface FetchOk {
   /** The response's media type, without parameters, such as text/html. */
   contentType: string;
   kind: ContentKind;
+  /** The character encoding the response declared for a web page, lower-cased, if it declared one. */
+  charset?: string;
   /** The body read, or null for a kind that is not stored or a PDF over PDF_LIMIT. */
   body: Uint8Array | null;
   /** A web page longer than PAGE_LIMIT, of which only the first PAGE_LIMIT bytes were read. */
@@ -149,14 +151,21 @@ function beforeAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   });
 }
 
-/** Reads at most `limit` bytes of `body`; `over` says whether there was more. */
+/**
+ * Reads at most `limit` bytes of `body`; `over` says whether there was more.
+ * With the length the response declared, the bytes are read straight into one
+ * buffer of that size, so a large body is held once, not twice.
+ */
 async function readLimited(
   body: ReadableStream<Uint8Array> | null,
   limit: number,
   signal: AbortSignal,
+  declared = NaN,
 ): Promise<{ bytes: Uint8Array; over: boolean }> {
   if (!body) return { bytes: new Uint8Array(), over: false };
   const reader = body.getReader();
+  const whole = Number.isInteger(declared) && declared > 0 && declared <= limit;
+  let buffer = whole ? new Uint8Array(declared) : null;
   const chunks: Uint8Array[] = [];
   let size = 0;
   let over = false;
@@ -164,19 +173,23 @@ async function readLimited(
     for (;;) {
       const { done, value } = await beforeAbort(reader.read(), signal);
       if (done) break;
-      if (size + value.length > limit) {
-        chunks.push(value.subarray(0, limit - size));
-        size = limit;
-        over = true;
-        break;
+      const piece = size + value.length > limit ? value.subarray(0, limit - size) : value;
+      over = piece.length < value.length;
+      if (buffer && size + piece.length > buffer.length) {
+        // Longer than declared: go on in chunks.
+        chunks.push(buffer.subarray(0, size));
+        buffer = null;
       }
-      chunks.push(value);
-      size += value.length;
+      if (buffer) buffer.set(piece, size);
+      else chunks.push(piece);
+      size += piece.length;
+      if (over) break;
     }
   } finally {
     if (over || signal.aborted) reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+  if (buffer) return { bytes: buffer.subarray(0, size), over };
   const bytes = new Uint8Array(size);
   let at = 0;
   for (const c of chunks) {
@@ -184,6 +197,34 @@ async function readLimited(
     at += c.length;
   }
   return { bytes, over };
+}
+
+/** The charset parameter of a Content-Type header, lower-cased, if it has one. */
+function charsetOf(contentType: string): string | undefined {
+  return /;\s*charset\s*=\s*"?([^\s;"]+)/i.exec(contentType)?.[1]?.toLowerCase();
+}
+
+/**
+ * A web page's bytes as text, in the encoding the response declared, else the
+ * one its byte order mark or its first <meta charset> names, else UTF-8, as a
+ * browser reads it. An encoding the runtime does not know reads as UTF-8;
+ * `utf8` says whether the bytes were read as UTF-8.
+ */
+export function decodeHtml(bytes: Uint8Array, declared?: string): { html: string; utf8: boolean } {
+  const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  let label = declared;
+  if (!label && !bom) {
+    const head = String.fromCharCode(...bytes.subarray(0, 1024));
+    label = /<meta[^>]+charset\s*=\s*["']?\s*([\w-]+)/i.exec(head)?.[1]?.toLowerCase();
+  }
+  if (label && label !== 'utf-8' && label !== 'utf8') {
+    try {
+      return { html: new TextDecoder(label).decode(bytes), utf8: false };
+    } catch {
+      // An unknown label: read as UTF-8.
+    }
+  }
+  return { html: new TextDecoder().decode(bytes), utf8: true };
 }
 
 function startsWithPdfMagic(bytes: Uint8Array): boolean {
@@ -214,17 +255,23 @@ function send(
 
 /** Reads a 2xx response's body as its kind requires. */
 async function readBody(response: Response, finalUrl: URL, signal: AbortSignal): Promise<FetchOk> {
-  const contentType = (response.headers.get('Content-Type') ?? '')
-    .split(';')[0]!
-    .trim()
-    .toLowerCase();
+  const header = response.headers.get('Content-Type') ?? '';
+  const contentType = header.split(';')[0]!.trim().toLowerCase();
   const base = { ok: true as const, finalUrl: finalUrl.href, status: response.status, contentType };
+  const charset = charsetOf(header);
   const looksLikePdf =
     contentType === 'application/pdf' || finalUrl.pathname.toLowerCase().endsWith('.pdf');
 
   if (HTML_TYPES.has(contentType)) {
     const { bytes, over } = await readLimited(response.body, PAGE_LIMIT, signal);
-    return { ...base, kind: 'html', body: bytes, truncated: over, tooLarge: false };
+    return {
+      ...base,
+      kind: 'html',
+      body: bytes,
+      truncated: over,
+      tooLarge: false,
+      ...(charset && { charset }),
+    };
   }
   if (looksLikePdf) {
     const declared = Number(response.headers.get('Content-Length') ?? NaN);
@@ -232,7 +279,7 @@ async function readBody(response: Response, finalUrl: URL, signal: AbortSignal):
       await response.body?.cancel();
       return { ...base, kind: 'pdf', body: null, truncated: false, tooLarge: true };
     }
-    const { bytes, over } = await readLimited(response.body, PDF_LIMIT, signal);
+    const { bytes, over } = await readLimited(response.body, PDF_LIMIT, signal, declared);
     if (over) return { ...base, kind: 'pdf', body: null, truncated: false, tooLarge: true };
     if (contentType === 'application/pdf' || startsWithPdfMagic(bytes)) {
       return { ...base, kind: 'pdf', body: bytes, truncated: false, tooLarge: false };

@@ -2,6 +2,7 @@ import { now } from '../clock';
 import type { Env } from '../env';
 import { recordDaySizes } from '../stats/daily';
 import { evaluateDecay } from './decay';
+import { recoverStranded } from '../fetcher/stranded';
 import { enqueueDueChecks } from './liveness';
 
 /** A user is evaluated again once this long has passed since their last completed evaluation. */
@@ -12,7 +13,8 @@ export const DECAY_INTERVAL_MS = 20 * 3_600_000;
  * whose last completed evaluation started 20 hours or more ago (or never), one
  * user at a time, so that one user's failure leaves their links as they were
  * and does not stop the others; they are evaluated again at the next run.
- * Then it enqueues the liveness checks that are due. A run in the hour after
+ * Then it enqueues the liveness checks that are due and recovers the links
+ * whose fetch or enrichment message was lost. A run in the hour after
  * midnight UTC first records every owner's size for the day that ended.
  */
 export async function runScheduled(env: Env): Promise<void> {
@@ -34,5 +36,6 @@ export async function runScheduled(env: Env): Promise<void> {
       console.error('decay evaluation failed for a user', err);
     }
   }
+  await recoverStranded(env).catch((err) => console.error('recovering stranded links failed', err));
   await enqueueDueChecks(env);
 }

@@ -132,6 +132,17 @@ function safeUrl(value: string, base: string, attr: string): string | null {
  * children, attributes outside the list and unsafe addresses are removed.
  */
 function sanitize(root: Element, base: string): void {
+  // Comments go: a browser ends one where this parser does not (at --!>), so
+  // what follows inside one here could become an element there.
+  const comments: Node[] = [];
+  const collect = (node: Node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === 8) comments.push(child);
+      else collect(child);
+    }
+  };
+  collect(root);
+  for (const comment of comments) comment.parentNode?.removeChild(comment);
   for (const el of [...root.querySelectorAll('*')]) {
     const tag = el.tagName.toLowerCase();
     if (DROPPED.has(tag)) {
@@ -139,7 +150,9 @@ function sanitize(root: Element, base: string): void {
       continue;
     }
     if (!ALLOWED.has(tag)) {
-      el.replaceWith(...el.childNodes);
+      // One by one: an element can hold more children than a call takes arguments.
+      while (el.firstChild) el.parentNode?.insertBefore(el.firstChild, el);
+      el.remove();
       continue;
     }
     const allowed = ATTRIBUTES[tag];
@@ -161,6 +174,24 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * The deepest nesting of elements a page may have to be read. Readability's
+ * time grows steeply with depth: a page nested thousands deep would use the
+ * whole CPU limit and never be stored. No page written to be read comes near.
+ */
+export const MAX_DEPTH = 256;
+
+/** Whether any node under `root` lies more than `limit` levels below it. */
+function nestedDeeperThan(root: Node, limit: number): boolean {
+  const pending: [Node, number][] = [[root, 0]];
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const [node, depth] = next;
+    if (depth > limit) return true;
+    for (const child of node.childNodes) pending.push([child, depth + 1]);
+  }
+  return false;
+}
+
 const EMPTY: ReaderView = { title: null, byline: null, html: null, text: '', empty: true };
 
 /**
@@ -171,6 +202,9 @@ const EMPTY: ReaderView = { title: null, byline: null, html: null, text: '', emp
  */
 export function extractReader(html: string, finalUrl: string): ReaderView {
   const { document } = parseHTML(html);
+  if (nestedDeeperThan(document as unknown as Node, MAX_DEPTH)) {
+    throw new Error(`the page nests its elements deeper than ${MAX_DEPTH} levels`);
+  }
   const article = new Readability(document as unknown as Document, { keepClasses: false }).parse();
   if (!article?.content) return EMPTY;
 
