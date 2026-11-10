@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, cardOf, signIn } from './helpers';
+import { addLinkIds, cardOf, fakeAi, saveAiKey, signIn } from './helpers';
 
 /** Files the link `id` under `topic`, a name or a path, through the API. */
 async function fileUnder(page: Page, id: string, topic: string): Promise<void> {
@@ -87,4 +87,42 @@ test('the owner files a link under a new sub-topic by typing its path', async ({
   await page.goto(`/search?q=${encodeURIComponent('topic:"craft of software"')}`);
   const results = page.getByRole('list', { name: 'Results' });
   await expect(results.getByRole('article')).toHaveCount(2);
+});
+
+test('a new link is enriched into a new sub-topic of an existing topic', async ({ page }) => {
+  await fakeAi.answerWhen('marker-tree-enriched', {
+    summary: 'How to test software.',
+    tags: ['testing', 'software'],
+    topic: 'Software engineering > Testing',
+  });
+  await signIn(page);
+  await saveAiKey(page);
+  const [seed] = await addLinkIds(page, ['https://tree.example/se-seed']);
+  await fileUnder(page, seed!, 'Software engineering');
+  const [id] = await addLinkIds(page, ['https://code.example/tree-enriched']);
+
+  await page.goto('/');
+  await expect(
+    cardOf(page, id!).getByRole('link', { name: 'Testing', exact: true }),
+  ).toHaveAttribute('title', 'Software engineering › Testing', { timeout: 60_000 });
+
+  await page.goto(`/links/${id}`);
+  await expect(page.getByRole('navigation', { name: 'Topic path' })).toHaveText(
+    'Software engineering›Testing',
+  );
+
+  await page.goto('/topics');
+  await expect(row(page, 'Testing')).toHaveAttribute('data-level', '2');
+  const order = await names(page);
+  expect(order.indexOf('Software engineering') + 1).toBe(order.indexOf('Testing'));
+
+  await page.goto(`/search?q=${encodeURIComponent('topic:"software engineering"')}`);
+  const results = page.getByRole('list', { name: 'Results' });
+  await expect(results.getByRole('article')).toHaveCount(2);
+
+  const enrichment = (await fakeAi.requests())
+    .filter((r) => r.enrichment && r.body.includes('marker-tree-enriched'))
+    .at(-1)!;
+  expect(enrichment.body).toContain('Software engineering');
+  expect(enrichment.body).not.toContain('Software engineering (');
 });
