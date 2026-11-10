@@ -580,8 +580,46 @@ export interface Stats {
   };
 }
 
+/** One UTC day of the owner's daily record; counters are null before the record began. */
+export interface HistoryDay {
+  day: string;
+  added: number | null;
+  used: number | null;
+  expired: number | null;
+  removed: number | null;
+  deleted: number | null;
+  archived: number | null;
+  unarchived: number | null;
+  restored: number | null;
+  fetch_ok: number | null;
+  fetch_failed: number | null;
+  enriched: number | null;
+  enrichment_failed: number | null;
+  asks: number | null;
+  size: Record<
+    'total' | 'pending' | 'active' | 'unreachable' | 'expired' | 'archived',
+    number
+  > | null;
+  ai: {
+    purpose: 'enrich' | 'split' | 'ask' | 'key_test';
+    model: string;
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    calls_without_usage: number;
+  }[];
+}
+
+/** The owner's daily record, as GET /api/v1/stats/history answers it. */
+export interface StatsHistory {
+  recorded_since: string | null;
+  days: HistoryDay[];
+}
+
 export const stats = {
   get: () => request<Stats>('GET', '/stats'),
+  /** The daily record of the last `days` UTC days, today included. */
+  history: (days: number) => request<StatsHistory>('GET', `/stats/history?days=${days}`),
 };
 
 export const account = {

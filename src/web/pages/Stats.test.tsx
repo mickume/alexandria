@@ -1,11 +1,16 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { filterQuery, imports, searchPath, type Stats } from '../api';
+import { filterQuery, imports, searchPath, type Stats, type StatsHistory } from '../api';
 import { FakeApi, renderPage } from '../test/helpers';
 
 afterEach(() => {
   vi.useRealTimers();
 });
+
+/** The requests for the statistics themselves, leaving out the daily record's. */
+function statsLoads(api: FakeApi) {
+  return api.sent('GET', '/api/v1/stats').filter((r) => r.path === '/api/v1/stats');
+}
 
 /** The 30 days ending 2026-11-10, each with `count(i)`. */
 function series(count: (i: number) => number = () => 0) {
@@ -145,20 +150,27 @@ describe('the Stats page', () => {
     await act(async () => release());
     await screen.findByRole('heading', { name: 'Library' });
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Library', 'Expiry', 'Background work', 'Health', 'Activity']);
+    expect(headings).toEqual([
+      'Library',
+      'Expiry',
+      'Background work',
+      'Health',
+      'Activity',
+      'Trends',
+    ]);
     const library = within(screen.getByRole('region', { name: 'Library' }));
     expect(library.getByText('812')).toBeTruthy();
     const background = within(screen.getByRole('region', { name: 'Background work' }));
     expect(background.getByText('17')).toBeTruthy();
-    expect(api.sent('GET', '/api/v1/stats')).toHaveLength(1);
+    expect(statsLoads(api)).toHaveLength(1);
 
     vi.useFakeTimers();
     await act(async () => vi.advanceTimersByTimeAsync(10 * 60_000));
-    expect(api.sent('GET', '/api/v1/stats')).toHaveLength(1);
+    expect(statsLoads(api)).toHaveLength(1);
     vi.useRealTimers();
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Refresh' })));
-    expect(api.sent('GET', '/api/v1/stats')).toHaveLength(2);
+    expect(statsLoads(api)).toHaveLength(2);
   });
 
   it('says it could not load the statistics, and tries again', async () => {
@@ -251,4 +263,138 @@ describe('the Stats page’s links, charts and captions', () => {
       expect(activity.getAllByText('counts only links still in your library')).toHaveLength(2);
     },
   );
+});
+
+/** A daily record of `n` days ending 2026-11-10, recorded from `recordedFrom` (an index) on. */
+function historyBody(n = 30, recordedFrom = 0): StatsHistory {
+  const days = Array.from({ length: n }, (_, i) => {
+    const day = new Date(Date.UTC(2026, 10, 10 - (n - 1 - i))).toISOString().slice(0, 10);
+    const recorded = i >= recordedFrom;
+    const v = (x: number) => (recorded ? x : null);
+    return {
+      day,
+      added: v(i % 4),
+      used: v(i % 3),
+      expired: v(i % 2),
+      removed: v(1),
+      deleted: v(0),
+      archived: v(0),
+      unarchived: v(0),
+      restored: v(0),
+      fetch_ok: v(i % 5 ? 3 : 0),
+      fetch_failed: v(i % 5 ? 1 : 0),
+      enriched: v(2),
+      enrichment_failed: v(0),
+      asks: v(i % 2),
+      size: recorded
+        ? { total: 100 + i, pending: 1, active: 90 + i, unreachable: 2, expired: 5, archived: 2 }
+        : null,
+      ai: recorded
+        ? [
+            {
+              purpose: 'enrich' as const,
+              model: 'claude-opus-5-5',
+              calls: 2,
+              input_tokens: 300,
+              output_tokens: 40,
+              calls_without_usage: 0,
+            },
+            {
+              purpose: 'ask' as const,
+              model: 'claude-opus-5-5',
+              calls: 1,
+              input_tokens: 1000,
+              output_tokens: 200,
+              calls_without_usage: 0,
+            },
+          ]
+        : [],
+    };
+  });
+  return { recorded_since: days[recordedFrom]?.day ?? null, days };
+}
+
+const TREND_CHARTS = [
+  'Added, and removed, expired or deleted, per day',
+  'Uses recorded per day',
+  'Fetch success rate per day',
+  'Enrichments and questions per day',
+  'Library size per day',
+  'AI tokens per day',
+];
+
+describe('the Trends section', () => {
+  it('shows the trends of the last 30 days after Activity, and those of a range picked', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/stats', { status: 200, body: statsBody() })
+      .on('GET', '/api/v1/stats/history', (req) => ({
+        status: 200,
+        body: historyBody(Number(new URL(req.path, 'http://x').searchParams.get('days'))),
+      }));
+    renderPage('/stats', api);
+    const trends = await screen.findByRole('region', { name: 'Trends' });
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(headings.indexOf('Trends')).toBe(headings.indexOf('Activity') + 1);
+    expect(api.sent('GET', '/api/v1/stats/history').map((r) => r.path)).toEqual([
+      '/api/v1/stats/history?days=30',
+    ]);
+    for (const name of TREND_CHARTS) {
+      const chart = await within(trends).findByRole('img', { name });
+      expect(chart.querySelectorAll('g.day')).toHaveLength(30);
+    }
+    const totals = within(trends).getByRole('table', { name: 'AI usage by purpose and model' });
+    const enrich = within(totals).getByRole('row', { name: /enrich/ });
+    expect(enrich.textContent).toContain('claude-opus-5-5');
+    expect(enrich.textContent).toContain('60');
+    expect(enrich.textContent).toContain('9,000');
+    expect(enrich.textContent).toContain('1,200');
+
+    await act(async () =>
+      fireEvent.change(within(trends).getByLabelText('Range'), { target: { value: '90' } }),
+    );
+    expect(api.sent('GET', '/api/v1/stats/history').at(-1)!.path).toBe(
+      '/api/v1/stats/history?days=90',
+    );
+    const chart = await within(trends).findByRole('img', { name: TREND_CHARTS[0] });
+    await vi.waitFor(() => expect(chart.querySelectorAll('g.day')).toHaveLength(90));
+  });
+
+  it('marks the days before the record began, and says the trends include removed links', async () => {
+    renderPage(
+      '/stats',
+      new FakeApi()
+        .on('GET', '/api/v1/stats', { status: 200, body: statsBody() })
+        .on('GET', '/api/v1/stats/history', { status: 200, body: historyBody(30, 20) }),
+    );
+    const trends = await screen.findByRole('region', { name: 'Trends' });
+    await within(trends).findByRole('img', { name: TREND_CHARTS[0] });
+    for (const name of TREND_CHARTS) {
+      const chart = within(trends).getByRole('img', { name });
+      const gap = chart.querySelector('.not-recorded');
+      expect(gap?.querySelector('title')?.textContent).toBe('not recorded yet');
+      expect(Number(gap?.getAttribute('data-days'))).toBe(20);
+    }
+    expect(within(trends).getByText('includes links that have since been removed')).toBeTruthy();
+  });
+
+  it('says it could not load the trends, leaving the other sections, and tries again', async () => {
+    let calls = 0;
+    renderPage(
+      '/stats',
+      new FakeApi()
+        .on('GET', '/api/v1/stats', { status: 200, body: statsBody() })
+        .on('GET', '/api/v1/stats/history', () =>
+          ++calls === 1
+            ? { status: 500, body: { error: 'internal' } }
+            : { status: 200, body: historyBody() },
+        ),
+    );
+    const trends = await screen.findByRole('region', { name: 'Trends' });
+    expect(await within(trends).findByText("Couldn't load trends")).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Library' })).toBeTruthy();
+    await act(async () =>
+      fireEvent.click(within(trends).getByRole('button', { name: 'Try again' })),
+    );
+    expect(await within(trends).findByRole('img', { name: TREND_CHARTS[0] })).toBeTruthy();
+  });
 });

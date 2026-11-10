@@ -60,7 +60,9 @@ to `/signin` (`302`) without a valid session.
 
 The Stats page (`/stats`, its tab between Archive and Settings) shows
 [`GET /api/v1/stats`](#get-apiv1stats), loaded once when it opens and again
-when the owner presses Refresh.
+when the owner presses Refresh, and in its Trends section
+[`GET /api/v1/stats/history`](#get-apiv1statshistory) for the range picked
+(7, 30, 90 or 365 days; 30 at first).
 
 ## Routes
 

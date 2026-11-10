@@ -1185,3 +1185,45 @@ a.brand:hover span {
 .bar-chart p {
   margin-block: var(--q-space-1) 0;
 }
+
+/* The Trends section's charts: a second series in the attention colour, lines without fill. */
+.trend-chart .series-1 {
+  fill: var(--q-attention-emphasis, var(--q-fg-muted));
+}
+
+.trend-chart polyline {
+  fill: none;
+  stroke: var(--q-accent-emphasis);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-chart polyline.series-1 {
+  stroke: var(--q-fg-default, currentColor);
+}
+
+.trend-chart polyline.series-2,
+.trend-chart polyline.series-3,
+.trend-chart polyline.series-4,
+.trend-chart polyline.series-5 {
+  stroke: var(--q-fg-muted);
+  stroke-dasharray: 3 2;
+}
+
+.trend-chart .hover-slot {
+  fill: transparent;
+}
+
+.trend-chart .not-recorded {
+  fill: var(--q-bg-neutral-muted);
+}
+
+.trend-chart .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--q-space-3);
+}
+
+.stats-range select {
+  margin-inline-start: var(--q-space-1);
+}

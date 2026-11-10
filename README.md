@@ -142,6 +142,13 @@ enrichments, imports, indexing, liveness checks), and the last 30 days of
 links added, uses and fetches. **Refresh** loads it again; the page never
 reloads by itself.
 
+Its Trends section shows the daily record kept since the record began, over
+the last 7, 30, 90 or 365 days: links added against those removed, expired or
+deleted, uses, the fetch success rate, enrichments and questions asked, the
+library's size in each state, and the tokens your AI key's calls used, with
+their totals by purpose and model. It counts links that have since been
+removed; the days before the record began are marked "not recorded yet".
+
 ## Agents (MCP)
 
 Alexandria serves a Model Context Protocol server at `/mcp`, so that an AI

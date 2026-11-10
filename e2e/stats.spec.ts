@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, d1, daysAgo, runMinute, runScheduled, signIn } from './helpers';
+import { addLinkIds, d1, daysAgo, runMinute, runScheduled, saveAiKey, signIn } from './helpers';
 
 /** The statistics as the API answers them now. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,4 +147,90 @@ test('an import shows under Background work until it is done', async ({ page }) 
   const activity = page.getByRole('region', { name: 'Activity' });
   await expect(activity.getByRole('rowheader', { name: label }).first()).toBeVisible();
   await expect(activity.getByText('50 added of 50').first()).toBeVisible();
+});
+
+/** Today's entry of the daily record, as the API answers it. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function todayRecord(page: Page): Promise<any> {
+  const r = await page.request.get('/api/v1/stats/history?days=1');
+  expect(r.status()).toBe(200);
+  return (await r.json()).days[0];
+}
+
+test('decay expires and removes a link, and Trends still counts it', async ({ page }) => {
+  await signIn(page);
+  const before = await todayRecord(page);
+  const [id = ''] = await addLinkIds(page, ['https://code.example/stats-trend-gone']);
+  await waitFetched(page, [id]);
+  d1(`UPDATE links SET last_used_at = '${daysAgo(61)}' WHERE id = '${id}'`);
+  d1('UPDATE users SET last_decay_at = NULL');
+  await runScheduled(page);
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/v1/links/${id}`)).json()).state, {
+      timeout: 30_000,
+    })
+    .toBe('expired');
+  d1(`UPDATE links SET expired_at = '${daysAgo(181)}' WHERE id = '${id}'`);
+  d1('UPDATE users SET last_decay_at = NULL');
+  await runScheduled(page);
+  await expect
+    .poll(async () => (await page.request.get(`/api/v1/links/${id}`)).status(), {
+      timeout: 30_000,
+    })
+    .toBe(404);
+
+  const after = await todayRecord(page);
+  expect(after.expired).toBeGreaterThanOrEqual((before.expired ?? 0) + 1);
+  expect(after.removed).toBeGreaterThanOrEqual((before.removed ?? 0) + 1);
+  await page.goto('/stats');
+  const trends = page.getByRole('region', { name: 'Trends' });
+  const chart = trends.getByRole('img', {
+    name: 'Added, and removed, expired or deleted, per day',
+  });
+  const gone = after.removed + after.expired + after.deleted;
+  await expect(chart.locator('g.day').last().locator('title')).toContainText(
+    `removed, expired or deleted ${gone.toLocaleString('en-US')}`,
+  );
+});
+
+test('the owner’s AI calls show as token usage under Trends', async ({ page }) => {
+  test.setTimeout(120_000);
+  await signIn(page);
+  await saveAiKey(page);
+  const [id = ''] = await addLinkIds(page, ['https://example.com/alarms-for-agents']);
+  const question = 'how do I schedule background work on Cloudflare?';
+  await expect
+    .poll(
+      async () => {
+        const r = await page.request.get(`/api/v1/passages?q=${encodeURIComponent(question)}`);
+        return ((await r.json()) as { items: { link_id: string }[] }).items.some(
+          (i) => i.link_id === id,
+        );
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      async () => (await (await page.request.get(`/api/v1/links/${id}`)).json()).enrichment_status,
+      { timeout: 60_000 },
+    )
+    .toBe('enriched');
+  await page
+    .getByRole('navigation', { name: 'Sections' })
+    .getByRole('link', { name: 'Ask' })
+    .click();
+  await page.getByRole('textbox', { name: 'Question' }).fill(question);
+  await page.getByRole('button', { name: 'Ask' }).click();
+  await expect(page.getByText('[1]').first()).toBeVisible({ timeout: 30_000 });
+
+  const purposes = ((await todayRecord(page)).ai as { purpose: string }[]).map((u) => u.purpose);
+  for (const p of ['key_test', 'enrich', 'ask']) expect(purposes).toContain(p);
+  await page.goto('/stats');
+  const totals = page
+    .getByRole('region', { name: 'Trends' })
+    .getByRole('table', { name: 'AI usage by purpose and model' });
+  for (const p of ['key_test', 'enrich', 'ask']) {
+    await expect(totals.getByRole('cell', { name: p, exact: true })).toBeVisible();
+  }
 });

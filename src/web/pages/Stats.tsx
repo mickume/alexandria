@@ -6,9 +6,11 @@ import {
   searchPath,
   stats as statsApi,
   type DayCount,
+  type HistoryDay,
   type Stats as StatsAnswer,
+  type StatsHistory,
 } from '../api';
-import { BarChart } from '../components/BarChart';
+import { BarChart, TrendChart } from '../components/BarChart';
 
 /** The caption of every series computed from the history the library keeps. */
 const STILL_IN_LIBRARY = 'counts only links still in your library';
@@ -282,6 +284,219 @@ function ActivitySection({ s }: { s: StatsAnswer }) {
   );
 }
 
+/** The ranges the Trends section offers, in days; the first is the default. */
+const RANGES = [30, 7, 90, 365] as const;
+
+/** A counter's value of each day, null before the record began. */
+function values(days: HistoryDay[], pick: (d: HistoryDay) => number | null): (number | null)[] {
+  return days.map(pick);
+}
+
+/** The sum of several counters of a day, or null when the day was not recorded. */
+function sum(d: HistoryDay, keys: ('removed' | 'expired' | 'deleted')[]): number | null {
+  if (d[keys[0]!] === null) return null;
+  return keys.reduce((n, k) => n + (d[k] ?? 0), 0);
+}
+
+/** The range's AI usage by purpose and model: calls, input and output tokens. */
+function usageTotals(days: HistoryDay[]) {
+  const totals = new Map<
+    string,
+    { purpose: string; model: string; calls: number; input: number; output: number }
+  >();
+  for (const d of days) {
+    for (const u of d.ai) {
+      const key = `${u.purpose}\u0000${u.model}`;
+      const t = totals.get(key) ?? {
+        purpose: u.purpose,
+        model: u.model,
+        calls: 0,
+        input: 0,
+        output: 0,
+      };
+      t.calls += u.calls;
+      t.input += u.input_tokens;
+      t.output += u.output_tokens;
+      totals.set(key, t);
+    }
+  }
+  return [...totals.values()].sort(
+    (a, b) => a.purpose.localeCompare(b.purpose) || a.model.localeCompare(b.model),
+  );
+}
+
+/** The charts of the daily record. */
+function TrendCharts({ h }: { h: StatsHistory }) {
+  const days = h.days.map((d) => d.day);
+  const unrecorded = h.recorded_since
+    ? h.days.filter((d) => d.day < h.recorded_since!).length
+    : h.days.length;
+  const tokens = (d: HistoryDay, key: 'input_tokens' | 'output_tokens') =>
+    d.added === null ? null : d.ai.reduce((n, u) => n + u[key], 0);
+  const size = (state: keyof NonNullable<HistoryDay['size']>) =>
+    values(h.days, (d) => d.size?.[state] ?? null);
+  return (
+    <>
+      <TrendChart
+        title="Added, and removed, expired or deleted, per day"
+        days={days}
+        unrecorded={unrecorded}
+        series={[
+          { name: 'added', values: values(h.days, (d) => d.added) },
+          {
+            name: 'removed, expired or deleted',
+            values: values(h.days, (d) => sum(d, ['removed', 'expired', 'deleted'])),
+          },
+        ]}
+      />
+      <TrendChart
+        title="Uses recorded per day"
+        days={days}
+        unrecorded={unrecorded}
+        series={[{ name: 'uses', values: values(h.days, (d) => d.used) }]}
+      />
+      <TrendChart
+        title="Fetch success rate per day"
+        days={days}
+        unrecorded={unrecorded}
+        unit="%"
+        series={[
+          {
+            name: 'succeeded',
+            values: values(h.days, (d) => {
+              const all = (d.fetch_ok ?? 0) + (d.fetch_failed ?? 0);
+              return all === 0 ? null : Math.round(((d.fetch_ok ?? 0) / all) * 100);
+            }),
+          },
+        ]}
+      />
+      <TrendChart
+        title="Enrichments and questions per day"
+        days={days}
+        unrecorded={unrecorded}
+        series={[
+          { name: 'enriched', values: values(h.days, (d) => d.enriched) },
+          { name: 'questions', values: values(h.days, (d) => d.asks) },
+        ]}
+      />
+      <TrendChart
+        title="Library size per day"
+        days={days}
+        unrecorded={unrecorded}
+        kind="lines"
+        series={[
+          { name: 'all', values: size('total') },
+          { name: 'active', values: size('active') },
+          { name: 'pending', values: size('pending') },
+          { name: 'unreachable', values: size('unreachable') },
+          { name: 'expired', values: size('expired') },
+          { name: 'archived', values: size('archived') },
+        ]}
+      />
+      <TrendChart
+        title="AI tokens per day"
+        days={days}
+        unrecorded={unrecorded}
+        kind="stacked"
+        series={[
+          { name: 'input', values: values(h.days, (d) => tokens(d, 'input_tokens')) },
+          { name: 'output', values: values(h.days, (d) => tokens(d, 'output_tokens')) },
+        ]}
+      />
+      <table className="q-table stats-counts" aria-label="AI usage by purpose and model">
+        <caption>AI usage by purpose and model</caption>
+        <thead>
+          <tr>
+            <th scope="col">Purpose</th>
+            <th scope="col">Model</th>
+            <th scope="col" className="q-table-number">
+              Calls
+            </th>
+            <th scope="col" className="q-table-number">
+              Input tokens
+            </th>
+            <th scope="col" className="q-table-number">
+              Output tokens
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {usageTotals(h.days).length === 0 && <Empty text="No AI calls recorded" />}
+          {usageTotals(h.days).map((t) => (
+            <tr key={`${t.purpose}-${t.model}`}>
+              <td>{t.purpose}</td>
+              <td>{t.model}</td>
+              <td className="q-table-number">{num(t.calls)}</td>
+              <td className="q-table-number">{num(t.input)}</td>
+              <td className="q-table-number">{num(t.output)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+/**
+ * The Trends section: the daily record of a range of days, loaded on its own,
+ * again when the owner picks another range, and when `reload` changes.
+ */
+function TrendsSection({ reload }: { reload: number }) {
+  const [range, setRange] = useState<number>(RANGES[0]);
+  const [history, setHistory] = useState<StatsHistory | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    statsApi
+      .history(range)
+      .then((h) => {
+        if (!live) return;
+        setHistory(h);
+        setFailed(false);
+      })
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [range, reload, attempt]);
+
+  return (
+    <Section id="trends" title="Trends">
+      <p className="muted stats-range">
+        <label htmlFor="trends-range">Range</label>{' '}
+        <select id="trends-range" value={range} onChange={(e) => setRange(Number(e.target.value))}>
+          {[...RANGES]
+            .sort((a, b) => a - b)
+            .map((d) => (
+              <option key={d} value={d}>
+                Last {d} days
+              </option>
+            ))}
+        </select>
+      </p>
+      {failed && (
+        <div className="notice q-flash q-flash--danger" role="alert">
+          <p>Couldn&apos;t load trends</p>
+          <button
+            type="button"
+            className="q-btn q-btn--sm"
+            onClick={() => {
+              setFailed(false);
+              setAttempt((n) => n + 1);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      {history && !failed && <TrendCharts h={history} />}
+      <p className="muted q-text-small">includes links that have since been removed</p>
+    </Section>
+  );
+}
+
 /**
  * The Stats page: the owner's library statistics, loaded once when the page
  * opens and again only when the owner presses Refresh.
@@ -290,6 +505,7 @@ export function Stats() {
   const [data, setData] = useState<StatsAnswer | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
 
   /** Requests the statistics; `isLive` says whether the page still wants the answer. */
   const fetchStats = useCallback((isLive: () => boolean = () => true) => {
@@ -316,6 +532,7 @@ export function Stats() {
   const load = () => {
     setLoading(true);
     setFailed(false);
+    setReload((n) => n + 1);
     fetchStats();
   };
 
@@ -347,6 +564,7 @@ export function Stats() {
           <BacklogSection s={data} />
           <HealthSection s={data} />
           <ActivitySection s={data} />
+          <TrendsSection reload={reload} />
         </>
       )}
     </section>
