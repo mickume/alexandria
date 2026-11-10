@@ -112,18 +112,20 @@ export async function applyEdit(
     ...before,
     ...EDITABLE.filter((f) => edit[f] !== undefined && !before.includes(f)),
   ];
-  const topicId =
-    edit.topic !== undefined ? await resolveTopicPath(db, userId, edit.topic) : link.topic_id;
+  const topicId = edit.topic !== undefined ? await resolveTopicPath(db, userId, edit.topic) : null;
   const tagIds = edit.tags !== undefined ? await resolveTags(db, userId, edit.tags) : null;
   const statements: D1PreparedStatement[] = [
     db
       .prepare(
-        `UPDATE links SET title = ?, summary = ?, topic_id = ?, edited_fields = ?, updated_at = ?
+        // Only the given fields are written: the others keep what a fetch or an
+        // enrichment stored meanwhile.
+        `UPDATE links SET title = COALESCE(?, title), summary = COALESCE(?, summary),
+           topic_id = COALESCE(?, topic_id), edited_fields = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`,
       )
       .bind(
-        edit.title ?? link.title,
-        edit.summary !== undefined ? edit.summary : link.summary,
+        edit.title ?? null,
+        edit.summary ?? null,
         topicId,
         JSON.stringify(editedFields),
         now().toISOString(),

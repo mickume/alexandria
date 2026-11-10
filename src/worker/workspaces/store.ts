@@ -268,17 +268,24 @@ export async function removeMember(
  * The statements that take a link out of every workspace it is in, closing
  * each gap; part of deleting the link.
  */
-export function leaveAllWorkspaces(db: D1Database, linkId: string): D1PreparedStatement[] {
+export function leaveAllWorkspaces(
+  db: D1Database,
+  userId: string,
+  linkId: string,
+): D1PreparedStatement[] {
+  // Only the user's own link: another user's id changes nothing.
+  const own = 'EXISTS (SELECT 1 FROM links WHERE id = ?1 AND user_id = ?2)';
   return [
     db
       .prepare(
         `UPDATE workspace_links SET position = position - 1
-         WHERE workspace_id IN (SELECT workspace_id FROM workspace_links WHERE link_id = ?1)
+         WHERE ${own}
+           AND workspace_id IN (SELECT workspace_id FROM workspace_links WHERE link_id = ?1)
            AND position > (SELECT m.position FROM workspace_links m
                            WHERE m.workspace_id = workspace_links.workspace_id AND m.link_id = ?1)`,
       )
-      .bind(linkId),
-    db.prepare('DELETE FROM workspace_links WHERE link_id = ?').bind(linkId),
+      .bind(linkId, userId),
+    db.prepare(`DELETE FROM workspace_links WHERE link_id = ?1 AND ${own}`).bind(linkId, userId),
   ];
 }
 

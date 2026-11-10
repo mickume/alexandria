@@ -91,6 +91,7 @@ export class FakeAi {
   private pieces = DEFAULT_PIECES;
   private hangAfterPieces = false;
   private reported: ReportedUsage | null = DEFAULT_USAGE;
+  private duringEnrichment: (() => Promise<void>) | null = null;
 
   constructor() {
     onOutbound(new URL(env.ANTHROPIC_BASE_URL).origin, (r) => this.handle('anthropic', r));
@@ -114,6 +115,12 @@ export class FakeAi {
    */
   usage(usage: ReportedUsage | null): this {
     this.reported = usage;
+    return this;
+  }
+
+  /** Runs `during` while each enrichment request waits for its answer, as an owner acting meanwhile. */
+  whileEnriching(during: () => Promise<void>): this {
+    this.duringEnrichment = during;
     return this;
   }
 
@@ -204,6 +211,7 @@ export class FakeAi {
       ask,
       at: Date.now(),
     });
+    if (enrichment) await this.duringEnrichment?.();
     const answer =
       structured || ask
         ? this.enrichAnswer

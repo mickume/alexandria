@@ -272,6 +272,23 @@ describe('another user’s workspace', () => {
     );
     expect(await members(w)).toEqual([[bLink, 1]]);
   });
+
+  it('keeps its links when another user deletes one of them by id', async () => {
+    const a = await signIn('a@example.test', 'A');
+    const b = await signIn('b@example.test', 'B');
+    const bLinks = await seedLinks(b, [
+      { url: 'https://b-one.example/' },
+      { url: 'https://b-two.example/' },
+    ]);
+    const w = await workspace(b, 'Private');
+    await seedMembers(w, bLinks);
+    const r = await api('DELETE', `/api/v1/links/${bLinks[0]}`, { as: a.session });
+    expect(r.status).toBe(404);
+    expect(await members(w)).toEqual([
+      [bLinks[0], 1],
+      [bLinks[1], 2],
+    ]);
+  });
 });
 
 function addMember(user: TestUser, w: string, body: unknown) {

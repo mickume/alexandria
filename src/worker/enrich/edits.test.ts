@@ -216,6 +216,36 @@ describe('an edited field', () => {
     topic: 'Second topic > Deeper',
   };
 
+  it.each(['summary', 'tags', 'topic'] as const)(
+    'keeps the owner’s %s when it is edited while the provider answers',
+    async (field) => {
+      new FakeOrigin().page(URL, blogArticle);
+      const ai = new FakeAi().answer(second);
+      const user = await signIn();
+      await api('PUT', '/api/v1/settings/ai', {
+        as: user.session,
+        body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+      });
+      const enrich = recordEnrichQueue();
+      const { id } = await addAndFetch(user, URL);
+      ai.whileEnriching(async () => {
+        expect((await patch(user, id, { [field]: owner[field] })).status).toBe(200);
+      });
+      await deliverEnrichments(enrich.map((m) => m.body));
+
+      const l = await get(user, id);
+      expect(l[field]).toEqual(owner[field]);
+      expect(l.enrichment_status).toBe('enriched');
+      for (const other of ['summary', 'tags'] as const) {
+        if (other !== field) expect(l[other]).toEqual(second[other]);
+      }
+      // The topic the provider proposed is not left behind without a link.
+      if (field === 'topic') {
+        expect(await count('topics', "name IN ('Deeper', 'Second topic')")).toBe(0);
+      }
+    },
+  );
+
   it.each(
     (['title', 'summary', 'tags', 'topic'] as const).flatMap((field) =>
       (['a refresh', 'a re-run'] as const).map((op) => ({ field, op })),

@@ -1,13 +1,14 @@
 import { accountActive } from '../account/deletion';
 import { now } from '../clock';
 import type { EnrichMessage, Env } from '../env';
-import { getLink, parseStrings, type LinkRow } from '../links/store';
+import { getLink, ownerEdited, parseStrings, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
 import { applyAliases, buildPrompt, normalizeResult, type Enrichment } from './enrich';
 import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
 import { enrichWith } from './providers';
 import { deferIfEarly } from './throttle';
 import {
+  dropIfEmptyStatement,
   listAliases,
   listVocabulary,
   resolveTags,
@@ -16,7 +17,12 @@ import {
 } from './vocabulary';
 
 /** Notes that mean a link has nothing to enrich. */
-const NOTHING_TO_ENRICH = [/^not a web page/, /^no text in this PDF$/, /^PDF too large to store/];
+const NOTHING_TO_ENRICH = [
+  /^not a web page/,
+  /^no text in this PDF$/,
+  /^PDF too large to store/,
+  /^page could not be read$/,
+];
 
 /** Whether a fetched link with these notes has nothing for enrichment to read. */
 export function hasNothingToEnrich(notes: string[]): boolean {
@@ -60,33 +66,45 @@ export async function afterFetch(
 async function storeEnrichment(env: Env, link: LinkRow, proposed: Enrichment): Promise<void> {
   // A former name the provider proposes lands on its survivor.
   const result = applyAliases(proposed, await listAliases(env.DB, link.user_id));
-  // The owner's edits win: an edited field keeps the owner's value.
+  // The owner's edits win: an edited field keeps the owner's value. The link
+  // was read before the provider answered, so the write checks the row again.
   const edited = new Set(parseStrings(link.edited_fields));
   // A variant of an existing name (plural, hyphen) lands on that name, so
   // the vocabulary converges instead of collecting near-duplicates; a topic
   // path files the link into the tree, never moving a topic already there.
   const near = { near: true };
   const topicId = edited.has('topic')
-    ? link.topic_id
+    ? null
     : await resolveTopicPath(env.DB, link.user_id, result.topic, near);
   const tagIds = edited.has('tags')
     ? null
     : await resolveTags(env.DB, link.user_id, result.tags, near);
+  // Should the owner have filed the link elsewhere meanwhile, the topics
+  // resolved for it are left empty: they go again, the deepest first.
+  const above = topicId
+    ? await env.DB.prepare(
+        `SELECT t.parent_id AS parent, p.parent_id AS grandparent
+         FROM topics t LEFT JOIN topics p ON p.id = t.parent_id WHERE t.id = ?`,
+      )
+        .bind(topicId)
+        .first<{ parent: string | null; grandparent: string | null }>()
+    : null;
+  const resolved = [topicId, above?.parent, above?.grandparent].filter(
+    (id): id is string => typeof id === 'string',
+  );
   const at = now().toISOString();
   await env.DB.batch([
     env.DB.prepare(
-      `UPDATE links SET summary = ?, topic_id = ?, enriched_at = ?, enrichment_status = 'enriched',
-         enrichment_reason = NULL, updated_at = ?
-       WHERE id = ? AND user_id = ?`,
-    ).bind(
-      edited.has('summary') ? link.summary : result.summary,
-      topicId,
-      at,
-      at,
-      link.id,
-      link.user_id,
-    ),
-    ...(tagIds ? setTagsStatements(env.DB, link.user_id, link.id, tagIds) : []),
+      `UPDATE links SET
+         summary = CASE WHEN ${ownerEdited('summary')} THEN summary ELSE ?1 END,
+         topic_id = CASE WHEN ${ownerEdited('topic')} THEN topic_id ELSE ?2 END,
+         enriched_at = ?3, enrichment_status = 'enriched', enrichment_reason = NULL, updated_at = ?3
+       WHERE id = ?4 AND user_id = ?5`,
+    ).bind(result.summary, topicId, at, link.id, link.user_id),
+    ...(tagIds
+      ? setTagsStatements(env.DB, link.user_id, link.id, tagIds, { unlessEdited: true })
+      : []),
+    ...resolved.map((id) => dropIfEmptyStatement(env.DB, id)),
   ]);
   await queueIndexing(env, link.user_id, [link.id]);
 }

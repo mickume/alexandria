@@ -1,3 +1,4 @@
+import { ownerEdited } from '../links/store';
 import { nameKey, nearKeys, type Aliases, type VocabularyEntry } from './enrich';
 
 /** How many of the user's topics and tags the provider is shown. */
@@ -185,20 +186,19 @@ export async function resolveTopicPath(
   // matched a topic elsewhere in the tree, or went beside it at the third
   // level: it goes again, the deepest first, so that nothing empty is left.
   const unused = created.filter((id) => id !== parent).reverse();
-  if (unused.length > 0) {
-    await db.batch(
-      unused.map((id) =>
-        db
-          .prepare(
-            `DELETE FROM topics WHERE id = ?1
-               AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = ?1)
-               AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = ?1)`,
-          )
-          .bind(id),
-      ),
-    );
-  }
+  if (unused.length > 0) await db.batch(unused.map((id) => dropIfEmptyStatement(db, id)));
   return parent!;
+}
+
+/** The statement that deletes a topic with no link and no topic beneath it. */
+export function dropIfEmptyStatement(db: D1Database, topicId: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `DELETE FROM topics WHERE id = ?1
+         AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = ?1)
+         AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = ?1)`,
+    )
+    .bind(topicId);
 }
 
 /**
@@ -224,18 +224,22 @@ export function setTagsStatements(
   userId: string,
   linkId: string,
   tagIds: string[],
+  { unlessEdited = false } = {},
 ): D1PreparedStatement[] {
+  // With unlessEdited, tags the owner set meanwhile are left as they are.
+  const free = unlessEdited ? `AND NOT ${ownerEdited('tags')}` : '';
   return [
     db
       .prepare(
-        'DELETE FROM link_tags WHERE link_id = ? AND tag_id NOT IN (SELECT value FROM json_each(?))',
+        `DELETE FROM link_tags WHERE link_id = ?1 AND tag_id NOT IN (SELECT value FROM json_each(?2))
+           AND EXISTS (SELECT 1 FROM links WHERE id = ?1 ${free})`,
       )
       .bind(linkId, JSON.stringify(tagIds)),
     ...tagIds.map((tagId, i) =>
       db
         .prepare(
           `INSERT INTO link_tags (link_id, tag_id, position)
-           SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ?
+           SELECT id, ?, ? FROM links WHERE id = ? AND user_id = ? ${free}
            ON CONFLICT (link_id, tag_id) DO UPDATE SET position = excluded.position`,
         )
         .bind(tagId, i, linkId, userId),

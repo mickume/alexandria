@@ -1,6 +1,6 @@
 /** The user's topics and tags as the owner browses them: listed, renamed and merged. */
 import { now } from '../clock';
-import { resolveTopicPath, TOPIC_LEVELS } from '../enrich/vocabulary';
+import { dropIfEmptyStatement, resolveTopicPath, TOPIC_LEVELS } from '../enrich/vocabulary';
 
 /** Topics or tags: which vocabulary a route is about. */
 export type VocabularyKind = 'topics' | 'tags';
@@ -361,15 +361,7 @@ async function topicTree(db: D1Database, userId: string) {
 function dropEmptied(db: D1Database, ids: (string | null | undefined)[]): D1PreparedStatement[] {
   return ids
     .filter((id): id is string => typeof id === 'string')
-    .map((id) =>
-      db
-        .prepare(
-          `DELETE FROM topics WHERE id = ?1
-             AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = ?1)
-             AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = ?1)`,
-        )
-        .bind(id),
-    );
+    .map((id) => dropIfEmptyStatement(db, id));
 }
 
 /** Why a move was refused. */

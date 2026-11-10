@@ -136,6 +136,15 @@ export interface LinkView {
   decay_note: string;
 }
 
+/**
+ * The SQL condition that the owner edited `field` of the link being written,
+ * read from the row itself, so that a write decided before the edit still
+ * keeps the owner's value.
+ */
+export function ownerEdited(field: 'title' | 'summary' | 'tags' | 'topic'): string {
+  return `EXISTS (SELECT 1 FROM json_each(links.edited_fields) WHERE value = '${field}')`;
+}
+
 /** A stored JSON array of strings (notes, tags, edited fields), parsed; [] for anything else. */
 export function parseStrings(notes: string | null | undefined): string[] {
   try {
@@ -407,7 +416,7 @@ export async function deleteLink(db: D1Database, userId: string, id: string): Pr
     db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),
     // Its passages go with it; the trigger on them queues their vectors for deletion.
     db.prepare('DELETE FROM link_passages WHERE link_id = ? AND user_id = ?').bind(id, userId),
-    ...leaveAllWorkspaces(db, id),
+    ...leaveAllWorkspaces(db, userId, id),
     db.prepare('DELETE FROM link_events WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').bind(id, userId),
   ]);
