@@ -1,19 +1,68 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { stats as statsApi, type Stats as StatsAnswer } from '../api';
+import { Link } from '../App';
+import {
+  filterQuery,
+  imports as importsApi,
+  searchPath,
+  stats as statsApi,
+  type DayCount,
+  type Stats as StatsAnswer,
+} from '../api';
+import { BarChart } from '../components/BarChart';
+
+/** The caption of every series computed from the history the library keeps. */
+const STILL_IN_LIBRARY = 'counts only links still in your library';
 
 /** A whole number as the page writes it, with thousands separators. */
 function num(n: number): string {
   return n.toLocaleString('en-US');
 }
 
-/** One row of a section's table: what is counted, and how many. */
-function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
+/**
+ * One row of a section's table: what is counted, and how many. `labelTo` links
+ * the label, and `to` the count, to the page listing what it counts.
+ */
+function Row({
+  label,
+  value,
+  labelTo,
+  to,
+}: {
+  label: ReactNode;
+  value: ReactNode;
+  labelTo?: string;
+  to?: string;
+}) {
+  const shown = typeof value === 'number' ? num(value) : value;
   return (
     <tr>
-      <th scope="row">{label}</th>
-      <td className="q-table-number">{typeof value === 'number' ? num(value) : value}</td>
+      <th scope="row">{labelTo ? <Link to={labelTo}>{label}</Link> : label}</th>
+      <td className="q-table-number">{to ? <Link to={to}>{shown}</Link> : shown}</td>
     </tr>
   );
+}
+
+/** The row a list shows when it is empty. */
+function Empty({ text }: { text: string }) {
+  return (
+    <tr>
+      <td colSpan={2} className="muted">
+        {text}
+      </td>
+    </tr>
+  );
+}
+
+/** A daily series as the chart's bars. */
+function dayBars(series: DayCount[]) {
+  return series.map((d) => ({ label: d.day, count: d.count }));
+}
+
+/** When background work clears, in words, from now. */
+function throttleLine(clearAt: string | null): string {
+  const minutes = clearAt === null ? 0 : Math.ceil((Date.parse(clearAt) - Date.now()) / 60_000);
+  if (minutes <= 0) return 'background work is idle';
+  return `background work clears in about ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
 }
 
 /** A table of label and count rows, under an optional caption. */
@@ -49,8 +98,8 @@ function LibrarySection({ s }: { s: StatsAnswer }) {
         <Row label="Pending" value={library.by_state.pending} />
         <Row label="Active" value={library.by_state.active} />
         <Row label="Unreachable" value={library.by_state.unreachable} />
-        <Row label="Expired" value={library.by_state.expired} />
-        <Row label="Archived" value={library.by_state.archived} />
+        <Row label="Expired" value={library.by_state.expired} to="/expired" />
+        <Row label="Archived" value={library.by_state.archived} to="/archive" />
         <Row label="Pinned" value={library.pinned} />
         <Row label="In a workspace" value={library.in_workspace} />
         <Row label="Library limit" value={library.limit} />
@@ -69,22 +118,35 @@ function LibrarySection({ s }: { s: StatsAnswer }) {
         <Row label="Second-level topics" value={topics.by_level['2']} />
         <Row label="Third-level topics" value={topics.by_level['3']} />
         <Row label="Links without a topic" value={topics.links_without_topic} />
+        {topics.largest.length === 0 && <Empty text="No topics yet" />}
         {topics.largest.map((t) => (
-          <Row key={t.id} label={t.path.join(' › ')} value={t.count} />
+          <Row
+            key={t.id}
+            label={t.path.join(' › ')}
+            value={t.count}
+            labelTo={searchPath(filterQuery('topic', t.name))}
+          />
         ))}
       </Counts>
       <Counts caption="Tags">
         <Row label="Tags" value={tags.total} />
         <Row label="Tags on one link" value={tags.used_once} />
         <Row label="Links without tags" value={tags.links_without_tags} />
+        {tags.top.length === 0 && <Empty text="No tags yet" />}
         {tags.top.map((t) => (
-          <Row key={t.id} label={t.name} value={t.count} />
+          <Row
+            key={t.id}
+            label={t.name}
+            value={t.count}
+            labelTo={searchPath(filterQuery('tag', t.name))}
+          />
         ))}
       </Counts>
       <Counts caption="Workspaces">
         <Row label="Workspaces" value={workspaces.total} />
+        {workspaces.largest.length === 0 && <Empty text="No workspaces yet" />}
         {workspaces.largest.map((w) => (
-          <Row key={w.id} label={w.name} value={w.count} />
+          <Row key={w.id} label={w.name} value={w.count} labelTo={`/workspaces/${w.id}`} />
         ))}
       </Counts>
       <Counts caption="Hosts">
@@ -111,11 +173,10 @@ function ExpirySection({ s }: { s: StatsAnswer }) {
         <Row label="Expires within 30 days" value={expiring.within_30_days} />
         <Row label="Pinned or in a workspace, at 0 points or below" value={protected_at_risk} />
       </Counts>
-      <Counts caption="Points">
-        {s.expiry.points_histogram.map((r) => (
-          <Row key={r.range} label={`${r.range} points`} value={r.count} />
-        ))}
-      </Counts>
+      <BarChart
+        title="Points of the links decay can expire"
+        bars={s.expiry.points_histogram.map((r) => ({ label: r.range, count: r.count }))}
+      />
       <Counts caption="Awaiting removal">
         <Row label="Expired, to be removed" value={awaiting_removal.total} />
         <Row label="Removed within 7 days" value={awaiting_removal.within_7_days} />
@@ -129,6 +190,7 @@ function BacklogSection({ s }: { s: StatsAnswer }) {
   const b = s.backlog;
   return (
     <Section id="backlog" title="Background work">
+      <p className="muted">{throttleLine(b.throttle_clear_at)}</p>
       <Counts>
         <Row label="Waiting to be fetched" value={b.fetch_pending} />
         <Row label="Being fetched again" value={b.fetch_retrying} />
@@ -138,6 +200,7 @@ function BacklogSection({ s }: { s: StatsAnswer }) {
         <Row label="Due a liveness check" value={b.liveness_due} />
       </Counts>
       <Counts caption="Imports in progress">
+        {b.imports.length === 0 && <Empty text="No imports in progress" />}
         {b.imports.map((i) => (
           <Row
             key={i.id}
@@ -193,18 +256,26 @@ function ActivitySection({ s }: { s: StatsAnswer }) {
           <Row key={r.reason} label={r.reason} value={r.count} />
         ))}
       </Counts>
+      <BarChart title="Added per day" bars={dayBars(a.added_per_day)} caption={STILL_IN_LIBRARY} />
+      <BarChart title="Uses per day" bars={dayBars(a.uses_per_day)} caption={STILL_IN_LIBRARY} />
       <Counts caption="Most used in the last 30 days">
         {a.most_used.map((m) => (
-          <Row key={m.id} label={m.title} value={m.uses} />
+          <Row key={m.id} label={m.title} value={m.uses} labelTo={`/links/${m.id}`} />
         ))}
       </Counts>
       <Counts caption="Imports">
+        {a.imports.length === 0 && <Empty text="No imports yet" />}
         {a.imports.map((i) => (
-          <Row
-            key={i.id}
-            label={`Import of ${i.created_at.slice(0, 10)}`}
-            value={`${num(i.added)} added of ${num(i.url_lines)}`}
-          />
+          <tr key={i.id}>
+            <th scope="row">
+              <a href={importsApi.reportUrl(i.id)} download>
+                Import of {i.created_at.slice(0, 10)}
+              </a>
+            </th>
+            <td className="q-table-number">
+              {num(i.added)} added of {num(i.url_lines)}
+            </td>
+          </tr>
         ))}
       </Counts>
     </Section>

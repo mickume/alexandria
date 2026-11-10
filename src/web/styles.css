@@ -1156,3 +1156,32 @@ a.brand:hover span {
   font-weight: var(--q-weight-normal);
   text-align: start;
 }
+
+/* A bar chart: the bars in the accent colour, over a baseline. */
+.bar-chart {
+  margin: 0;
+}
+
+.bar-chart figcaption {
+  font-weight: var(--q-weight-semibold);
+  padding-block-end: var(--q-space-2);
+}
+
+.bar-chart svg {
+  display: block;
+  width: 100%;
+  height: 5rem;
+  border-block-end: var(--q-border-width) solid var(--q-border-default);
+}
+
+.bar-chart rect {
+  fill: var(--q-accent-emphasis);
+}
+
+.bar-chart rect:hover {
+  fill: var(--q-accent-fg);
+}
+
+.bar-chart p {
+  margin-block: var(--q-space-1) 0;
+}

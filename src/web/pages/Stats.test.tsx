@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Stats } from '../api';
+import { filterQuery, imports, searchPath, type Stats } from '../api';
 import { FakeApi, renderPage } from '../test/helpers';
 
 afterEach(() => {
@@ -174,4 +174,81 @@ describe('the Stats page', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Try again' })));
     expect(await screen.findByRole('heading', { name: 'Library' })).toBeTruthy();
   });
+});
+
+/** Renders the page with `body` and waits for its sections. */
+async function show(body: Stats) {
+  renderPage('/stats', new FakeApi().on('GET', '/api/v1/stats', { status: 200, body }));
+  await screen.findByRole('heading', { name: 'Library' });
+}
+
+/** The table row whose header cell reads `label`, within `scope`. */
+function row(label: string, scope: HTMLElement = document.body): HTMLElement {
+  const header = within(scope).getByRole('rowheader', { name: label });
+  return header.closest('tr') as HTMLElement;
+}
+
+describe('the Stats page’s links, charts and captions', () => {
+  it('links each count to the page listing what it counts', async () => {
+    await show(statsBody());
+    const link = (r: HTMLElement) => within(r).getByRole('link').getAttribute('href');
+    expect(link(row('Expired'))).toBe('/expired');
+    expect(link(row('Archived'))).toBe('/archive');
+    expect(link(row('Software › Testing'))).toBe(searchPath(filterQuery('topic', 'Testing')));
+    expect(link(row('rust'))).toBe(searchPath(filterQuery('tag', 'rust')));
+    expect(link(row('Trip'))).toBe('/workspaces/w1');
+    const activity = screen.getByRole('region', { name: 'Activity' });
+    expect(link(row('Import of 2026-11-10', activity))).toBe(imports.reportUrl('i1'));
+    expect(link(row('Kept page'))).toBe('/links/k1');
+  });
+
+  it('draws the daily series and the points histogram as bar charts with their tables', async () => {
+    await show(statsBody());
+    const chart = screen.getByRole('img', { name: 'Added per day' });
+    const bars = chart.querySelectorAll('rect');
+    expect(bars).toHaveLength(30);
+    expect(bars[28]!.querySelector('title')?.textContent).toBe('2026-11-09: 4');
+    const figure = chart.closest('figure') as HTMLElement;
+    const table = within(figure).getByRole('table', { hidden: true });
+    expect(table.classList.contains('visually-hidden')).toBe(true);
+    const rows = within(table).getAllByRole('row', { hidden: true }).slice(1);
+    expect(rows).toHaveLength(30);
+    expect(rows[28]!.textContent).toBe('2026-11-094');
+    expect(screen.getByRole('img', { name: 'Uses per day' }).querySelectorAll('rect')).toHaveLength(
+      30,
+    );
+    const histogram = screen.getByRole('img', { name: 'Points of the links decay can expire' });
+    const titles = [...histogram.querySelectorAll('rect title')].map((t) => t.textContent);
+    expect(titles).toEqual(['≤0: 4', '1–7: 6', '8–30: 25', '31–60: 600', '61–90: 50', '>90: 15']);
+  });
+
+  it.each([
+    ['every list empty and no throttle', true, null, 'background work is idle'],
+    [
+      'a throttle clearing in 11 min 20 s',
+      false,
+      680_000,
+      'background work clears in about 12 minutes',
+    ],
+  ])(
+    'shows empty states, captions and the throttle line with %s',
+    async (_, empty, clearIn, line) => {
+      const body = statsBody();
+      if (empty) {
+        body.topics.largest = [];
+        body.tags.top = [];
+        body.workspaces.largest = [];
+        body.activity.imports = [];
+      }
+      body.backlog.throttle_clear_at =
+        clearIn === null ? null : new Date(Date.now() + clearIn).toISOString();
+      await show(body);
+      for (const text of ['No topics yet', 'No tags yet', 'No workspaces yet', 'No imports yet']) {
+        expect(screen.queryByText(text) !== null).toBe(empty);
+      }
+      expect(screen.getByText(line)).toBeTruthy();
+      const activity = within(screen.getByRole('region', { name: 'Activity' }));
+      expect(activity.getAllByText('counts only links still in your library')).toHaveLength(2);
+    },
+  );
 });
