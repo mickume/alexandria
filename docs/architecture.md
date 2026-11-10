@@ -224,18 +224,22 @@ never varied. The owner's own edits are taken as typed.
 
 A topic, from enrichment or an edit, is a path of up to three names
 (`resolveTopicPath` in `enrich/vocabulary.ts`), resolved from the first: a
-name that matches a topic (its name, then an alias, then for enrichment a near
-name) is that topic wherever it is in the tree, and the next name belongs
-under it; any other name is created under the topic before it, beside a
-level-3 topic rather than below it. Topics created for a path that end up
-empty are deleted again. A split (`POST /api/v1/topics/{id}/split`, `prepareSplit` and `applySplit` in
+name that matches a topic (its name, then an alias, then for enrichment and
+splits a near name) is that topic wherever it is in the tree, and the next
+name belongs under it; any other name is created under the topic before it,
+beside a level-3 topic rather than below it. Topics created for a path that
+end up empty are deleted again. Enrichment keeps the first two and the last
+name of a longer path and refuses an empty name or one over 100 characters as
+an unusable result.
+
+A split (`POST /api/v1/topics/{id}/split`, `prepareSplit` and `applySplit` in
 `search/vocabulary.ts`) is one structured request to the owner's provider
 (`splitWith` in `enrich/providers.ts`, `SPLIT_SCHEMA`), made while the HTTP
-request waits, whose answer is applied at once: each sub-topic name is
-resolved with `resolveTopicPath` as the last name of the topic's own path.
-Enrichment keeps the first two and the last name of a
-longer path and refuses an empty name or one over 100 characters as an
-unusable result.
+request waits. Its answer is checked whole before anything is written; then
+each sub-topic name is resolved with `resolveTopicPath` as the last name of
+the topic's own path, and the links are moved in one batch. A link the owner
+moved while the provider answered stays where it is, and a sub-topic no link
+reached is deleted again.
 
 ### The background throttle
 

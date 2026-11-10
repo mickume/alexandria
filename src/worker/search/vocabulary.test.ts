@@ -13,6 +13,7 @@ import { FakeAi } from '../test/ai';
 import { markKeyRejected } from '../enrich/keys';
 import { setProviderTimeout } from '../enrich/providers';
 import { listVocabulary } from '../enrich/vocabulary';
+import { applySplit } from './vocabulary';
 
 async function patch(user: TestUser, id: string, body: Record<string, unknown>) {
   const r = await api('PATCH', `/api/v1/links/${id}`, { as: user.session, body });
@@ -1201,6 +1202,22 @@ describe('splitting a topic', () => {
     },
     { label: 'another user’s topic', links: 25, theirs: true, status: 404, error: 'not_found' },
     { label: 'an unknown topic', links: 25, unknown: true, status: 404, error: 'not_found' },
+    {
+      label: 'a level-3 topic with 19 links',
+      links: 19,
+      level3: true,
+      status: 409,
+      error: 'too_deep',
+      message: 'topics are at most three levels deep',
+    },
+    {
+      label: '19 links and no key',
+      links: 19,
+      key: 'none',
+      status: 409,
+      error: 'too_few_links',
+      message: 'a topic needs at least 20 links to be split',
+    },
   ] as {
     label: string;
     links: number;
@@ -1230,6 +1247,11 @@ describe('splitting a topic', () => {
       links: ids.map((id, i) => ({ id, subtopic: i % 2 ? 'Left' : 'Right' })),
     });
     const before = await topics(owner);
+    const linksBefore = await env.DB.prepare(
+      'SELECT id, topic_id, updated_at FROM links WHERE user_id = ? ORDER BY id',
+    )
+      .bind(owner.id)
+      .all();
     const target = row.unknown ? 'no-such-topic' : await idOf(owner, 'topics', 'Target');
     const r = await api('POST', `/api/v1/topics/${target}/split`, { as: user.session });
     expect(r.status).toBe(row.status);
@@ -1242,6 +1264,12 @@ describe('splitting a topic', () => {
     );
     expect(ai.requests.filter((q) => q.split)).toEqual([]);
     expect(await topics(owner)).toEqual(before);
+    const linksAfter = await env.DB.prepare(
+      'SELECT id, topic_id, updated_at FROM links WHERE user_id = ? ORDER BY id',
+    )
+      .bind(owner.id)
+      .all();
+    expect(linksAfter.results).toEqual(linksBefore.results);
   });
 
   /** The topic 'Target' with 25 links, a verified key, and the topic's links by id. */
@@ -1342,6 +1370,41 @@ describe('splitting a topic', () => {
       message: "the provider's split could not be used",
     });
     await unchanged();
+  });
+
+  it('leaves a link moved away while the provider answered, and creates no sub-topic only it would reach', async () => {
+    setNow(T0);
+    const user = await signIn();
+    const [stays = '', away = ''] = await fileLinks(user, 'Target', 2);
+    await fileLinks(user, 'Elsewhere', 1);
+    await env.DB.prepare(
+      "UPDATE links SET topic_id = (SELECT id FROM topics WHERE name = 'Elsewhere') WHERE id = ?",
+    )
+      .bind(away)
+      .run();
+    const id = await idOf(user, 'topics', 'Target');
+    const split = await applySplit(
+      env.DB,
+      user.id,
+      id,
+      ['Target'],
+      new Map([
+        [stays, 'Kept'],
+        [away, 'Gone'],
+      ]),
+    );
+    expect(split).toMatchObject({ moved: 1, movedIds: [stays] });
+    expect(await topics(user)).toEqual({
+      Target: { parent: null, count: 0 },
+      Kept: { parent: 'Target', count: 1 },
+      Elsewhere: { parent: null, count: 2 },
+    });
+  });
+
+  it('answers null for a topic that went while the provider answered', async () => {
+    const user = await signIn();
+    const split = await applySplit(env.DB, user.id, 'gone', ['Gone'], new Map());
+    expect(split).toBeNull();
   });
 });
 

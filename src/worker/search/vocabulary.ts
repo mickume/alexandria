@@ -485,7 +485,8 @@ export interface SplitOutcome {
  * near names (an existing child or any existing topic is reused where it is,
  * otherwise a child of the topic is created), and in one batch each link is
  * filed under its sub-topic and, when its topic changes, marked changed.
- * `assignments` maps each link to its sub-topic's name; '' leaves it.
+ * `assignments` maps each link to its sub-topic's name; '' leaves it. Null
+ * when the topic is no longer the user's.
  */
 export async function applySplit(
   db: D1Database,
@@ -493,7 +494,7 @@ export async function applySplit(
   id: string,
   path: string[],
   assignments: Map<string, string>,
-): Promise<SplitOutcome> {
+): Promise<SplitOutcome | null> {
   const targets = new Map<string, string>();
   for (const name of new Set(assignments.values())) {
     if (name === '') continue;
@@ -503,6 +504,8 @@ export async function applySplit(
     const target = name === '' ? undefined : targets.get(name);
     return target && target !== id ? [{ linkId, target }] : [];
   });
+  // A link the owner moved or deleted while the provider answered is left as
+  // it is, and a sub-topic none of the links reached goes again.
   const at = now().toISOString();
   if (moves.length > 0) {
     await db.batch(
@@ -515,6 +518,21 @@ export async function applySplit(
       ),
     );
   }
+  // The moved links are the ones now under their sub-topic.
+  const landed = await db
+    .prepare(
+      `SELECT l.id FROM links l JOIN json_each(?) j
+         ON l.id = json_extract(j.value, '$.linkId') AND l.topic_id = json_extract(j.value, '$.target')
+       WHERE l.user_id = ?`,
+    )
+    .bind(JSON.stringify(moves), userId)
+    .all<{ id: string }>();
+  const movedIds = landed.results.map((r) => r.id);
+  const created = [...new Set(targets.values())].filter((t) => t !== id);
+  if (created.length > 0) await db.batch(dropEmptied(db, created));
+  const topic = await getTopic(db, userId, id);
+  // The topic itself went (merged or emptied) while the provider answered.
+  if (!topic) return null;
   const children = await db
     .prepare(
       `SELECT t.id, t.name, (SELECT COUNT(*) FROM links WHERE topic_id = t.id) AS count
@@ -522,10 +540,5 @@ export async function applySplit(
     )
     .bind(id, userId)
     .all<VocabularyEntry>();
-  return {
-    topic: (await getTopic(db, userId, id))!,
-    children: children.results,
-    moved: moves.length,
-    movedIds: moves.map((m) => m.linkId),
-  };
+  return { topic, children: children.results, moved: movedIds.length, movedIds };
 }

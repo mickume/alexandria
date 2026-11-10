@@ -399,6 +399,7 @@ topicRoutes.post('/:id/split', async (c) => {
     return refusal(c, 502, 'provider_failed', "the provider's split could not be used");
   }
   const split = await applySplit(c.env.DB, userId, id, request.path, assignments);
+  if (!split) return notFound(c);
   await queueIndexing(c.env, userId, split.movedIds);
   return c.json({ topic: split.topic, children: split.children, moved: split.moved });
 });
