@@ -15,13 +15,17 @@ spec says, and why.
    them.
 3. **The encryption key is the SHA-256 digest of `KEY_ENCRYPTION_KEY`**, used
    as an AES-256-GCM key.
-4. **Throttled starts are claimed when they happen.** Slots stay 3 seconds
-   apart as the spec says, but queue delivery is not exact, so the consumer
-   also records each throttled job's actual start
-   (`users.throttle_last_start`, a column beside the spec's
-   `throttle_next_at`) and sends a job back for the time left when it comes
-   within 3 seconds and a 250 ms margin of the previous start. Without it,
-   two jobs reached the provider 2,999 ms apart.
+4. **Throttled starts were claimed when they happened, and no longer are.**
+   Slots stay 3 seconds apart as the spec says. Because queue delivery is not
+   exact (two jobs once reached the provider 2,999 ms apart), the consumer
+   used to record each throttled job's actual start
+   (`users.throttle_last_start`) and send a job back when it came within 3
+   seconds and a 250 ms margin of the previous start. That margin was wider
+   than the slots' own spacing, so a job arriving on its slot was sent back
+   at least once and a long "enrich all" re-sent its whole backlog round after
+   round. The second gate was removed and migration 0020 dropped the column:
+   the slots alone space the jobs, and two starts may come slightly closer
+   than 3 seconds when delivery is late.
 5. **An enrichment message carries `attempt` and `manual`**, which decide the
    single automatic retry.
 6. **The provider timeout can be shortened for tests** (`setProviderTimeout`),
