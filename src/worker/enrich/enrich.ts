@@ -2,8 +2,13 @@
 export interface Enrichment {
   summary: string;
   tags: string[];
-  topic: string;
+  /** The topic path's names, from the most general to the most specific: one to three. */
+  topic: string[];
 }
+
+/** The longest name of a topic path, and the deepest path kept. */
+const TOPIC_NAME_MAX = 100;
+const TOPIC_PATH_MAX = 3;
 
 /** The most page text sent to the provider, in characters. */
 export const MAX_PROMPT_TEXT = 20_000;
@@ -77,9 +82,11 @@ export function normalizeTags(names: string[]): string[] {
 
 /**
  * Normalises a provider's raw result: tags as normalizeTags makes them, the
- * first 5 kept; the summary cut to its first 60 words. Returns null for a
- * result that is unusable: not the right shape, no tags, or an empty summary
- * or topic.
+ * first 5 kept; the summary cut to its first 60 words; the topic split on
+ * every '>' into names, spaces collapsed, of which a path longer than three
+ * keeps the first two and the last. Returns null for a result that is
+ * unusable: not the right shape, no tags, an empty summary, or a topic with an
+ * empty name or a name over 100 characters.
  */
 export function normalizeResult(raw: unknown): Enrichment | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -92,9 +99,12 @@ export function normalizeResult(raw: unknown): Enrichment | null {
     0,
     MAX_TAGS,
   );
-  const cleanTopic = topic.replace(/\s+/g, ' ').trim();
-  if (!cleanSummary || !cleanTopic || cleanTags.length < MIN_TAGS) return null;
-  return { summary: cleanSummary, tags: cleanTags, topic: cleanTopic };
+  const names = topic.split('>').map((n) => n.replace(/\s+/g, ' ').trim());
+  if (names.some((n) => !n || n.length > TOPIC_NAME_MAX)) return null;
+  const path =
+    names.length > TOPIC_PATH_MAX ? [names[0]!, names[1]!, names[names.length - 1]!] : names;
+  if (!cleanSummary || cleanTags.length < MIN_TAGS) return null;
+  return { summary: cleanSummary, tags: cleanTags, topic: path };
 }
 
 /** A topic or tag name with the number of the user's links that carry it. */
@@ -160,11 +170,12 @@ export interface Aliases {
 }
 
 /**
- * An enrichment result with every topic or tag that is an alias replaced by
- * its survivor, compared ignoring case; tags that become repeats are dropped.
+ * An enrichment result with every tag that is an alias replaced by its
+ * survivor, compared ignoring case; tags that become repeats are dropped. The
+ * topic path's names are matched against the topic aliases as they are
+ * resolved (resolveTopicPath).
  */
 export function applyAliases(result: Enrichment, aliases: Aliases): Enrichment {
-  const topic = aliases.topics.get(nameKey(result.topic)) ?? result.topic;
   const tags = normalizeTags(result.tags.map((t) => aliases.tags.get(nameKey(t)) ?? t));
-  return { ...result, topic, tags };
+  return { ...result, tags };
 }

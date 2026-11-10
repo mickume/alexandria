@@ -149,7 +149,10 @@ web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
 Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
-hyphenated) and `topic`. `topic_path` holds the names from the link's
+hyphenated) and `topic`. Enrichment files the link under a topic path of up
+to three names (`resolveTopicPath`): each name that matches an existing topic
+uses it where it is, and each other one is a new topic under the one before
+it, so enrichment grows the topic tree but never moves a topic. `topic_path` holds the names from the link's
 top-level topic down to its own topic, such as
 `["Software engineering", "Testing"]` (`[]` without a topic); `topic` is the
 last of them. `enrichment_status` says where the link stands:

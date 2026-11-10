@@ -11,7 +11,7 @@ import {
   listAliases,
   listVocabulary,
   resolveTags,
-  resolveTopic,
+  resolveTopicPath,
   setTagsStatements,
 } from './vocabulary';
 
@@ -63,11 +63,12 @@ async function storeEnrichment(env: Env, link: LinkRow, proposed: Enrichment): P
   // The owner's edits win: an edited field keeps the owner's value.
   const edited = new Set(parseStrings(link.edited_fields));
   // A variant of an existing name (plural, hyphen) lands on that name, so
-  // the vocabulary converges instead of collecting near-duplicates.
+  // the vocabulary converges instead of collecting near-duplicates; a topic
+  // path files the link into the tree, never moving a topic already there.
   const near = { near: true };
   const topicId = edited.has('topic')
     ? link.topic_id
-    : await resolveTopic(env.DB, link.user_id, result.topic, near);
+    : await resolveTopicPath(env.DB, link.user_id, result.topic, near);
   const tagIds = edited.has('tags')
     ? null
     : await resolveTags(env.DB, link.user_id, result.tags, near);

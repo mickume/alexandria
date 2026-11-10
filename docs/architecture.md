@@ -222,6 +222,16 @@ plural (`databases` and `database`, `libraries` and `library`). A few words
 whose plural-looking form names something else (`news`, `windows`, `ios`) are
 never varied. The owner's own edits are taken as typed.
 
+A topic, from enrichment or an edit, is a path of up to three names
+(`resolveTopicPath` in `enrich/vocabulary.ts`), resolved from the first: a
+name that matches a topic (its name, then an alias, then for enrichment a near
+name) is that topic wherever it is in the tree, and the next name belongs
+under it; any other name is created under the topic before it, beside a
+level-3 topic rather than below it. Topics created for a path that end up
+empty are deleted again. Enrichment keeps the first two and the last name of a
+longer path and refuses an empty name or one over 100 characters as an
+unusable result.
+
 ### The background throttle
 
 Background enrichment ("enrich all") goes through

@@ -213,7 +213,7 @@ describe('an edited field', () => {
   const second = {
     summary: 'Second summary.',
     tags: ['new-one', 'new-two', 'new-three'],
-    topic: 'Second topic',
+    topic: 'Second topic > Deeper',
   };
 
   it.each(
@@ -248,8 +248,12 @@ describe('an edited field', () => {
 
     const l = await get(user, id);
     expect(l[field]).toEqual(owner[field]);
-    for (const other of ['summary', 'tags', 'topic'] as const) {
+    for (const other of ['summary', 'tags'] as const) {
       if (other !== field) expect(l[other]).toEqual(second[other]);
+    }
+    if (field !== 'topic') {
+      expect(l.topic).toBe('Deeper');
+      expect(l.topic_path).toEqual(['Second topic', 'Deeper']);
     }
     if (field !== 'title') {
       expect(l.title).toBe(op === 'a refresh' ? 'A Changed Title' : 'Why We Keep Links Forever');

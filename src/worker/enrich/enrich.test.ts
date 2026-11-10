@@ -206,6 +206,57 @@ describe('enriching a fetched link', () => {
     }
   });
 
+  it.each([
+    { topic: 'Software engineering > Unit tests', path: ['Software engineering', 'Unit tests'] },
+    { topic: 'software engineering', path: ['Software engineering'] },
+    { topic: 'SE > Mocks', path: ['Software engineering', 'Mocks'] },
+    { topic: 'Database > Indexes', path: ['Databases', 'Indexes'] },
+    { topic: 'Quality > Testing', path: ['Software engineering', 'Testing'] },
+    { topic: 'Programming>Rust', path: ['Programming', 'Rust'] },
+    { topic: 'Gardening > Tools > Shears > Blades', path: ['Gardening', 'Tools', 'Blades'] },
+    { topic: 'Fuzzing > Corpus', path: ['Software engineering', 'Testing', 'Corpus'] },
+  ])('files the link under the returned path $topic', async ({ topic, path }) => {
+    const user = await signIn();
+    const [se = '', testing = '', fuzzing = '', databases = ''] = await seedLinks(user, [
+      { url: 'https://se.example/' },
+      { url: 'https://testing.example/' },
+      { url: 'https://fuzzing.example/' },
+      { url: 'https://databases.example/' },
+    ]);
+    const edit = (id: string, t: string) =>
+      api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { topic: t } });
+    await edit(se, 'Software engineering');
+    await edit(testing, 'Software engineering > Testing');
+    await edit(fuzzing, 'Software engineering > Testing > Fuzzing');
+    await edit(databases, 'Databases');
+    await env.DB.prepare(
+      `INSERT INTO topic_aliases (user_id, name, topic_id)
+       SELECT user_id, 'SE', id FROM topics WHERE user_id = ? AND name = 'Software engineering'`,
+    )
+      .bind(user.id)
+      .run();
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    new FakeAi().answer({ summary: 'S.', tags: ['one', 'two', 'three'], topic });
+    await saveKey(user);
+    const { id } = await addFetchAndEnrich(user, ARTICLE);
+
+    expect(await link(user, id)).toMatchObject({ topic: path.at(-1), topic_path: path });
+    expect((await link(user, fuzzing)).topic_path).toEqual([
+      'Software engineering',
+      'Testing',
+      'Fuzzing',
+    ]);
+    expect(await count('topics', "user_id = ? AND name LIKE '%>%'", user.id)).toBe(0);
+    expect(
+      await count(
+        'topics',
+        `user_id = ? AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = topics.id)
+         AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = topics.id)`,
+        user.id,
+      ),
+    ).toBe(0);
+  });
+
   it('lists the 300 most used tags in the request', async () => {
     const user = await signIn();
     const statements: D1PreparedStatement[] = [];
@@ -663,10 +714,27 @@ describe('a failed enrichment', () => {
     {
       label: 'a result without tags',
       make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['++', ''], topic: 'T' }),
+      unusable: true,
     },
-  ])(
+    {
+      label: 'a topic path with an empty name',
+      make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['a', 'b'], topic: 'A >  > B' }),
+      unusable: true,
+    },
+    {
+      label: 'a topic path ending in >',
+      make: (ai: FakeAi) => ai.answer({ summary: 'S.', tags: ['a', 'b'], topic: 'A >' }),
+      unusable: true,
+    },
+    {
+      label: 'a topic name over 100 characters',
+      make: (ai: FakeAi) =>
+        ai.answer({ summary: 'S.', tags: ['a', 'b'], topic: `A > ${'x'.repeat(101)}` }),
+      unusable: true,
+    },
+  ] as { label: string; make: (ai: FakeAi) => void; unusable?: boolean }[])(
     'after $label keeps the link usable, marks it failed and retries once in 10 minutes',
-    async ({ make }) => {
+    async ({ make, unusable }) => {
       const ai = new FakeAi();
       const { user, id, message } = await queuedLink(ai);
       make(ai);
@@ -683,6 +751,11 @@ describe('a failed enrichment', () => {
           tags: [],
         });
         expect(l.enrichment_reason).toEqual(expect.any(String));
+        if (unusable) {
+          expect(l.enrichment_reason).toBe('the result was not usable');
+          expect(l.topic).toBeNull();
+          expect(await count('topics', 'user_id = ?', user.id)).toBe(0);
+        }
         expect(sent).toEqual([{ body: { ...message, attempt: 2 }, delaySeconds: 600 }]);
 
         const again = recordEnrichQueue();

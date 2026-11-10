@@ -113,16 +113,6 @@ function nearIndex(rows: { id: string; name: string }[]) {
 /** The deepest level of the topic tree: a top-level topic is level 1. */
 export const TOPIC_LEVELS = 3;
 
-/** The id of the user's topic named `name` (or, with `near`, a near name), created at the top level when there is none. */
-export async function resolveTopic(
-  db: D1Database,
-  userId: string,
-  name: string,
-  options: ResolveOptions = {},
-): Promise<string> {
-  return resolveTopicPath(db, userId, [name], options);
-}
-
 /**
  * The id of the topic a path of names leads to in the user's topic tree,
  * resolving the names from the first. A name equal to a topic's name or to an
