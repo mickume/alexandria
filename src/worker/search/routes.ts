@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { limitReached, notFound, readJson, refusal, validationError } from '../api/errors';
-import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
+import { encodeCursor, readCursor, readLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
@@ -41,10 +41,6 @@ function isRankCursor(value: unknown, kind: RankCursor['s'] = 'r'): value is Ran
   return typeof c === 'object' && c !== null && c.s === kind && Number.isInteger(c.o) && c.o > 0;
 }
 
-function invalidCursor(c: Context<AppEnv>) {
-  return validationError(c, 'invalid_cursor', 'cursor', 'the cursor was not issued by this API');
-}
-
 /** The user's links with these ids, in the order of `ids`. */
 async function linksInOrder(db: D1Database, userId: string, ids: string[]): Promise<LinkRow[]> {
   const rows = await db
@@ -61,18 +57,9 @@ async function linksInOrder(db: D1Database, userId: string, ids: string[]): Prom
  * A query without free words: the links satisfying its filters in stream
  * order, as GET /api/v1/links lists them, without snippets.
  */
-async function streamPage(
-  c: Context<AppEnv>,
-  filters: Filters,
-  limit: number,
-  raw: string | undefined,
-  hybrid: boolean,
-) {
-  let after = null;
-  if (raw !== undefined) {
-    after = await decodeCursor(c.env, raw);
-    if (!isStreamCursor(after)) return invalidCursor(c);
-  }
+async function streamPage(c: Context<AppEnv>, filters: Filters, limit: number, hybrid: boolean) {
+  const after = await readCursor(c, isStreamCursor);
+  if (after instanceof Response) return after;
   const where = filterConditions(filters);
   const page = await listStream(c.env.DB, c.get('user').id, limit, after, where);
   return c.json({
@@ -92,14 +79,10 @@ async function hybridPage(
   c: Context<AppEnv>,
   { words, filters }: { words: string[]; filters: Filters },
   limit: number,
-  raw: string | undefined,
 ) {
-  let offset = 0;
-  if (raw !== undefined) {
-    const cursor = await decodeCursor(c.env, raw);
-    if (!isRankCursor(cursor, 'h')) return invalidCursor(c);
-    offset = cursor.o;
-  }
+  const cursor = await readCursor(c, (v): v is RankCursor => isRankCursor(v, 'h'));
+  if (cursor instanceof Response) return cursor;
+  const offset = cursor?.o ?? 0;
   const userId = c.get('user').id;
   const ranking = await hybridRanking(c.env, userId, words, filters);
   const page = ranking.entries.slice(offset, offset + limit);
@@ -140,14 +123,10 @@ async function rankedPage(
   c: Context<AppEnv>,
   { words, filters }: { words: string[]; filters: Filters },
   limit: number,
-  raw: string | undefined,
 ) {
-  let offset = 0;
-  if (raw !== undefined) {
-    const cursor = await decodeCursor(c.env, raw);
-    if (!isRankCursor(cursor)) return invalidCursor(c);
-    offset = cursor.o;
-  }
+  const cursor = await readCursor(c, (v): v is RankCursor => isRankCursor(v));
+  if (cursor instanceof Response) return cursor;
+  const offset = cursor?.o ?? 0;
   const userId = c.get('user').id;
   const match = linkMatch(userId, words);
   const ranked = match
@@ -175,42 +154,23 @@ searchRoutes.get('/', async (c) => {
   if (mode !== undefined && mode !== 'keyword' && mode !== 'hybrid') {
     return validationError(c, 'invalid_mode', 'mode', 'mode takes keyword, hybrid');
   }
-  const limit = parseLimit(c.req.query('limit'));
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
+  const limit = readLimit(c);
+  if (limit instanceof Response) return limit;
   return parsed.words.length === 0
-    ? streamPage(c, parsed.filters, limit, raw, mode === 'hybrid')
+    ? streamPage(c, parsed.filters, limit, mode === 'hybrid')
     : mode === 'hybrid'
-      ? hybridPage(c, parsed, limit, raw)
-      : rankedPage(c, parsed, limit, raw);
+      ? hybridPage(c, parsed, limit)
+      : rankedPage(c, parsed, limit);
 });
 
 /** GET /api/v1/topics or /api/v1/tags: the vocabulary of `kind`, newest first. */
 function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.get('/', async (c) => {
-    const limit = parseLimit(c.req.query('limit'));
-    if (limit === null) {
-      return validationError(
-        c,
-        'invalid_limit',
-        'limit',
-        `limit must be an integer from 1 to ${MAX_LIMIT}`,
-      );
-    }
-    const raw = c.req.query('cursor');
-    let after = null;
-    if (raw !== undefined) {
-      after = await decodeCursor(c.env, raw);
-      if (!isVocabularyCursor(after)) return invalidCursor(c);
-    }
+    const limit = readLimit(c);
+    if (limit instanceof Response) return limit;
+    const after = await readCursor(c, isVocabularyCursor);
+    if (after instanceof Response) return after;
     const page = await listVocabularyItems(c.env.DB, c.get('user').id, kind, limit, after);
     return c.json({
       items: page.items,

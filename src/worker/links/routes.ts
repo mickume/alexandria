@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
-import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
+import { encodeCursor, MAX_LIMIT, readCursor, readLimit } from '../api/pagination';
 import type { AppEnv, Env } from '../env';
 import { now } from '../clock';
 import { applyEdit, parseEdit } from '../enrich/edits';
@@ -116,28 +116,10 @@ linkRoutes.get('/', async (c) => {
     const next = more ? last : serverTime;
     return c.json({ items: rows.map(toView), server_time: next });
   }
-  const limit = parseLimit(c.req.query('limit'));
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
-  let after = null;
-  if (raw !== undefined) {
-    after = await decodeCursor(c.env, raw);
-    if (!isStreamCursor(after)) {
-      return validationError(
-        c,
-        'invalid_cursor',
-        'cursor',
-        'the cursor was not issued by this API',
-      );
-    }
-  }
+  const limit = readLimit(c);
+  if (limit instanceof Response) return limit;
+  const after = await readCursor(c, isStreamCursor);
+  if (after instanceof Response) return after;
   const parsed = filtersFromParams((name) => c.req.queries(name));
   if (!parsed.ok) return validationError(c, 'invalid_filter', parsed.field, parsed.message);
   // The stream keeps archived links out unless a state parameter asks for them;
@@ -164,28 +146,10 @@ linkRoutes.get('/:id/open', async (c) => {
 linkRoutes.get('/:id/history', async (c) => {
   const link = await getLink(c.env.DB, c.get('user').id, c.req.param('id'));
   if (!link) return notFound(c);
-  const limit = parseLimit(c.req.query('limit'), MAX_LIMIT);
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
-  let after = null;
-  if (raw !== undefined) {
-    after = await decodeCursor(c.env, raw);
-    if (!isHistoryCursor(after)) {
-      return validationError(
-        c,
-        'invalid_cursor',
-        'cursor',
-        'the cursor was not issued by this API',
-      );
-    }
-  }
+  const limit = readLimit(c, MAX_LIMIT);
+  if (limit instanceof Response) return limit;
+  const after = await readCursor(c, isHistoryCursor);
+  if (after instanceof Response) return after;
   const page = await listHistory(c.env.DB, link.id, limit, after);
   return c.json({
     items: page.items,

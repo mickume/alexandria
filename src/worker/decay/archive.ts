@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
-import { limitReached, notFound, validationError } from '../api/errors';
+import { limitReached, notFound } from '../api/errors';
 import { now } from '../clock';
-import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
+import { encodeCursor, readCursor, readLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { getLink, toFullView, toView, unpinStatements, type LinkRow } from '../links/store';
 
@@ -33,29 +33,11 @@ function listByTime(
   key: 'e' | 'a',
 ) {
   return async (c: Context<AppEnv>) => {
-    const limit = parseLimit(c.req.query('limit'));
-    if (limit === null) {
-      return validationError(
-        c,
-        'invalid_limit',
-        'limit',
-        `limit must be an integer from 1 to ${MAX_LIMIT}`,
-      );
-    }
-    const raw = c.req.query('cursor');
-    let after: { t: string; i: string } | null = null;
-    if (raw !== undefined) {
-      const cursor = await decodeCursor(c.env, raw);
-      if (!isTimeCursor(cursor, key)) {
-        return validationError(
-          c,
-          'invalid_cursor',
-          'cursor',
-          'the cursor was not issued by this API',
-        );
-      }
-      after = { t: cursor[key]!, i: cursor.i };
-    }
+    const limit = readLimit(c);
+    if (limit instanceof Response) return limit;
+    const cursor = await readCursor(c, (v): v is TimeCursor => isTimeCursor(v, key));
+    if (cursor instanceof Response) return cursor;
+    const after = cursor ? { t: cursor[key]!, i: cursor.i } : null;
     const keyset = after ? `AND (${column} < ?3 OR (${column} = ?3 AND id < ?4))` : '';
     const statement = c.env.DB.prepare(
       `SELECT * FROM link_views WHERE user_id = ?1 AND state = '${state}' ${keyset}

@@ -1,4 +1,6 @@
-import type { Env } from '../env';
+import type { Context } from 'hono';
+import type { AppEnv, Env } from '../env';
+import { validationError } from './errors';
 
 /** The page size of a list when the request names none. */
 export const DEFAULT_LIMIT = 50;
@@ -67,4 +69,34 @@ export async function decodeCursor<T>(env: Env, cursor: string): Promise<T | nul
   } catch {
     return null;
   }
+}
+
+/**
+ * The page size a list request asks for with `limit` (`fallback` without one),
+ * or the 400 that refuses a value that is not an integer from 1 to MAX_LIMIT.
+ */
+export function readLimit(c: Context<AppEnv>, fallback = DEFAULT_LIMIT): number | Response {
+  const limit = parseLimit(c.req.query('limit'), fallback);
+  if (limit !== null) return limit;
+  return validationError(
+    c,
+    'invalid_limit',
+    'limit',
+    `limit must be an integer from 1 to ${MAX_LIMIT}`,
+  );
+}
+
+/**
+ * The payload of a list request's `cursor`, null without one, or the 400 that
+ * refuses a cursor this API did not issue for this list (`isOwn` tells).
+ */
+export async function readCursor<T>(
+  c: Context<AppEnv>,
+  isOwn: (payload: unknown) => payload is T,
+): Promise<T | null | Response> {
+  const raw = c.req.query('cursor');
+  if (raw === undefined) return null;
+  const payload = await decodeCursor(c.env, raw);
+  if (isOwn(payload)) return payload;
+  return validationError(c, 'invalid_cursor', 'cursor', 'the cursor was not issued by this API');
 }

@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { limitReached, notFound, readJson, validationError } from '../api/errors';
-import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
+import { encodeCursor, MAX_LIMIT, readCursor, readLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { checkNote } from './notes';
@@ -77,28 +77,10 @@ workspaceRoutes.post('/', async (c) => {
 });
 
 workspaceRoutes.get('/', async (c) => {
-  const limit = parseLimit(c.req.query('limit'), MAX_LIMIT);
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
-  let after = null;
-  if (raw !== undefined) {
-    after = await decodeCursor(c.env, raw);
-    if (!isWorkspaceCursor(after)) {
-      return validationError(
-        c,
-        'invalid_cursor',
-        'cursor',
-        'the cursor was not issued by this API',
-      );
-    }
-  }
+  const limit = readLimit(c, MAX_LIMIT);
+  if (limit instanceof Response) return limit;
+  const after = await readCursor(c, isWorkspaceCursor);
+  if (after instanceof Response) return after;
   const page = await listWorkspaces(c.env.DB, c.get('user').id, limit, after);
   return c.json({
     items: page.items.map(toSummary),
@@ -184,29 +166,11 @@ workspaceRoutes.get('/:id/links', async (c) => {
   const userId = c.get('user').id;
   const workspaceId = c.req.param('id');
   if (!(await getWorkspace(c.env.DB, userId, workspaceId))) return notFound(c);
-  const limit = parseLimit(c.req.query('limit'), MAX_LIMIT);
-  if (limit === null) {
-    return validationError(
-      c,
-      'invalid_limit',
-      'limit',
-      `limit must be an integer from 1 to ${MAX_LIMIT}`,
-    );
-  }
-  const raw = c.req.query('cursor');
-  let after = 0;
-  if (raw !== undefined) {
-    const cursor = await decodeCursor(c.env, raw);
-    if (!isMemberCursor(cursor)) {
-      return validationError(
-        c,
-        'invalid_cursor',
-        'cursor',
-        'the cursor was not issued by this API',
-      );
-    }
-    after = cursor.p;
-  }
+  const limit = readLimit(c, MAX_LIMIT);
+  if (limit instanceof Response) return limit;
+  const cursor = await readCursor(c, isMemberCursor);
+  if (cursor instanceof Response) return cursor;
+  const after = cursor?.p ?? 0;
   const rows = await c.env.DB.prepare(
     `SELECT v.*, wl.position AS member_position FROM workspace_links wl
      JOIN link_views v ON v.id = wl.link_id

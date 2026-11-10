@@ -57,10 +57,8 @@ export async function decryptKey(
   return new TextDecoder().decode(opened);
 }
 
-/** A user's stored AI settings. */
-export interface AiSettings {
-  provider: Provider;
-  model: string;
+/** A key a user stored: encrypted, with its last 4 characters and whether its service still takes it. */
+export interface StoredKey {
   ciphertext: string;
   iv: string;
   last4: string;
@@ -68,67 +66,127 @@ export interface AiSettings {
   rejectedMessage: string | null;
 }
 
-/** The user's AI settings, or null when no key is stored. */
-export async function getAiSettings(db: D1Database, userId: string): Promise<AiSettings | null> {
+/** The users columns a stored key is kept in: `ai_key_…` or `firecrawl_key_…`. */
+export type KeyColumns = 'ai_key' | 'firecrawl_key';
+
+const KEY_FIELDS = ['ciphertext', 'iv', 'last4', 'status', 'rejected_message'] as const;
+
+/**
+ * The user's key stored under `columns`, with the `extra` users columns read
+ * beside it, or null when none is stored.
+ */
+export async function getStoredKey(
+  db: D1Database,
+  userId: string,
+  columns: KeyColumns,
+  extra: string[] = [],
+): Promise<{ key: StoredKey; row: Record<string, string | null> } | null> {
+  const names = [...KEY_FIELDS.map((f) => `${columns}_${f}`), ...extra];
   const row = await db
-    .prepare(
-      `SELECT ai_provider, ai_model, ai_key_ciphertext, ai_key_iv, ai_key_last4, ai_key_status,
-         ai_key_rejected_message FROM users WHERE id = ?`,
-    )
+    .prepare(`SELECT ${names.join(', ')} FROM users WHERE id = ?`)
     .bind(userId)
     .first<Record<string, string | null>>();
-  if (!row?.ai_key_ciphertext || !row.ai_key_iv || !row.ai_provider) return null;
+  const ciphertext = row?.[`${columns}_ciphertext`];
+  const iv = row?.[`${columns}_iv`];
+  if (!row || !ciphertext || !iv) return null;
   return {
-    provider: row.ai_provider as Provider,
-    model: row.ai_model ?? DEFAULT_ANTHROPIC_MODEL,
-    ciphertext: row.ai_key_ciphertext,
-    iv: row.ai_key_iv,
-    last4: row.ai_key_last4 ?? '',
-    status: row.ai_key_status === 'rejected' ? 'rejected' : 'verified',
-    rejectedMessage: row.ai_key_rejected_message ?? null,
+    row,
+    key: {
+      ciphertext,
+      iv,
+      last4: row[`${columns}_last4`] ?? '',
+      status: row[`${columns}_status`] === 'rejected' ? 'rejected' : 'verified',
+      rejectedMessage: row[`${columns}_rejected_message`] ?? null,
+    },
+  };
+}
+
+/**
+ * Stores a verified key under `columns`, replacing any earlier one and lifting
+ * a rejection, and sets the `extra` users columns with it.
+ */
+export async function saveStoredKey(
+  env: Env,
+  userId: string,
+  columns: KeyColumns,
+  key: string,
+  extra: Record<string, string> = {},
+): Promise<void> {
+  const { ciphertext, iv } = await encryptKey(env, key, userId);
+  const set = Object.keys(extra).map((name) => `${name} = ?, `);
+  await env.DB.prepare(
+    `UPDATE users SET ${set.join('')}${columns}_ciphertext = ?, ${columns}_iv = ?,
+       ${columns}_last4 = ?, ${columns}_status = 'verified', ${columns}_rejected_message = NULL
+     WHERE id = ?`,
+  )
+    .bind(...Object.values(extra), ciphertext, iv, key.slice(-4), userId)
+    .run();
+}
+
+/** Forgets the user's key stored under `columns`, and the `extra` users columns with it. */
+export async function clearStoredKey(
+  db: D1Database,
+  userId: string,
+  columns: KeyColumns,
+  extra: string[] = [],
+): Promise<void> {
+  const names = [...KEY_FIELDS.map((f) => `${columns}_${f}`), ...extra];
+  await db
+    .prepare(`UPDATE users SET ${names.map((n) => `${n} = NULL`).join(', ')} WHERE id = ?`)
+    .bind(userId)
+    .run();
+}
+
+/** Marks the user's key under `columns` as rejected by its service, with the service's message. */
+export async function markStoredKeyRejected(
+  db: D1Database,
+  userId: string,
+  columns: KeyColumns,
+  message: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE users SET ${columns}_status = 'rejected', ${columns}_rejected_message = ?
+       WHERE id = ? AND ${columns}_ciphertext IS NOT NULL`,
+    )
+    .bind(message, userId)
+    .run();
+}
+
+/** A user's stored AI settings. */
+export interface AiSettings extends StoredKey {
+  provider: Provider;
+  model: string;
+}
+
+/** The user's AI settings, or null when no key is stored. */
+export async function getAiSettings(db: D1Database, userId: string): Promise<AiSettings | null> {
+  const stored = await getStoredKey(db, userId, 'ai_key', ['ai_provider', 'ai_model']);
+  if (!stored?.row.ai_provider) return null;
+  return {
+    ...stored.key,
+    provider: stored.row.ai_provider as Provider,
+    model: stored.row.ai_model ?? DEFAULT_ANTHROPIC_MODEL,
   };
 }
 
 /** Stores a verified key, replacing any earlier settings and lifting a rejection. */
-export async function saveAiSettings(
+export function saveAiSettings(
   env: Env,
   userId: string,
   provider: Provider,
   model: string,
   key: string,
 ): Promise<void> {
-  const { ciphertext, iv } = await encryptKey(env, key, userId);
-  await env.DB.prepare(
-    `UPDATE users SET ai_provider = ?, ai_model = ?, ai_key_ciphertext = ?, ai_key_iv = ?,
-       ai_key_last4 = ?, ai_key_status = 'verified', ai_key_rejected_message = NULL
-     WHERE id = ?`,
-  )
-    .bind(provider, model, ciphertext, iv, key.slice(-4), userId)
-    .run();
+  return saveStoredKey(env, userId, 'ai_key', key, { ai_provider: provider, ai_model: model });
 }
 
 /** Forgets the user's provider, model and key. */
-export async function clearAiSettings(db: D1Database, userId: string): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE users SET ai_provider = NULL, ai_model = NULL, ai_key_ciphertext = NULL,
-         ai_key_iv = NULL, ai_key_last4 = NULL, ai_key_status = NULL, ai_key_rejected_message = NULL
-       WHERE id = ?`,
-    )
-    .bind(userId)
-    .run();
+export function clearAiSettings(db: D1Database, userId: string): Promise<void> {
+  return clearStoredKey(db, userId, 'ai_key', ['ai_provider', 'ai_model']);
 }
 
 /** Marks the user's key as rejected by the provider, pausing their enrichment. */
-export async function markKeyRejected(
-  db: D1Database,
-  userId: string,
-  message: string,
-): Promise<void> {
-  await db
-    .prepare(
-      "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = ? WHERE id = ? AND ai_key_ciphertext IS NOT NULL",
-    )
-    .bind(message, userId)
-    .run();
+export function markKeyRejected(db: D1Database, userId: string, message: string): Promise<void> {
+  return markStoredKeyRejected(db, userId, 'ai_key', message);
 }

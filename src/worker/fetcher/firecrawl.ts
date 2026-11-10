@@ -1,6 +1,13 @@
 import { Hono } from 'hono';
 import { readJson, refusal, validationError } from '../api/errors';
-import { decryptKey, encryptKey } from '../enrich/keys';
+import {
+  clearStoredKey,
+  decryptKey,
+  getStoredKey,
+  markStoredKeyRejected,
+  saveStoredKey,
+  type StoredKey,
+} from '../enrich/keys';
 import type { AppEnv, Env } from '../env';
 import { isFetchable } from '../links/normalize';
 import { PAGE_LIMIT, type FetchFailed, type FetchOk } from './fetch';
@@ -27,70 +34,24 @@ export function setFirecrawlTimeout(ms: number | null): void {
 }
 
 /** A user's stored Firecrawl key. */
-export interface FirecrawlSettings {
-  ciphertext: string;
-  iv: string;
-  last4: string;
-  status: 'verified' | 'rejected';
-  rejectedMessage: string | null;
-}
+export type FirecrawlSettings = StoredKey;
 
 /** The user's Firecrawl settings, or null when no key is stored. */
 export async function getFirecrawlSettings(
   db: D1Database,
   userId: string,
 ): Promise<FirecrawlSettings | null> {
-  const row = await db
-    .prepare(
-      `SELECT firecrawl_key_ciphertext, firecrawl_key_iv, firecrawl_key_last4,
-         firecrawl_key_status, firecrawl_key_rejected_message FROM users WHERE id = ?`,
-    )
-    .bind(userId)
-    .first<Record<string, string | null>>();
-  if (!row?.firecrawl_key_ciphertext || !row.firecrawl_key_iv) return null;
-  return {
-    ciphertext: row.firecrawl_key_ciphertext,
-    iv: row.firecrawl_key_iv,
-    last4: row.firecrawl_key_last4 ?? '',
-    status: row.firecrawl_key_status === 'rejected' ? 'rejected' : 'verified',
-    rejectedMessage: row.firecrawl_key_rejected_message ?? null,
-  };
+  return (await getStoredKey(db, userId, 'firecrawl_key'))?.key ?? null;
 }
 
 /** Stores a verified key, replacing any earlier one and lifting a rejection. */
-export async function saveFirecrawlKey(env: Env, userId: string, key: string): Promise<void> {
-  const { ciphertext, iv } = await encryptKey(env, key, userId);
-  await env.DB.prepare(
-    `UPDATE users SET firecrawl_key_ciphertext = ?, firecrawl_key_iv = ?, firecrawl_key_last4 = ?,
-       firecrawl_key_status = 'verified', firecrawl_key_rejected_message = NULL
-     WHERE id = ?`,
-  )
-    .bind(ciphertext, iv, key.slice(-4), userId)
-    .run();
+export function saveFirecrawlKey(env: Env, userId: string, key: string): Promise<void> {
+  return saveStoredKey(env, userId, 'firecrawl_key', key);
 }
 
 /** Forgets the user's Firecrawl key. */
-export async function clearFirecrawlKey(db: D1Database, userId: string): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE users SET firecrawl_key_ciphertext = NULL, firecrawl_key_iv = NULL,
-         firecrawl_key_last4 = NULL, firecrawl_key_status = NULL,
-         firecrawl_key_rejected_message = NULL
-       WHERE id = ?`,
-    )
-    .bind(userId)
-    .run();
-}
-
-/** Marks the user's key as rejected by Firecrawl, pausing the fallback until it is replaced. */
-async function markFirecrawlRejected(db: D1Database, userId: string, message: string) {
-  await db
-    .prepare(
-      `UPDATE users SET firecrawl_key_status = 'rejected', firecrawl_key_rejected_message = ?
-       WHERE id = ? AND firecrawl_key_ciphertext IS NOT NULL`,
-    )
-    .bind(message, userId)
-    .run();
+export function clearFirecrawlKey(db: D1Database, userId: string): Promise<void> {
+  return clearStoredKey(db, userId, 'firecrawl_key');
 }
 
 /** What a call to Firecrawl came to. */
@@ -238,7 +199,8 @@ export async function fetchThroughFirecrawl(
   }
   const outcome = await scrape(env, apiKey, url);
   if (outcome.ok) return outcome.value;
-  if (outcome.kind === 'rejected') await markFirecrawlRejected(env.DB, userId, outcome.message);
+  if (outcome.kind === 'rejected')
+    await markStoredKeyRejected(env.DB, userId, 'firecrawl_key', outcome.message);
   return {
     ...failure,
     reason: `${failure.reason} (Firecrawl: ${outcome.message})`,
