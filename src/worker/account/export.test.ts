@@ -4,6 +4,7 @@ import {
   createToken,
   deliverIndexing,
   env,
+  placeTopic,
   seedLinks,
   setNow,
   signIn,
@@ -195,8 +196,29 @@ describe('GET /api/v1/export', () => {
         link_ids: [b, a],
       },
     ]);
-    expect(body.topics).toEqual([{ id: expect.any(String), name: 'databases', link_count: 2 }]);
+    expect(body.topics).toEqual([
+      { id: expect.any(String), name: 'databases', parent_id: null, link_count: 2 },
+    ]);
     expect(body.tags).toEqual([{ id: expect.any(String), name: 'sql', link_count: 3 }]);
+  });
+
+  it('gives each topic its parent', async () => {
+    const user = await signIn();
+    const [a, b1, b2] = await seedLinks(user, [
+      { url: 'https://a.example' },
+      { url: 'https://b1.example' },
+      { url: 'https://b2.example' },
+    ]);
+    await patch(user, a!, { topic: 'A' });
+    await patch(user, b1!, { topic: 'B' });
+    await patch(user, b2!, { topic: 'B' });
+    await placeTopic(user, 'B', 'A');
+    const { body } = await exportOf(user);
+    const id = (name: string) => body.topics.find((t: { name: string }) => t.name === name).id;
+    expect(body.topics).toEqual([
+      { id: id('A'), name: 'A', parent_id: null, link_count: 1 },
+      { id: id('B'), name: 'B', parent_id: id('A'), link_count: 2 },
+    ]);
   });
 
   it('holds no key, token, session or import report, and nothing of another user', async () => {

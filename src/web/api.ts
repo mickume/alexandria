@@ -83,6 +83,8 @@ export interface Link {
   summary: string | null;
   tags: string[];
   topic: string | null;
+  /** The names from the top-level topic down to the link's own topic; [] without a topic. */
+  topic_path: string[];
   enrichment_status:
     'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | null;
   enrichment_reason: string | null;
@@ -329,6 +331,12 @@ export interface VocabularyItem {
   name: string;
   count: number;
   newest_added_at: string;
+}
+
+/** A topic as listed: also its parent (null at the top level) and the links beneath it. */
+export interface TopicItem extends VocabularyItem {
+  parent_id: string | null;
+  subtree_count: number;
 }
 
 /** Topics or tags. */

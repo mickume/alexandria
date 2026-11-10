@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { api, count, createToken, env, seedLinks, setNow, signIn } from '../test/helpers';
+import {
+  api,
+  count,
+  createToken,
+  env,
+  placeTopic,
+  seedLinks,
+  setNow,
+  signIn,
+} from '../test/helpers';
 
 describe('adding a link', () => {
   it('stores a new pending link with its normalised URL and its host as title', async () => {
@@ -37,6 +46,7 @@ describe('adding a link', () => {
         summary: null,
         tags: [],
         topic: null,
+        topic_path: [],
         enrichment_status: null,
         enrichment_reason: null,
         edited_fields: [],
@@ -276,6 +286,7 @@ describe('reading a link', () => {
       summary: null,
       tags: [],
       topic: null,
+      topic_path: [],
       enrichment_status: null,
       enrichment_reason: null,
       edited_fields: [],
@@ -291,6 +302,45 @@ describe('reading a link', () => {
       last_check_result: null,
       decay_note: expect.any(String),
     });
+  });
+});
+
+describe('a link’s topic path', () => {
+  it('runs from its top-level topic down to its own, alone, in the stream and in a search', async () => {
+    const user = await signIn();
+    const [none = '', top = '', deep = '', holder = ''] = await seedLinks(user, [
+      { url: 'https://none.example/' },
+      { url: 'https://top.example/' },
+      { url: 'https://deep.example/' },
+      { url: 'https://holder.example/' },
+    ]);
+    const patch = (id: string, topic: string) =>
+      api('PATCH', `/api/v1/links/${id}`, { as: user.session, body: { topic } });
+    await patch(top, 'A');
+    await patch(deep, 'C');
+    await patch(holder, 'B');
+    await placeTopic(user, 'B', 'A');
+    await placeTopic(user, 'C', 'B');
+    await api('DELETE', `/api/v1/links/${holder}`, { as: user.session });
+    const expected: Record<string, { topic: string | null; topic_path: string[] }> = {
+      [none]: { topic: null, topic_path: [] },
+      [top]: { topic: 'A', topic_path: ['A'] },
+      [deep]: { topic: 'C', topic_path: ['A', 'B', 'C'] },
+    };
+    for (const [id, want] of Object.entries(expected)) {
+      const r = await api('GET', `/api/v1/links/${id}`, { as: user.session });
+      expect({ topic: r.json.topic, topic_path: r.json.topic_path }).toEqual(want);
+    }
+    const stream = await api('GET', '/api/v1/links', { as: user.session });
+    for (const link of stream.json.items as { id: string; topic: string; topic_path: string[] }[]) {
+      expect({ topic: link.topic, topic_path: link.topic_path }).toEqual(expected[link.id]);
+    }
+    const search = await api('GET', `/api/v1/search?q=${encodeURIComponent('topic:A')}`, {
+      as: user.session,
+    });
+    const found = search.json.items as { link: { id: string; topic_path: string[] } }[];
+    expect(found.map((i) => i.link.id)).toEqual([top]);
+    expect(found[0]!.link.topic_path).toEqual(['A']);
   });
 });
 

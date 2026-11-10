@@ -79,18 +79,18 @@ async function workspaces(db: D1Database, userId: string) {
   }));
 }
 
-/** The user's topics or tags, each with its number of links. */
+/** The user's topics, each with its parent and its number of links, or tags with their number of links. */
 async function vocabulary(db: D1Database, userId: string, kind: 'topics' | 'tags') {
-  const count =
+  const columns =
     kind === 'topics'
-      ? '(SELECT COUNT(*) FROM links l WHERE l.topic_id = v.id)'
+      ? 'v.parent_id, (SELECT COUNT(*) FROM links l WHERE l.topic_id = v.id)'
       : '(SELECT COUNT(*) FROM link_tags lt WHERE lt.tag_id = v.id)';
   const rows = await db
     .prepare(
-      `SELECT v.id, v.name, ${count} AS link_count FROM ${kind} v WHERE v.user_id = ? ORDER BY v.name, v.id`,
+      `SELECT v.id, v.name, ${columns} AS link_count FROM ${kind} v WHERE v.user_id = ? ORDER BY v.name, v.id`,
     )
     .bind(userId)
-    .all<{ id: string; name: string; link_count: number }>();
+    .all<{ id: string; name: string; parent_id?: string | null; link_count: number }>();
   return rows.results;
 }
 

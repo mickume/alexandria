@@ -43,6 +43,8 @@ export interface LinkRow {
   edited_fields: string;
   /** The topic's name, when read through link_views. */
   topic?: string | null;
+  /** A JSON array of the topic path's names from the top level down, when read through link_views. */
+  topic_path_json?: string;
   /** A JSON array of the tag names in order, when read through link_views. */
   tags_json?: string;
   /** The owner's Markdown note. */
@@ -97,6 +99,8 @@ export interface LinkView {
   summary: string | null;
   tags: string[];
   topic: string | null;
+  /** The names from the link's top-level topic down to its own topic; [] without a topic. */
+  topic_path: string[];
   /** no_key, queued, enriched, failed, skipped or waiting_for_key; null before the first fetch. */
   enrichment_status: string | null;
   enrichment_reason: string | null;
@@ -183,6 +187,7 @@ export function toView(row: LinkRow): LinkView {
     summary: row.summary ?? null,
     tags: parseStrings(row.tags_json),
     topic: row.topic ?? null,
+    topic_path: parseStrings(row.topic_path_json),
     enrichment_status: row.enrichment_status ?? null,
     enrichment_reason: row.enrichment_reason ?? null,
     edited_fields: parseStrings(row.edited_fields),

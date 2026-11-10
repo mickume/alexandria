@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { api, env, seedLinks, signIn, type TestUser } from '../test/helpers';
+import { api, env, placeTopic, seedLinks, signIn, type TestUser } from '../test/helpers';
 import { listVocabulary } from '../enrich/vocabulary';
 
 async function patch(user: TestUser, id: string, body: Record<string, unknown>) {
@@ -13,7 +13,7 @@ const routes = [
 ];
 
 describe('the topics and tags lists', () => {
-  it.each(routes)(
+  it.each(routes.filter((r) => r.route === '/api/v1/tags'))(
     '$route lists each with its count and newest link, newest first',
     async ({ route, label }) => {
       const user = await signIn();
@@ -40,6 +40,120 @@ describe('the topics and tags lists', () => {
       expect(r.json.next_cursor).toBeNull();
     },
   );
+
+  it('/api/v1/topics lists every topic with its parent, its own and its subtree counts, newest link first', async () => {
+    const user = await signIn();
+    const other = await signIn('other@example.test');
+    const [a, c1, c2, d] = await seedLinks(user, [
+      { url: 'https://a.example/', addedAt: '2026-01-01T00:00:00.000Z', state: 'expired' },
+      { url: 'https://c1.example/', addedAt: '2026-01-03T00:00:00.000Z' },
+      { url: 'https://c2.example/', addedAt: '2026-01-05T00:00:00.000Z' },
+      { url: 'https://d.example/', addedAt: '2026-01-04T00:00:00.000Z' },
+    ]);
+    await patch(user, a!, { topic: 'A' });
+    await patch(user, c1!, { topic: 'B' });
+    await patch(user, c2!, { topic: 'C' });
+    await patch(user, d!, { topic: 'D' });
+    await placeTopic(user, 'B', 'A');
+    await placeTopic(user, 'C', 'B');
+    await patch(user, c1!, { topic: 'C' });
+    const [theirs] = await seedLinks(other, [{ url: 'https://theirs.example/' }]);
+    await patch(other, theirs!, { topic: 'Secret' });
+
+    const r = await api('GET', '/api/v1/topics', { as: user.session });
+    expect(r.status).toBe(200);
+    const items = r.json.items as {
+      id: string;
+      name: string;
+      parent_id: string | null;
+      newest_added_at: string;
+    }[];
+    const id = (name: string) => items.find((i) => i.name === name)!.id;
+    const newest = '2026-01-05T00:00:00.000Z';
+    expect(Object.fromEntries(items.map(({ name, ...rest }) => [name, rest]))).toEqual({
+      A: { id: id('A'), parent_id: null, count: 1, subtree_count: 3, newest_added_at: newest },
+      B: { id: id('B'), parent_id: id('A'), count: 0, subtree_count: 2, newest_added_at: newest },
+      C: { id: id('C'), parent_id: id('B'), count: 2, subtree_count: 2, newest_added_at: newest },
+      D: {
+        id: id('D'),
+        parent_id: null,
+        count: 1,
+        subtree_count: 1,
+        newest_added_at: '2026-01-04T00:00:00.000Z',
+      },
+    });
+    const order = [...items].sort(
+      (x, y) =>
+        y.newest_added_at.localeCompare(x.newest_added_at) ||
+        (y.id < x.id ? -1 : y.id > x.id ? 1 : 0),
+    );
+    expect(items.map((i) => i.name)).toEqual(order.map((i) => i.name));
+    expect(r.json.next_cursor).toBeNull();
+  });
+
+  it('/api/v1/topics keeps and lists a topic that has lost its links but has a child', async () => {
+    const user = await signIn();
+    const [onA, onB] = await seedLinks(user, [
+      { url: 'https://a.example/' },
+      { url: 'https://b.example/' },
+    ]);
+    await patch(user, onA!, { topic: 'A' });
+    await patch(user, onB!, { topic: 'B' });
+    await placeTopic(user, 'B', 'A');
+    await patch(user, onA!, { topic: 'Other' });
+    const items = (await api('GET', '/api/v1/topics', { as: user.session })).json.items as {
+      id: string;
+      name: string;
+      parent_id: string | null;
+      count: number;
+      subtree_count: number;
+    }[];
+    const a = items.find((i) => i.name === 'A')!;
+    expect(a).toMatchObject({ count: 0, subtree_count: 1, parent_id: null });
+    expect(items.find((i) => i.name === 'B')!.parent_id).toBe(a.id);
+  });
+
+  it('/api/v1/topics pages a tree with the cursor, every topic once', async () => {
+    const user = await signIn();
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: 4 }, (_, i) => ({
+        url: `https://t${i}.example/`,
+        addedAt: `2026-01-0${i + 1}T00:00:00.000Z`,
+      })),
+    );
+    for (const [i, id] of ids.entries()) await patch(user, id, { topic: `T${i}` });
+    // T4 holds no link of its own: it shares its newest link with its only child, T3.
+    const [lift] = await seedLinks(user, [{ url: 'https://lift.example/' }]);
+    await patch(user, lift!, { topic: 'T4' });
+    await placeTopic(user, 'T3', 'T4');
+    await api('DELETE', `/api/v1/links/${lift}`, { as: user.session });
+    const seen: { name: string; newest_added_at: string; id: string }[] = [];
+    let cursor: string | null = null;
+    do {
+      const r: {
+        json: {
+          items: { name: string; newest_added_at: string; id: string }[];
+          next_cursor: string | null;
+        };
+      } = await api(
+        'GET',
+        `/api/v1/topics?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        { as: user.session },
+      );
+      seen.push(...r.json.items);
+      cursor = r.json.next_cursor;
+    } while (cursor);
+    expect(seen.map((t) => t.name).sort()).toEqual(['T0', 'T1', 'T2', 'T3', 'T4']);
+    const order = [...seen].sort(
+      (x, y) =>
+        y.newest_added_at.localeCompare(x.newest_added_at) ||
+        (y.id < x.id ? -1 : y.id > x.id ? 1 : 0),
+    );
+    expect(seen.map((t) => t.name)).toEqual(order.map((t) => t.name));
+    const bad = await api('GET', '/api/v1/topics?cursor=forged', { as: user.session });
+    expect(bad.json.error).toBe('invalid_cursor');
+  });
 
   it.each(routes)('$route pages with the cursor', async ({ route, label }) => {
     const user = await signIn();
@@ -188,11 +302,11 @@ describe('the topics and tags lists', () => {
           await patch(user, onC!, { topic: 'C' });
           await patch(user, onA!, { topic: 'A' });
           await patch(user, onD!, { topic: 'B' });
-          await setParent(user, 'B', 'A');
-          await setParent(user, 'C', 'B');
+          await placeTopic(user, 'B', 'A');
+          await placeTopic(user, 'C', 'B');
           if ('D' in extra) {
             await patch(user, onD!, { topic: 'D' });
-            await setParent(user, 'D', 'B');
+            await placeTopic(user, 'D', 'B');
           } else {
             await api('DELETE', `/api/v1/links/${onD}`, { as: user.session });
           }
@@ -215,16 +329,6 @@ describe('the topics and tags lists', () => {
     });
   });
 });
-
-/** Puts the user's topic `child` under their topic `parent`. */
-async function setParent(user: TestUser, child: string, parent: string): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE topics SET parent_id = (SELECT id FROM topics WHERE user_id = ?1 AND name = ?3)
-     WHERE user_id = ?1 AND name = ?2`,
-  )
-    .bind(user.id, child, parent)
-    .run();
-}
 
 /** The name of the parent of the user's topic `name`, or null at the top level. */
 async function parentOf(user: TestUser, name: string): Promise<string | null> {
@@ -327,7 +431,7 @@ describe('renaming a topic or tag', () => {
     ]);
     await patch(user, l3!, { topic: 'Rust' });
     await patch(user, l4!, { topic: 'Languages' });
-    await setParent(user, 'Rust', 'Languages');
+    await placeTopic(user, 'Rust', 'Languages');
     const child = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'A')}`, {
       as: user.session,
       body: { name: 'rust' },

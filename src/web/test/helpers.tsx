@@ -185,6 +185,7 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     summary: null,
     tags: [],
     topic: null,
+    topic_path: [],
     enrichment_status: null,
     enrichment_reason: null,
     edited_fields: [],

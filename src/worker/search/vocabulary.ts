@@ -4,12 +4,14 @@ import { now } from '../clock';
 /** Topics or tags: which vocabulary a route is about. */
 export type VocabularyKind = 'topics' | 'tags';
 
-/** A topic or tag as listed. */
+/** A topic or tag as listed; a topic also with its parent_id and subtree_count. */
 export interface VocabularyItem {
   id: string;
   name: string;
   count: number;
   newest_added_at: string;
+  parent_id?: string | null;
+  subtree_count?: number;
 }
 
 /** Where a page of a vocabulary list ends: at the newest-link date and id of its last item. */
@@ -30,16 +32,30 @@ export function isVocabularyCursor(value: unknown): value is VocabularyCursor {
   );
 }
 
-/** The rows of `kind` with their links, as (item, link) pairs. */
+/**
+ * The rows of `kind` with their links, as (item, link) pairs: a topic's are
+ * the links filed under it or under a topic beneath it (at most two levels).
+ */
 const LINKED: Record<VocabularyKind, string> = {
-  topics: 'topics v JOIN links l ON l.topic_id = v.id',
+  topics: `topics v JOIN topics d ON d.id = v.id OR d.parent_id = v.id
+             OR d.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = v.id)
+           JOIN links l ON l.topic_id = d.id`,
   tags: 'tags v JOIN link_tags lt ON lt.tag_id = v.id JOIN links l ON l.id = lt.link_id',
+};
+
+/** The columns of an item of `kind`, beside its id and name, over its (item, link) pairs. */
+const ITEM_COLUMNS: Record<VocabularyKind, string> = {
+  topics: `v.parent_id, (SELECT COUNT(*) FROM links o WHERE o.topic_id = v.id) AS count,
+           COUNT(*) AS subtree_count, MAX(l.added_at) AS newest_added_at`,
+  tags: 'COUNT(*) AS count, MAX(l.added_at) AS newest_added_at',
 };
 
 /**
  * One page of the user's topics or tags that have a link: each with the
  * number of its links in any state and the added date of its newest link,
- * newest first, the id breaking ties.
+ * newest first, the id breaking ties. A topic is listed with its parent and
+ * counted over the links beneath it too (subtree_count, newest_added_at); its
+ * own count is of the links filed directly under it, which may be none.
  */
 export async function listVocabularyItems(
   db: D1Database,
@@ -51,7 +67,7 @@ export async function listVocabularyItems(
   const keyset = after ? 'HAVING (newest_added_at < ? OR (newest_added_at = ? AND v.id < ?))' : '';
   const rows = await db
     .prepare(
-      `SELECT v.id, v.name, COUNT(*) AS count, MAX(l.added_at) AS newest_added_at
+      `SELECT v.id, v.name, ${ITEM_COLUMNS[kind]}
        FROM ${LINKED[kind]}
        WHERE v.user_id = ?
        GROUP BY v.id ${keyset}

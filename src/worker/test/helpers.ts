@@ -49,6 +49,16 @@ export async function emptySchema(): Promise<void> {
   ]);
 }
 
+/** Puts the user's topic `child` under their topic `parent`. */
+export async function placeTopic(user: TestUser, child: string, parent: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE topics SET parent_id = (SELECT id FROM topics WHERE user_id = ?1 AND name = ?3)
+     WHERE user_id = ?1 AND name = ?2`,
+  )
+    .bind(user.id, child, parent)
+    .run();
+}
+
 /** A response with its parsed JSON body, when it has one. */
 export interface ApiResponse {
   status: number;

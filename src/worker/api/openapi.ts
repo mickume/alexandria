@@ -80,6 +80,9 @@ export const Link = z.strictObject({
   summary: z.string().nullable(),
   tags: z.array(z.string()),
   topic: z.string().nullable(),
+  topic_path: z
+    .array(z.string())
+    .describe('The names from the top-level topic down to the link’s own topic; [] without one'),
   enrichment_status: z
     .enum(['no_key', 'queued', 'enriched', 'failed', 'skipped', 'waiting_for_key'])
     .nullable()
@@ -163,11 +166,19 @@ const ReaderView = z.strictObject({
   empty: z.boolean(),
 });
 
-/** A topic or tag in the export. */
+/** A tag in the export. */
 const ExportedLabel = z.strictObject({
   id: z.string(),
   name: z.string(),
   link_count: z.number().int(),
+});
+
+/** A topic in the export. */
+const ExportedTopic = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  parent_id: z.string().nullable().describe('Null for a top-level topic'),
+  link_count: z.number().int().describe('The links filed directly under the topic'),
 });
 
 /** An import's report. */
@@ -196,6 +207,19 @@ const VocabularyItem = z.strictObject({
   name: z.string(),
   count: z.number().int(),
   newest_added_at: z.string(),
+});
+
+/** A topic as listed: its place in the tree, its own links and those beneath it. */
+const TopicItem = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  parent_id: z.string().nullable().describe('Null for a top-level topic'),
+  count: z.number().int().describe('The links filed directly under the topic, in any state'),
+  subtree_count: z
+    .number()
+    .int()
+    .describe('The links filed under the topic or any topic beneath it, in any state'),
+  newest_added_at: z.string().describe('The added date of the newest of those links'),
 });
 
 /** A topic or tag after a rename or merge. */
@@ -516,7 +540,7 @@ export const operations: Operation[] = [
               link_ids: z.array(z.string()),
             }),
           ),
-          topics: z.array(ExportedLabel),
+          topics: z.array(ExportedTopic),
           tags: z.array(ExportedLabel),
           complete: z.literal(true),
         }),
@@ -635,16 +659,22 @@ export const operations: Operation[] = [
     method: 'get',
     path: `/${kind}`,
     operationId: kind === 'topics' ? 'listTopics' : 'listTags',
-    summary: `The ${kind} that have a link, with their counts, newest link first`,
+    summary:
+      kind === 'topics'
+        ? 'Every topic, with its parent and the links under it and beneath it, newest link first'
+        : 'The tags that have a link, with their counts, newest link first',
     query: {
       limit: { description: 'Items per page, 1 to 100 (default 50)', schema: z.string() },
       cursor: { description: 'The next_cursor of the previous page', schema: z.string() },
     },
     responses: {
       200: {
-        description: `One page of ${kind}: the number of links in any state and the newest link's added date`,
+        description:
+          kind === 'topics'
+            ? 'One page of topics: each with its parent_id, count, subtree_count and the newest link’s added date'
+            : 'One page of tags: the number of links in any state and the newest link’s added date',
         schema: z.strictObject({
-          items: z.array(VocabularyItem),
+          items: z.array(kind === 'topics' ? TopicItem : VocabularyItem),
           next_cursor: z.string().nullable(),
         }),
       },

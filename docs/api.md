@@ -127,6 +127,7 @@ A link is shown as:
   "summary": null,
   "tags": [],
   "topic": null,
+  "topic_path": [],
   "enrichment_status": null,
   "enrichment_reason": null,
   "edited_fields": []
@@ -148,7 +149,10 @@ web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
 Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
-hyphenated) and `topic`. `enrichment_status` says where the link stands:
+hyphenated) and `topic`. `topic_path` holds the names from the link's
+top-level topic down to its own topic, such as
+`["Software engineering", "Testing"]` (`[]` without a topic); `topic` is the
+last of them. `enrichment_status` says where the link stands:
 `no_key` (no AI key), `queued`, `enriched`, `failed` (with
 `enrichment_reason`), `skipped` (nothing to read: not a web page, a PDF
 without text, a PDF too large), or `waiting_for_key` (the key was rejected);
@@ -890,20 +894,31 @@ Once the stream has started, a failure ends it with one `error` event
 
 ### Topics and tags
 
-The topics and tags enrichment and the owner's edits give links. A topic or
-tag whose last link loses it (by an edit, a merge, decay's removal or a
-deletion) is deleted: it is neither listed nor offered to enrichment again.
+The topics and tags enrichment and the owner's edits give links. Topics form a
+tree of at most three levels: a topic has one parent topic or none (a
+top-level topic, level 1); its children are level 2 and theirs level 3. A link
+is filed under one topic, at any level. A tag whose last link loses it (by an
+edit, a merge, decay's removal or a deletion) is deleted: it is neither listed
+nor offered to enrichment again. So is a topic left with no link filed under
+it and no child topic, and then each of its ancestors left the same way; a
+topic with no link of its own but with children stays.
 
 #### `GET /api/v1/topics`
 
-Every topic that has a link, with the number of its links in any state
-(expired included) and the added date of its newest link, newest first:
-`200 {"items": [{"id", "name", "count", "newest_added_at"}], "next_cursor"}`,
-with `limit` (1 to 100, default 50) and `cursor`.
+Every topic, newest link first:
+`200 {"items": [{"id", "name", "parent_id", "count", "subtree_count", "newest_added_at"}], "next_cursor"}`,
+with `limit` (1 to 100, default 50) and `cursor`. `parent_id` is `null` for a
+top-level topic; `count` is the number of links filed directly under the topic
+and `subtree_count` the number filed under it or any topic beneath it, both in
+any state (expired included); `newest_added_at` is the added date of the
+newest of those links.
 
 #### `GET /api/v1/tags`
 
-The same for tags.
+Every tag that has a link, with the number of its links in any state and the
+added date of its newest link, newest first:
+`200 {"items": [{"id", "name", "count", "newest_added_at"}], "next_cursor"}`,
+with `limit` and `cursor` as for topics.
 
 #### `PATCH /api/v1/topics/{id}` and `PATCH /api/v1/tags/{id}`
 
@@ -1050,7 +1065,7 @@ The whole library as one JSON document, sent as a download
   "workspaces": [
     { "id": "…", "name": "Research", "description": "", "note": "…", "link_ids": ["…"] }
   ],
-  "topics": [{ "id": "…", "name": "databases", "link_count": 2 }],
+  "topics": [{ "id": "…", "name": "databases", "parent_id": null, "link_count": 2 }],
   "tags": [{ "id": "…", "name": "sql", "link_count": 3 }],
   "complete": true
 }
