@@ -436,6 +436,13 @@ export function activeFilters(q: string): string[] {
   return terms.filter((t) => /^(tag|topic|host|state|in|is):("[^"]*"|[^"\s]+)$/i.test(t));
 }
 
+/** The topic a query's one `topic:` filter names, unquoted; null without one, or with several. */
+export function topicFilter(q: string): string | null {
+  const topics = activeFilters(q).filter((f) => /^topic:/i.test(f));
+  if (topics.length !== 1) return null;
+  return topics[0]!.slice('topic:'.length).replace(/^"(.*)"$/, '$1');
+}
+
 /** An import's report. */
 export interface ImportReport {
   id: string;

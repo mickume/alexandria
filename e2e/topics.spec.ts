@@ -53,6 +53,14 @@ test('the owner moves a topic under another on the Topics page', async ({ page }
   await page.goto('/search?q=topic%3Aworkshop');
   const results = page.getByRole('list', { name: 'Results' });
   await expect(results.getByRole('article')).toHaveCount(3);
+
+  await page.goto(`/search?q=${encodeURIComponent('topic:"oxidation futures"')}`);
+  const path = page.getByRole('navigation', { name: 'Topic path' });
+  await expect(path).toHaveText('Workshop›Oxidation›Oxidation futures');
+  await path.getByRole('link', { name: 'Oxidation' }).click();
+  await expect(page).toHaveURL(/\/search\?q=topic%3AOxidation$/);
+  await expect(path).toHaveText('Workshop›Oxidation');
+  await expect(results.getByRole('article')).toHaveCount(2);
 });
 
 test('the owner files a link under a new sub-topic by typing its path', async ({ page }) => {

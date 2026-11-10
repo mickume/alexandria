@@ -1096,6 +1096,11 @@ a.brand:hover span {
   gap: var(--q-space-1);
 }
 
+/* The path of the topic a search filters on, above its results. */
+.search-results > .topic-path {
+  margin-bottom: var(--q-space-3);
+}
+
 .topic-path-separator {
   margin-right: var(--q-space-1);
   color: var(--q-fg-muted);

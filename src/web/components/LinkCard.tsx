@@ -288,8 +288,11 @@ function TopicChip({ topic, path }: { topic: string; path: string[] }) {
   );
 }
 
-/** A link's topic path as a breadcrumb, each name opening the search of its own topic. */
-export function TopicPath({ path }: { path: string[] }) {
+/**
+ * A topic path as a breadcrumb, each name opening the search of its own topic;
+ * with `current`, the last name is the page's own topic and opens nothing.
+ */
+export function TopicPath({ path, current = false }: { path: string[]; current?: boolean }) {
   return (
     <nav aria-label="Topic path" className="topic-path">
       {path.map((name, i) => (
@@ -299,12 +302,18 @@ export function TopicPath({ path }: { path: string[] }) {
               ›
             </span>
           )}
-          <PageLink
-            to={searchPath(filterQuery('topic', name))}
-            className="topic q-label label-link"
-          >
-            {name}
-          </PageLink>
+          {current && i === path.length - 1 ? (
+            <span className="topic q-label" aria-current="page">
+              {name}
+            </span>
+          ) : (
+            <PageLink
+              to={searchPath(filterQuery('topic', name))}
+              className="topic q-label label-link"
+            >
+              {name}
+            </PageLink>
+          )}
         </span>
       ))}
     </nav>

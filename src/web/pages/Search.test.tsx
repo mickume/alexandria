@@ -239,3 +239,85 @@ describe('the Search page', () => {
     );
   });
 });
+
+describe("a topic's links", () => {
+  const topic = (id: string, name: string, parent_id: string | null) => ({
+    id,
+    name,
+    count: 1,
+    subtree_count: 1,
+    newest_added_at: '2026-01-01T00:00:00Z',
+    parent_id,
+  });
+  const tree = [
+    topic('t1', 'Software engineering', null),
+    topic('t2', 'Testing', 't1'),
+    topic('t3', 'Unit tests', 't2'),
+    topic('t4', 'Cooking', null),
+  ];
+
+  function withTopics(): FakeApi {
+    return api().on('GET', '/api/v1/topics', {
+      status: 200,
+      body: { items: tree, next_cursor: null },
+    });
+  }
+
+  it('shows the topic’s path above the results, each parent opening its own topic', async () => {
+    const { api: fake } = renderPage('/search?q=topic%3A%22unit%20tests%22', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    const nav = screen.getByRole('navigation', { name: 'Topic path' });
+    expect(nav.textContent).toBe('Software engineering›Testing›Unit tests');
+    const links = within(nav).getAllByRole('link');
+    expect(links.map((l) => [l.textContent, l.getAttribute('href')])).toEqual([
+      ['Software engineering', '/search?q=topic%3A%22Software%20engineering%22'],
+      ['Testing', '/search?q=topic%3ATesting'],
+    ]);
+    expect(within(nav).getByText('Unit tests').getAttribute('aria-current')).toBe('page');
+    const results = screen.getByRole('list', { name: 'Results' });
+    expect(nav.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fake.sent('GET', '/api/v1/topics')).toHaveLength(1);
+  });
+
+  it('finds the topic ignoring case, beside other words of the query', async () => {
+    renderPage('/search?q=mocks%20topic%3Atesting', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    const nav = screen.getByRole('navigation', { name: 'Topic path' });
+    expect(nav.textContent).toBe('Software engineering›Testing');
+  });
+
+  it('shows a top-level topic alone', async () => {
+    renderPage('/search?q=topic%3Acooking', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    const nav = screen.getByRole('navigation', { name: 'Topic path' });
+    expect(within(nav).queryAllByRole('link')).toHaveLength(0);
+    expect(within(nav).getByText('Cooking').getAttribute('aria-current')).toBe('page');
+  });
+
+  it.each([
+    { name: 'without a topic filter', q: 'queues tag%3Atesting' },
+    { name: 'with two topic filters', q: 'topic%3Atesting topic%3Acooking' },
+  ])('shows no path and asks for no topics $name', async ({ q }) => {
+    const { api: fake } = renderPage(`/search?q=${q}`, withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    expect(screen.queryByRole('navigation', { name: 'Topic path' })).toBeNull();
+    expect(fake.sent('GET', '/api/v1/topics')).toHaveLength(0);
+  });
+
+  it('shows no path for a topic the owner does not have', async () => {
+    renderPage('/search?q=topic%3Aunit-tests', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    expect(screen.queryByRole('navigation', { name: 'Topic path' })).toBeNull();
+    expect(screen.getByRole('list', { name: 'Results' })).toBeTruthy();
+  });
+});

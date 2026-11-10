@@ -5,14 +5,17 @@ import {
   ApiError,
   links as linksApi,
   search,
+  topicFilter,
+  vocabulary,
   type Link,
   type MatchKind,
   type SearchMode,
   type SearchResults,
   type Segment,
+  type TopicItem,
 } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
-import { LinkCard, type CardActions } from '../components/LinkCard';
+import { LinkCard, TopicPath, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
 import { Toast } from '../components/Toast';
 import { useUndoableDelete } from './Stream';
@@ -51,6 +54,39 @@ function NothingFound({ query }: { query: string }) {
   );
 }
 
+/** The names from the top of the tree down to the topic called `name` (ignoring case); [] for none. */
+function pathOf(topics: TopicItem[], name: string): string[] {
+  const byId = new Map(topics.map((t) => [t.id, t]));
+  const wanted = name.toLowerCase();
+  let topic = topics.find((t) => t.name.toLowerCase() === wanted);
+  const path: string[] = [];
+  while (topic && path.length < 3) {
+    path.unshift(topic.name);
+    topic = topic.parent_id ? byId.get(topic.parent_id) : undefined;
+  }
+  return path;
+}
+
+/** The path of the topic a search filters on, as a breadcrumb; nothing while loading or for an unknown topic. */
+function TopicBreadcrumb({ name }: { name: string }) {
+  const [path, setPath] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    vocabulary
+      .listAll('topics')
+      .then((topics) => {
+        if (live) setPath(pathOf(topics as TopicItem[], name));
+      })
+      .catch(() => {
+        if (live) setPath([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [name]);
+  return path.length > 0 ? <TopicPath path={path} current /> : null;
+}
+
 /** The search's pages so far: the links, their snippets, the workspaces and the next cursor. */
 interface Found {
   snippets: Map<string, Segment[]>;
@@ -68,6 +104,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<Link[]>([]);
   const deletes = useUndoableDelete(items, setItems);
+  const topic = topicFilter(query);
 
   useEffect(() => {
     let live = true;
@@ -137,6 +174,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   return (
     <section className="search-results">
       <h1 className="visually-hidden">Search results</h1>
+      {topic && <TopicBreadcrumb key={topic.toLowerCase()} name={topic} />}
       {error && (
         <p className="notice" role="alert">
           {error}
