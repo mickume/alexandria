@@ -651,8 +651,8 @@ to 100, default 50) and `cursor` as every list takes them.
 
 A query is free words and prefix filters. Every free word must match, as the
 start of a word, case- and accent-insensitively (`cloud` finds "Cloudflare",
-`cafe` finds "Café"), in the link's title, summary, tags, topic, host,
-original URL, note or reader-view text. Quotes and the full-text engine's
+`cafe` finds "Café"), in the link's title, summary, tags, topic (any name of
+its topic path), host, original URL, note or reader-view text. Quotes and the full-text engine's
 operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
 plain text. Expired links are left out.
 
@@ -692,7 +692,7 @@ every filter given applies:
 | Filter | Keeps the links |
 |---|---|
 | `tag:<name>` | with that tag, ignoring case |
-| `topic:<name>` | with that topic, ignoring case |
+| `topic:<name>` | with that topic or a topic beneath it, ignoring case (an alias matches nothing) |
 | `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
 | `in:<workspace>` | in the workspace with that name, ignoring case |
 | `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
@@ -786,7 +786,7 @@ filter says otherwise.
 ```
 
 Each link is cut into passages of at most 1,500 characters: its title,
-summary, topic, tags and note together, then its reader-view text up to the
+summary, topic path (its names joined with ` > `), tags and note together, then its reader-view text up to the
 first 50,000 characters (a link with no reader-view text has only the first).
 Items are the best-matching passages, best first by `score`, the passage's
 similarity to the question; only a score of 0.5 or more is returned, so a
@@ -796,7 +796,8 @@ limit goes to other links. `url` is the link's original URL. The request
 records no use of any link.
 
 A link is found by meaning once it is indexed: within about a minute of its
-reader text, title, summary, topic, tags or note being stored or changed, and
+reader text, title, summary, topic, tags or note being stored or changed (a
+topic's rename changes the links beneath it too), and
 for links that existed before the index, once the backfill has reached them
 (60 links a minute per user). Nothing shows whether a link is indexed yet. A
 deleted link's passages are gone at once.

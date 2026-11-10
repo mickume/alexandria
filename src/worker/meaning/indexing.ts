@@ -143,7 +143,7 @@ export async function indexLink(env: Env, message: IndexMessage): Promise<void> 
     {
       title: link.title,
       summary: link.summary,
-      topic: link.topic ?? null,
+      topic: parseStrings(link.topic_path_json).join(' > ') || null,
       tags: parseStrings(link.tags_json),
       note: link.note,
     },

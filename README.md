@@ -55,7 +55,7 @@ Filters narrow a search, and can be combined with words or each other:
 | Filter | Keeps |
 |---|---|
 | `tag:cloudflare` | links with that tag |
-| `topic:"web development"` | links with that topic (quote a name with spaces) |
+| `topic:"web development"` | links with that topic or a topic beneath it (quote a name with spaces) |
 | `host:example.com` | links on that host or its subdomains |
 | `in:"Reading list"` | links in that workspace |
 | `is:pinned`, `is:dead` | pinned links; links whose page is gone |

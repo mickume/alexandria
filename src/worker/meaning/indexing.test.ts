@@ -334,6 +334,15 @@ describe('what indexing leaves alone', () => {
   });
 });
 
+describe('the metadata a link is indexed by', () => {
+  it('holds its topic path, joined with >', async () => {
+    const user = await signIn();
+    const id = await seedArticle(user, { ...ARTICLES.queues, topic: 'Platform > Queues' });
+    await index(user, id);
+    expect((await passagesOf(id))[0]!.text).toContain('Platform > Queues');
+  });
+});
+
 describe('queueing a link for indexing', () => {
   interface Library {
     user: TestUser;
@@ -396,6 +405,17 @@ describe('queueing a link for indexing', () => {
       name: 'a rename of a topic two links carry',
       write: rename('topics', 'Platform', 'Infrastructure'),
       queued: [0, 1],
+    },
+    {
+      name: 'a rename of a topic whose child carries a link',
+      prepare: async ({ user, ids }: Library) => {
+        await api('PATCH', `/api/v1/links/${ids[2]}`, {
+          as: user.session,
+          body: { topic: 'Platform > Beds' },
+        });
+      },
+      write: rename('topics', 'Platform', 'Infrastructure'),
+      queued: [0, 1, 2],
     },
     {
       name: 'a merge of a topic two links carry into another',

@@ -232,7 +232,12 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
         `another ${what} is named ${name}: merge this ${what} into it instead`,
       );
     }
-    await queueIndexing(c.env, userId, await carrierIds(c.env.DB, userId, kind, id));
+    // A topic's name is in the path of every link beneath it.
+    await queueIndexing(
+      c.env,
+      userId,
+      await carrierIds(c.env.DB, userId, kind, id, { subtree: true }),
+    );
     return c.json(renamed);
   });
 

@@ -108,6 +108,37 @@ describe('the search index', () => {
       expect(await indexed(user, 'bravotopic')).toEqual([id]);
     });
 
+    it('editing the topic to a path, every name of which is indexed', async () => {
+      const user = await signIn();
+      const id = await add(user, 'https://path.example/');
+      await patch(user, id, { topic: 'Alpha > Bravo' });
+      expect(await indexed(user, 'alpha')).toEqual([id]);
+      expect(await indexed(user, 'bravo')).toEqual([id]);
+      await patch(user, id, { topic: 'Charlie' });
+      expect(await indexed(user, 'alpha')).toEqual([]);
+      expect(await indexed(user, 'bravo')).toEqual([]);
+      expect(await indexed(user, 'charlie')).toEqual([id]);
+    });
+
+    it('renaming a topic through the API, for the links beneath it too', async () => {
+      const user = await signIn();
+      const top = await add(user, 'https://top.example/');
+      const child = await add(user, 'https://child.example/');
+      await patch(user, top, { topic: 'Platform' });
+      await patch(user, child, { topic: 'Platform > Queues' });
+      const platform = await env.DB.prepare("SELECT id FROM topics WHERE name = 'Platform'").first<{
+        id: string;
+      }>();
+      const r = await api('PATCH', `/api/v1/topics/${platform!.id}`, {
+        as: user.session,
+        body: { name: 'Infrastructure' },
+      });
+      expect(r.status).toBe(200);
+      expect((await indexed(user, 'infrastructure')).sort()).toEqual([top, child].sort());
+      expect(await indexed(user, 'platform')).toEqual([]);
+      expect(await indexed(user, 'queues')).toEqual([child]);
+    });
+
     it('renaming a tag and merging a topic through the API', async () => {
       const user = await signIn();
       const id = await add(user, 'https://labels.example/');
@@ -228,6 +259,14 @@ describe('GET /api/v1/search', () => {
         async (u) => {
           const id = await add(u, 'https://one.example/');
           await patch(u, id, { topic: 'Cloudflare queues' });
+          return id;
+        },
+      ],
+      [
+        'parent topic',
+        async (u) => {
+          const id = await add(u, 'https://one.example/');
+          await patch(u, id, { topic: 'Cloudflare queues > Delivery' });
           return id;
         },
       ],
@@ -460,6 +499,38 @@ describe('GET /api/v1/search', () => {
 });
 
 describe('filters', () => {
+  it.each([
+    ['topic:"software engineering"', ['se', 'testing', 'fuzzing']],
+    ['topic:testing', ['testing', 'fuzzing']],
+    ['topic:fuzzing', ['fuzzing']],
+    ['topic:cooking', ['cooking']],
+    ['topic:engineering', []],
+    ['fuzz topic:testing', ['fuzzing']],
+  ] as const)('%s finds the topic and the topics beneath it: %j', async (query, expected) => {
+    const user = await signIn();
+    const links = {
+      se: await add(user, 'https://se.example/'),
+      testing: await add(user, 'https://testing.example/'),
+      fuzzing: await add(user, 'https://fuzzing.example/'),
+      cooking: await add(user, 'https://cooking.example/'),
+    };
+    await patch(user, links.se, { topic: 'Software engineering' });
+    await patch(user, links.testing, { topic: 'Software engineering > Testing' });
+    await patch(user, links.fuzzing, {
+      title: 'Fuzz your parser',
+      topic: 'Software engineering > Testing > Fuzzing',
+    });
+    await patch(user, links.cooking, { topic: 'Cooking' });
+    await env.DB.prepare(
+      `INSERT INTO topic_aliases (user_id, name, topic_id)
+       SELECT user_id, 'Engineering', id FROM topics WHERE user_id = ? AND name = 'Software engineering'`,
+    )
+      .bind(user.id)
+      .run();
+    const found = await foundIds(user, query);
+    expect([...found].sort()).toEqual(expected.map((k) => links[k]).sort());
+  });
+
   it.each([...FILTER_TABLE, ['queues is:dead', []], ['queues tag:queues', ['a']]] as const)(
     '%s finds exactly %j',
     async (query, expected) => {

@@ -339,8 +339,8 @@ describe('a link’s topic path', () => {
       as: user.session,
     });
     const found = search.json.items as { link: { id: string; topic_path: string[] } }[];
-    expect(found.map((i) => i.link.id)).toEqual([top]);
-    expect(found[0]!.link.topic_path).toEqual(['A']);
+    expect(found.map((i) => i.link.id).sort()).toEqual([top, deep].sort());
+    for (const { link } of found) expect(link.topic_path).toEqual(expected[link.id]!.topic_path);
   });
 });
 

@@ -347,7 +347,9 @@ Triggers keep the index current, so no writer can forget it:
 - a change to a link's title, summary, host, original URL, note or topic
   rewrites those columns (only when one of them really changed);
 - a `link_tags` row inserted or deleted rewrites the link's `tags`;
-- renaming a topic or a tag rewrites the rows of the links that carry it.
+- renaming a topic or a tag rewrites the rows of the links that carry it, a
+  topic's also those of the links beneath it, since the `topic` column holds
+  every name of a link's topic path.
 
 Three more triggers delete a topic or tag whose last link loses it: a
 `link_tags` row deleted (an edit, a merge, decay's removal, or a link deleted,

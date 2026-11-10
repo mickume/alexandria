@@ -125,16 +125,23 @@ const CARRIERS: Record<VocabularyKind, string> = {
   tags: 'SELECT link_id FROM link_tags WHERE tag_id = ?',
 };
 
-/** The ids of the user's links carrying one of their topics or tags. */
+/** The ids of the topics in a topic's subtree, as SQL with one parameter (its id): itself and up to two levels beneath. */
+const SUBTREE = `SELECT s.id FROM topics s WHERE s.id = ?1 OR s.parent_id = ?1
+  OR s.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = ?1)`;
+
+/** The ids of the user's links carrying one of their topics or tags, or filed under a topic or beneath it. */
 export async function carrierIds(
   db: D1Database,
   userId: string,
   kind: VocabularyKind,
   id: string,
+  { subtree = false }: { subtree?: boolean } = {},
 ): Promise<string[]> {
   const sql =
     kind === 'topics'
-      ? 'SELECT id FROM links WHERE topic_id = ? AND user_id = ?'
+      ? subtree
+        ? `SELECT id FROM links WHERE topic_id IN (${SUBTREE}) AND user_id = ?2`
+        : 'SELECT id FROM links WHERE topic_id = ? AND user_id = ?'
       : `SELECT lt.link_id FROM link_tags lt JOIN links l ON l.id = lt.link_id
          WHERE lt.tag_id = ? AND l.user_id = ?`;
   const rows = await db.prepare(sql).bind(id, userId).raw<[string]>();
