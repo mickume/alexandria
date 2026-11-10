@@ -74,6 +74,7 @@ describe('the Ask page', () => {
       'Ask',
       'Expired',
       'Archive',
+      'Stats',
       'Settings',
       'Import',
     ]);

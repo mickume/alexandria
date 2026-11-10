@@ -11,6 +11,7 @@ import { Read, Snapshot } from './pages/Read';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
+import { Stats } from './pages/Stats';
 import { Stream } from './pages/Stream';
 import { Tags } from './pages/Tags';
 import { Topics } from './pages/Topics';
@@ -95,6 +96,7 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '/ask', label: 'Ask', icon: 'ask' },
   { to: '/expired', label: 'Expired', icon: 'expired' },
   { to: '/archive', label: 'Archive', icon: 'archive' },
+  { to: '/stats', label: 'Stats', icon: 'stats' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -193,6 +195,7 @@ export function App() {
     page = <Archive query={queryOf(location)} mode={modeOf(location)} />;
   else if (path === '/ask') page = <Ask />;
   else if (path === '/search') page = <Search query={queryOf(location)} mode={modeOf(location)} />;
+  else if (path === '/stats') page = <Stats />;
   else if (path === '/topics') page = <Topics />;
   else if (path === '/tags') page = <Tags />;
   else if (path === '/import') page = <Import />;

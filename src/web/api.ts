@@ -486,6 +486,104 @@ export const imports = {
   reportUrl: (id: string) => `/api/v1/imports/${encodeURIComponent(id)}/report`,
 };
 
+/** A count of one UTC day ('YYYY-MM-DD'). */
+export interface DayCount {
+  day: string;
+  count: number;
+}
+
+/** One of the most common reasons, with how many links or attempts it gives. */
+export interface ReasonCount {
+  reason: string;
+  count: number;
+}
+
+/** The owner's library statistics, as GET /api/v1/stats computes them. */
+export interface Stats {
+  library: {
+    total: number;
+    by_state: Record<'pending' | 'active' | 'unreachable' | 'expired' | 'archived', number>;
+    pinned: number;
+    in_workspace: number;
+    limit: number;
+  };
+  content: {
+    by_kind: Record<'html' | 'pdf' | 'other' | 'unfetched', number>;
+    with_snapshot: number;
+    reader_empty: number;
+  };
+  topics: {
+    total: number;
+    by_level: Record<'1' | '2' | '3', number>;
+    links_without_topic: number;
+    largest: { id: string; name: string; path: string[]; count: number }[];
+  };
+  tags: {
+    total: number;
+    used_once: number;
+    links_without_tags: number;
+    top: { id: string; name: string; count: number }[];
+  };
+  workspaces: { total: number; largest: { id: string; name: string; count: number }[] };
+  hosts: { distinct: number; top: { host: string; count: number }[] };
+  expiry: {
+    expiring: { today: number; within_7_days: number; within_30_days: number };
+    points_histogram: { range: string; count: number }[];
+    protected_at_risk: number;
+    awaiting_removal: { total: number; within_7_days: number; within_30_days: number };
+    settings: { start_points: number; remove_days: number };
+  };
+  health: {
+    unreachable: { count: number; by_reason: ReasonCount[] };
+    dead: { count: number; dead_over_30_days: number };
+    enrichment: Record<
+      'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | 'none',
+      number
+    > & { failed_by_reason: ReasonCount[] };
+    ai_key: 'none' | 'verified' | 'rejected';
+  };
+  backlog: {
+    fetch_pending: number;
+    fetch_retrying: number;
+    enrichment_queued: number;
+    imports: {
+      id: string;
+      created_at: string;
+      added: number;
+      waiting: number;
+      in_progress: number;
+      done: number;
+    }[];
+    index_stale: number;
+    vector_deletions: number;
+    liveness_due: number;
+    /** When the background throttle frees up; null when it already has. */
+    throttle_clear_at: string | null;
+  };
+  activity: {
+    added_per_day: DayCount[];
+    uses_per_day: DayCount[];
+    added_last_7_days: number;
+    added_last_30_days: number;
+    most_used: { id: string; title: string; host: string; uses: number }[];
+    never_used: number;
+    fetches: { ok: number; failed: number; failed_by_reason: ReasonCount[] };
+    imports: {
+      id: string;
+      created_at: string;
+      url_lines: number;
+      added: number;
+      duplicates: number;
+      invalid: number;
+      not_imported: number;
+    }[];
+  };
+}
+
+export const stats = {
+  get: () => request<Stats>('GET', '/stats'),
+};
+
 export const account = {
   me: () => request<{ email: string; name: string }>('GET', '/me'),
   /** Deletes the account, confirmed by its email typed by the owner. */

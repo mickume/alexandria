@@ -58,6 +58,10 @@ These are outside `/api/v1/` and are used by the website.
 Every page other than `/signin` and the public pages under `/about/` redirects
 to `/signin` (`302`) without a valid session.
 
+The Stats page (`/stats`, its tab between Archive and Settings) shows
+[`GET /api/v1/stats`](#get-apiv1stats), loaded once when it opens and again
+when the owner presses Refresh.
+
 ## Routes
 
 ### `GET /api/v1/me`

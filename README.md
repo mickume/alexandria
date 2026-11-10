@@ -131,6 +131,17 @@ every link of the file joins it in file order (links already in it keep their
 place). Scripts can do the same with `POST /api/v1/imports` (see
 [docs/api.md](docs/api.md)).
 
+## Stats
+
+The Stats tab shows the library as a whole, computed when the page opens:
+the links in each state, the content kinds, the topics, tags, workspaces and
+hosts with the most links, how many links expire today and within 7 and 30
+days and how many await removal, the unreachable and dead links and the
+enrichment statuses, the background work still waiting (fetches,
+enrichments, imports, indexing, liveness checks), and the last 30 days of
+links added, uses and fetches. **Refresh** loads it again; the page never
+reloads by itself.
+
 ## Agents (MCP)
 
 Alexandria serves a Model Context Protocol server at `/mcp`, so that an AI

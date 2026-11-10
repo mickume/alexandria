@@ -1122,3 +1122,37 @@ a.brand:hover span {
   margin-right: var(--q-space-1);
   color: var(--q-fg-muted);
 }
+
+/* The Stats page: one box per section, each a set of label and count tables. */
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--q-space-3);
+}
+
+.stats-section {
+  margin-block: var(--q-space-4);
+}
+
+.stats-section .q-box-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--q-space-4);
+}
+
+.stats-section .q-box-body > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.stats-counts caption {
+  text-align: start;
+  font-weight: var(--q-weight-semibold);
+  padding-block-end: var(--q-space-2);
+}
+
+.stats-counts th {
+  font-weight: var(--q-weight-normal);
+  text-align: start;
+}
