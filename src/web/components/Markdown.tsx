@@ -83,15 +83,24 @@ export function renderNote(source: string): string {
 }
 
 /**
- * An answer as HTML, rendered as a note is, with each citation [n] that
- * `citation` gives a link page for made a link to that page.
+ * An answer is written from stored page text, which may carry instructions of
+ * its own: it gets no images, so nothing in it is fetched without a click.
+ */
+const SANITISE_ANSWER = {
+  ...SANITISE,
+  ALLOWED_TAGS: MARKDOWN_TAGS.filter((tag) => tag !== 'img'),
+};
+
+/**
+ * An answer as HTML, rendered as a note is but without images, with each
+ * citation [n] that `citation` gives a link page for made a link to that page.
  */
 export function renderAnswer(source: string, citation: (n: number) => string | undefined): string {
   const cited = source.replace(/\[(\d+)\](?!\()/g, (match, n: string) => {
     const page = citation(Number(n));
     return page && LINK_PAGE.test(page) ? `[\\[${n}\\]](${page})` : match;
   });
-  return answerPurifier.sanitize(markdown.parse(cited, { async: false }), SANITISE);
+  return answerPurifier.sanitize(markdown.parse(cited, { async: false }), SANITISE_ANSWER);
 }
 
 /** A rendered note. */
