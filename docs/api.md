@@ -174,8 +174,8 @@ re-paste sets `last_used_at` to now without a use. `expired_at` is when the
 link expired, and null while it is not expired; `removal_at` is `expired_at`
 plus the owner's `remove_days`, or null. `decay_note` is one sentence saying
 where the link stands: "expired on 2027-03-01, removed on 2027-08-28" for an
-expired link (whatever else holds); "pinned: never expires, -3 points" for a
-pinned link; "in a workspace: never expires, 12 points" for a link in a
+expired link (whatever else holds); "pinned: never expires" for a
+pinned link; "in a workspace: never expires" for a link in a
 workspace; otherwise "expires in 42 days" ("expires in 1 day"), or "expires
 today" at 0 points or below. A use or a re-paste of an expired link
 makes it `active` again in the same request and clears `expired_at`.

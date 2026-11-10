@@ -7,11 +7,6 @@ function isoDate(t: number): string {
   return new Date(t).toISOString().slice(0, 10);
 }
 
-/** "1 point" or "N points". */
-function pointsText(points: number): string {
-  return `${points} ${points === 1 ? 'point' : 'points'}`;
-}
-
 /** The start points of a user who never changed them. */
 export const DEFAULT_START_POINTS = 60;
 
@@ -43,9 +38,9 @@ function decayNote(
   if (expiredAt && removalAt) {
     return `expired on ${isoDate(Date.parse(expiredAt))}, removed on ${isoDate(Date.parse(removalAt))}`;
   }
-  if (row.pin_position !== null) return `pinned: never expires, ${pointsText(points)}`;
+  if (row.pin_position !== null) return 'pinned: never expires';
   if (row.workspaces_json && row.workspaces_json !== '[]') {
-    return `in a workspace: never expires, ${pointsText(points)}`;
+    return 'in a workspace: never expires';
   }
   if (points <= 0) return 'expires today';
   return `expires in ${points} ${points === 1 ? 'day' : 'days'}`;

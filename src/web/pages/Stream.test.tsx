@@ -169,7 +169,7 @@ describe('adding a link to a workspace on the stream page', () => {
     const after: Link = {
       ...before,
       workspaces: [{ id: 'w', name: 'Reading' }],
-      decay_note: 'in a workspace: never expires, 60 points',
+      decay_note: 'in a workspace: never expires',
     };
     const api = new FakeApi()
       .on('GET', '/api/v1/links', { status: 200, body: { items: [before], next_cursor: null } })
@@ -200,7 +200,7 @@ describe('adding a link to a workspace on the stream page', () => {
       (await within(card).findByRole('menuitemcheckbox', { name: 'Reading' })).click(),
     );
 
-    expect(await within(card).findByText('in a workspace: never expires, 60 points')).toBeTruthy();
+    expect(await within(card).findByText('in a workspace: never expires')).toBeTruthy();
     expect(within(card).getByRole('link', { name: 'Reading' }).getAttribute('href')).toBe(
       '/workspaces/w',
     );

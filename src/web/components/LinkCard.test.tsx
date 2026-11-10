@@ -413,10 +413,10 @@ describe('a card’s decay', () => {
   it.each([
     { state: 'active', decay_note: 'expires in 42 days' },
     { state: 'pending', decay_note: 'expires today' },
-    { state: 'active', decay_note: 'pinned: never expires, -3 points', pinned: true },
+    { state: 'active', decay_note: 'pinned: never expires', pinned: true },
     {
       state: 'active',
-      decay_note: 'in a workspace: never expires, 12 points',
+      decay_note: 'in a workspace: never expires',
       dead_since: '2027-03-01T10:00:00.000Z',
     },
   ])('shows the note "$decay_note", undimmed and without a sticky label', (overrides) => {

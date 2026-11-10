@@ -9,5 +9,9 @@ spec says, and why.
    a workspace nor expired loses one point a day and expires when they run
    out, so its points and its days left are the same number: the note said it
    twice on every card. It is now "expires in 42 days" ("expires in 1 day"),
-   or "expires today" at 0 points or below. The pinned and workspace forms
-   keep their points, which there say something the rest of the note does not.
+   or "expires today" at 0 points or below.
+2. **The pinned and workspace forms of `decay_note` no longer state the
+   points.** The spec writes "pinned: never expires, -3 points" and "in a
+   workspace: never expires, 12 points". A link that never expires has no use
+   for its points on its card, so the notes are now "pinned: never expires"
+   and "in a workspace: never expires". The points are still in `points`.

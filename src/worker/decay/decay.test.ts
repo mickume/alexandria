@@ -186,12 +186,12 @@ describe('why a link is in its state', () => {
     {
       label: 'pinned with -3 points',
       setup: (u: TestUser) => withPoints(u, -3, { pinned: true }),
-      note: 'pinned: never expires, -3 points',
+      note: 'pinned: never expires',
     },
     {
       label: 'in a workspace with 12 points',
       setup: (u: TestUser) => withPoints(u, 12, { member: true }),
-      note: 'in a workspace: never expires, 12 points',
+      note: 'in a workspace: never expires',
     },
     {
       label: 'expired on 2027-03-01 with remove_days 179, pinned',
