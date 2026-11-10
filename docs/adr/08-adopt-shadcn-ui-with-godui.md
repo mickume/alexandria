@@ -46,7 +46,8 @@ The menus, the toasts and the confirmations are GodUI's too:
   picker as its submenu; on a link's page the picker is a menu of its own.
   A menu closes on every choice, so what an action in it did (a refresh
   accepted or refused, a workspace that could not be loaded) is said in a
-  toast, not inside the menu.
+  toast, not inside the menu. Refresh and Check now on a link's page say
+  their outcome in a toast as well.
 - Toasts are Sonner's: `<Toaster>` is mounted once, in `App.tsx`. A delete's
   toast carries Undo and stays for the whole undo window, which the page's
   own timer ends, not the toast's.

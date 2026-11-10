@@ -1058,11 +1058,6 @@
     gap: 0.5rem;
   }
 
-  .detail-actions .muted {
-    padding: 0 0.5rem 0.25rem;
-    font-size: var(--text-xs);
-  }
-
   .facts {
     display: grid;
     grid-template-columns: max-content 1fr;

@@ -4,9 +4,7 @@
 
 ### ButtonLook
 
-How a status button looks and says how its request went: a link-like button
-or an item of an action list, each with the outcome beside it, or an item
-of a dropdown menu, which closes and says it in a toast.
+How a status button looks: an item of a dropdown menu, or of an action list.
 
 #### Properties
 
@@ -18,7 +16,7 @@ An icon before the label.
 
 ##### look?
 
-> `optional` **look?**: `"link"` \| `"menu"` \| `"action"`
+> `optional` **look?**: `"menu"` \| `"action"`
 
 ## Functions
 
@@ -26,7 +24,7 @@ An icon before the label.
 
 > **CheckButton**(`__namedParameters`): `Element`
 
-'Check now' on a link's detail page: whether its address answers, and when it was checked.
+'Check now' on a link's detail page: says whether its address answers, and when it was checked.
 
 #### Parameters
 
@@ -44,8 +42,8 @@ An icon before the label.
 
 > **StatusButton**(`__namedParameters`): `Element`
 
-A button that runs a request and says how that went: what `run` answers,
-the API's own message when it refuses, or `failure`.
+A button that runs a request and says in a toast how that went: what `run`
+answers, the API's own message when it refuses, or `failure`.
 
 #### Parameters
 

@@ -195,8 +195,8 @@ Unarchive where other cards offer Pin.
 
 > **RefreshButton**(`__namedParameters`): `Element`
 
-Refresh: asks the API to fetch the link again and shows that it is
-refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
+Refresh: asks the API to fetch the link again and says in a toast that it
+is refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 
 #### Parameters
 
