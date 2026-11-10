@@ -75,7 +75,7 @@ async function stateOf(id: string): Promise<string | undefined> {
   )?.state;
 }
 
-const DEFAULTS = { start_points: 60, remove_days: 180 };
+const DEFAULTS = { start_points: 60, remove_days: 180, use_boost: 50 };
 
 function thresholds(user: TestUser) {
   return api('GET', '/api/v1/settings/decay', { as: user.session });
@@ -86,7 +86,7 @@ function save(user: TestUser, body: unknown) {
 }
 
 describe('the decay settings', () => {
-  it('are 60 start points and 180 days to removal for a user who never changed them', async () => {
+  it('are 60 start points, 180 days to removal and a use boost of 50 for a user who never changed them', async () => {
     const r = await thresholds(await signIn());
     expect(r.status).toBe(200);
     expect(r.json).toEqual(DEFAULTS);
@@ -97,15 +97,49 @@ describe('the decay settings', () => {
     const user = await signIn();
     const other = await signIn('other@example.test', 'Other');
     const id = await seedAged(user, 8);
-    const r = await save(user, { start_points: 7, remove_days: 3650 });
+    const r = await save(user, { start_points: 7, remove_days: 3650, use_boost: 50 });
     expect(r.status).toBe(200);
-    expect(r.json).toEqual({ start_points: 7, remove_days: 3650 });
-    expect((await thresholds(user)).json).toEqual({ start_points: 7, remove_days: 3650 });
+    expect(r.json).toEqual({ start_points: 7, remove_days: 3650, use_boost: 50 });
+    expect((await thresholds(user)).json).toEqual({
+      start_points: 7,
+      remove_days: 3650,
+      use_boost: 50,
+    });
     expect((await api('GET', `/api/v1/links/${id}`, { as: user.session })).json.points).toBe(-1);
     await evaluateDecay(env, user.id);
     expect(await stateOf(id)).toBe('expired');
     expect((await thresholds(other)).json).toEqual(DEFAULTS);
-    expect((await save(user, { start_points: 3650, remove_days: 7 })).status).toBe(200);
+    expect((await save(user, { start_points: 3650, remove_days: 7, use_boost: 50 })).status).toBe(
+      200,
+    );
+  });
+
+  it('change the use boost of later uses only: no link moves when it is saved', async () => {
+    setNow(T);
+    const user = await signIn();
+    const [id = ''] = await seedLinks(user, [
+      {
+        url: 'https://forty-days.example/',
+        state: 'active',
+        lastUsedAt: new Date(T - 40 * DAY).toISOString(),
+      },
+    ]);
+    const read = async () => (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
+    const before = await read();
+    expect((await save(user, { ...DEFAULTS, use_boost: 25 })).status).toBe(200);
+    const after = await read();
+    expect([after.decay_from, after.points]).toEqual([before.decay_from, before.points]);
+    await useAt(user, id, [T + DAY]);
+    expect((await read()).decay_from).toBe(new Date(T - 40 * DAY + (41 * DAY) / 4).toISOString());
+  });
+
+  it.each([10, 50, 100])('store a use boost of %i', async (useBoost) => {
+    const user = await signIn();
+    const body = { start_points: 60, remove_days: 180, use_boost: useBoost };
+    const r = await save(user, body);
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual(body);
+    expect((await thresholds(user)).json).toEqual(body);
   });
 
   it.each([
@@ -117,7 +151,7 @@ describe('the decay settings', () => {
     { body: { start_points: '60', remove_days: 180 }, field: 'start_points' },
   ])('refuses $body', async ({ body, field }) => {
     const user = await signIn();
-    const r = await save(user, body);
+    const r = await save(user, { use_boost: 50, ...body });
     expect(r.status).toBe(400);
     expect(r.json).toEqual({
       error: 'invalid_threshold',
@@ -125,6 +159,27 @@ describe('the decay settings', () => {
       message: `${field} must be a whole number from 7 to 3650`,
     });
     expect((await thresholds(user)).json).toEqual(DEFAULTS);
+  });
+
+  it.each([
+    { label: 'missing', useBoost: {} },
+    { label: '9', useBoost: { use_boost: 9 } },
+    { label: '101', useBoost: { use_boost: 101 } },
+    { label: '50.5', useBoost: { use_boost: 50.5 } },
+    { label: 'the string "50"', useBoost: { use_boost: '50' } },
+    { label: 'null', useBoost: { use_boost: null } },
+  ])('refuses a use boost that is $label, storing none of the three', async ({ useBoost }) => {
+    const user = await signIn();
+    const stored = { start_points: 30, remove_days: 90, use_boost: 40 };
+    expect((await save(user, stored)).status).toBe(200);
+    const r = await save(user, { start_points: 60, remove_days: 180, ...useBoost });
+    expect(r.status).toBe(400);
+    expect(r.json).toEqual({
+      error: 'invalid_threshold',
+      field: 'use_boost',
+      message: 'use_boost must be a whole number from 10 to 100',
+    });
+    expect((await thresholds(user)).json).toEqual(stored);
   });
 });
 
@@ -329,7 +384,7 @@ describe('expiry by decay', () => {
     await api(
       'PUT',
       '/api/v1/settings/decay',
-      await as(user, { body: { start_points: 7, remove_days: 7 } }),
+      await as(user, { body: { start_points: 7, remove_days: 7, use_boost: 50 } }),
     );
     const expiring = await seedAged(user, 7);
     const kept = await seedAged(user, 6);
@@ -430,7 +485,7 @@ describe('removal by decay', () => {
     await api(
       'PUT',
       '/api/v1/settings/decay',
-      await as(user, { body: { start_points: 60, remove_days: 30 } }),
+      await as(user, { body: { start_points: 60, remove_days: 30, use_boost: 50 } }),
     );
     expect(await read(expired)).toBe(new Date(T - 10 * DAY + 30 * DAY).toISOString());
   });

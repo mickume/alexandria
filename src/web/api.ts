@@ -316,10 +316,14 @@ export const workspaces = {
     request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
 };
 
-/** The decay settings: the points a link starts from, and the days from expiry to removal. */
+/**
+ * The decay settings: the points a link starts from, the days from expiry to
+ * removal, and the percent of its decay the first use of a day wins back.
+ */
 export interface Thresholds {
   start_points: number;
   remove_days: number;
+  use_boost: number;
 }
 
 export const decay = {

@@ -1,21 +1,47 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, decay, type Thresholds } from '../api';
 
-const FIELDS: { key: keyof Thresholds; label: string; meaning: string }[] = [
+const FIELDS: {
+  key: keyof Thresholds;
+  label: string;
+  meaning: string;
+  min: number;
+  max: number;
+}[] = [
   {
     key: 'start_points',
     label: 'Start points',
-    meaning:
-      'Points a link starts with and goes back to when used, plus one per use; it loses one a day',
+    meaning: 'Points a link starts with, plus one per use. It loses one a day.',
+    min: 7,
+    max: 3650,
   },
   {
     key: 'remove_days',
     label: 'Remove after expiring (days)',
     meaning: 'An expired link is deleted for good, with its snapshot.',
+    min: 7,
+    max: 3650,
+  },
+  {
+    key: 'use_boost',
+    label: 'Use boost (%)',
+    meaning:
+      'Share of the points a link has lost that a use wins back, once a day. At 100, a use gives back all of them.',
+    min: 10,
+    max: 100,
   },
 ];
 
-/** The decay section of the settings page: the two settings, and a refusal beside its field. */
+/** The settings as the form holds them, one string per field. */
+function asValues(t: Thresholds): Record<keyof Thresholds, string> {
+  return {
+    start_points: String(t.start_points),
+    remove_days: String(t.remove_days),
+    use_boost: String(t.use_boost),
+  };
+}
+
+/** The decay section of the settings page: the three settings, and a refusal beside its field. */
 export function DecaySection() {
   const [values, setValues] = useState<Record<keyof Thresholds, string> | null>(null);
   const [error, setError] = useState<{ field: string | null; message: string } | null>(null);
@@ -26,8 +52,7 @@ export function DecaySection() {
     decay
       .get()
       .then((t) => {
-        if (!live) return;
-        setValues({ start_points: String(t.start_points), remove_days: String(t.remove_days) });
+        if (live) setValues(asValues(t));
       })
       .catch(() => undefined);
     return () => {
@@ -41,10 +66,12 @@ export function DecaySection() {
     setError(null);
     setSaved(false);
     try {
-      await decay.save({
+      const stored = await decay.save({
         start_points: Number(values.start_points),
         remove_days: Number(values.remove_days),
+        use_boost: Number(values.use_boost),
       });
+      setValues(asValues(stored));
       setSaved(true);
     } catch (err) {
       const field =
@@ -64,19 +91,23 @@ export function DecaySection() {
         A link loses a point a day it is not used. At 0 it expires and leaves the stream; it is
         removed later unless you use or restore it.
       </p>
-      <form className="stacked-form" onSubmit={save}>
-        {FIELDS.map(({ key, label, meaning }) => (
+      {/* The API checks the values, and its refusal is shown beside the field it names. */}
+      <form className="stacked-form" onSubmit={save} noValidate>
+        {FIELDS.map(({ key, label, meaning, min, max }) => (
           <div key={key} className="field" data-field={key}>
             <label htmlFor={`decay-${key}`}>{label}</label>
             <input
               id={`decay-${key}`}
               type="number"
-              min={7}
-              max={3650}
+              min={min}
+              max={max}
               value={values[key]}
+              aria-describedby={`decay-${key}-help`}
               onChange={(e) => setValues({ ...values, [key]: e.target.value })}
             />
-            <span className="muted">{meaning}</span>
+            <span id={`decay-${key}-help`} className="muted">
+              {meaning}
+            </span>
             {error?.field === key && (
               <span className="notice" role="alert">
                 {error.message}

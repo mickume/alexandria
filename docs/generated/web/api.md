@@ -496,6 +496,12 @@ When the link was archived, while it is archived.
 
 > **dead\_since**: `string` \| `null`
 
+##### decay\_from
+
+> **decay\_from**: `string`
+
+When the link's decay counts from.
+
 ##### decay\_note
 
 > **decay\_note**: `string`
@@ -1110,7 +1116,8 @@ The owner's daily record, as GET /api/v1/stats/history answers it.
 
 ### Thresholds
 
-The decay settings: the points a link starts from, and the days from expiry to removal.
+The decay settings: the points a link starts from, the days from expiry to
+removal, and the percent of its decay the first use of a day wins back.
 
 #### Properties
 
@@ -1121,6 +1128,10 @@ The decay settings: the points a link starts from, and the days from expiry to r
 ##### start\_points
 
 > **start\_points**: `number`
+
+##### use\_boost
+
+> **use\_boost**: `number`
 
 ***
 

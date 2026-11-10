@@ -85,8 +85,8 @@ One page of a link's uses and fetch events, newest first, and the cursor of the 
 > **recordUse**(`db`, `userId`, `linkId`): `Promise`\<`string` \| `null`\>
 
 Records one use of a user's link: increments its use count, sets its last
-use to now, makes an expired link active again and stores a use event, in
-one transaction. Every way of opening
+use to now, moves its decay start forward, makes an expired link active
+again and stores a use event, in one transaction. Every way of opening
 a link (the open endpoint, and later reads, snapshots and MCP) goes through
 here. Returns the link's normalised URL, or null when the user has no such link.
 

@@ -620,13 +620,18 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/settings/decay',
     operationId: 'getDecaySettings',
-    summary: 'The decay settings: the start points and the days from expiry to removal',
+    summary:
+      'The decay settings: the start points, the days from expiry to removal and the use boost',
     responses: {
       200: {
         description: 'The settings',
         schema: z.strictObject({
           start_points: z.number().int(),
           remove_days: z.number().int(),
+          use_boost: z
+            .number()
+            .int()
+            .describe('Percent of the time decayed the first use of a link on a UTC day wins back'),
         }),
       },
     },
@@ -635,10 +640,12 @@ export const operations: Operation[] = [
     method: 'put',
     path: '/settings/decay',
     operationId: 'saveDecaySettings',
-    summary: 'Set the decay settings: each a whole number from 7 to 3650',
+    summary:
+      'Set the decay settings: start points and removal days from 7 to 3650, use boost from 10 to 100; it applies to later uses only',
     body: z.object({
       start_points: z.number().int().min(7).max(3650),
       remove_days: z.number().int().min(7).max(3650),
+      use_boost: z.number().int().min(10).max(100),
     }),
     responses: {
       200: {
@@ -646,6 +653,7 @@ export const operations: Operation[] = [
         schema: z.strictObject({
           start_points: z.number().int(),
           remove_days: z.number().int(),
+          use_boost: z.number().int(),
         }),
       },
       400: error('invalid_json, or invalid_threshold naming the field'),

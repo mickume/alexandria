@@ -4,7 +4,9 @@
 
 ### Thresholds
 
-A user's decay settings: the points a link starts from, and the days from expiry to removal.
+A user's decay settings: the points a link starts from, the days from expiry
+to removal, and the percent of the time decayed that the first use of a link
+on a UTC day wins back.
 
 #### Properties
 
@@ -15,6 +17,10 @@ A user's decay settings: the points a link starts from, and the days from expiry
 ##### start\_points
 
 > **start\_points**: `number`
+
+##### use\_boost
+
+> **use\_boost**: `number`
 
 ## Variables
 
@@ -36,7 +42,7 @@ The decay settings, under /api/v1/settings.
 
 > `const` **THRESHOLD\_MIN**: `7` = `7`
 
-The bounds of every decay setting.
+The bounds of the start points and the removal delay.
 
 ## Functions
 

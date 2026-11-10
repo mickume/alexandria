@@ -116,6 +116,7 @@ A link is shown as:
   "state": "pending",
   "added_at": "2026-06-01T08:00:00.000Z",
   "last_used_at": "2026-06-01T08:00:00.000Z",
+  "decay_from": "2026-06-01T08:00:00.000Z",
   "use_count": 0,
   "pinned": false,
   "pin_position": null,
@@ -171,12 +172,27 @@ without text, a PDF too large), or `waiting_for_key` (the key was rejected);
 it is `null` before the first fetch. `edited_fields` lists the fields the
 owner set by hand, which enrichment and refresh never overwrite.
 
-Decay adds `points`, `archived_at`, `expired_at`, `removal_at`, `dead_since`,
-`last_checked_at`, `last_check_result` and `decay_note`. `points` is an
-integer (null for an archived link): the owner's `start_points` plus the link's `use_count`, minus the
-whole 24-hour periods since its `last_used_at`, at the time of the request; it
-can be negative. A use adds 1 to `use_count` and sets `last_used_at` to now; a
-re-paste sets `last_used_at` to now without a use. `expired_at` is when the
+Decay adds `decay_from`, `points`, `archived_at`, `expired_at`, `removal_at`,
+`dead_since`, `last_checked_at`, `last_check_result` and `decay_note`.
+`decay_from` is the time the link's decay counts from, in the same form as
+`last_used_at`, which stays the time of its last use or boost. `points` is an
+integer (null for an archived link): the owner's `start_points` plus the link's
+`use_count`, minus the whole 24-hour periods since its `decay_from`, at the
+time of the request; it can be negative. A new link, added or imported, has
+`decay_from` equal to its `last_used_at`.
+
+A use adds 1 to `use_count` and sets `last_used_at` to now. The first use of a
+link on a UTC day (its `last_used_at` before the use is on an earlier UTC day)
+also moves `decay_from` forward by the owner's `use_boost` percent of the time
+from `decay_from` to now, rounded down to the millisecond; a later use that day
+leaves `decay_from` as it is, so it adds exactly 1 point. Concurrent first uses
+of a day move it once. A use of an expired link sets `decay_from` to now,
+whatever `use_boost` is. With `start_points` 60 and `use_boost` 50, a link with
+5 uses and `decay_from` 62 days ago has 3 points; after a use it has 6 uses and
+`decay_from` 31 days ago, so 35 points, and a second use the same day makes 36.
+A re-paste, a restore and an unarchive set both `last_used_at` and
+`decay_from` to now without a use; archiving leaves `decay_from` as it is.
+`expired_at` is when the
 link expired, and null while it is not expired; `removal_at` is `expired_at`
 plus the owner's `remove_days`, or null. `decay_note` is one sentence saying
 where the link stands: "expired on 2027-03-01, removed on 2027-08-28" for an
@@ -206,7 +222,8 @@ Body `{"url": "<url>"}`.
 - `201 {"status": "added", "link": <link>}`: a new link, `pending`, with
   `added_at` and `last_used_at` now.
 - `200 {"status": "boosted", "link": <link>}`: the user already has this
-  normalised URL; its `last_used_at` is now, its `use_count` unchanged.
+  normalised URL; its `last_used_at` and `decay_from` are now, its `use_count`
+  unchanged.
 - `400 {"error": "invalid_url", "field": "url", "url": <the input or null>, "message": "not a valid web address"}`
 - `409 {"error": "library_full", "message": "library full (20,000 links)"}`
 
@@ -229,7 +246,7 @@ equal points the batch appears in the stream in the order given.
 The stream: the links that are neither expired nor archived, the pinned ones first in pin
 position order, then the rest by `points`, highest first, then by
 `last_used_at`, newest first, with the id (descending) breaking ties. With
-`start_points` 60, a link used 10 times and last used 5 days ago (65 points)
+`start_points` 60, a link used 10 times whose `decay_from` is 5 days ago (65 points)
 is listed above one used once today (61). Query: `limit` (1 to 100, default
 50), `cursor`. The pages after the first are ordered by the points as of the
 first page, so every link that does not change while you page appears exactly
@@ -270,7 +287,8 @@ One link: `200 <link>`, or `404 {"error": "not_found"}`.
 #### `GET /api/v1/links/{id}/open`
 
 Records a use of the link (its `use_count` goes up by one, `last_used_at`
-becomes now, and a `use` event is stored) and redirects to its normalised
+becomes now, `decay_from` moves as a use moves it, and a `use` event is
+stored) and redirects to its normalised
 URL: `302` with `Location: <url>`. This is how the website, scripts and apps
 open links, so that every use is counted. Concurrent opens are each counted.
 
@@ -553,22 +571,27 @@ is not http, https or mailto.
 ### Decay settings
 
 Links the owner does not use decay. A link's `points` are the owner's
-`start_points` plus its use count, minus the whole days since its last use or
-boost; a link whose points reach 0 expires, and it is removed `remove_days`
-after it expired.
+`start_points` plus its use count, minus the whole days since its
+`decay_from`; a link whose points reach 0 expires, and it is removed
+`remove_days` after it expired. `use_boost` is the percent of the time decayed
+that the first use of a link on a UTC day wins back.
 
 #### `GET /api/v1/settings/decay`
 
-`200 {"start_points": 60, "remove_days": 180}` (the defaults).
+`200 {"start_points": 60, "remove_days": 180, "use_boost": 50}` (the defaults).
 
 #### `PUT /api/v1/settings/decay`
 
-Body with both, each a whole number from 7 to 3650: `200` with the stored
-values. A change applies to the points of every link of the owner at once.
+Body with all three: `start_points` and `remove_days` each a whole number from
+7 to 3650, `use_boost` a whole number from 10 to 100. `200` with the stored
+values. A change of `start_points` applies to the points of every link of the
+owner at once; a change of `use_boost` applies to the uses recorded after it
+and moves no link's `decay_from`, so no link's points change when it is saved.
 A field missing, not a whole number, or out of bounds is refused, and nothing
 is stored:
 `400 {"error": "invalid_threshold", "field": "start_points", "message": "start_points must be a whole number from 7 to 3650"}`
-(or `remove_days`).
+(or `remove_days`), or
+`400 {"error": "invalid_threshold", "field": "use_boost", "message": "use_boost must be a whole number from 10 to 100"}`.
 
 ### Expired links
 
@@ -586,8 +609,9 @@ this route did not issue `400 {"error": "invalid_cursor", "field": "cursor", "me
 
 #### `POST /api/v1/links/{id}/restore`
 
-Brings an expired link back: `active`, `last_used_at` now (a boost, not a
-use: the use count stays), `expired_at` cleared. `200 <link>`. A link that is
+Brings an expired link back: `active`, `last_used_at` and `decay_from` now (a
+boost, not a use: the use count stays, so its points are `start_points` plus
+its use count), `expired_at` cleared. `200 <link>`. A link that is
 not expired:
 `409 {"error": "not_expired", "message": "this link is not expired"}`, and
 nothing changes. Another user's link, or one that does not exist: `404`.
@@ -625,7 +649,7 @@ queued. Another user's link, or one that does not exist: `404`.
 #### `POST /api/v1/links/{id}/unarchive`
 
 Brings an archived link back: `active`, `archived_at` cleared, `last_used_at`
-now (a boost, not a use: the use count stays, so its points are
+and `decay_from` now (a boost, not a use: the use count stays, so its points are
 `start_points` plus its use count). It is not pinned again. `200 <link>`. A
 link that is not archived:
 `409 {"error": "not_archived", "message": "this link is not archived"}`, and

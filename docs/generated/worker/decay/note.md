@@ -32,11 +32,11 @@ points and no removal date.
 
 ### pointsAt()
 
-> **pointsAt**(`startPoints`, `useCount`, `lastUsedAt`, `at`): `number`
+> **pointsAt**(`startPoints`, `useCount`, `decayFrom`, `at`): `number`
 
 A link's points at time `at`: its user's start points plus its use count,
-minus the whole 24-hour periods since its last use or boost (none for a last
-use after `at`). They can be negative.
+minus the whole 24-hour periods since its decay start (none for a decay start
+after `at`). They can be negative.
 
 #### Parameters
 
@@ -48,7 +48,7 @@ use after `at`). They can be negative.
 
 `number`
 
-##### lastUsedAt
+##### decayFrom
 
 `string`
 

@@ -6,7 +6,7 @@
 
 > **DecaySection**(): `Element` \| `null`
 
-The decay section of the settings page: the two settings, and a refusal beside its field.
+The decay section of the settings page: the three settings, and a refusal beside its field.
 
 #### Returns
 

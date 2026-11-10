@@ -145,8 +145,11 @@ real services through the `AI` and `VECTORIZE` bindings.
 
 Each user sets on the settings page (or with `PUT /api/v1/settings/decay`)
 how fast their unused links decay: `start_points` (default 60), the points a
-link starts from and goes back to, plus its use count, when it is used, and
-`remove_days` (default 180), the days from a link's expiry to its removal,
-each a whole number from 7 to 3650. They are stored on the user, not in the
-deployment's configuration, and a change applies to every link of the user at
-once.
+link starts from, plus one per use, and `remove_days` (default 180), the days
+from a link's expiry to its removal, each a whole number from 7 to 3650; and
+`use_boost` (default 50), a whole number from 10 to 100, the percent of the
+time a link has decayed that its first use on a UTC day wins back (at 100, a
+use gives back every lost point). They are stored on the user, not in the
+deployment's configuration. A change of `start_points` or `remove_days`
+applies to every link of the user at once; a change of `use_boost` applies to
+the uses recorded after it.

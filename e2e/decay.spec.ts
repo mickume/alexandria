@@ -136,3 +136,56 @@ test('a use of a link close to expiry wins back half its decay and lands it mid-
     await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
   }
 });
+
+test('the owner sets the use boost on the Settings page, and at 100 a use gives back every point', async ({
+  page,
+}) => {
+  await signIn(page);
+  const origin = new URL(page.url()).origin;
+  await page.goto('/settings');
+  const section = page.locator('section.decay-settings');
+  const boost = section.getByLabel('Use boost (%)');
+  await boost.fill('5');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await expect(
+    section
+      .locator('[data-field="use_boost"]')
+      .getByText('use_boost must be a whole number from 10 to 100'),
+  ).toBeVisible();
+  await boost.fill('100');
+  await section.getByRole('button', { name: 'Save' }).click();
+  await expect(section.getByRole('status')).toHaveText('Saved');
+  await expect(boost).toHaveValue('100');
+  const settings = await (await page.request.get('/api/v1/settings/decay')).json();
+  expect(settings.use_boost).toBe(100);
+
+  const added = await page.request.post('/api/v1/links', {
+    data: { url: 'https://example.org/twenty-days' },
+    headers: { Origin: origin },
+  });
+  const id: string = (await added.json()).link.id;
+  const past = daysAgo(20);
+  d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${id}'`);
+  await page.request.get(`/api/v1/links/${id}/open`, { maxRedirects: 0 });
+  const link = await (await page.request.get(`/api/v1/links/${id}`)).json();
+  expect(link.decay_from).toBe(link.last_used_at);
+
+  const stream = await (await page.request.get('/api/v1/links')).json();
+  const pinned = new Set<string>(
+    stream.items.filter((l: { pinned: boolean }) => l.pinned).map((l: { id: string }) => l.id),
+  );
+  await page.goto('/');
+  await expect(cardOf(page, id)).toBeVisible();
+  const hrefs = await page
+    .locator('article a[href$="/open"]')
+    .evaluateAll((links) => links.map((l) => l.getAttribute('href')));
+  const unpinned = hrefs.filter((h) => !pinned.has(h?.split('/')[4] ?? ''));
+  expect(unpinned[0]).toBe(`/api/v1/links/${id}/open`);
+
+  // The other specs share this library and its settings.
+  await page.request.put('/api/v1/settings/decay', {
+    data: { ...settings, use_boost: 50 },
+    headers: { Origin: origin },
+  });
+  await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
+});

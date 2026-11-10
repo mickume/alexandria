@@ -434,7 +434,7 @@ describe('expiry outlook', () => {
     const user = await signIn();
     const put = await api('PUT', '/api/v1/settings/decay', {
       as: user.session,
-      body: { start_points: 30, remove_days: 90 },
+      body: { start_points: 30, remove_days: 90, use_boost: 50 },
     });
     expect(put.status).toBe(200);
     const r = await stats(user);

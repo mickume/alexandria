@@ -151,12 +151,13 @@ quantities in the last list are never stored.
 1. **On add** (`links/store.ts`, `addStatement`; `imports/imports.ts` for an
    import): one `links` row with the normalised `url`, the `original_url` as
    given, the `host`, the host as a placeholder `title`, `state` `pending`,
-   `added_at`, `last_used_at` and `updated_at`. An insert trigger gives it its
+   `added_at`, `last_used_at`, `decay_from` (equal to `last_used_at`) and
+   `updated_at`. An insert trigger gives it its
    `link_search` row (and `link_search_keys` id), with empty reader text. One
    `FETCH_QUEUE` message is sent (an import's links go through its
    dispatcher). Adding a URL the library already has stores nothing new: it
-   *boosts* the link (`last_used_at` now, and an expired link becomes active
-   again). It records no use and sends no fetch.
+   *boosts* the link (`last_used_at` and `decay_from` now, and an expired link
+   becomes active again). It records no use and sends no fetch.
 2. **On fetch** (`fetcher/queue.ts`, `writeFetched`): the objects are written
    to R2 first: `snapshot` (the raw HTML, or the whole PDF up to 50 MB) and, for
    a web page with a readable article, `reader.json` (the reader view's title,
@@ -393,12 +394,27 @@ nothing (that user is evaluated again at the next run):
 
 A link's points are never stored: `decay/note.ts` computes them for every link
 the API returns (`pointsAt`): the user's `start_points` plus the link's
-`use_count`, minus the whole 24-hour periods since `last_used_at`, negative
-allowed. The expiry statement compares the same quantity in SQL, counting
-milliseconds in integers (`epochMs`) so the day boundary falls where `pointsAt`
-puts it; a link expires once the whole days since its last use reach its start
-points plus its use count. A change of `start_points` therefore applies to
-every link at once. Pinned links and links in a workspace keep losing points
+`use_count`, minus the whole 24-hour periods since `decay_from`, negative
+allowed. `decay_from` is the time the link's decay counts from, kept apart
+from `last_used_at`, which the card, the stream's tie-break, the searches and
+the statistics read as the last use. The expiry statement, the stream's order
+(`POINTS_AT` in `links/stream.ts`) and the statistics (`stats/stats.ts`)
+compute the same quantity in SQL, counting milliseconds in integers
+(`epochMs`) so the day boundary falls where `pointsAt` puts it; a link expires
+once the whole days since its decay start reach its start points plus its use
+count. A change of `start_points` therefore applies to every link at once.
+
+A use (`recordUse` in `links/use.ts`) moves `decay_from` in the same UPDATE
+that counts it, from the row's values before the update: when the previous
+`last_used_at` falls on an earlier UTC day, `decay_from` moves forward by the
+user's `use_boost` percent of the time from `decay_from` to now (integer
+milliseconds, rebuilt as a timestamp by `isoFromMs`); on the same UTC day it
+stays, so the uses of one visit add a point each and do not compound, and of
+concurrent first uses only the first moves it. A use of an expired link sets
+it to now. A re-paste, a restore and an unarchive set it to now with
+`last_used_at`; archiving leaves it. Migration `0019` started every link's
+decay at its last use, and an insert trigger gives a link inserted without a
+decay start its `last_used_at` as one. Pinned links and links in a workspace keep losing points
 but never expire, and an expired link that is pinned or in a workspace is
 never removed. `removal_at` is `expired_at` plus `remove_days`.
 `decay/note.ts` also gives every link its `decay_note`.
@@ -415,7 +431,8 @@ message on `FETCH_QUEUE` without touching `refresh_requested_at`, recording a
 failed fetch event when the send fails. The fetch worker's write
 (`writeFetched`) keeps the state `archived`, so the refresh replaces the
 snapshot and reader text and re-enriches the link without un-archiving it.
-`POST .../unarchive` makes it `active` with `last_used_at` now. The stream
+`POST .../unarchive` makes it `active` with `last_used_at` and `decay_from`
+now. The stream
 and the change feed leave archived links out; searches and Ask keep them,
 and `listStream` lists them after the ranked links. Pinning one is refused,
 the weekly liveness checks skip it and the on-demand check refuses it.

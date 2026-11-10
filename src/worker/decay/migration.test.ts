@@ -43,7 +43,7 @@ describe('carrying a library over to points and expiry', () => {
     expect((await read(active)).state).toBe('active');
     expect((await read(pending)).state).toBe('pending');
     const settings = await api('GET', '/api/v1/settings/decay', { as: user.session });
-    expect(settings.json).toEqual({ start_points: 45, remove_days: 90 });
+    expect(settings.json).toEqual({ start_points: 45, remove_days: 90, use_boost: 50 });
   });
 });
 

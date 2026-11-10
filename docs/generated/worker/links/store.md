@@ -28,6 +28,12 @@ A link as stored.
 
 > **dead\_since**: `string` \| `null`
 
+##### decay\_from
+
+> **decay\_from**: `string`
+
+When the link's decay counts from.
+
 ##### description
 
 > **description**: `string` \| `null`
@@ -240,6 +246,12 @@ What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fe
 
 > **dead\_since**: `string` \| `null`
 
+##### decay\_from
+
+> **decay\_from**: `string`
+
+When the link's decay counts from: its points lose one a day since then.
+
 ##### decay\_note
 
 > **decay\_note**: `string`
@@ -320,6 +332,8 @@ Whether a snapshot is stored, so that Read and Snapshot can be offered.
 
 > **last\_used\_at**: `string`
 
+When the link was last used or boosted.
+
 ##### note?
 
 > `optional` **note?**: `string`
@@ -354,8 +368,8 @@ Short notes such as "truncated" or "not a web page (image/png)".
 
 > **points**: `number` \| `null`
 
-Start points plus the use count, minus the whole days since the last use
-or boost; null for an archived link, which decay leaves alone.
+Start points plus the use count, minus the whole days since the decay
+start; null for an archived link, which decay leaves alone.
 
 ##### removal\_at
 

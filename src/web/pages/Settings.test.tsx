@@ -313,7 +313,7 @@ describe('a rejected AI key on the settings page', () => {
 
 describe('the decay section of the settings page', () => {
   function decayApi(): FakeApi {
-    let stored = { start_points: 60, remove_days: 180 };
+    let stored = { start_points: 60, remove_days: 180, use_boost: 40 };
     return fakeApi()
       .on('GET', '/api/v1/settings/decay', () => ({ status: 200, body: stored }))
       .on('PUT', '/api/v1/settings/decay', (req) => {
@@ -322,53 +322,72 @@ describe('the decay section of the settings page', () => {
       });
   }
 
-  it('shows the start points and the removal delay with their meanings, and saves both', async () => {
+  /** The text of the help that describes `input`. */
+  const helpOf = (input: HTMLElement) =>
+    document.getElementById(input.getAttribute('aria-describedby') ?? '')?.textContent;
+
+  it('shows the three settings with their meanings, and saves them all', async () => {
     const api = decayApi();
     renderPage('/settings', api);
     const start = (await screen.findByLabelText('Start points')) as HTMLInputElement;
     const remove = screen.getByLabelText('Remove after expiring (days)') as HTMLInputElement;
+    const boost = screen.getByLabelText('Use boost (%)') as HTMLInputElement;
     await waitFor(() => expect(start.value).toBe('60'));
     expect(remove.value).toBe('180');
+    expect(boost.value).toBe('40');
     const section = start.closest('section')!;
-    expect(section.querySelectorAll('input[type="number"]')).toHaveLength(2);
-    expect(
-      screen.getByText(
-        'Points a link starts with and goes back to when used, plus one per use; it loses one a day',
-      ),
-    ).toBeTruthy();
+    expect(section.querySelectorAll('input[type="number"]')).toHaveLength(3);
+    expect(helpOf(start)).toBe('Points a link starts with, plus one per use. It loses one a day.');
+    expect(helpOf(boost)).toBe(
+      'Share of the points a link has lost that a use wins back, once a day. At 100, a use gives back all of them.',
+    );
     fireEvent.change(start, { target: { value: '30' } });
+    fireEvent.change(boost, { target: { value: '75' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     });
     expect(api.sent('PUT', '/api/v1/settings/decay')[0]?.body).toEqual({
       start_points: 30,
       remove_days: 180,
+      use_boost: 75,
     });
     expect(await screen.findByText('Saved')).toBeTruthy();
+    expect([start.value, remove.value, boost.value]).toEqual(['30', '180', '75']);
   });
 
-  it('shows a refusal beside the field it names and keeps the typed values', async () => {
-    const api = decayApi().on('PUT', '/api/v1/settings/decay', {
-      status: 400,
-      body: {
-        error: 'invalid_threshold',
-        field: 'remove_days',
-        message: 'remove_days must be a whole number from 7 to 3650',
-      },
-    });
-    renderPage('/settings', api);
-    const remove = (await screen.findByLabelText(
-      'Remove after expiring (days)',
-    )) as HTMLInputElement;
-    await waitFor(() => expect(remove.value).toBe('180'));
-    fireEvent.change(remove, { target: { value: '3000' } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    });
-    const message = await screen.findByText('remove_days must be a whole number from 7 to 3650');
-    expect(message.closest('[data-field="remove_days"]')).not.toBeNull();
-    expect(remove.value).toBe('3000');
-  });
+  it.each([
+    {
+      label: 'Remove after expiring (days)',
+      field: 'remove_days',
+      typed: '3000',
+      message: 'remove_days must be a whole number from 7 to 3650',
+    },
+    {
+      label: 'Use boost (%)',
+      field: 'use_boost',
+      typed: '5',
+      message: 'use_boost must be a whole number from 10 to 100',
+    },
+  ])(
+    'shows a refusal of $field beside its field alone and keeps the typed value',
+    async ({ label, field, typed, message }) => {
+      const api = decayApi().on('PUT', '/api/v1/settings/decay', {
+        status: 400,
+        body: { error: 'invalid_threshold', field, message },
+      });
+      renderPage('/settings', api);
+      const input = (await screen.findByLabelText(label)) as HTMLInputElement;
+      await waitFor(() => expect(input.value).not.toBe(''));
+      fireEvent.change(input, { target: { value: typed } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      });
+      const shown = await screen.findByText(message);
+      expect(shown.closest(`[data-field="${field}"]`)).not.toBeNull();
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+      expect(input.value).toBe(typed);
+    },
+  );
 });
 
 describe('exporting from the settings page', () => {

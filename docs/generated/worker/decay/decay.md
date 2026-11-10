@@ -77,8 +77,8 @@ after the transaction.
 
 The statement that expires, at time `t`, every link of the user whose
 points are 0 or below, that is active, pending or unreachable, not pinned
-and in no workspace. Points reach 0 once the whole days since the last use
-reach the start points plus the use count. The statement carries its own
+and in no workspace. Points reach 0 once the whole days since the decay
+start reach the start points plus the use count. The statement carries its own
 conditions, so a link used or re-pasted meanwhile is left as the use left it.
 
 #### Parameters
@@ -98,3 +98,22 @@ conditions, so a link used or re-pasted meanwhile is left as the use left it.
 #### Returns
 
 `D1PreparedStatement`
+
+***
+
+### isoFromMs()
+
+> **isoFromMs**(`ms`): `string`
+
+The SQL expression of the integer milliseconds `ms` since the epoch as a
+stored timestamp, to the millisecond: the inverse of epochMs.
+
+#### Parameters
+
+##### ms
+
+`string`
+
+#### Returns
+
+`string`
