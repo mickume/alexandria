@@ -9,7 +9,7 @@ import {
   signIn,
   type TestUser,
 } from '../test/helpers';
-import { FakeAi } from '../test/ai';
+import { FakeAi, type SplitLink } from '../test/ai';
 import { markKeyRejected } from '../enrich/keys';
 import { setProviderTimeout } from '../enrich/providers';
 import { listVocabulary } from '../enrich/vocabulary';
@@ -1042,13 +1042,11 @@ describe('splitting a topic', () => {
     const [databases] = await fileLinks(user, 'Databases', 1);
     const ai = new FakeAi();
     await saveKey(user);
-    ai.split({
-      subtopics: ['Testing', 'Databases', 'Compilers', 'Unused'],
-      links: se.map((id, i) => ({
-        id,
-        subtopic: i < 10 ? 'Testing' : i < 15 ? 'Databases' : i < 20 ? 'Compilers' : '',
-      })),
-    });
+    ai.split(
+      filed(['Testing', 'Databases', 'Compilers', 'Unused'], (i) =>
+        i < 10 ? 'Testing' : i < 15 ? 'Databases' : i < 20 ? 'Compilers' : '',
+      ),
+    );
     return { user, ai, se, testing: testing!, databases: databases! };
   }
 
@@ -1099,25 +1097,39 @@ describe('splitting a topic', () => {
     expect(ai.enrichments).toHaveLength(0);
   });
 
-  it('sends the provider the links filed directly under the topic and its children, and nothing of the owner', async () => {
+  it('sends the provider the links filed directly under the topic by number, its children, and nothing of the owner', async () => {
     const { user, ai, se, testing, databases } = await library();
     await split(user, 'Software engineering');
     const body = JSON.stringify(ai.splits[0]!.body);
-    for (const [i, id] of se.entries()) {
-      expect(body).toContain(id);
+    for (let i = 0; i < se.length; i++) {
       expect(body).toContain(`Software engineering title ${i}`);
       expect(body).toContain(`Software engineering summary ${i}`);
     }
+    // Each link is named by a short number, which its answer repeats, never by its id.
+    const numbers = (ai.splits[0]!.body.messages as { content: string }[])[0]!.content
+      .split('\n')
+      .filter((line) => line.startsWith('{'))
+      .map((line) => (JSON.parse(line) as { n: number }).n);
+    expect(numbers).toEqual(se.map((_, i) => i + 1));
     expect(body).toContain('Testing');
     expect(body).toContain('2 to 10 sub-topics');
-    expect(body).toContain('an empty name');
-    for (const absent of [testing, databases, 'owner@example.test', 'Ada Owner', user.id]) {
+    expect(body).toContain('leave out a link');
+    for (const absent of [...se, testing, databases, 'owner@example.test', 'Ada Owner', user.id]) {
       expect(body).not.toContain(absent);
     }
     const schema = (
-      ai.splits[0]!.body.output_config as { format: { schema: { properties: object } } }
+      ai.splits[0]!.body.output_config as {
+        format: {
+          schema: {
+            properties: {
+              subtopics: { items: { properties: { links: { items: { type: string } } } } };
+            };
+          };
+        };
+      }
     ).format.schema;
-    expect(Object.keys(schema.properties).sort()).toEqual(['links', 'subtopics']);
+    expect(Object.keys(schema.properties)).toEqual(['subtopics']);
+    expect(schema.properties.subtopics.items.properties.links.items.type).toBe('integer');
   });
 
   it('counts but neither sends nor moves the links whose topic the owner edited', async () => {
@@ -1127,16 +1139,13 @@ describe('splitting a topic', () => {
     const edited = await fileLinks(user, 'Rustacean', 3, { edited: true, prefix: 'Edited' });
     const ai = new FakeAi();
     await saveKey(user);
-    ai.split({
-      subtopics: ['Async', 'Embedded'],
-      links: sent.map((id, i) => ({ id, subtopic: i % 2 ? 'Async' : 'Embedded' })),
-    });
+    ai.split(filed(['Async', 'Embedded'], (i) => (i % 2 ? 'Async' : 'Embedded')));
     const r = await split(user, 'Rustacean');
     expect(r.status).toBe(200);
-    expect(r.json.moved).toBe(17);
+    expect(r.json.moved).toBe(sent.length);
     const body = JSON.stringify(ai.splits[0]!.body);
+    expect(body).not.toContain('Edited title');
     for (const id of edited) {
-      expect(body).not.toContain(id);
       const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
       expect(link.topic).toBe('Rustacean');
     }
@@ -1237,15 +1246,12 @@ describe('splitting a topic', () => {
       await fileLinks(owner, 'Top', 1);
       await fileLinks(owner, 'Middle', 1, { parent: 'Top' });
     }
-    const ids = await fileLinks(owner, 'Target', row.links, row.level3 ? { parent: 'Middle' } : {});
+    await fileLinks(owner, 'Target', row.links, row.level3 ? { parent: 'Middle' } : {});
     const ai = new FakeAi();
     if (row.key !== 'none') await saveKey(user);
     if (row.key === 'rejected') await markKeyRejected(env.DB, user.id, 'invalid x-api-key');
     ai.requests.length = 0;
-    ai.split({
-      subtopics: ['Left', 'Right'],
-      links: ids.map((id, i) => ({ id, subtopic: i % 2 ? 'Left' : 'Right' })),
-    });
+    ai.split(filed(['Left', 'Right'], (i) => (i % 2 ? 'Left' : 'Right')));
     const before = await topics(owner);
     const linksBefore = await env.DB.prepare(
       'SELECT id, topic_id, updated_at FROM links WHERE user_id = ? ORDER BY id',
@@ -1331,38 +1337,41 @@ describe('splitting a topic', () => {
   );
 
   it.each([
-    { label: 'one sub-topic', answer: (ids: string[]) => answer(['A'], ids) },
+    { label: 'one sub-topic', plan: grouped(['A']) },
+    { label: 'eleven sub-topics', plan: grouped(Array.from({ length: 11 }, (_, i) => `S${i}`)) },
+    { label: 'an empty sub-topic', plan: grouped(['A', ' ']) },
+    { label: 'a sub-topic of 101 characters', plan: grouped(['A', 'x'.repeat(101)]) },
+    { label: 'a sub-topic holding >', plan: grouped(['A', 'B > C']) },
     {
-      label: 'eleven sub-topics',
-      answer: (ids: string[]) =>
-        answer(
-          Array.from({ length: 11 }, (_, i) => `S${i}`),
-          ids,
-        ),
-    },
-    { label: 'an empty sub-topic', answer: (ids: string[]) => answer(['A', ' '], ids) },
-    {
-      label: 'a sub-topic of 101 characters',
-      answer: (ids: string[]) => answer(['A', 'x'.repeat(101)], ids),
-    },
-    { label: 'a sub-topic holding >', answer: (ids: string[]) => answer(['A', 'B > C'], ids) },
-    {
-      label: 'a link id that was not sent',
-      answer: (ids: string[]) => {
-        const a = answer(['A', 'B'], ids);
-        return { ...a, links: [...a.links, { id: 'not-sent', subtopic: 'A' }] };
-      },
+      label: 'a link number that was not sent',
+      plan: (links: SplitLink[]) => ({
+        subtopics: [
+          { name: 'A', links: [links[0]!.n] },
+          { name: 'B', links: [links.length + 1] },
+        ],
+      }),
     },
     {
-      label: 'a link filed under a name not proposed',
-      answer: (ids: string[]) => {
-        const a = answer(['A', 'B'], ids);
-        return { ...a, links: [{ id: ids[0]!, subtopic: 'Elsewhere' }, ...a.links.slice(1)] };
-      },
+      label: 'a link under two sub-topics',
+      plan: (links: SplitLink[]) => ({
+        subtopics: [
+          { name: 'A', links: [links[0]!.n] },
+          { name: 'B', links: [links[0]!.n, links[1]!.n] },
+        ],
+      }),
     },
-  ])('refuses an answer with $label, changing nothing', async ({ answer: make }) => {
-    const { user, ids, ai, unchanged } = await target();
-    ai.split(make(ids));
+    {
+      label: 'links that are not numbers',
+      plan: () => ({
+        subtopics: [
+          { name: 'A', links: ['one'] },
+          { name: 'B', links: [] },
+        ],
+      }),
+    },
+  ])('refuses an answer with $label, changing nothing', async ({ plan }) => {
+    const { user, ai, unchanged } = await target();
+    ai.split(plan);
     const r = await split(user, 'Target');
     expect(r.status).toBe(502);
     expect(r.json).toEqual({
@@ -1408,10 +1417,32 @@ describe('splitting a topic', () => {
   });
 });
 
-/** A split's answer proposing `subtopics`, filing the links round-robin under the first two. */
-function answer(subtopics: string[], ids: string[]) {
-  return {
-    subtopics,
-    links: ids.map((id, i) => ({ id, subtopic: subtopics[i % Math.min(2, subtopics.length)]! })),
-  };
+/** The index a link was seeded with, from its title ('<topic> title <i>'). */
+function indexOf(link: SplitLink): number {
+  return Number(/ title (\d+)$/.exec(link.title)![1]);
+}
+
+/**
+ * A split's answer proposing `subtopics`, each link filed under the sub-topic
+ * `subtopicOf` names for its seeded index, or left out for ''.
+ */
+function filed(subtopics: string[], subtopicOf: (i: number) => string) {
+  return (links: SplitLink[]) => ({
+    subtopics: subtopics.map((name) => ({
+      name,
+      links: links.filter((l) => subtopicOf(indexOf(l)) === name).map((l) => l.n),
+    })),
+  });
+}
+
+/** A split's answer proposing `subtopics`, the links round-robin under the first two. */
+function grouped(subtopics: string[]) {
+  return (links: SplitLink[]) => ({
+    subtopics: subtopics.map((name, s) => ({
+      name,
+      links: links
+        .filter((_, i) => s < 2 && i % Math.min(2, subtopics.length) === s)
+        .map((l) => l.n),
+    })),
+  });
 }

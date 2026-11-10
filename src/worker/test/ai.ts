@@ -15,10 +15,23 @@ export interface AiResult {
   topic: string;
 }
 
-/** A split's result as a provider returns it. */
-export interface SplitResult {
-  subtopics: string[];
-  links: { id: string; subtopic: string }[];
+/** A link as a split's request lists it: its number in the request, title and summary. */
+export interface SplitLink {
+  n: number;
+  title: string;
+  summary: string;
+}
+
+/** A split's answer, made from the links the request lists: what the provider returns. */
+export type SplitPlan = (links: SplitLink[]) => unknown;
+
+/** The links a split's request lists, one JSON object per line of its prompt. */
+function splitLinks(body: Record<string, unknown>): SplitLink[] {
+  const [message] = (body.messages as { content: string }[] | undefined) ?? [];
+  return (message?.content ?? '')
+    .split('\n')
+    .filter((line) => line.startsWith('{'))
+    .map((line) => JSON.parse(line) as SplitLink);
 }
 
 /** One request a provider received. */
@@ -67,7 +80,7 @@ function eventStream(chunks: string[], hang: boolean): ReadableStream<Uint8Array
 export class FakeAi {
   readonly requests: AiRequest[] = [];
   private enrichAnswer: Answer = { kind: 'result', result: DEFAULT_RESULT };
-  private splitResult: SplitResult = { subtopics: [], links: [] };
+  private splitPlan: SplitPlan = () => ({ subtopics: [] });
   private keyAnswer: Answer | null = null;
   private pieces = DEFAULT_PIECES;
   private hangAfterPieces = false;
@@ -77,9 +90,9 @@ export class FakeAi {
     onOutbound(new URL(env.OPENROUTER_BASE_URL).origin, (r) => this.handle('openrouter', r));
   }
 
-  /** Answers a split with `result`, unless an error, a stall or a refusal is scripted. */
-  split(result: SplitResult): this {
-    this.splitResult = result;
+  /** Answers a split with what `plan` makes of its links, unless an error, a stall or a refusal is scripted. */
+  split(plan: SplitPlan): this {
+    this.splitPlan = plan;
     return this;
   }
 
@@ -219,7 +232,12 @@ export class FakeAi {
         answer.kind === 'refusal'
           ? [{ type: 'text', text: 'I cannot help with that.' }]
           : structured
-            ? [{ type: 'text', text: JSON.stringify(split ? this.splitResult : answer.result) }]
+            ? [
+                {
+                  type: 'text',
+                  text: JSON.stringify(split ? this.splitPlan(splitLinks(body)) : answer.result),
+                },
+              ]
             : [{ type: 'text', text: 'ok' }];
       return Response.json({
         id: 'msg_1',
@@ -248,7 +266,7 @@ export class FakeAi {
               answer.kind === 'refusal'
                 ? null
                 : structured
-                  ? JSON.stringify(split ? this.splitResult : answer.result)
+                  ? JSON.stringify(split ? this.splitPlan(splitLinks(body)) : answer.result)
                   : 'ok',
             refusal: answer.kind === 'refusal' ? 'I cannot help with that.' : null,
           },

@@ -186,36 +186,38 @@ export async function testKey(env: Env, call: ProviderCall): Promise<ProviderOut
   }
 }
 
-/** The structured result asked of the model for a topic's split. */
+/**
+ * The structured result asked of the model for a topic's split: each
+ * sub-topic with the numbers of its links in the request. Links are named by
+ * short numbers rather than ids, and a link left out stays where it is, so
+ * that the answer for 500 links stays a few thousand tokens.
+ */
 export const SPLIT_SCHEMA = {
   type: 'object',
   properties: {
     subtopics: {
       type: 'array',
-      items: { type: 'string' },
-      description: 'The names of 2 to 10 sub-topics.',
-    },
-    links: {
-      type: 'array',
+      description: 'The 2 to 10 sub-topics, each with the numbers of the links it holds.',
       items: {
         type: 'object',
         properties: {
-          id: { type: 'string', description: 'The id of a link you were sent.' },
-          subtopic: {
-            type: 'string',
-            description: 'The sub-topic the link belongs under, or an empty name to leave it.',
+          name: { type: 'string', description: 'The sub-topic’s name.' },
+          links: {
+            type: 'array',
+            items: { type: 'integer' },
+            description: 'The numbers of the links that belong under it.',
           },
         },
-        required: ['id', 'subtopic'],
+        required: ['name', 'links'],
         additionalProperties: false,
       },
     },
   },
-  required: ['subtopics', 'links'],
+  required: ['subtopics'],
   additionalProperties: false,
 } as const;
 
-/** The longest answers an enrichment and a split may take: a split needs room for 500 links. */
+/** The longest answers an enrichment and a split may take: a split's lists 500 link numbers. */
 const ENRICH_MAX_TOKENS = 4096;
 const SPLIT_MAX_TOKENS = 16_384;
 
@@ -299,7 +301,7 @@ export function enrichWith(
   });
 }
 
-/** Asks the user's provider for a topic's split: {subtopics, links} (SPLIT_SCHEMA). */
+/** Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA). */
 export function splitWith(
   env: Env,
   call: ProviderCall,

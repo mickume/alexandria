@@ -169,13 +169,15 @@ export interface SplitPromptInput {
   topic: string;
   /** The names of the topic's existing children. */
   children: string[];
-  links: { id: string; title: string; summary: string | null }[];
+  /** The links in the order they are numbered, from 1. */
+  links: { title: string; summary: string | null }[];
 }
 
 /**
  * The request for a topic's split: instructions, the topic's name, its
- * children's names, and each link's id, title and summary as one JSON object
- * per line. Nothing else of the links or of the user.
+ * children's names, and each link's title and summary as one JSON object per
+ * line, numbered from 1 (`n`), which the answer names it by. Nothing else of
+ * the links or of the user.
  */
 export function buildSplitPrompt(input: SplitPromptInput): string {
   return [
@@ -183,16 +185,13 @@ export function buildSplitPrompt(input: SplitPromptInput): string {
     `The links below are all filed under the topic "${input.topic}", which has grown too broad.`,
     'Divide them into 2 to 10 sub-topics of it, each a short name without ">".',
     'Reuse an existing sub-topic when one fits; make new ones only where none does.',
-    'Then give every link the name of the sub-topic it belongs under,',
-    `or an empty name to leave it under "${input.topic}" itself when no sub-topic fits.`,
-    'Give:',
-    '- subtopics: the names of the 2 to 10 sub-topics;',
-    '- links: for each link, its id and its sub-topic (one of the names you gave, or an empty name).',
+    'Give each sub-topic with the numbers (n) of the links that belong under it;',
+    `put a link under one sub-topic at most, and leave out a link that should stay under "${input.topic}" itself.`,
     `Existing sub-topics: ${input.children.length ? input.children.join('; ') : '(none)'}`,
     '',
     'Links:',
-    ...input.links.map((l) =>
-      JSON.stringify({ id: l.id, title: l.title, summary: l.summary ?? '' }),
+    ...input.links.map((l, i) =>
+      JSON.stringify({ n: i + 1, title: l.title, summary: l.summary ?? '' }),
     ),
   ].join('\n');
 }

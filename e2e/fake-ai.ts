@@ -14,7 +14,7 @@
  *
  * A topic's split (a structured request whose schema asks for subtopics) is
  * answered with the sub-topics of POST /__split {subtopics}, the links the
- * request lists filed round-robin under them.
+ * request lists (by number) filed round-robin under them.
  *
  * Control: POST /__answer {summary, tags, topic}, POST /__answer_when
  * {contains, result}, POST /__split {subtopics}, POST /__answer_text,
@@ -60,16 +60,18 @@ function isSplit(parsed: Record<string, unknown>): boolean {
   return 'subtopics' in (properties ?? {});
 }
 
-/** The split of the links a request lists (one JSON object per line), round-robin. */
+/** The split of the links a request lists (one JSON object per line), round-robin by number. */
 function splitFor(parsed: Record<string, unknown>) {
   const [message] = (parsed.messages as { content: string }[] | undefined) ?? [];
-  const ids = (message?.content ?? '')
+  const numbers = (message?.content ?? '')
     .split('\n')
     .filter((line) => line.startsWith('{'))
-    .map((line) => (JSON.parse(line) as { id: string }).id);
+    .map((line) => (JSON.parse(line) as { n: number }).n);
   return {
-    subtopics: splitInto,
-    links: ids.map((id, i) => ({ id, subtopic: splitInto[i % splitInto.length]! })),
+    subtopics: splitInto.map((name, s) => ({
+      name,
+      links: numbers.filter((_, i) => i % splitInto.length === s),
+    })),
   };
 }
 

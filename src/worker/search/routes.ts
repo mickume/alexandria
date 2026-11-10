@@ -335,27 +335,33 @@ const SPLIT_MAX_SUBTOPICS = 10;
 const SUBTOPIC_NAME_MAX = 100;
 
 /**
- * The provider's split as each sent link's sub-topic name ('' to leave it),
- * or null when it cannot be used: not 2 to 10 sub-topics, each 1 to 100
- * characters once its spaces are collapsed and without '>'; a link that was
- * not sent; or a link filed under a name that is not among the sub-topics
- * (ignoring case).
+ * The provider's split as each sent link's sub-topic name, by the link's id
+ * (the links left out stay where they are), or null when it cannot be used:
+ * not 2 to 10 sub-topics, each 1 to 100 characters once its spaces are
+ * collapsed and without '>'; a link number that was not sent (`ids` holds the
+ * sent links' ids in their numbered order, from 1); or a link under two
+ * sub-topics. Sub-topics whose names differ only in case are one.
  */
-function usableSplit(value: unknown, sent: Set<string>): Map<string, string> | null {
-  const answer = value as { subtopics?: unknown; links?: unknown } | null;
-  if (!answer || !Array.isArray(answer.subtopics) || !Array.isArray(answer.links)) return null;
-  const clean = (name: unknown) =>
-    typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : null;
-  const names = answer.subtopics.map(clean);
-  if (names.length < SPLIT_MIN_SUBTOPICS || names.length > SPLIT_MAX_SUBTOPICS) return null;
-  if (names.some((n) => !n || n.length > SUBTOPIC_NAME_MAX || n.includes('>'))) return null;
-  const proposed = new Map(names.map((n) => [n!.toLowerCase(), n!]));
+function usableSplit(value: unknown, ids: string[]): Map<string, string> | null {
+  const answer = value as { subtopics?: unknown } | null;
+  if (!answer || !Array.isArray(answer.subtopics)) return null;
+  const subtopics = answer.subtopics as { name?: unknown; links?: unknown }[];
+  if (subtopics.length < SPLIT_MIN_SUBTOPICS || subtopics.length > SPLIT_MAX_SUBTOPICS) {
+    return null;
+  }
+  const names = new Map<string, string>();
   const assignments = new Map<string, string>();
-  for (const link of answer.links as { id?: unknown; subtopic?: unknown }[]) {
-    const name = clean(link?.subtopic);
-    if (typeof link?.id !== 'string' || !sent.has(link.id) || name === null) return null;
-    if (name !== '' && !proposed.has(name.toLowerCase())) return null;
-    assignments.set(link.id, name === '' ? '' : proposed.get(name.toLowerCase())!);
+  for (const subtopic of subtopics) {
+    const raw = typeof subtopic?.name === 'string' ? subtopic.name.replace(/\s+/g, ' ').trim() : '';
+    if (!raw || raw.length > SUBTOPIC_NAME_MAX || raw.includes('>')) return null;
+    if (!Array.isArray(subtopic.links)) return null;
+    const name = names.get(raw.toLowerCase()) ?? raw;
+    names.set(raw.toLowerCase(), name);
+    for (const n of subtopic.links as unknown[]) {
+      const id = Number.isInteger(n) ? ids[(n as number) - 1] : undefined;
+      if (id === undefined || assignments.has(id)) return null;
+      assignments.set(id, name);
+    }
   }
   return assignments;
 }
@@ -394,7 +400,10 @@ topicRoutes.post('/:id/split', async (c) => {
     return refusal(c, 503, 'provider_unavailable', outcome.message);
   }
   if (!outcome.ok) return refusal(c, 502, 'provider_failed', outcome.message);
-  const assignments = usableSplit(outcome.value, new Set(request.links.map((l) => l.id)));
+  const assignments = usableSplit(
+    outcome.value,
+    request.links.map((l) => l.id),
+  );
   if (!assignments) {
     return refusal(c, 502, 'provider_failed', "the provider's split could not be used");
   }

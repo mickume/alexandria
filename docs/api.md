@@ -1003,9 +1003,10 @@ Nothing changes when a move is refused.
 Divides the links filed directly under a topic into sub-topics, in one request
 to the owner's AI provider, which has 60 seconds to answer; the request waits
 for the answer and applies it before it answers. No body. The provider is sent
-each such link's id, title and summary, and the names of the topic's existing
-children, and returns 2 to 10 sub-topic names and, for each link, the name it
-belongs under, or an empty name to leave it under the topic. Each sub-topic a
+each such link's title and summary, numbered from 1 (never the link's id), and
+the names of the topic's existing children, and returns 2 to 10 sub-topics,
+each with the numbers of the links that belong under it; a link it leaves out
+stays under the topic. Each sub-topic a
 link is filed under is reused where it already is when an existing topic has
 its name (ignoring case, as an alias, or as a near name such as a plural), and
 is otherwise created as a child of the topic; each link is filed under its
@@ -1033,8 +1034,8 @@ the number of links whose topic changed. Refused, changing nothing:
   `502 {"error": "provider_failed", "message"}` for any other failure;
 - `502 {"error": "provider_failed", "message": "the provider's split could not be used"}`
   for an answer that is not usable: fewer than 2 or more than 10 sub-topics, a
-  name that is empty, over 100 characters or holds `>`, a link id that was not
-  sent, or a link filed under a name that is not among the sub-topics.
+  name that is empty, over 100 characters or holds `>`, a link number that was
+  not sent, or a link under two sub-topics.
 
 #### Aliases
 
