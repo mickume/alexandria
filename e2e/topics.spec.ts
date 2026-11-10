@@ -33,7 +33,7 @@ test('the owner moves a topic under another on the Topics page', async ({ page }
 
   await page.goto('/topics');
   await expect(row(page, 'Oxidation')).toHaveAttribute('data-level', '1');
-  await row(page, 'Oxidation').getByRole('button', { name: 'Move under…' }).click();
+  await row(page, 'Oxidation').getByRole('button', { name: 'Move' }).click();
   await row(page, 'Oxidation')
     .getByRole('combobox', { name: 'Move under' })
     .selectOption({ label: 'Workshop' });

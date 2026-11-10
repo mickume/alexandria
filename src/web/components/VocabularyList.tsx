@@ -58,7 +58,7 @@ function topicTree(items: TopicItem[]): Entry[] {
   }));
 }
 
-/** A drop-down of choices, the first chosen, with a button to confirm and one to cancel: Merge into or Move under…. */
+/** A drop-down of choices, the first chosen, with a button to confirm and one to cancel: Merge into or Move under. */
 function PickForm({
   label,
   action,
@@ -97,7 +97,7 @@ function PickForm({
 
 /**
  * A row's actions: Rename, Merge when there are others, and for a topic
- * Move under… and, with at least 20 links of its own, Split; all disabled,
+ * Move and, with at least 20 links of its own, Split; all disabled,
  * with "Splitting…", while a split runs.
  */
 function RowActions({
@@ -125,13 +125,13 @@ function RowActions({
       {splitting && <span className="muted">Splitting…</span>}
       {button('Rename', () => onMode('rename'))}
       {canMerge && button('Merge', () => onMode('merge'))}
-      {canMove && button('Move under…', () => onMode('move'))}
+      {canMove && button('Move', () => onMode('move'))}
       {canSplit && button('Split', onSplit)}
     </>
   );
 }
 
-/** One topic or tag: its name opening its search, its count, Rename and Merge, and for a topic Move under…. */
+/** One topic or tag: its name opening its search, its count, Rename and Merge, and for a topic Move. */
 function Row({
   kind,
   entry: { item, level, moveTargets },
@@ -230,7 +230,7 @@ function Row({
  * The Topics or Tags page: every tag by name with its number of links, or
  * the topic tree with each topic's links and those beneath it; each opens the
  * search for its filter, with Rename and Merge, whose drop-down offers the
- * others by name, and for a topic Move under….
+ * others by name, and for a topic Move.
  */
 export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: string }) {
   const [items, setItems] = useState<VocabularyItem[] | null>(null);

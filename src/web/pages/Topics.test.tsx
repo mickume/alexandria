@@ -64,7 +64,7 @@ describe('the Topics page', () => {
     const api = new FakeApi().on('GET', '/api/v1/topics', listed);
     renderPage('/topics', api);
     const row = (await screen.findByRole('link', { name: 'Stars' })).closest('tr')!;
-    await act(async () => within(row).getByRole('button', { name: 'Move under…' }).click());
+    await act(async () => within(row).getByRole('button', { name: 'Move' }).click());
     const select = within(row).getByRole('combobox', { name: 'Move under' });
     expect(
       within(select)
@@ -88,7 +88,7 @@ describe('the Topics page', () => {
         });
       renderPage('/topics', api);
       const row = (await screen.findByRole('link', { name: 'Stars' })).closest('tr')!;
-      await act(async () => within(row).getByRole('button', { name: 'Move under…' }).click());
+      await act(async () => within(row).getByRole('button', { name: 'Move' }).click());
       fireEvent.change(within(row).getByRole('combobox', { name: 'Move under' }), {
         target: { value: choice },
       });
@@ -108,7 +108,7 @@ describe('the Topics page', () => {
     renderPage('/topics', api);
     const row = (await screen.findByRole('link', { name: 'Astronomy' })).closest('tr')!;
     const before = rows();
-    await act(async () => within(row).getByRole('button', { name: 'Move under…' }).click());
+    await act(async () => within(row).getByRole('button', { name: 'Move' }).click());
     fireEvent.change(within(row).getByRole('combobox', { name: 'Move under' }), {
       target: { value: 't2' },
     });
@@ -215,7 +215,7 @@ describe('the Topics page', () => {
       const se = await row('Software engineering');
       await act(async () => within(se).getByRole('button', { name: 'Split' }).click());
       expect(within(se).getByText('Splitting…')).toBeTruthy();
-      for (const name of ['Rename', 'Merge', 'Move under…', 'Split']) {
+      for (const name of ['Rename', 'Merge', 'Move', 'Split']) {
         expect(within(se).getByRole('button', { name })).toHaveProperty('disabled', true);
       }
       await act(async () => {

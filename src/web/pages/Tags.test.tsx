@@ -32,7 +32,7 @@ describe('the Tags page', () => {
       ['cloudflare', '4'],
       ['javascript', '2'],
     ]);
-    expect(screen.queryByRole('button', { name: 'Move under…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Move' })).toBeNull();
     await act(async () => screen.getByRole('link', { name: 'cloudflare' }).click());
     expect(window.location.pathname + window.location.search).toBe('/search?q=tag%3Acloudflare');
     await act(async () => undefined);
