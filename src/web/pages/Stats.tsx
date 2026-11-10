@@ -325,6 +325,43 @@ function usageTotals(days: HistoryDay[]) {
   );
 }
 
+/** The range's AI usage by purpose and model, as a table. */
+function UsageTable({ days }: { days: HistoryDay[] }) {
+  const totals = usageTotals(days);
+  return (
+    <table className="q-table stats-counts" aria-label="AI usage by purpose and model">
+      <caption>AI usage by purpose and model</caption>
+      <thead>
+        <tr>
+          <th scope="col">Purpose</th>
+          <th scope="col">Model</th>
+          <th scope="col" className="q-table-number">
+            Calls
+          </th>
+          <th scope="col" className="q-table-number">
+            Input tokens
+          </th>
+          <th scope="col" className="q-table-number">
+            Output tokens
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {totals.length === 0 && <Empty text="No AI calls recorded" />}
+        {totals.map((t) => (
+          <tr key={`${t.purpose}-${t.model}`}>
+            <td>{t.purpose}</td>
+            <td>{t.model}</td>
+            <td className="q-table-number">{num(t.calls)}</td>
+            <td className="q-table-number">{num(t.input)}</td>
+            <td className="q-table-number">{num(t.output)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /** The charts of the daily record. */
 function TrendCharts({ h }: { h: StatsHistory }) {
   const days = h.days.map((d) => d.day);
@@ -403,36 +440,7 @@ function TrendCharts({ h }: { h: StatsHistory }) {
           { name: 'output', values: values(h.days, (d) => tokens(d, 'output_tokens')) },
         ]}
       />
-      <table className="q-table stats-counts" aria-label="AI usage by purpose and model">
-        <caption>AI usage by purpose and model</caption>
-        <thead>
-          <tr>
-            <th scope="col">Purpose</th>
-            <th scope="col">Model</th>
-            <th scope="col" className="q-table-number">
-              Calls
-            </th>
-            <th scope="col" className="q-table-number">
-              Input tokens
-            </th>
-            <th scope="col" className="q-table-number">
-              Output tokens
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {usageTotals(h.days).length === 0 && <Empty text="No AI calls recorded" />}
-          {usageTotals(h.days).map((t) => (
-            <tr key={`${t.purpose}-${t.model}`}>
-              <td>{t.purpose}</td>
-              <td>{t.model}</td>
-              <td className="q-table-number">{num(t.calls)}</td>
-              <td className="q-table-number">{num(t.input)}</td>
-              <td className="q-table-number">{num(t.output)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <UsageTable days={h.days} />
     </>
   );
 }
