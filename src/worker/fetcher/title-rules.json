@@ -1,0 +1,9 @@
+{
+  "rules": [
+    {
+      "description": "GitHub titles its pages \"GitHub - owner/repo: description · GitHub\" and \"Issue title · Issue #1 · owner/repo · GitHub\"",
+      "hosts": ["github.com"],
+      "remove": ["^GitHub\\s+-\\s+", "\\s+·\\s+GitHub$"]
+    }
+  ]
+}

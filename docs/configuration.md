@@ -57,11 +57,49 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
   the Vectorize index (at most 20 calls of 1,000 ids a run), and queues up to 60
   links per user that have no up-to-date passages (the backfill) on
   `alexandria-index`, the most recently used first and none twice within 10
-  minutes. The three are independent: one failing does not stop the others.
+  minutes, and cleans the stored titles once after the title rules changed
+  (see [Title rules](#title-rules)). The four are independent: one failing does
+  not stop the others.
 - `*/5 * * * *`: the sweep that runs the deletion job of every account marked
   for deletion more than 5 minutes ago.
 
 The `scheduled` handler tells them apart by `controller.cron`.
+
+## Title rules
+
+`src/worker/fetcher/title-rules.json` says, per host, which parts of a page's
+title are the site's name rather than the page's, such as GitHub's
+`GitHub - owner/repo: description · GitHub`. It is bundled with the Worker, so
+a change to it deploys like any change to the code:
+
+```json
+{
+  "rules": [
+    {
+      "description": "what the rule is for (optional)",
+      "hosts": ["github.com"],
+      "remove": ["^GitHub\\s+-\\s+", "\\s+·\\s+GitHub$"]
+    }
+  ]
+}
+```
+
+A rule applies to a page whose host is one of `hosts` or a subdomain of one,
+read from the address the fetch ended at. Each pattern of `remove` is a
+JavaScript regular expression (without delimiters or flags; it runs with `gu`),
+and every match of it is removed from the title, in order, by every rule that
+applies; whitespace is then collapsed and trimmed. A title the rules would leave
+empty is kept as it is. A rules file of another shape, or with an invalid
+pattern, stops the Worker from starting, so the deploy fails rather than the
+titles.
+
+The rules clean the title every fetch stores and the reader view's title as it
+is served. Titles stored before a change are cleaned once by the every-minute
+run: it compares the hash of the rules file with the one recorded in
+`title_rules_state`, and when they differ, cleans the title of every link (in
+pages of 500), records the new hash, and is done until the rules change again.
+A title the owner edited is never changed. Removing a rule does not restore
+the titles it cleaned; a refresh of a link fetches its title again.
 
 ## Deploying
 

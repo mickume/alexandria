@@ -12,6 +12,7 @@ import {
   type ReaderResponse,
   type StoredReader,
 } from './snapshots';
+import { cleanTitle } from './titles';
 
 /** The public page the fetcher's User-Agent points site operators at. */
 export const aboutRoutes = new Hono<AppEnv>();
@@ -82,7 +83,7 @@ export async function readerBody(env: Env, link: LinkRow): Promise<ReaderRespons
   return reader?.html
     ? {
         content_kind: 'html',
-        title: reader.title,
+        title: reader.title === null ? null : cleanTitle(reader.title, link.final_url ?? link.url),
         byline: reader.byline,
         html: reader.html,
         text,

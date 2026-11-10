@@ -11,6 +11,7 @@ import { extractMetadata, parsePage, type PageMetadata } from './html';
 import { readPdf } from './pdf';
 import { capText, extractReader, type ReaderView } from './reader';
 import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
+import { cleanTitle } from './titles';
 
 /** Failed attempts of a link's first fetch before it is given up as unreachable. */
 export const MAX_ATTEMPTS = 3;
@@ -151,7 +152,7 @@ export function titleFromUrl(url: string): string {
 
 /**
  * Writes a successful fetch: the objects first, then the link's row and its
- * text in one D1 batch. The link becomes active, unless it is archived, which
+ * text in one D1 batch. The title is cleaned by the title rules. The link becomes active, unless it is archived, which
  * it stays: the refresh that archiving queues must not undo it. Returns false when the link was deleted meanwhile, in
  * which case nothing is left behind. When a write fails, the objects this
  * attempt wrote are removed and the error is thrown, leaving the row as it was.
@@ -181,7 +182,7 @@ async function writeFetched(
            content_kind = ?8, has_snapshot = ?9, reader_empty = ?10, notes = ?11, updated_at = ?7
          WHERE id = ?12 AND user_id = ?13`,
       ).bind(
-        fetched.title,
+        cleanTitle(fetched.title, result.finalUrl),
         result.finalUrl,
         result.status,
         fetched.description,
