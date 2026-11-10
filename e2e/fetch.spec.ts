@@ -60,7 +60,7 @@ test.describe('fetching links', () => {
     // The article of the test before was used once, so it ranks above this new one.
     const card = cardOf(page, id);
     await card.getByRole('button', { name: 'More actions' }).click();
-    await card.getByRole('link', { name: 'Snapshot' }).click();
+    await page.getByRole('menuitem', { name: 'Snapshot' }).click();
     const frame = page.frameLocator('iframe[sandbox]');
     await expect(frame.getByRole('heading', { name: 'An Article' })).toBeVisible();
 
@@ -79,7 +79,7 @@ test.describe('fetching links', () => {
     await expect(card).toBeVisible({ timeout: 60_000 });
 
     await card.getByRole('button', { name: 'More actions' }).click();
-    await card.getByRole('link', { name: 'Snapshot' }).click();
+    await page.getByRole('menuitem', { name: 'Snapshot' }).click();
     const viewer = page.locator('object[type="application/pdf"]');
     const src = (await viewer.getAttribute('data'))!;
     const inline = await page.request.get(src);

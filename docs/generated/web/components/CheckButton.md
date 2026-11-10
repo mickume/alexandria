@@ -4,7 +4,9 @@
 
 ### ButtonLook
 
-How a status button looks: a link-like button, or an item of a menu or an action list.
+How a status button looks and says how its request went: a link-like button
+or an item of an action list, each with the outcome beside it, or an item
+of a dropdown menu, which closes and says it in a toast.
 
 #### Properties
 
@@ -14,11 +16,9 @@ How a status button looks: a link-like button, or an item of a menu or an action
 
 An icon before the label.
 
-##### menuItem?
+##### look?
 
-> `optional` **menuItem?**: `boolean`
-
-Whether the button is an item of a menu or an action list.
+> `optional` **look?**: `"link"` \| `"menu"` \| `"action"`
 
 ## Functions
 
@@ -44,8 +44,8 @@ Whether the button is an item of a menu or an action list.
 
 > **StatusButton**(`__namedParameters`): `Element`
 
-A button that runs a request and says beside it how that went: what `run`
-answers, the API's own message when it refuses, or `failure`.
+A button that runs a request and says how that went: what `run` answers,
+the API's own message when it refuses, or `failure`.
 
 #### Parameters
 

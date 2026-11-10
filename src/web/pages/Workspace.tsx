@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { links, workspaces, type Member, type Workspace } from '../api';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { NoteEditor } from '../components/NoteEditor';
-import { UndoToasts, useUndoableDelete } from '../undo';
+import { useUndoableDelete } from '../undo';
 
 /**
  * A workspace's page: its note rendered above its links in the owner's order;
@@ -104,7 +104,6 @@ export function WorkspacePage({ id }: { id: string }) {
       {deletes.shown.length === 0 && (
         <p className="muted">No links yet. Add them from the stream.</p>
       )}
-      <UndoToasts deletes={deletes} />
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
-import { FakeApi, fakeIntersectionObserver, makeLink, renderPage } from '../test/helpers';
+import { FakeApi, fakeIntersectionObserver, makeLink, renderPage, openMenu } from '../test/helpers';
 
 function makeLinks(n: number): Link[] {
   return Array.from({ length: n }, (_, i) =>
@@ -20,8 +20,8 @@ describe('archiving from the stream page', () => {
       }));
     renderPage('/', api);
     const card = await screen.findByRole('article', { name: 'Title 1' });
-    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
-    await act(async () => within(card).getByRole('button', { name: 'Archive' }).click());
+    openMenu(within(card).getByRole('button', { name: 'More actions' }));
+    await act(async () => screen.getByRole('menuitem', { name: 'Archive' }).click());
     expect(api.sent('POST', '/api/v1/links/l1/archive')).toHaveLength(1);
     await waitFor(() => expect(screen.queryByRole('article', { name: 'Title 1' })).toBeNull());
     expect(screen.getByRole('article', { name: 'Title 0' })).toBeTruthy();
@@ -168,8 +168,8 @@ describe('pinning on the stream page', () => {
     await screen.findByRole('article', { name: 'Title 69' }, { timeout: 5_000 });
 
     const doomed = screen.getByRole('article', { name: 'Title 5' });
-    await act(async () => within(doomed).getByRole('button', { name: 'More actions' }).click());
-    await act(async () => within(doomed).getByRole('button', { name: 'Delete' }).click());
+    openMenu(within(doomed).getByRole('button', { name: 'More actions' }));
+    await act(async () => screen.getByRole('menuitem', { name: 'Delete' }).click());
     const far = screen.getByRole('article', { name: 'Title 60' });
     await act(async () => within(far).getByRole('button', { name: 'Pin' }).click());
 
@@ -226,10 +226,10 @@ describe('adding a link to a workspace on the stream page', () => {
     const card = await screen.findByRole('article', { name: 'Title 0' });
     expect(within(card).getByText('expires in 60 days')).toBeTruthy();
 
-    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
-    await act(async () => within(card).getByRole('button', { name: 'Add to workspace' }).click());
+    openMenu(within(card).getByRole('button', { name: 'More actions' }));
+    await act(async () => screen.getByRole('menuitem', { name: 'Add to workspace' }).click());
     await act(async () =>
-      (await within(card).findByRole('menuitemcheckbox', { name: 'Reading' })).click(),
+      (await screen.findByRole('menuitemcheckbox', { name: 'Reading' })).click(),
     );
 
     expect(await within(card).findByText('in a workspace: never expires')).toBeTruthy();
@@ -253,8 +253,10 @@ describe('deleting on the stream page', () => {
 
   async function clickDelete(title: string) {
     const card = screen.getByRole('article', { name: title });
-    await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
-    await act(async () => within(card).getByRole('button', { name: 'Delete' }).click());
+    openMenu(within(card).getByRole('button', { name: 'More actions' }));
+    await act(async () => screen.getByRole('menuitem', { name: 'Delete' }).click());
+    // The toast with Undo shows a moment after the delete is asked for.
+    await act(async () => vi.advanceTimersByTimeAsync(50));
   }
 
   afterEach(() => {
@@ -269,6 +271,9 @@ describe('deleting on the stream page', () => {
     await act(async () => vi.advanceTimersByTimeAsync(9_900));
     expect(api.sent('DELETE')).toHaveLength(0);
     await act(async () => vi.advanceTimersByTimeAsync(100));
+    // The toast goes with the window, once it has faded.
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
     expect(api.sent('DELETE', '/api/v1/links/l1')).toHaveLength(1);
 
     await clickDelete('Title 2');
@@ -299,7 +304,7 @@ describe('deleting on the stream page', () => {
     await clickDelete('Title 1');
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(titles()).toEqual(['Title 0', 'Title 1', 'Title 2']);
-    expect(screen.getByText('could not delete, try again')).toBeTruthy();
+    expect(screen.getAllByText('could not delete, try again')).not.toHaveLength(0);
   });
 });
 

@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FakeApi, renderPage } from '../test/helpers';
 
@@ -60,13 +60,17 @@ describe('the Workspaces page', () => {
     });
     expect(api.sent('PATCH', '/api/v1/workspaces/wb')[0]?.body).toEqual({ name: 'Porto' });
 
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
     fireEvent.click(screen.getByRole('button', { name: 'Delete A' }));
-    expect(confirm).toHaveBeenCalledWith('Delete this workspace? Its links stay in your library.');
+    const asked = within(
+      await screen.findByRole('alertdialog', { name: 'Delete this workspace?' }),
+    );
+    expect(asked.getByText('Its links stay in your library.')).toBeTruthy();
+    fireEvent.click(asked.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(api.sent('DELETE')).toHaveLength(0);
-    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete A' }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Delete A' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete workspace' }));
     });
     expect(api.sent('DELETE', '/api/v1/workspaces/wa')).toHaveLength(1);
     await waitFor(() => expect(screen.queryByRole('link', { name: 'A (0)' })).toBeNull());

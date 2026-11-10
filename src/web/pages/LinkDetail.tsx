@@ -11,9 +11,14 @@ import { byName, formatDate } from '../format';
 import { Button } from '@/components/ui/button';
 import { badgeVariants } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useConfirm } from '../confirm';
 
 /** What the owner confirms before a link is deleted from its detail page. */
-const CONFIRM_DELETE = 'Delete this link for good? Its note and its saved copy go with it.';
+const CONFIRM_DELETE = {
+  title: 'Delete this link for good?',
+  description: 'Its note and its saved copy go with it.',
+  action: 'Delete link',
+};
 
 /** How one history event reads: "Opened", "Fetched", or "Fetch failed: HTTP 503". */
 function eventLabel(event: LinkEvent): string {
@@ -169,9 +174,10 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
       onChange({ ...link, workspaces: link.workspaces.filter((w) => w.id !== workspace.id) });
     });
 
-  const remove = () => {
-    if (!window.confirm(CONFIRM_DELETE)) return;
-    void act('delete', async () => {
+  const confirm = useConfirm();
+  const remove = async () => {
+    if (!(await confirm(CONFIRM_DELETE))) return;
+    await act('delete', async () => {
       await links.remove(link.id);
       navigate('/');
     });
@@ -216,15 +222,15 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
         )}
       </section>
       <div className="detail-actions" role="group" aria-label="Actions">
-        <RefreshButton link={link} menuItem icon={<Icon name="refresh" />} />
-        <CheckButton link={link} onChecked={onChange} menuItem icon={<Icon name="pulse" />} />
+        <RefreshButton link={link} look="action" icon={<Icon name="refresh" />} />
+        <CheckButton link={link} onChecked={onChange} look="action" icon={<Icon name="pulse" />} />
         {archived ? (
-          <button type="button" className="menu-item" onClick={() => void toggleArchive()}>
+          <button type="button" className="action-item" onClick={() => void toggleArchive()}>
             <Icon name="archive" />
             Unarchive
           </button>
         ) : (
-          <button type="button" className="menu-item" onClick={() => void togglePin()}>
+          <button type="button" className="action-item" onClick={() => void togglePin()}>
             <Icon name="pin" />
             {link.pinned ? 'Unpin' : 'Pin'}
           </button>
@@ -232,7 +238,6 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
         <WorkspacePicker
           linkId={link.id}
           memberOf={link.workspaces.map((w) => w.id)}
-          menuItem
           icon={<Icon name="workspaces" />}
           onAdded={(w) =>
             onChange({
@@ -242,12 +247,16 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           }
         />
         {!archived && (
-          <button type="button" className="menu-item" onClick={() => void toggleArchive()}>
+          <button type="button" className="action-item" onClick={() => void toggleArchive()}>
             <Icon name="archive" />
             Archive
           </button>
         )}
-        <button type="button" className="menu-item menu-item-danger" onClick={remove}>
+        <button
+          type="button"
+          className="action-item action-item-danger"
+          onClick={() => void remove()}
+        >
           <Icon name="trash" />
           Delete
         </button>

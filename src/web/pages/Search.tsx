@@ -19,7 +19,7 @@ import {
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, TopicPath, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
-import { UndoToasts, useUndoableDelete } from '../undo';
+import { useUndoableDelete } from '../undo';
 import { Button } from '@/components/ui/button';
 import { Badge, badgeVariants } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -251,7 +251,6 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
           More results
         </Button>
       )}
-      <UndoToasts deletes={deletes} />
     </section>
   );
 }

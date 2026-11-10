@@ -11,7 +11,7 @@ import { ai, ApiError, links as linksApi, type Link } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { Icon } from '../components/Icon';
 import { LinkCard, type CardActions } from '../components/LinkCard';
-import { UndoToasts, useUndoableDelete } from '../undo';
+import { useUndoableDelete } from '../undo';
 
 /** Puts `fresh` links on top, newest use first, removing their earlier places. */
 function withOnTop(current: Link[], fresh: Link[]): Link[] {
@@ -271,7 +271,6 @@ export function Stream() {
         <p className="muted empty blankslate">Nothing here yet. Paste a link above to start.</p>
       )}
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
-      <UndoToasts deletes={deletes} />
     </section>
   );
 }

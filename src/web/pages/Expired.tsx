@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { useStateList } from '../stateList';
-import { UndoToasts, useUndoableDelete } from '../undo';
+import { useUndoableDelete } from '../undo';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -83,7 +83,6 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
           {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing has expired.'}
         </p>
       )}
-      <UndoToasts deletes={deletes} />
     </section>
   );
 }

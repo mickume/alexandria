@@ -2,7 +2,7 @@
  * Shared helpers of the website tests: a fake API standing in for the Worker,
  * and renderPage, which renders the website at a path against it.
  */
-import { render, type RenderResult } from '@testing-library/react';
+import { render, type RenderResult, fireEvent } from '@testing-library/react';
 import { App } from '../App';
 import type { Link } from '../api';
 
@@ -202,4 +202,13 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     decay_note: 'unused for 3 days',
     ...overrides,
   };
+}
+
+/**
+ * Opens the menu behind `trigger` as a pointer does: a menu opens when the
+ * pointer goes down on its button, not on the click that follows. Its items
+ * are then in the document, outside the card or page the button is in.
+ */
+export function openMenu(trigger: HTMLElement): void {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
 }

@@ -121,7 +121,7 @@ test.describe.serial('enriching links', () => {
       .filter({ hasText: FIRST.summary })
       .first();
     await card.getByRole('button', { name: 'More actions' }).click();
-    await card.getByRole('link', { name: 'Details' }).click();
+    await page.getByRole('menuitem', { name: 'Details' }).click();
     await page.getByRole('button', { name: 'Edit tags' }).click();
     await page.getByLabel('Tags').fill('mine');
     await page.getByRole('button', { name: 'Save' }).click();

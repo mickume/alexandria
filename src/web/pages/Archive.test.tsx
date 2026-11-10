@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FakeApi, makeLink, renderPage } from '../test/helpers';
+import { FakeApi, makeLink, renderPage, openMenu } from '../test/helpers';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -54,8 +54,8 @@ describe('the Archive page', () => {
 
     vi.useFakeTimers();
     const alpha = within(screen.getByRole('article', { name: 'Alpha' }));
-    await act(async () => alpha.getByRole('button', { name: 'More actions' }).click());
-    await act(async () => alpha.getByRole('button', { name: 'Delete' }).click());
+    openMenu(alpha.getByRole('button', { name: 'More actions' }));
+    await act(async () => screen.getByRole('menuitem', { name: 'Delete' }).click());
     expect(screen.queryByRole('article', { name: 'Alpha' })).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(10_000));
     expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(1);

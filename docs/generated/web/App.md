@@ -36,35 +36,14 @@ The website: one page per path.
 
 > **Link**(`__namedParameters`): `Element`
 
-A link within the website, followed without a reload.
+A link within the website, followed without a reload. It takes an anchor's
+other properties too, so that it can be an item of a menu.
 
 #### Parameters
 
 ##### \_\_namedParameters
 
-###### children
-
-`ReactNode`
-
-###### className?
-
-`string`
-
-###### current?
-
-`boolean` = `false`
-
-Marks the link as the page being shown.
-
-###### title?
-
-`string`
-
-The link's tooltip.
-
-###### to
-
-`string`
+`Omit`\<`DetailedHTMLProps`\<`AnchorHTMLAttributes`\<`HTMLAnchorElement`\>, `HTMLAnchorElement`\>, `"href"`\> & `object`
 
 #### Returns
 

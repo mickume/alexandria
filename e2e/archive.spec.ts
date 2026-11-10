@@ -24,7 +24,7 @@ test('the owner archives a link, its page is refreshed, and they unarchive it', 
   await page.goto('/');
   const card = cardOf(page, id);
   await card.getByRole('button', { name: 'More actions' }).click();
-  await card.getByRole('button', { name: 'Archive' }).click();
+  await page.getByRole('menuitem', { name: 'Archive' }).click();
   await expect(cardOf(page, id)).toHaveCount(0);
   expect((await linkOf(page, id)).state).toBe('archived');
 

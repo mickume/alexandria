@@ -1,45 +1,65 @@
 import { useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { ApiError, links, type Link } from '../api';
 import { formatWhen } from '../format';
-import { Button } from '@/components/ui/button';
 
-/** How a status button looks: a link-like button, or an item of a menu or an action list. */
+/**
+ * How a status button looks and says how its request went: a link-like button
+ * or an item of an action list, each with the outcome beside it, or an item
+ * of a dropdown menu, which closes and says it in a toast.
+ */
 export interface ButtonLook {
-  /** Whether the button is an item of a menu or an action list. */
-  menuItem?: boolean;
+  look?: 'link' | 'action' | 'menu';
   /** An icon before the label. */
   icon?: ReactNode;
 }
 
 /**
- * A button that runs a request and says beside it how that went: what `run`
- * answers, the API's own message when it refuses, or `failure`.
+ * A button that runs a request and says how that went: what `run` answers,
+ * the API's own message when it refuses, or `failure`.
  */
 export function StatusButton({
   label,
   run,
   failure,
-  menuItem = false,
+  look = 'link',
   icon,
 }: ButtonLook & { label: string; run: () => Promise<string>; failure: string }) {
   const [status, setStatus] = useState<string | null>(null);
-  async function click() {
-    setStatus(null);
-    try {
-      setStatus(await run());
-    } catch (err) {
-      setStatus(err instanceof ApiError ? err.message : failure);
-    }
+  const outcome = () =>
+    run().catch((err: unknown) => {
+      throw new Error(err instanceof ApiError ? err.message : failure);
+    });
+  if (look === 'menu') {
+    return (
+      <DropdownMenuItem
+        onSelect={() =>
+          void outcome().then(
+            (said) => toast(said),
+            (err: Error) => toast.error(err.message),
+          )
+        }
+      >
+        {icon}
+        {label}
+      </DropdownMenuItem>
+    );
   }
+  const click = () => {
+    setStatus(null);
+    void outcome().then(setStatus, (err: Error) => setStatus(err.message));
+  };
   return (
     <>
-      {menuItem ? (
-        <button type="button" className="menu-item" onClick={() => void click()}>
+      {look === 'action' ? (
+        <button type="button" className="action-item" onClick={click}>
           {icon}
           {label}
         </button>
       ) : (
-        <Button type="button" variant="link" className="h-auto p-0" onClick={() => void click()}>
+        <Button type="button" variant="link" className="h-auto p-0" onClick={click}>
           {icon}
           {label}
         </Button>

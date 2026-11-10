@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
-import { FakeApi, makeLink, renderPage } from '../test/helpers';
+import { FakeApi, makeLink, renderPage, openMenu } from '../test/helpers';
 
 describe('the link detail page', () => {
   it('shows the added date, the use count, every use, and after them both URLs under Technical details', async () => {
@@ -600,8 +600,8 @@ describe('the side column of a link’s detail page', () => {
     renderPage('/links/abc', api);
     const column = await side();
 
-    fireEvent.click(column.getByRole('button', { name: 'Add to workspace' }));
-    fireEvent.click(await column.findByRole('menuitemcheckbox', { name: 'B' }));
+    openMenu(column.getByRole('button', { name: 'Add to workspace' }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'B' }));
     await column.findByRole('link', { name: 'B' });
     fireEvent.click(column.getByRole('button', { name: 'Remove from A' }));
 
@@ -619,15 +619,19 @@ describe('the side column of a link’s detail page', () => {
   ])(
     'deletes the link and goes to the stream only when confirmed ($confirmed)',
     async ({ confirmed, deletes, path }) => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed);
       const api = sideApi();
       renderPage('/links/abc', api);
       const column = await side();
 
       fireEvent.click(column.getByRole('button', { name: 'Delete' }));
+      const asked = within(
+        await screen.findByRole('alertdialog', { name: 'Delete this link for good?' }),
+      );
+      expect(asked.getByText('Its note and its saved copy go with it.')).toBeTruthy();
+      fireEvent.click(asked.getByRole('button', { name: confirmed ? 'Delete link' : 'Cancel' }));
 
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
       await waitFor(() => expect(window.location.pathname).toBe(path));
-      expect(confirm).toHaveBeenCalledOnce();
       expect(api.sent('DELETE', '/api/v1/links/abc')).toHaveLength(deletes);
     },
   );

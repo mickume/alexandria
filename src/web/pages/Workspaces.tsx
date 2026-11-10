@@ -5,8 +5,14 @@ import { byName } from '../format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfirm } from '../confirm';
 
-const CONFIRM_DELETE = 'Delete this workspace? Its links stay in your library.';
+/** What the owner confirms before a workspace is deleted. */
+const CONFIRM_DELETE = {
+  title: 'Delete this workspace?',
+  description: 'Its links stay in your library.',
+  action: 'Delete workspace',
+};
 
 /** One workspace in the list: its name and member count, Rename and Delete. */
 function WorkspaceRow({
@@ -34,8 +40,10 @@ function WorkspaceRow({
     }
   }
 
+  const confirm = useConfirm();
+
   async function remove() {
-    if (!window.confirm(CONFIRM_DELETE)) return;
+    if (!(await confirm(CONFIRM_DELETE))) return;
     try {
       await workspaces.remove(workspace.id);
       onDeleted(workspace.id);

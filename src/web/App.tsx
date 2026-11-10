@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode, type ComponentProps } from 'react';
 import { Archive } from './pages/Archive';
 import { Expired } from './pages/Expired';
 import { Ask } from './pages/Ask';
@@ -20,6 +20,8 @@ import { Workspaces } from './pages/Workspaces';
 import { Button } from '@/components/ui/button';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Toaster } from '@/components/ui/sonner';
+import { ConfirmProvider } from './confirm';
 
 /** Where the website is: the path and the query string of the page. */
 export interface Location {
@@ -57,29 +59,29 @@ export function navigate(path: string, { replace = false } = {}): void {
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
 
-/** A link within the website, followed without a reload. */
+/**
+ * A link within the website, followed without a reload. It takes an anchor's
+ * other properties too, so that it can be an item of a menu.
+ */
 export function Link({
   to,
   children,
-  className,
-  title,
   current = false,
-}: {
+  onClick,
+  ...anchor
+}: Omit<ComponentProps<'a'>, 'href'> & {
   to: string;
   children: ReactNode;
-  className?: string;
-  /** The link's tooltip. */
-  title?: string;
   /** Marks the link as the page being shown. */
   current?: boolean;
 }) {
   return (
     <a
+      {...anchor}
       href={to}
-      className={className}
-      title={title}
       aria-current={current ? 'page' : undefined}
       onClick={(e) => {
+        onClick?.(e);
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
         navigate(to);
@@ -212,5 +214,10 @@ export function App() {
     else if (view === 'snapshot') page = <Snapshot key={id} id={id} />;
     else page = <LinkDetail key={id} id={id} />;
   }
-  return <Layout location={location}>{page}</Layout>;
+  return (
+    <ConfirmProvider>
+      <Layout location={location}>{page}</Layout>
+      <Toaster position="bottom-center" />
+    </ConfirmProvider>
+  );
 }

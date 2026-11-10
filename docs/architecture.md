@@ -88,7 +88,8 @@ account and checks the PKCE verifier as Google does.
   dark, and GodUI's motion tokens from `motion.css`) before `styles.css`,
   which holds Alexandria's own layout and parts, written with the theme's
   variables. `components/ui/` holds the components as their registries publish
-  them (Button, Input and Textarea from GodUI; Card, Badge, Alert, Label,
+  them (Button, Input, Textarea, Dropdown Menu, Alert Dialog and Sonner from
+  GodUI; Card, Badge, Alert, Label,
   NativeSelect and Spinner from shadcn/ui), `lib/utils.ts` the `cn` helper,
   and `@/` names `src/web` in imports. Every page
   sits under a light header: the mark and a breadcrumb (Alexandria / the
@@ -107,8 +108,11 @@ account and checks the PKCE verifier as Google does.
   visit counts as a use. Open, Read (when a copy is stored) and Pin stay on
   the card; Snapshot, Details, Refresh, Add to workspace, Remove from
   workspace and Delete are behind its ⋯ More actions button, a
-  disclosure that closes on Escape, on a click elsewhere and once an action
-  is chosen. Everywhere else a link appears, its address opens the same way:
+  dropdown menu (the workspace picker its submenu) that closes on Escape, on
+  a click elsewhere and once an action is chosen; what an action in it did is
+  said in a toast. Toasts (a delete's Undo among them) come from the one
+  `<Toaster>` in `App.tsx`, and a deletion that cannot be undone is confirmed
+  in a dialog, asked through `useConfirm` (`confirm.tsx`). Everywhere else a link appears, its address opens the same way:
   the headline of the link's detail page and a source's title on the Ask page
   go through the open route in a new tab (`SiteLink`), and the web links in a
   note (`components/Markdown`) and in a Read page's article are given

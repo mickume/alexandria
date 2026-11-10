@@ -346,26 +346,8 @@
     box-shadow: none;
   }
 
-  /* A menu: the panel under a button, and its items; also the action list of a link's page. */
-  .menu {
-    z-index: 50;
-    display: flex;
-    flex-direction: column;
-    min-width: 12rem;
-    max-width: calc(100vw - 2rem);
-    padding: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--popover);
-    color: var(--popover-foreground);
-    box-shadow:
-      0 4px 6px -1px rgb(0 0 0 / 0.1),
-      0 2px 4px -2px rgb(0 0 0 / 0.1);
-    transform-origin: top right;
-    animation: var(--animate-godui-popover-in);
-  }
-
-  .menu-item {
+  /* An item of the action list on a link's page, in the look of a menu's. */
+  .action-item {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -379,52 +361,26 @@
     user-select: none;
   }
 
-  .menu-item:hover,
-  .menu-item:focus-visible {
+  .action-item:hover,
+  .action-item:focus-visible {
     background: var(--accent);
     color: var(--accent-foreground);
     outline: none;
   }
 
-  .menu-item > svg {
+  .action-item > svg {
     color: var(--muted-foreground);
   }
 
-  .menu-item[aria-checked='true']::after {
-    content: '✓';
-    margin-left: auto;
-  }
-
-  .menu-item-danger,
-  .menu-item-danger > svg {
+  .action-item-danger,
+  .action-item-danger > svg {
     color: var(--destructive);
   }
 
-  .menu-item-danger:hover,
-  .menu-item-danger:focus-visible {
+  .action-item-danger:hover,
+  .action-item-danger:focus-visible {
     background: color-mix(in oklab, var(--destructive) 10%, transparent);
     color: var(--destructive);
-  }
-
-  /* A toast: a short message, with its action, in the theme's inverse colours. */
-  .toast {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow:
-      0 10px 15px -3px rgb(0 0 0 / 0.1),
-      0 4px 6px -4px rgb(0 0 0 / 0.1);
-    animation: var(--animate-godui-slide-in-from-bottom);
-  }
-
-  .toast button {
-    color: inherit;
-    font-weight: 600;
   }
 
   /* A notice across the page that leads somewhere, such as the missing AI key. */
@@ -699,18 +655,6 @@
     overflow-wrap: anywhere;
   }
 
-  .toasts {
-    position: fixed;
-    bottom: 1rem;
-    left: 50%;
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    width: min(28rem, calc(100vw - 2 * 1rem));
-    transform: translateX(-50%);
-  }
-
   /* ── The sign-in page: the mark, the name and one green button. ── */
 
   .signin {
@@ -981,40 +925,6 @@
     }
   }
 
-  /* The ⋯ menu: the less frequent actions of a row, in an overlay under its button. */
-  .card-menu {
-    position: relative;
-  }
-
-  .card-menu-panel {
-    position: absolute;
-    top: calc(100% + 0.25rem);
-    right: 0;
-  }
-
-  .card-menu-item,
-  .card-menu-item .picker {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .card-menu-item .muted,
-  .card-menu-item .notice {
-    padding: 0 0.5rem 0.25rem;
-    font-size: var(--text-xs);
-  }
-
-  .card-menu-panel .picker-menu {
-    position: static;
-    min-width: 0;
-    margin: 0 0 0.25rem 0.75rem;
-    padding: 0 0 0 0.5rem;
-    border-left: 1px solid var(--border);
-    border-radius: 0;
-    box-shadow: none;
-  }
-
   /*
    * An archived link is dimmed wherever it is shown: its title takes the muted
    * colour (which keeps the contrast of muted text) and its icon goes grey.
@@ -1094,17 +1004,6 @@
     height: 1px;
   }
 
-  /* The workspace picker on its own: an overlay under its button. */
-  .picker {
-    position: relative;
-  }
-
-  .picker-menu {
-    position: absolute;
-    top: 1.75rem;
-    left: 0;
-  }
-
   /* ── A link on its own: facts, history, editable fields, notes. ── */
 
   /* As an issue is laid out: the content on the left, a narrower column of metadata and actions on the right. */
@@ -1162,11 +1061,6 @@
   .detail-actions .muted {
     padding: 0 0.5rem 0.25rem;
     font-size: var(--text-xs);
-  }
-
-  .detail-actions .picker-menu {
-    z-index: 50;
-    min-width: 12rem;
   }
 
   .facts {

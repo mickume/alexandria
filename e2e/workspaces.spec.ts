@@ -39,12 +39,11 @@ test.describe.serial('workspaces', () => {
     for (const id of [first!, second!]) {
       const card = cardOf(page, id);
       await card.getByRole('button', { name: 'More actions' }).click();
-      await card.getByRole('button', { name: 'Add to workspace' }).click();
-      await card.getByRole('menuitemcheckbox', { name: 'Trip to Lisbon' }).click();
+      await page.getByRole('menuitem', { name: 'Add to workspace' }).click();
+      await page.getByRole('menuitemcheckbox', { name: 'Trip to Lisbon' }).click();
+      // Choosing closes the menu, and the card shows the workspace.
+      await expect(page.getByRole('menu')).toHaveCount(0);
       await expect(card.getByRole('link', { name: 'Trip to Lisbon' })).toBeVisible();
-      // The menu stays open to show the tick; close it, as it covers the row below.
-      await card.getByRole('button', { name: 'More actions' }).click();
-      await expect(card.getByRole('button', { name: 'Add to workspace' })).toHaveCount(0);
     }
 
     await page.goto('/workspaces');
@@ -142,8 +141,11 @@ test.describe.serial('workspaces', () => {
     page.off('dialog', onDialog);
 
     await page.goto('/workspaces');
-    page.once('dialog', (d) => void d.accept());
     await page.getByRole('button', { name: 'Delete Porto' }).click();
+    await page
+      .getByRole('alertdialog', { name: 'Delete this workspace?' })
+      .getByRole('button', { name: 'Delete workspace' })
+      .click();
     await expect(page.getByRole('link', { name: /^Porto/ })).toHaveCount(0);
     expect((await page.request.get(`/api/v1/workspaces/${workspace.id}`)).status()).toBe(404);
 

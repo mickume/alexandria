@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -16,6 +15,13 @@ import { WorkspacePicker } from './WorkspacePicker';
 import { badgeVariants } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 /**
  * Refresh: asks the API to fetch the link again and shows that it is
@@ -168,66 +174,23 @@ export function SiteLink({
   );
 }
 
-/**
- * The ⋯ button and the actions behind it. A disclosure, not an ARIA menu, so
- * what it holds keeps its own roles. It closes on Escape, giving the focus
- * back to the button, on a click elsewhere, and once an action is chosen;
- * a control marked `data-keep-open` (Refresh, the workspace picker) leaves
- * it open, to show what it did.
- */
+/** The ⋯ button and the menu of the card's less frequent actions behind it. */
 function CardMenu({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function outside(e: MouseEvent) {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', outside);
-    return () => document.removeEventListener('mousedown', outside);
-  }, [open]);
-
   return (
-    <div
-      className="card-menu"
-      ref={root}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && open) {
-          e.stopPropagation();
-          setOpen(false);
-          trigger.current?.focus();
-        }
-      }}
-    >
-      <Button
-        ref={trigger}
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="card-menu-button"
-        aria-label="More actions"
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Icon name="more" />
-      </Button>
-      {open && (
-        <div
-          id={id}
-          className="card-menu-panel menu"
-          onClick={(e) => {
-            const chosen = (e.target as Element).closest('a, button');
-            if (chosen && !chosen.closest('[data-keep-open]')) setOpen(false);
-          }}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="card-menu-button"
+          aria-label="More actions"
         >
-          {children}
-        </div>
-      )}
-    </div>
+          <Icon name="more" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -447,45 +410,34 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
           )}
           <CardMenu>
             {link.has_snapshot && (
-              <PageLink to={`/links/${link.id}/snapshot`} className="menu-item">
-                Snapshot
-              </PageLink>
+              <DropdownMenuItem asChild>
+                <PageLink to={`/links/${link.id}/snapshot`}>Snapshot</PageLink>
+              </DropdownMenuItem>
             )}
-            <PageLink to={`/links/${link.id}`} className="menu-item">
-              Details
-            </PageLink>
-            <span className="card-menu-item" data-keep-open>
-              <RefreshButton link={link} onRefreshing={actions.onRefreshing} menuItem />
-            </span>
-            <span className="card-menu-item" data-keep-open>
-              <WorkspacePicker
-                menuItem
-                linkId={link.id}
-                memberOf={link.workspaces.map((w) => w.id)}
-                onAdded={joined}
-              />
-            </span>
+            <DropdownMenuItem asChild>
+              <PageLink to={`/links/${link.id}`}>Details</PageLink>
+            </DropdownMenuItem>
+            <RefreshButton link={link} onRefreshing={actions.onRefreshing} look="menu" />
+            <WorkspacePicker
+              submenu
+              linkId={link.id}
+              memberOf={link.workspaces.map((w) => w.id)}
+              onAdded={joined}
+            />
             {actions.onRemoveFromWorkspace && (
-              <button
-                type="button"
-                className="menu-item"
-                onClick={() => actions.onRemoveFromWorkspace?.(link)}
-              >
+              <DropdownMenuItem onSelect={() => actions.onRemoveFromWorkspace?.(link)}>
                 Remove from workspace
-              </button>
+              </DropdownMenuItem>
             )}
             {!archived && actions.onArchive && (
-              <button type="button" className="menu-item" onClick={() => actions.onArchive?.(link)}>
+              <DropdownMenuItem onSelect={() => actions.onArchive?.(link)}>
                 Archive
-              </button>
+              </DropdownMenuItem>
             )}
-            <button
-              type="button"
-              className="menu-item menu-item-danger"
-              onClick={() => actions.onDelete(link)}
-            >
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={() => actions.onDelete(link)}>
               Delete
-            </button>
+            </DropdownMenuItem>
           </CardMenu>
         </div>
       </div>

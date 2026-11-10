@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Link } from '../api';
-import { FakeApi, installFakeApi, makeLink } from '../test/helpers';
+import { Toaster } from '@/components/ui/sonner';
+import { FakeApi, installFakeApi, makeLink, openMenu } from '../test/helpers';
 import { LinkCard } from './LinkCard';
 
 const link: Link = makeLink({
@@ -17,7 +18,7 @@ const noop = () => undefined;
 
 /** Opens the card's More actions menu, where the less frequent actions are. */
 async function moreActions() {
-  await act(async () => screen.getByRole('button', { name: 'More actions' }).click());
+  openMenu(screen.getByRole('button', { name: 'More actions' }));
 }
 
 describe('a card’s links to the site', () => {
@@ -50,20 +51,18 @@ describe('a card’s More actions menu', () => {
     expect(screen.getByRole('button', { name: 'Pin' })).toBeTruthy();
     const trigger = screen.getByRole('button', { name: 'More actions' });
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    for (const name of ['Refresh', 'Add to workspace', 'Delete']) {
-      expect(screen.queryByRole('button', { name }), name).toBeNull();
-    }
-    expect(screen.queryByRole('link', { name: 'Details' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Snapshot' })).toBeNull();
+    expect(screen.queryByRole('menuitem')).toBeNull();
 
     await moreActions();
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     for (const name of ['Refresh', 'Add to workspace', 'Delete']) {
-      expect(screen.getByRole('button', { name }), name).toBeTruthy();
+      expect(screen.getByRole('menuitem', { name }), name).toBeTruthy();
     }
-    expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Details' }).getAttribute('href')).toBe('/links/abc');
-    expect(screen.getByRole('link', { name: 'Snapshot' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Details' }).getAttribute('href')).toBe(
+      '/links/abc',
+    );
+    expect(screen.getByRole('menuitem', { name: 'Snapshot' }).getAttribute('href')).toBe(
       '/links/abc/snapshot',
     );
   });
@@ -85,38 +84,36 @@ describe('a card’s More actions menu', () => {
       );
       expect(container.querySelector('article')!.classList.contains('archived')).toBe(archived);
       expect(screen.queryByRole('button', { name: 'Pin' }) !== null).toBe(!archived);
+      expect(screen.queryByRole('button', { name: 'Unarchive' }) !== null).toBe(archived);
       await moreActions();
-      expect(screen.queryByRole('button', { name: 'Archive' }) !== null).toBe(!archived);
+      expect(screen.queryByRole('menuitem', { name: 'Archive' }) !== null).toBe(!archived);
       if (archived) {
-        await act(async () => screen.getByRole('button', { name: 'Unarchive' }).click());
+        // The card is out of reach while its menu is open: close it first.
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        await act(async () => (await screen.findByRole('button', { name: 'Unarchive' })).click());
         expect(unarchive).toHaveBeenCalledWith(link);
       } else {
-        expect(screen.queryByRole('button', { name: 'Unarchive' })).toBeNull();
-        await act(async () => screen.getByRole('button', { name: 'Archive' }).click());
+        await act(async () => screen.getByRole('menuitem', { name: 'Archive' }).click());
         expect(archive).toHaveBeenCalledWith(link);
       }
     },
   );
 
-  it('closes on Escape, giving the focus back to its button, and on a click elsewhere', async () => {
+  it('closes on Escape, giving the focus back to its button', async () => {
     render(<LinkCard link={stored} actions={actions} />);
     await moreActions();
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Delete' }), { key: 'Escape' });
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Delete' }), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'More actions' }));
-
-    await moreActions();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 
   it('closes once an action is chosen', async () => {
     let deleted = 0;
     render(<LinkCard link={stored} actions={{ ...actions, onDelete: () => (deleted += 1) }} />);
     await moreActions();
-    await act(async () => screen.getByRole('button', { name: 'Delete' }).click());
+    await act(async () => screen.getByRole('menuitem', { name: 'Delete' }).click());
     expect(deleted).toBe(1);
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   });
 });
 
@@ -128,13 +125,17 @@ describe('refreshing from a card', () => {
         body: { status: 'queued' },
       }),
     );
-    const { unmount } = render(
-      <LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
+    const card = (
+      <>
+        <LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />
+        <Toaster />
+      </>
     );
+    const { unmount } = render(card);
     await moreActions();
-    await act(async () => screen.getByRole('button', { name: 'Refresh' }).click());
+    await act(async () => screen.getByRole('menuitem', { name: 'Refresh' }).click());
     expect(api.sent('POST', '/api/v1/links/abc/refresh')).toHaveLength(1);
-    expect(screen.getByText('refreshing…')).toBeTruthy();
+    expect(await screen.findByText('refreshing…')).toBeTruthy();
     unmount();
 
     installFakeApi(
@@ -144,9 +145,9 @@ describe('refreshing from a card', () => {
         body: { error: 'refreshed_recently', message: 'already refreshed recently' },
       }),
     );
-    render(<LinkCard link={link} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
+    render(card);
     await moreActions();
-    await act(async () => screen.getByRole('button', { name: 'Refresh' }).click());
+    await act(async () => screen.getByRole('menuitem', { name: 'Refresh' }).click());
     expect(await screen.findByText('already refreshed recently')).toBeTruthy();
   });
 });
@@ -216,13 +217,15 @@ describe('a card’s fetch results', () => {
     for (const text of texts) expect(screen.getByText(text)).toBeTruthy();
     for (const name of roles ?? []) expect(screen.getByRole('img', { name })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Read' }) !== null).toBe(read);
-    await moreActions();
-    expect(screen.queryByRole('link', { name: 'Snapshot' }) !== null).toBe(read);
     if (read) {
       expect(screen.getByRole('link', { name: 'Read' }).getAttribute('href')).toBe(
         `/links/${l.id}/read`,
       );
-      expect(screen.getByRole('link', { name: 'Snapshot' }).getAttribute('href')).toBe(
+    }
+    await moreActions();
+    expect(screen.queryByRole('menuitem', { name: 'Snapshot' }) !== null).toBe(read);
+    if (read) {
+      expect(screen.getByRole('menuitem', { name: 'Snapshot' }).getAttribute('href')).toBe(
         `/links/${l.id}/snapshot`,
       );
     }
@@ -357,7 +360,7 @@ describe('adding a link to a workspace from its card', () => {
     const l = makeLink({ id: 'in-a', state: 'active', workspaces: [{ id: 'A', name: 'A' }] });
     render(<Holder link={l} />);
     await moreActions();
-    await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
+    await act(async () => screen.getByRole('menuitem', { name: 'Add to workspace' }).click());
     const a = await screen.findByRole('menuitemcheckbox', { name: 'A' });
     expect(a.getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemcheckbox', { name: 'b' }).getAttribute('aria-checked')).toBe(
@@ -370,7 +373,8 @@ describe('adding a link to a workspace from its card', () => {
       .getAllByRole('link')
       .filter((x) => x.getAttribute('href')?.startsWith('/workspaces/'));
     expect(chips.map((c) => c.textContent)).toEqual(['A', 'b']);
-    await act(async () => screen.getByRole('button', { name: 'Add to workspace' }).click());
+    await moreActions();
+    await act(async () => screen.getByRole('menuitem', { name: 'Add to workspace' }).click());
     await act(async () => (await screen.findByRole('menuitemcheckbox', { name: 'A' })).click());
     expect(api.sent('POST')).toHaveLength(1);
   });

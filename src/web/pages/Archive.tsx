@@ -3,7 +3,7 @@ import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { useStateList } from '../stateList';
-import { UndoToasts, useUndoableDelete } from '../undo';
+import { useUndoableDelete } from '../undo';
 
 /**
  * The Archive page: the links the owner chose to keep, most recently archived
@@ -76,7 +76,6 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
           {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing is archived.'}
         </p>
       )}
-      <UndoToasts deletes={deletes} />
     </section>
   );
 }

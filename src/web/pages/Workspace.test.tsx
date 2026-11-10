@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Member } from '../api';
-import { FakeApi, makeLink, renderPage } from '../test/helpers';
+import { FakeApi, makeLink, renderPage, openMenu } from '../test/helpers';
 
 function workspaceApi(): FakeApi {
   let note = '# Plan\n\n- book flights';
@@ -73,9 +73,9 @@ describe('a workspace’s page', () => {
     await waitFor(() => expect(titles()).toEqual(['Beta', 'Alpha']));
 
     const alpha = screen.getByRole('article', { name: 'Alpha' });
-    fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
+    openMenu(within(alpha).getByRole('button', { name: 'More actions' }));
     await act(async () => {
-      fireEvent.click(within(alpha).getByRole('button', { name: 'Remove from workspace' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from workspace' }));
     });
     expect(api.sent('DELETE', '/api/v1/workspaces/w1/links/a')).toHaveLength(1);
     await waitFor(() => expect(titles()).toEqual(['Beta']));
@@ -100,11 +100,11 @@ describe('a workspace’s page', () => {
     const api = workspaceApi().on('DELETE', '/api/v1/links/:id', { status: 204 });
     renderPage('/workspaces/w1', api);
     const alpha = await screen.findByRole('article', { name: 'Alpha' });
-    fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
-    fireEvent.click(within(alpha).getByRole('button', { name: 'Delete' }));
+    openMenu(within(alpha).getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(titles()).toEqual(['Beta']);
     expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
     expect(titles()).toEqual(['Alpha', 'Beta']);
   });
 
