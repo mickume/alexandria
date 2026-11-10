@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link as PageLink } from '../App';
 import {
   activeFilters,
@@ -19,8 +19,7 @@ import {
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, TopicPath, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
-import { Toast } from '../components/Toast';
-import { useUndoableDelete } from './Stream';
+import { UndoToasts, useUndoableDelete } from '../undo';
 
 /** The workspaces whose name, description or note matched. */
 function WorkspaceResults({ workspaces }: { workspaces: SearchResults['workspaces'] }) {
@@ -139,8 +138,13 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   const deletes = useUndoableDelete(items, setItems);
   const topic = topicFilter(query);
 
+  /** Counts the searches, so that a page asked for one is not added to the next. */
+  const searches = useRef(0);
+  const loadingMore = useRef(false);
+
   useEffect(() => {
     let live = true;
+    searches.current += 1;
     search(query, undefined, mode)
       .then((page) => {
         if (!live) return;
@@ -157,6 +161,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
       .catch((err) => {
         if (!live) return;
         setFound(null);
+        setItems([]);
         setError(err instanceof ApiError ? err.message : 'could not search, try again');
       });
     return () => {
@@ -165,9 +170,12 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   }, [query, mode]);
 
   async function more() {
-    if (!found?.next) return;
+    if (!found?.next || loadingMore.current) return;
+    loadingMore.current = true;
+    const asked = searches.current;
     try {
       const page = await search(query, found.next, mode);
+      if (asked !== searches.current) return;
       setFound({
         ...found,
         snippets: new Map([
@@ -183,7 +191,9 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
       });
       setItems((current) => [...current, ...page.items.map((i) => i.link)]);
     } catch {
-      setError('could not load more results, try again');
+      if (asked === searches.current) setError('could not load more results, try again');
+    } finally {
+      loadingMore.current = false;
     }
   }
 
@@ -215,11 +225,11 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
       )}
       {found?.meaning === 'unavailable' && <KeywordOnlyNotice />}
       {found && <WorkspaceResults workspaces={found.workspaces} />}
-      {found && items.length === 0 && found.workspaces.length === 0 && (
+      {found && deletes.shown.length === 0 && found.workspaces.length === 0 && (
         <NothingFound query={query} />
       )}
       <ul className="results" aria-label="Results">
-        {items.map((link) => (
+        {deletes.shown.map((link) => (
           <li key={link.id}>
             <LinkCard link={link} actions={actions} />
             {found?.matches.get(link.id) === 'meaning' ? (
@@ -238,16 +248,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
           More results
         </button>
       )}
-      <div className="toasts">
-        {deletes.undoable.map((link) => (
-          <Toast
-            key={link.id}
-            message={`Deleted ${link.title}`}
-            action={{ label: 'Undo', onClick: () => deletes.undo(link.id) }}
-          />
-        ))}
-        {deletes.failure && <Toast message={deletes.failure} />}
-      </div>
+      <UndoToasts deletes={deletes} />
     </section>
   );
 }

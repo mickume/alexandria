@@ -66,6 +66,21 @@ describe('the search box', () => {
     expect(document.activeElement).toBe(screen.getByRole('main'));
   });
 
+  it.each(['/settings', '/links/l1'])(
+    'stays on %s on Escape when no search was started',
+    async (page) => {
+      vi.useFakeTimers();
+      renderPage(page, pagesApi());
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      fireEvent.keyDown(document.body, { key: '/' });
+      fireEvent.change(searchBox(), { target: { value: 'qu' } });
+      fireEvent.keyDown(searchBox(), { key: 'Escape' });
+      await act(async () => vi.advanceTimersByTimeAsync(200));
+      expect(searchBox().value).toBe('');
+      expect(window.location.pathname).toBe(page);
+    },
+  );
+
   it('returns to the page it started from, not the stream, when that page was another', async () => {
     vi.useFakeTimers();
     renderPage('/topics', pagesApi());

@@ -90,7 +90,7 @@ export function Import() {
   useEffect(() => {
     let live = true;
     workspaces
-      .all()
+      .list()
       .then((all) => live && setList(all))
       .catch(() => undefined);
     return () => {

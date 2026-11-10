@@ -42,6 +42,19 @@ export async function request<T>(
   return json as T;
 }
 
+/** Every item of the list at `path`, following its cursor to the end, 100 a page. */
+async function allPages<T>(path: string): Promise<T[]> {
+  const all: T[] = [];
+  let cursor: string | null = null;
+  do {
+    const after: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+    const page: Page<T> = await request('GET', `${path}?limit=100${after}`);
+    all.push(...page.items);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return all;
+}
+
 /** A personal access token as listed. */
 export interface Token {
   id: string;
@@ -195,29 +208,9 @@ export const links = {
   archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
   unarchive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/unarchive`),
   /** Every expired link, most recently expired first, page after page. */
-  expired: async () => {
-    const all: Link[] = [];
-    let cursor: string | null = null;
-    do {
-      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
-      const page: Page<Link> = await request('GET', `/expired?limit=100${query}`);
-      all.push(...page.items);
-      cursor = page.next_cursor;
-    } while (cursor);
-    return all;
-  },
+  expired: () => allPages<Link>('/expired'),
   /** Every archived link, most recently archived first, page after page. */
-  archived: async () => {
-    const all: Link[] = [];
-    let cursor: string | null = null;
-    do {
-      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
-      const page: Page<Link> = await request('GET', `/archive?limit=100${query}`);
-      all.push(...page.items);
-      cursor = page.next_cursor;
-    } while (cursor);
-    return all;
-  },
+  archived: () => allPages<Link>('/archive'),
   enrich: (id: string) =>
     request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/enrich`),
   refresh: (id: string) =>
@@ -288,25 +281,15 @@ export type Member = Link & { position: number };
 const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 
 export const workspaces = {
-  list: () => request<Page<WorkspaceSummary>>('GET', '/workspaces').then((p) => p.items),
   /** Every workspace, by name, page after page. */
-  all: async () => {
-    const all: WorkspaceSummary[] = [];
-    let cursor: string | null = null;
-    do {
-      const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
-      const page: Page<WorkspaceSummary> = await request('GET', `/workspaces?limit=100${query}`);
-      all.push(...page.items);
-      cursor = page.next_cursor;
-    } while (cursor);
-    return all;
-  },
+  list: () => allPages<WorkspaceSummary>('/workspaces'),
   get: (id: string) => request<Workspace>('GET', ws(id)),
   create: (name: string) => request<Workspace>('POST', '/workspaces', { name }),
   update: (id: string, fields: { name?: string; description?: string; note?: string }) =>
     request<Workspace>('PATCH', ws(id), fields),
   remove: (id: string) => request<void>('DELETE', ws(id)),
-  links: (id: string) => request<Page<Member>>('GET', `${ws(id)}/links`).then((p) => p.items),
+  /** Every link of a workspace, in its order, page after page. */
+  links: (id: string) => allPages<Member>(`${ws(id)}/links`),
   addLink: (id: string, linkId: string, position?: number) =>
     request<{ position: number }>('POST', `${ws(id)}/links`, {
       link_id: linkId,
@@ -350,19 +333,7 @@ export type VocabularyKind = 'topics' | 'tags';
 
 export const vocabulary = {
   /** Every topic or tag with a link, newest first, following the cursor to the end. */
-  listAll: async (kind: VocabularyKind): Promise<VocabularyItem[]> => {
-    const items: VocabularyItem[] = [];
-    let cursor: string | null = null;
-    do {
-      const page: Page<VocabularyItem> = await request<Page<VocabularyItem>>(
-        'GET',
-        `/${kind}?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
-      );
-      items.push(...page.items);
-      cursor = page.next_cursor;
-    } while (cursor);
-    return items;
-  },
+  listAll: (kind: VocabularyKind) => allPages<VocabularyItem>(`/${kind}`),
   rename: (kind: VocabularyKind, id: string, name: string) =>
     request<{ id: string; name: string; count: number }>(
       'PATCH',

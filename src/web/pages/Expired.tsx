@@ -1,31 +1,8 @@
-import { useEffect, useState } from 'react';
-import { links, search, type Link, type SearchMode } from '../api';
+import { useState } from 'react';
+import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
-import { Toast } from '../components/Toast';
-import { useUndoableDelete } from './Stream';
-
-/** Links as the Expired or Archive page lists them, and how a search by meaning found them. */
-export interface Listed {
-  list: Link[];
-  /** The ids of the links found by meaning alone. */
-  byMeaning: Set<string>;
-  /** Whether a search by meaning could not use meaning. */
-  keywordOnly: boolean;
-}
-
-/** The links in `state` matching `query`: the search, limited to that state. */
-export async function searchInState(
-  state: 'expired' | 'archived',
-  query: string,
-  mode?: SearchMode,
-): Promise<Listed> {
-  const page = await search(`${query.trim()} state:${state}`, undefined, mode);
-  return {
-    list: page.items.map((i) => i.link),
-    byMeaning: new Set(page.items.filter((i) => i.match === 'meaning').map((i) => i.link.id)),
-    keywordOnly: page.meaning === 'unavailable',
-  };
-}
+import { useStateList } from '../stateList';
+import { UndoToasts, useUndoableDelete } from '../undo';
 
 /**
  * The Expired page: expired links, most recently expired first, each with the
@@ -33,31 +10,15 @@ export async function searchInState(
  * box), the expired links matching it.
  */
 export function Expired({ query = '', mode }: { query?: string; mode?: SearchMode }) {
-  const [items, setItems] = useState<Link[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [byMeaning, setByMeaning] = useState<Set<string>>(new Set());
-  const [keywordOnly, setKeywordOnly] = useState(false);
+  const { items, setItems, loaded, failed, byMeaning, keywordOnly } = useStateList(
+    'expired',
+    query,
+    mode,
+  );
+  const [failure, setFailure] = useState<string | null>(null);
+  const error = failure ?? (failed ? 'could not load the expired links' : null);
+  const setError = setFailure;
   const deletes = useUndoableDelete(items, setItems);
-
-  useEffect(() => {
-    let live = true;
-    (query.trim()
-      ? searchInState('expired', query, mode)
-      : links.expired().then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
-    )
-      .then((listed) => {
-        if (!live) return;
-        setItems(listed.list);
-        setByMeaning(listed.byMeaning);
-        setKeywordOnly(listed.keywordOnly);
-        setLoaded(true);
-      })
-      .catch(() => live && setError('could not load the expired links'));
-    return () => {
-      live = false;
-    };
-  }, [query, mode]);
 
   async function restore(link: Link) {
     setError(null);
@@ -83,7 +44,7 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
       )}
       {keywordOnly && <KeywordOnlyNotice />}
       <div className="cards">
-        {items.map((link) => (
+        {deletes.shown.map((link) => (
           <article key={link.id} className="card" aria-label={link.title}>
             <div className="card-top">
               <div className="card-head">
@@ -106,21 +67,12 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
           </article>
         ))}
       </div>
-      {loaded && items.length === 0 && (
+      {loaded && deletes.shown.length === 0 && (
         <p className="muted">
           {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing has expired.'}
         </p>
       )}
-      <div className="toasts">
-        {deletes.undoable.map((link) => (
-          <Toast
-            key={link.id}
-            message={`Deleted ${link.title}`}
-            action={{ label: 'Undo', onClick: () => deletes.undo(link.id) }}
-          />
-        ))}
-        {deletes.failure && <Toast message={deletes.failure} />}
-      </div>
+      <UndoToasts deletes={deletes} />
     </section>
   );
 }

@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, type CardActions } from '../components/LinkCard';
-import { Toast } from '../components/Toast';
-import { searchInState } from './Expired';
-import { useUndoableDelete } from './Stream';
+import { useStateList } from '../stateList';
+import { UndoToasts, useUndoableDelete } from '../undo';
 
 /**
  * The Archive page: the links the owner chose to keep, most recently archived
@@ -13,33 +12,15 @@ import { useUndoableDelete } from './Stream';
  * the archived links matching it.
  */
 export function Archive({ query = '', mode }: { query?: string; mode?: SearchMode }) {
-  const [items, setItems] = useState<Link[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [byMeaning, setByMeaning] = useState<Set<string>>(new Set());
-  const [keywordOnly, setKeywordOnly] = useState(false);
+  const { items, setItems, loaded, failed, byMeaning, keywordOnly } = useStateList(
+    'archived',
+    query,
+    mode,
+  );
+  const [failure, setFailure] = useState<string | null>(null);
+  const error = failure ?? (failed ? 'could not load the archive' : null);
+  const setError = setFailure;
   const deletes = useUndoableDelete(items, setItems);
-
-  useEffect(() => {
-    let live = true;
-    (query.trim()
-      ? searchInState('archived', query, mode)
-      : links
-          .archived()
-          .then((list) => ({ list, byMeaning: new Set<string>(), keywordOnly: false }))
-    )
-      .then((listed) => {
-        if (!live) return;
-        setItems(listed.list);
-        setByMeaning(listed.byMeaning);
-        setKeywordOnly(listed.keywordOnly);
-        setLoaded(true);
-      })
-      .catch(() => live && setError('could not load the archive'));
-    return () => {
-      live = false;
-    };
-  }, [query, mode]);
 
   async function unarchive(link: Link) {
     setError(null);
@@ -79,7 +60,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
       )}
       {keywordOnly && <KeywordOnlyNotice />}
       <div className="cards">
-        {items.map((link) => (
+        {deletes.shown.map((link) => (
           <div key={link.id}>
             <LinkCard link={link} actions={actions} />
             {byMeaning.has(link.id) && (
@@ -90,21 +71,12 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
           </div>
         ))}
       </div>
-      {loaded && items.length === 0 && (
+      {loaded && deletes.shown.length === 0 && (
         <p className="muted">
           {query.trim() ? `nothing found for ${query.trim()}` : 'Nothing is archived.'}
         </p>
       )}
-      <div className="toasts">
-        {deletes.undoable.map((link) => (
-          <Toast
-            key={link.id}
-            message={`Deleted ${link.title}`}
-            action={{ label: 'Undo', onClick: () => deletes.undo(link.id) }}
-          />
-        ))}
-        {deletes.failure && <Toast message={deletes.failure} />}
-      </div>
+      <UndoToasts deletes={deletes} />
     </section>
   );
 }

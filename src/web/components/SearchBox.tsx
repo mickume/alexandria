@@ -44,8 +44,8 @@ function showsQuery(location: Location): boolean {
  * after the last keystroke, at /search?q= (on the Expired and Archive pages,
  * within their links); Enter searches the same query by meaning as well, at
  * /search?q=&mode=hybrid; an emptied box returns to the stream. '/' typed outside a text field
- * focuses it; Escape in it clears it, returns to the page the search started
- * from and focuses the page's main region. No other key is a shortcut.
+ * focuses it; Escape in it clears it, returns from a search to the page it
+ * started from and focuses the page's main region. No other key is a shortcut.
  */
 export function SearchBox({ location }: { location: Location }) {
   const [value, setValue] = useState(() => (showsQuery(location) ? queryOf(location) : ''));
@@ -102,9 +102,16 @@ export function SearchBox({ location }: { location: Location }) {
   function onEscape() {
     if (timer.current) clearTimeout(timer.current);
     setValue('');
-    const back = OWN_SEARCH.includes(location.path) ? location.path : (origin.current ?? '/');
+    // Only a search leaves its page: with none started, Escape stays where it is.
+    const back = OWN_SEARCH.includes(location.path)
+      ? location.path
+      : location.path === '/search'
+        ? (origin.current ?? '/')
+        : null;
     origin.current = null;
-    if (back !== window.location.pathname + window.location.search) navigate(back);
+    if (back !== null && back !== window.location.pathname + window.location.search) {
+      navigate(back);
+    }
     document.querySelector<HTMLElement>('main')?.focus();
   }
 

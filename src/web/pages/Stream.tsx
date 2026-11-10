@@ -7,20 +7,11 @@ import {
   type SetStateAction,
 } from 'react';
 import { Link as PageLink } from '../App';
-import { ai, ApiError, links as linksApi, type Link, type Page } from '../api';
+import { ai, ApiError, links as linksApi, type Link } from '../api';
 import { AddLinks } from '../components/AddLinks';
 import { Icon } from '../components/Icon';
 import { LinkCard, type CardActions } from '../components/LinkCard';
-import { Toast } from '../components/Toast';
-
-/** How long a deleted card can be brought back before the delete is sent. */
-const UNDO_MS = 10_000;
-
-interface PendingDelete {
-  link: Link;
-  index: number;
-  timer: ReturnType<typeof setTimeout>;
-}
+import { UndoToasts, useUndoableDelete } from '../undo';
 
 /** Puts `fresh` links on top, newest use first, removing their earlier places. */
 function withOnTop(current: Link[], fresh: Link[]): Link[] {
@@ -52,39 +43,63 @@ function useSentinel(onVisible: () => void) {
 
 type SetItems = Dispatch<SetStateAction<Link[]>>;
 
+/** The most pages a refresh reads to show again as many cards as were shown. */
+const REFRESH_PAGES = 20;
+
 /** The loaded pages of the stream: the first on mount, the next ones on demand. */
 function useStreamPages() {
   const [items, setItems] = useState<Link[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const loading = useRef(false);
+  /** Counts the reloads, so that a page asked for before one is not added after it. */
+  const generation = useRef(0);
+  const count = useRef(0);
+  useEffect(() => {
+    count.current = items.length;
+  }, [items]);
 
-  const showFirstPage = useCallback((page: Page<Link>) => {
-    setItems(page.items);
-    setCursor(page.next_cursor);
+  /** Shows the stream as loaded from the top: these links, and the cursor after them. */
+  const show = useCallback((all: Link[], next: string | null) => {
+    generation.current += 1;
+    setItems(all);
+    setCursor(next);
     setLoaded(true);
+    setFailed(false);
   }, []);
 
   useEffect(() => {
     let live = true;
     linksApi
       .list()
-      .then((page) => live && showFirstPage(page))
-      .catch(() => live && setLoaded(true));
+      .then((page) => live && show(page.items, page.next_cursor))
+      .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };
-  }, [showFirstPage]);
+  }, [show]);
 
-  /** Loads the first page again, so the stream shows the order the API returns. */
-  const refresh = useCallback(async () => showFirstPage(await linksApi.list()), [showFirstPage]);
+  /** Loads the stream from the top again, as far as the cards already shown reach. */
+  const refresh = useCallback(async () => {
+    const wanted = count.current;
+    let page = await linksApi.list();
+    const all = [...page.items];
+    for (let n = 1; page.next_cursor && all.length < wanted && n < REFRESH_PAGES; n++) {
+      page = await linksApi.list(page.next_cursor);
+      all.push(...page.items);
+    }
+    show(all, page.next_cursor);
+  }, [show]);
 
   const loadMore = useCallback(() => {
     if (!cursor || loading.current) return;
     loading.current = true;
+    const asked = generation.current;
     linksApi
       .list(cursor)
       .then((page) => {
+        if (asked !== generation.current) return;
         setItems((current) => {
           const known = new Set(current.map((l) => l.id));
           return [...current, ...page.items.filter((l) => !known.has(l.id))];
@@ -97,83 +112,7 @@ function useStreamPages() {
       });
   }, [cursor]);
 
-  return { items, setItems, loaded, refresh, loadMore };
-}
-
-/**
- * Deleting with a 10-second undo window: the card goes at once, the request
- * only when the window passes, at once with keepalive when the page is hidden
- * or left, and a failed delete puts the card back.
- */
-export function useUndoableDelete(items: Link[], setItems: SetItems) {
-  const pendingDeletes = useRef(new Map<string, PendingDelete>());
-  const [undoable, setUndoable] = useState<Link[]>([]);
-  const [failure, setFailure] = useState<string | null>(null);
-
-  /** Puts a card back where it was. */
-  const restore = useCallback(
-    (link: Link, index: number) => {
-      setItems((current) => {
-        if (current.some((l) => l.id === link.id)) return current;
-        const next = [...current];
-        next.splice(Math.min(index, next.length), 0, link);
-        return next;
-      });
-    },
-    [setItems],
-  );
-
-  /** Takes a delete out of its undo window and returns it. */
-  const take = useCallback((id: string) => {
-    const entry = pendingDeletes.current.get(id);
-    if (!entry) return undefined;
-    clearTimeout(entry.timer);
-    pendingDeletes.current.delete(id);
-    setUndoable((u) => u.filter((l) => l.id !== id));
-    return entry;
-  }, []);
-
-  /** Sends a pending delete now; on failure the card comes back. */
-  const sendDelete = useCallback(
-    (id: string, keepalive: boolean) => {
-      const entry = take(id);
-      if (!entry) return;
-      linksApi.remove(id, { keepalive }).catch(() => {
-        restore(entry.link, entry.index);
-        setFailure('could not delete, try again');
-      });
-    },
-    [restore, take],
-  );
-
-  // Leaving or hiding the page must not lose a deletion still in its undo window.
-  useEffect(() => {
-    const pending = pendingDeletes.current;
-    const flush = () => {
-      for (const id of [...pending.keys()]) sendDelete(id, true);
-    };
-    window.addEventListener('pagehide', flush);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      flush();
-    };
-  }, [sendDelete]);
-
-  function remove(link: Link) {
-    setFailure(null);
-    const index = items.findIndex((l) => l.id === link.id);
-    setItems((current) => current.filter((l) => l.id !== link.id));
-    const timer = setTimeout(() => sendDelete(link.id, false), UNDO_MS);
-    pendingDeletes.current.set(link.id, { link, index, timer });
-    setUndoable((u) => [...u, link]);
-  }
-
-  function undo(id: string) {
-    const entry = take(id);
-    if (entry) restore(entry.link, entry.index);
-  }
-
-  return { remove, undo, undoable, failure };
+  return { items, setItems, loaded, failed, refresh, loadMore };
 }
 
 /** How often the stream asks for changes while a link is being fetched. */
@@ -249,7 +188,7 @@ function NoKeyBanner() {
 
 /** The stream: the home page. The pinned links in a list of their own on top, then the rest by points. */
 export function Stream() {
-  const { items, setItems, loaded, refresh, loadMore } = useStreamPages();
+  const { items, setItems, loaded, failed, refresh, loadMore } = useStreamPages();
   const deletes = useUndoableDelete(items, setItems);
   const feed = useChangeFeed(items, setItems);
   const [notice, setNotice] = useState<string | null>(null);
@@ -310,33 +249,29 @@ export function Stream() {
         </p>
       )}
       <div className="cards pinned-cards">
-        {items
+        {deletes.shown
           .filter((link) => link.pinned)
           .map((link) => (
             <LinkCard key={link.id} link={link} actions={actions} />
           ))}
       </div>
       <div className="cards">
-        {items
+        {deletes.shown
           .filter((link) => !link.pinned)
           .map((link) => (
             <LinkCard key={link.id} link={link} actions={actions} />
           ))}
       </div>
-      {loaded && items.length === 0 && (
+      {failed && !loaded && (
+        <p className="notice" role="alert">
+          could not load your links, reload the page to try again
+        </p>
+      )}
+      {loaded && deletes.shown.length === 0 && (
         <p className="muted empty q-blankslate">Nothing here yet. Paste a link above to start.</p>
       )}
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
-      <div className="toasts">
-        {deletes.undoable.map((link) => (
-          <Toast
-            key={link.id}
-            message={`Deleted ${link.title}`}
-            action={{ label: 'Undo', onClick: () => deletes.undo(link.id) }}
-          />
-        ))}
-        {deletes.failure && <Toast message={deletes.failure} />}
-      </div>
+      <UndoToasts deletes={deletes} />
     </section>
   );
 }

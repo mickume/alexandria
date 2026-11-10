@@ -147,6 +147,38 @@ describe('pinning on the stream page', () => {
     await waitFor(() => expect(titles().slice(0, 3)).toEqual(['Title 0', 'Title 1', 'Title 3']));
   });
 
+  it('keeps every page already shown, and a card being deleted hidden, when a pin reloads the stream', async () => {
+    const all = makeLinks(70);
+    const order = () => [...all.filter((l) => l.pinned), ...all.filter((l) => !l.pinned)];
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links', (req) =>
+        req.path.includes('cursor=page2')
+          ? { status: 200, body: { items: order().slice(50), next_cursor: null } }
+          : { status: 200, body: { items: order().slice(0, 50), next_cursor: 'page2' } },
+      )
+      .on('POST', '/api/v1/links/:id/pin', (_req, { id }) => {
+        const link = all.find((l) => l.id === id)!;
+        Object.assign(link, { pinned: true, pin_position: 1 });
+        return { status: 200, body: link };
+      });
+    const observer = fakeIntersectionObserver();
+    renderPage('/', api);
+    await screen.findByRole('article', { name: 'Title 0' });
+    await act(async () => observer.reveal());
+    await screen.findByRole('article', { name: 'Title 69' });
+
+    const doomed = screen.getByRole('article', { name: 'Title 5' });
+    await act(async () => within(doomed).getByRole('button', { name: 'More actions' }).click());
+    await act(async () => within(doomed).getByRole('button', { name: 'Delete' }).click());
+    const far = screen.getByRole('article', { name: 'Title 60' });
+    await act(async () => within(far).getByRole('button', { name: 'Pin' }).click());
+
+    await waitFor(() => expect(titles()[0]).toBe('Title 60'));
+    expect(titles()).toHaveLength(69);
+    expect(screen.queryByRole('article', { name: 'Title 5' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+  });
+
   it('says to unpin something first when the pin limit is reached', async () => {
     const api = pinningApi(makeLinks(3), { limit: true });
     renderPage('/', api);

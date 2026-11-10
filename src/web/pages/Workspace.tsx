@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { links, workspaces, type Member, type Workspace } from '../api';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { NoteEditor } from '../components/NoteEditor';
+import { UndoToasts, useUndoableDelete } from '../undo';
 
 /**
  * A workspace's page: its note rendered above its links in the owner's order;
@@ -13,6 +14,7 @@ export function WorkspacePage({ id }: { id: string }) {
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dragged = useRef<Member | null>(null);
+  const deletes = useUndoableDelete(members, setMembers);
 
   const reload = useCallback(async () => setMembers(await workspaces.links(id)), [id]);
 
@@ -52,7 +54,7 @@ export function WorkspacePage({ id }: { id: string }) {
   const actions: CardActions = {
     onPin: (link) => change(() => links.pin(link.id)),
     onUnpin: (link) => change(() => links.unpin(link.id)),
-    onDelete: (link) => change(() => links.remove(link.id)),
+    onDelete: deletes.remove,
     onArchive: (link) => change(() => links.archive(link.id)),
     onUnarchive: (link) => change(() => links.unarchive(link.id)),
     onRemoveFromWorkspace: (link) => {
@@ -81,7 +83,7 @@ export function WorkspacePage({ id }: { id: string }) {
         </p>
       )}
       <div className="cards">
-        {members.map((m) => (
+        {deletes.shown.map((m) => (
           <div
             key={m.id}
             className="member"
@@ -99,7 +101,10 @@ export function WorkspacePage({ id }: { id: string }) {
           </div>
         ))}
       </div>
-      {members.length === 0 && <p className="muted">No links yet. Add them from the stream.</p>}
+      {deletes.shown.length === 0 && (
+        <p className="muted">No links yet. Add them from the stream.</p>
+      )}
+      <UndoToasts deletes={deletes} />
     </section>
   );
 }

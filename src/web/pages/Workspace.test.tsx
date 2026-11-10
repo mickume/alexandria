@@ -81,6 +81,33 @@ describe('a workspace’s page', () => {
     await waitFor(() => expect(titles()).toEqual(['Beta']));
   });
 
+  it('shows every link of a workspace longer than one page', async () => {
+    const members: Member[] = Array.from({ length: 130 }, (_, i) => ({
+      ...makeLink({ id: `m${i}`, title: `Member ${i}` }),
+      position: i + 1,
+    }));
+    const api = workspaceApi().on('GET', '/api/v1/workspaces/w1/links', (req) =>
+      req.path.includes('cursor=next')
+        ? { status: 200, body: { items: members.slice(100), next_cursor: null } }
+        : { status: 200, body: { items: members.slice(0, 100), next_cursor: 'next' } },
+    );
+    renderPage('/workspaces/w1', api);
+    await screen.findByRole('article', { name: 'Member 129' });
+    expect(titles()).toHaveLength(130);
+  });
+
+  it('deletes a link only after its undo window, like every other list', async () => {
+    const api = workspaceApi().on('DELETE', '/api/v1/links/:id', { status: 204 });
+    renderPage('/workspaces/w1', api);
+    const alpha = await screen.findByRole('article', { name: 'Alpha' });
+    fireEvent.click(within(alpha).getByRole('button', { name: 'More actions' }));
+    fireEvent.click(within(alpha).getByRole('button', { name: 'Delete' }));
+    expect(titles()).toEqual(['Beta']);
+    expect(api.sent('DELETE', '/api/v1/links/a')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(titles()).toEqual(['Alpha', 'Beta']);
+  });
+
   it('edits the note in place, and keeps the text when it is too long', async () => {
     const api = workspaceApi();
     renderPage('/workspaces/w1', api);
