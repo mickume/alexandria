@@ -244,23 +244,18 @@ export function setTagsStatements(
 }
 
 /**
- * The user's aliases of topics and tags, by nameKey, each with its survivor's
- * name. An alias that is also a current name is left out: a current name wins.
+ * The user's tag aliases, by nameKey, each with its survivor's name. An alias
+ * that is also a current name is left out: a current name wins. (Topic
+ * aliases are matched name by name as a topic path is resolved.)
  */
 export async function listAliases(db: D1Database, userId: string): Promise<Aliases> {
-  const query = (kind: 'topic' | 'tag') =>
-    db
-      .prepare(
-        `SELECT a.name, v.name AS survivor FROM ${kind}_aliases a JOIN ${kind}s v ON v.id = a.${kind}_id
-         WHERE a.user_id = ?1 AND NOT EXISTS (
-           SELECT 1 FROM ${kind}s c WHERE c.user_id = ?1 AND c.name = a.name COLLATE NOCASE)`,
-      )
-      .bind(userId);
-  const [topics, tags] = await db.batch<{ name: string; survivor: string }>([
-    query('topic'),
-    query('tag'),
-  ]);
-  const byKey = (rows: { name: string; survivor: string }[] = []) =>
-    new Map(rows.map((r) => [nameKey(r.name), r.survivor]));
-  return { topics: byKey(topics?.results), tags: byKey(tags?.results) };
+  const rows = await db
+    .prepare(
+      `SELECT a.name, v.name AS survivor FROM tag_aliases a JOIN tags v ON v.id = a.tag_id
+       WHERE a.user_id = ?1 AND NOT EXISTS (
+         SELECT 1 FROM tags c WHERE c.user_id = ?1 AND c.name = a.name COLLATE NOCASE)`,
+    )
+    .bind(userId)
+    .all<{ name: string; survivor: string }>();
+  return { tags: new Map(rows.results.map((r) => [nameKey(r.name), r.survivor])) };
 }

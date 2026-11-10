@@ -150,9 +150,12 @@ limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
 Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
 hyphenated) and `topic`. Enrichment files the link under a topic path of up
-to three names (`resolveTopicPath`): each name that matches an existing topic
-uses it where it is, and each other one is a new topic under the one before
-it, so enrichment grows the topic tree but never moves a topic. `topic_path` holds the names from the link's
+to three names that the provider returns: from the first, a name that matches
+an existing topic (ignoring case, as an alias, or as a near name such as a
+plural) uses it where it is, and any other name becomes a new topic under the
+one before it, so enrichment grows the topic tree but never moves a topic. A
+path of more than three names keeps the first two and the last; one with an
+empty name, or a name over 100 characters, is an unusable result. `topic_path` holds the names from the link's
 top-level topic down to its own topic, such as
 `["Software engineering", "Testing"]` (`[]` without a topic); `topic` is the
 last of them. `enrichment_status` says where the link stands:

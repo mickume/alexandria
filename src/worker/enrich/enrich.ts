@@ -6,8 +6,9 @@ export interface Enrichment {
   topic: string[];
 }
 
-/** The longest name of a topic path, and the deepest path kept. */
+/** The longest name of a topic path. */
 const TOPIC_NAME_MAX = 100;
+/** The deepest topic path kept: the topic tree's three levels. */
 const TOPIC_PATH_MAX = 3;
 
 /** The most page text sent to the provider, in characters. */
@@ -107,7 +108,7 @@ export function normalizeResult(raw: unknown): Enrichment | null {
   return { summary: cleanSummary, tags: cleanTags, topic: path };
 }
 
-/** A topic or tag name with the number of the user's links that carry it. */
+/** A tag name with the number of the user's links that carry it. */
 export interface VocabularyEntry {
   name: string;
   count: number;
@@ -163,9 +164,8 @@ export function buildPrompt(input: PromptInput): string {
   return lines.join('\n');
 }
 
-/** The user's aliases: each former name's key (nameKey) with the name of its survivor. */
+/** The user's tag aliases: each former name's key (nameKey) with the name of its survivor. */
 export interface Aliases {
-  topics: Map<string, string>;
   tags: Map<string, string>;
 }
 
