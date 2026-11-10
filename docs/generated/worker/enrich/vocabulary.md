@@ -44,8 +44,9 @@ The deepest level of the topic tree: a top-level topic is level 1.
 
 > **listAliases**(`db`, `userId`): `Promise`\<[`Aliases`](enrich.md#aliases)\>
 
-The user's aliases of topics and tags, by nameKey, each with its survivor's
-name. An alias that is also a current name is left out: a current name wins.
+The user's tag aliases, by nameKey, each with its survivor's name. An alias
+that is also a current name is left out: a current name wins. (Topic
+aliases are matched name by name as a topic path is resolved.)
 
 #### Parameters
 
@@ -65,9 +66,13 @@ name. An alias that is also a current name is left out: a current name wins.
 
 ### listVocabulary()
 
-> **listVocabulary**(`db`, `userId`): `Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; \}\>
+> **listVocabulary**(`db`, `userId`): `Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: `string`[]; \}\>
 
-The user's most used topic and tag names with their link counts, for the provider to reuse.
+What the provider is shown of the user's vocabulary, for it to reuse: the
+paths of the 100 topics whose newest link, filed under the topic or under a
+topic beneath it, was added most recently, each as its names from the top
+level down joined with ' > ', without counts; and the 300 most used tags,
+each with its number of links.
 
 #### Parameters
 
@@ -81,7 +86,7 @@ The user's most used topic and tag names with their link counts, for the provide
 
 #### Returns
 
-`Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; \}\>
+`Promise`\<\{ `tags`: [`VocabularyEntry`](enrich.md#vocabularyentry)[]; `topics`: `string`[]; \}\>
 
 ***
 
@@ -113,36 +118,6 @@ order and without repeats, created where there are none.
 #### Returns
 
 `Promise`\<`string`[]\>
-
-***
-
-### resolveTopic()
-
-> **resolveTopic**(`db`, `userId`, `name`, `options?`): `Promise`\<`string`\>
-
-The id of the user's topic named `name` (or, with `near`, a near name), created at the top level when there is none.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-##### name
-
-`string`
-
-##### options?
-
-[`ResolveOptions`](#resolveoptions) = `{}`
-
-#### Returns
-
-`Promise`\<`string`\>
 
 ***
 

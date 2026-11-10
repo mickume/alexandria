@@ -158,7 +158,7 @@ The structured result asked of the model.
 
 ###### properties.topic.description
 
-> `readonly` **description**: `"The one topic the page belongs to."` = `'The one topic the page belongs to.'`
+> `readonly` **description**: "The path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by \\" \> \\"." = `'The path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by " > ".'`
 
 ###### properties.topic.type
 
