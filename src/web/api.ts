@@ -369,6 +369,13 @@ export const vocabulary = {
       `/${kind}/${encodeURIComponent(id)}/merge`,
       { into },
     ),
+  /** Has the owner's AI provider divide the links filed directly under a topic into sub-topics. */
+  split: (id: string) =>
+    request<{
+      topic: Omit<TopicItem, 'newest_added_at'>;
+      children: { id: string; name: string; count: number }[];
+      moved: number;
+    }>('POST', `/topics/${encodeURIComponent(id)}/split`),
   /** Moves a topic, with everything beneath it, under another topic, or to the top level for null. */
   move: (id: string, parent: string | null) =>
     request<Omit<TopicItem, 'newest_added_at'>>('POST', `/topics/${encodeURIComponent(id)}/move`, {

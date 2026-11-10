@@ -144,6 +144,107 @@ describe('the Topics page', () => {
     expect(select).toHaveProperty('value', 't3');
   });
 
+  describe('splitting a topic', () => {
+    const tree = [
+      {
+        id: 's1',
+        name: 'Software engineering',
+        parent_id: null,
+        count: 25,
+        subtree_count: 44,
+        newest_added_at: N,
+      },
+      {
+        id: 's2',
+        name: 'Testing',
+        parent_id: 's1',
+        count: 19,
+        subtree_count: 19,
+        newest_added_at: N,
+      },
+      {
+        id: 's3',
+        name: 'Cooking',
+        parent_id: null,
+        count: 20,
+        subtree_count: 20,
+        newest_added_at: N,
+      },
+    ];
+    const answered = {
+      status: 200,
+      body: {
+        topic: {
+          id: 's1',
+          name: 'Software engineering',
+          parent_id: null,
+          count: 5,
+          subtree_count: 44,
+        },
+        children: [{ id: 's2', name: 'Testing', count: 39 }],
+        moved: 20,
+      },
+    };
+    const row = async (name: string) => (await screen.findByRole('link', { name })).closest('tr')!;
+
+    it('is offered on a topic with at least 20 links of its own, and no other', async () => {
+      renderPage(
+        '/topics',
+        new FakeApi().on('GET', '/api/v1/topics', {
+          status: 200,
+          body: { items: tree, next_cursor: null },
+        }),
+      );
+      expect(
+        within(await row('Software engineering')).queryByRole('button', { name: 'Split' }),
+      ).not.toBeNull();
+      expect(within(await row('Cooking')).queryByRole('button', { name: 'Split' })).not.toBeNull();
+      expect(within(await row('Testing')).queryByRole('button', { name: 'Split' })).toBeNull();
+    });
+
+    it('shows Splitting… with the row’s actions disabled until the answer, then loads the tree again', async () => {
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const api = new FakeApi()
+        .on('GET', '/api/v1/topics', { status: 200, body: { items: tree, next_cursor: null } })
+        .on('POST', '/api/v1/topics/:id/split', async () => {
+          await held;
+          return answered;
+        });
+      renderPage('/topics', api);
+      const se = await row('Software engineering');
+      await act(async () => within(se).getByRole('button', { name: 'Split' }).click());
+      expect(within(se).getByText('Splitting…')).toBeTruthy();
+      for (const name of ['Rename', 'Merge', 'Move under…', 'Split']) {
+        expect(within(se).getByRole('button', { name })).toHaveProperty('disabled', true);
+      }
+      await act(async () => {
+        release();
+        await held;
+      });
+      await act(async () => undefined);
+      expect(api.sent('POST', '/api/v1/topics/s1/split')).toHaveLength(1);
+      expect(api.sent('GET', '/api/v1/topics')).toHaveLength(2);
+      expect(within(await row('Software engineering')).queryByText('Splitting…')).toBeNull();
+    });
+
+    it('shows why a split failed, and gives the row its actions back', async () => {
+      const api = new FakeApi()
+        .on('GET', '/api/v1/topics', { status: 200, body: { items: tree, next_cursor: null } })
+        .on('POST', '/api/v1/topics/:id/split', {
+          status: 409,
+          body: { error: 'no_ai_key', message: 'add an AI key in settings' },
+        });
+      renderPage('/topics', api);
+      const se = await row('Software engineering');
+      const before = rows();
+      await act(async () => within(se).getByRole('button', { name: 'Split' }).click());
+      expect((await screen.findByRole('alert')).textContent).toContain('add an AI key in settings');
+      expect(rows()).toEqual(before);
+      expect(within(se).getByRole('button', { name: 'Split' })).toHaveProperty('disabled', false);
+    });
+  });
+
   it('is reached from the navigation', async () => {
     renderPage('/', new FakeApi());
     const nav = screen.getByRole('navigation');

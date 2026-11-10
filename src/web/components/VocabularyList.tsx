@@ -13,8 +13,11 @@ import { byName } from '../format';
 
 const FILTER: Record<VocabularyKind, 'topic' | 'tag'> = { topics: 'topic', tags: 'tag' };
 
-/** What a row is doing: showing its actions, renaming, merging, or moving. */
-type Mode = 'idle' | 'rename' | 'merge' | 'move';
+/** What a row is doing: showing its actions, renaming, merging, moving, or waiting for a split. */
+type Mode = 'idle' | 'rename' | 'merge' | 'move' | 'splitting';
+
+/** The fewest links filed directly under a topic that a split takes. */
+const SPLIT_MIN_LINKS = 20;
 
 /** A topic or tag in the list's order, with its level in the topic tree (1 for a tag). */
 interface Entry {
@@ -92,6 +95,42 @@ function PickForm({
   );
 }
 
+/**
+ * A row's actions: Rename, Merge when there are others, and for a topic
+ * Move under… and, with at least 20 links of its own, Split; all disabled,
+ * with "Splitting…", while a split runs.
+ */
+function RowActions({
+  canMerge,
+  canMove,
+  canSplit,
+  splitting,
+  onMode,
+  onSplit,
+}: {
+  canMerge: boolean;
+  canMove: boolean;
+  canSplit: boolean;
+  splitting: boolean;
+  onMode: (mode: 'rename' | 'merge' | 'move') => void;
+  onSplit: () => void;
+}) {
+  const button = (label: string, onClick: () => void) => (
+    <button type="button" className="q-btn-link" disabled={splitting} onClick={onClick}>
+      {label}
+    </button>
+  );
+  return (
+    <>
+      {splitting && <span className="muted">Splitting…</span>}
+      {button('Rename', () => onMode('rename'))}
+      {canMerge && button('Merge', () => onMode('merge'))}
+      {canMove && button('Move under…', () => onMode('move'))}
+      {canSplit && button('Split', onSplit)}
+    </>
+  );
+}
+
 /** One topic or tag: its name opening its search, its count, Rename and Merge, and for a topic Move under…. */
 function Row({
   kind,
@@ -120,6 +159,11 @@ function Row({
     }
   }
 
+  function split() {
+    setMode('splitting');
+    void act(() => vocabulary.split(item.id)).finally(() => setMode('idle'));
+  }
+
   return (
     <tr data-level={kind === 'topics' ? level : undefined}>
       <td>
@@ -127,22 +171,15 @@ function Row({
       </td>
       <td className="count q-table-number">{(item as TopicItem).subtree_count ?? item.count}</td>
       <td className="actions">
-        {mode === 'idle' && (
-          <>
-            <button type="button" className="q-btn-link" onClick={() => setMode('rename')}>
-              Rename
-            </button>
-            {others.length > 0 && (
-              <button type="button" className="q-btn-link" onClick={() => setMode('merge')}>
-                Merge
-              </button>
-            )}
-            {moveTargets && (
-              <button type="button" className="q-btn-link" onClick={() => setMode('move')}>
-                Move under…
-              </button>
-            )}
-          </>
+        {(mode === 'idle' || mode === 'splitting') && (
+          <RowActions
+            canMerge={others.length > 0}
+            canMove={moveTargets !== undefined}
+            canSplit={kind === 'topics' && item.count >= SPLIT_MIN_LINKS}
+            splitting={mode === 'splitting'}
+            onMode={setMode}
+            onSplit={split}
+          />
         )}
         {mode === 'rename' && (
           <form

@@ -128,6 +128,10 @@ export const fakeAi = {
       body: JSON.stringify({ status, message }),
     });
   },
+  /** Answers a topic's split with `subtopics`, filing the links it is sent round-robin under them. */
+  async splitInto(subtopics: string[]): Promise<void> {
+    await fetch(`${this.url}/__split`, { method: 'POST', body: JSON.stringify({ subtopics }) });
+  },
   /** Answers every enrichment whose request holds `contains` with `result`. */
   async answerWhen(
     contains: string,

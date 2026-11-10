@@ -68,7 +68,10 @@ topics in alphabetical order, each followed by its sub-topics, indented, with
 the number of links under each topic and beneath it. Each opens its search, and
 each can be renamed or merged into another, chosen from a list in alphabetical
 order; a topic can also be moved, with everything beneath it, under another
-topic or to the top level with **Move under…**. Typing a path such as
+topic or to the top level with **Move under…**, and a topic with at least 20
+links of its own can be broken up with **Split**: your AI provider proposes 2 to
+10 sub-topics and files each of its links under one of them, or leaves it, all
+at once. Typing a path such as
 `Software engineering > Testing` into a link's topic files it under a sub-topic,
 creating what does not exist yet. The topic and tags on a
 link's card and on its detail page open the same searches: the card shows the

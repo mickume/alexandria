@@ -12,9 +12,13 @@
  * of POST /__answer_text {text}, a word at a time, or with the error of
  * POST /__reject_answers {status, message} (no status clears it).
  *
+ * A topic's split (a structured request whose schema asks for subtopics) is
+ * answered with the sub-topics of POST /__split {subtopics}, the links the
+ * request lists filed round-robin under them.
+ *
  * Control: POST /__answer {summary, tags, topic}, POST /__answer_when
- * {contains, result}, POST /__answer_text, POST /__reject_answers, GET /__log,
- * GET /health.
+ * {contains, result}, POST /__split {subtopics}, POST /__answer_text,
+ * POST /__reject_answers, GET /__log, GET /health.
  * Run with: node e2e/fake-ai.ts <port>
  */
 import { createServer, type IncomingMessage } from 'node:http';
@@ -40,6 +44,38 @@ const answersWhen: { contains: string; result: Result }[] = [];
 /** The answer to an enrichment request with this body. */
 function answerFor(body: string): Result {
   return answersWhen.find((a) => body.includes(a.contains))?.result ?? answer;
+}
+
+/** The sub-topics a split is answered with. */
+let splitInto: string[] = ['First', 'Second'];
+
+/** Whether a request asks for a topic's split: its structured result has subtopics. */
+function isSplit(parsed: Record<string, unknown>): boolean {
+  const format = parsed.output_config as
+    { format?: { schema?: { properties?: object } } } | undefined;
+  const response = parsed.response_format as
+    { json_schema?: { schema?: { properties?: object } } } | undefined;
+  const properties =
+    format?.format?.schema?.properties ?? response?.json_schema?.schema?.properties;
+  return 'subtopics' in (properties ?? {});
+}
+
+/** The split of the links a request lists (one JSON object per line), round-robin. */
+function splitFor(parsed: Record<string, unknown>) {
+  const [message] = (parsed.messages as { content: string }[] | undefined) ?? [];
+  const ids = (message?.content ?? '')
+    .split('\n')
+    .filter((line) => line.startsWith('{'))
+    .map((line) => (JSON.parse(line) as { id: string }).id);
+  return {
+    subtopics: splitInto,
+    links: ids.map((id, i) => ({ id, subtopic: splitInto[i % splitInto.length]! })),
+  };
+}
+
+/** The structured answer to a request: a split or an enrichment. */
+function structuredFor(parsed: Record<string, unknown>, body: string): string {
+  return JSON.stringify(isSplit(parsed) ? splitFor(parsed) : answerFor(body));
 }
 
 /** Every provider request: when, which provider, its key header and its body. */
@@ -84,6 +120,10 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/__answer' && req.method === 'POST') {
     answer = JSON.parse(await readBody(req)) as Result;
     return send(200, answer);
+  }
+  if (url.pathname === '/__split' && req.method === 'POST') {
+    splitInto = (JSON.parse(await readBody(req)) as { subtopics: string[] }).subtopics;
+    return send(200, { subtopics: splitInto });
   }
   if (url.pathname === '/__answer_when' && req.method === 'POST') {
     const rule = JSON.parse(await readBody(req)) as { contains: string; result: Result };
@@ -145,7 +185,7 @@ const server = createServer(async (req, res) => {
       role: 'assistant',
       model: parsed.model,
       // Structured outputs answer with the JSON as text.
-      content: [{ type: 'text', text: enrichment ? JSON.stringify(answerFor(body)) : 'ok' }],
+      content: [{ type: 'text', text: enrichment ? structuredFor(parsed, body) : 'ok' }],
       stop_reason: 'end_turn',
       stop_sequence: null,
       usage: { input_tokens: 1, output_tokens: 1 },
@@ -180,7 +220,7 @@ const server = createServer(async (req, res) => {
           finish_reason: 'stop',
           message: {
             role: 'assistant',
-            content: enrichment ? JSON.stringify(answerFor(body)) : 'ok',
+            content: enrichment ? structuredFor(parsed, body) : 'ok',
           },
         },
       ],
