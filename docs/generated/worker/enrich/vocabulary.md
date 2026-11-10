@@ -30,6 +30,14 @@ variants converge; an owner's own edit does not, so it is taken as typed.
 
 How many of the user's topics and tags the provider is shown.
 
+***
+
+### TOPIC\_LEVELS
+
+> `const` **TOPIC\_LEVELS**: `3` = `3`
+
+The deepest level of the topic tree: a top-level topic is level 1.
+
 ## Functions
 
 ### listAliases()
@@ -112,7 +120,7 @@ order and without repeats, created where there are none.
 
 > **resolveTopic**(`db`, `userId`, `name`, `options?`): `Promise`\<`string`\>
 
-The id of the user's topic named `name` (or, with `near`, a near name), created when there is none.
+The id of the user's topic named `name` (or, with `near`, a near name), created at the top level when there is none.
 
 #### Parameters
 
@@ -129,6 +137,41 @@ The id of the user's topic named `name` (or, with `near`, a near name), created 
 `string`
 
 ##### options?
+
+[`ResolveOptions`](#resolveoptions) = `{}`
+
+#### Returns
+
+`Promise`\<`string`\>
+
+***
+
+### resolveTopicPath()
+
+> **resolveTopicPath**(`db`, `userId`, `names`, `__namedParameters?`): `Promise`\<`string`\>
+
+The id of the topic a path of names leads to in the user's topic tree,
+resolving the names from the first. A name equal to a topic's name or to an
+alias (nameKey), or with `near` a near name, is that topic wherever it is
+in the tree, and the next name belongs under it. Any other name is created
+as given under the topic the name before it led to (at the top level for
+the first), or, where that would be below the third level, beside it.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### names
+
+`string`[]
+
+##### \_\_namedParameters?
 
 [`ResolveOptions`](#resolveoptions) = `{}`
 

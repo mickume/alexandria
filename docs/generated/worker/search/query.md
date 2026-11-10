@@ -76,8 +76,9 @@ The values `state:` accepts.
 
 > **filterConditions**(`filters`): [`Conditions`](#conditions)
 
-The conditions that select the links satisfying every filter: a tag or
-topic with that name and the workspace with that name, ignoring case; a
+The conditions that select the links satisfying every filter: a tag with
+that name, a topic with that name or a topic beneath it, and the workspace
+with that name, ignoring case; a
 host equal to the value or ending in '.' and the value; pinned; dead.
 Expired links are left out unless a `state:` filter is given: `expired`
 selects only them, `any` every state, another value that state.

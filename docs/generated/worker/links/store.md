@@ -172,6 +172,12 @@ The topic's name, when read through link_views.
 
 > **topic\_id**: `string` \| `null`
 
+##### topic\_path\_json?
+
+> `optional` **topic\_path\_json?**: `string`
+
+A JSON array of the topic path's names from the top level down, when read through link_views.
+
 ##### updated\_at
 
 > **updated\_at**: `string`
@@ -382,6 +388,12 @@ Why the link is in its state, such as "HTTP 503" for a pending or unreachable li
 ##### topic
 
 > **topic**: `string` \| `null`
+
+##### topic\_path
+
+> **topic\_path**: `string`[]
+
+The names from the link's top-level topic down to its own topic; [] without a topic.
 
 ##### updated\_at
 

@@ -6,9 +6,10 @@
 
 > **VocabularyList**(`__namedParameters`): `Element`
 
-The Topics or Tags page: every topic or tag with its number of links,
-by name, each opening the search for its filter, with Rename and Merge; the
-Merge drop-down offers the others in the same order.
+The Topics or Tags page: every tag by name with its number of links, or
+the topic tree with each topic's links and those beneath it; each opens the
+search for its filter, with Rename and Merge, whose drop-down offers the
+others by name, and for a topic Move under….
 
 #### Parameters
 

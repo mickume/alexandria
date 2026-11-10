@@ -56,6 +56,12 @@ A link within the website, followed without a reload.
 
 Marks the link as the page being shown.
 
+###### title?
+
+`string`
+
+The link's tooltip.
+
 ###### to
 
 `string`

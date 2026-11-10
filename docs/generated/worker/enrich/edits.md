@@ -22,7 +22,9 @@ A valid edit: the given fields, normalised.
 
 ##### topic?
 
-> `optional` **topic?**: `string`
+> `optional` **topic?**: `string`[]
+
+The names of the topic path, from the top level down: one to three.
 
 ***
 
@@ -89,7 +91,8 @@ The fields the owner can edit, in the order edited_fields records them.
 > **applyEdit**(`db`, `userId`, `id`, `edit`): `Promise`\<[`LinkRow`](../links/store.md#linkrow) \| `null`\>
 
 Applies a valid edit to one of the user's links: the given fields are
-stored, tag and topic names resolved against the user's vocabulary, and
+stored, tag names and the topic path resolved against the user's
+vocabulary (names and aliases as typed, never near names), and
 each given field is recorded as edited for good. Null when there is no such link.
 
 #### Parameters
@@ -122,7 +125,8 @@ each given field is recorded as edited for good. Null when there is no such link
 
 Validates every given field of an edit, refusing the whole edit on the first
 invalid one: a title of 1 to 500 characters, a summary of at most 2,000, at
-most 20 tags each non-empty once normalised, a topic of 1 to 100 characters.
+most 20 tags each non-empty once normalised, a topic or a path of up to
+three topics separated by >, each name 1 to 100 characters.
 
 #### Parameters
 

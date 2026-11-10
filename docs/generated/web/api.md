@@ -516,6 +516,12 @@ When an expired link will be removed.
 
 > **topic**: `string` \| `null`
 
+##### topic\_path
+
+> **topic\_path**: `string`[]
+
+The names from the top-level topic down to the link's own topic; [] without a topic.
+
 ##### updated\_at
 
 > **updated\_at**: `string`
@@ -702,9 +708,65 @@ A personal access token as listed.
 
 ***
 
+### TopicItem
+
+A topic as listed: also its parent (null at the top level) and the links beneath it.
+
+#### Extends
+
+- [`VocabularyItem`](#vocabularyitem)
+
+#### Properties
+
+##### count
+
+> **count**: `number`
+
+###### Inherited from
+
+[`VocabularyItem`](#vocabularyitem).[`count`](#count-1)
+
+##### id
+
+> **id**: `string`
+
+###### Inherited from
+
+[`VocabularyItem`](#vocabularyitem).[`id`](#id-4)
+
+##### name
+
+> **name**: `string`
+
+###### Inherited from
+
+[`VocabularyItem`](#vocabularyitem).[`name`](#name-3)
+
+##### newest\_added\_at
+
+> **newest\_added\_at**: `string`
+
+###### Inherited from
+
+[`VocabularyItem`](#vocabularyitem).[`newest_added_at`](#newest_added_at-1)
+
+##### parent\_id
+
+> **parent\_id**: `string` \| `null`
+
+##### subtree\_count
+
+> **subtree\_count**: `number`
+
+***
+
 ### VocabularyItem
 
 A topic or tag as listed, with its number of links.
+
+#### Extended by
+
+- [`TopicItem`](#topicitem)
 
 #### Properties
 
@@ -1423,6 +1485,26 @@ Every topic or tag with a link, newest first, following the cursor to the end.
 ###### Returns
 
 `Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
+
+##### move
+
+> **move**: (`id`, `parent`) => `Promise`\<`Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>\>
+
+Moves a topic, with everything beneath it, under another topic, or to the top level for null.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### parent
+
+`string` \| `null`
+
+###### Returns
+
+`Promise`\<`Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>\>
 
 ##### rename
 

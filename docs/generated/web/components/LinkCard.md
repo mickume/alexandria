@@ -280,19 +280,19 @@ One chip per tag, each opening the search for the tag's links, as on the Tags pa
 
 ***
 
-### TopicChip()
+### TopicPath()
 
-> **TopicChip**(`__namedParameters`): `Element`
+> **TopicPath**(`__namedParameters`): `Element`
 
-A link's topic as a chip that opens the search for the topic's links, as on the Topics page.
+A link's topic path as a breadcrumb, each name opening the search of its own topic.
 
 #### Parameters
 
 ##### \_\_namedParameters
 
-###### topic
+###### path
 
-`string`
+`string`[]
 
 #### Returns
 
