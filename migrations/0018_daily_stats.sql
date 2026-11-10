@@ -97,3 +97,31 @@ BEGIN
   VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
   ON CONFLICT (user_id, day) DO UPDATE SET expired = expired + 1;
 END;
+
+-- Every fetch attempt recorded, by the fetch worker or the archive refresh.
+CREATE TRIGGER daily_fetch_event AFTER INSERT ON link_events
+WHEN new.kind = 'fetch'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, fetch_ok, fetch_failed)
+  VALUES (new.user_id, substr(new.at, 1, 10), new.outcome = 'ok', new.outcome <> 'ok')
+  ON CONFLICT (user_id, day) DO UPDATE SET
+    fetch_ok = fetch_ok + excluded.fetch_ok, fetch_failed = fetch_failed + excluded.fetch_failed;
+END;
+
+-- An enrichment's result stored: every store sets a new enriched_at.
+CREATE TRIGGER daily_link_enriched AFTER UPDATE OF enriched_at ON links
+WHEN new.enriched_at IS NOT NULL AND new.enriched_at IS NOT old.enriched_at
+BEGIN
+  INSERT INTO daily_stats (user_id, day, enriched)
+  VALUES (new.user_id, substr(new.enriched_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET enriched = enriched + 1;
+END;
+
+-- An enrichment's failure stored: each failed attempt writes the status again.
+CREATE TRIGGER daily_link_enrichment_failed AFTER UPDATE OF enrichment_status ON links
+WHEN new.enrichment_status = 'failed'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, enrichment_failed)
+  VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET enrichment_failed = enrichment_failed + 1;
+END;

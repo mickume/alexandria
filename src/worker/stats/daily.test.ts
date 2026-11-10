@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateDecay } from '../decay/decay';
+import { blogArticle } from '../fetcher/fixtures/pages';
+import { FakeAi } from '../test/ai';
+import { ARTICLES, seedArticle } from '../test/meaning';
+import { FakeOrigin } from '../test/origin';
 import {
   api,
+  addAndFetch,
   createToken,
+  deliverEnrichments,
+  deliverFetches,
+  deliverIndexing,
   env,
+  recordEnrichQueue,
+  recordFetchQueue,
   mcpTool,
   seedLinks,
   setNow,
@@ -275,5 +285,109 @@ describe('counting decay', () => {
       ['active', 'active', 'active', 'expired', 'expired'].sort(),
     );
     expect(await today(user)).toMatchObject({ expired: 0, removed: 0 });
+  });
+});
+
+/** The user's fetch events of today by outcome, as the link histories show them. */
+async function historyFetches(user: TestUser, ids: string[]) {
+  const out = { ok: 0, failed: 0 };
+  for (const id of ids) {
+    const r = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
+    for (const e of r.json.items as { kind: string; at: string; outcome: 'ok' | 'failed' }[]) {
+      if (e.kind === 'fetch' && e.at.startsWith(NOW.slice(0, 10))) out[e.outcome] += 1;
+    }
+  }
+  return out;
+}
+
+/** Saves an Anthropic key the fake provider accepts. */
+async function saveKey(user: TestUser) {
+  const r = await api('PUT', '/api/v1/settings/ai', {
+    as: user.session,
+    body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+  });
+  expect(r.status).toBe(200);
+}
+
+describe('counting background work', () => {
+  it('counts each fetch event by its outcome, as the link histories show them', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const origin = new FakeOrigin().page('https://ok.example/a', blogArticle);
+    origin.status('https://down.example/a', 503);
+    const ok = await addAndFetch(user, 'https://ok.example/a');
+    const retries = recordFetchQueue();
+    const down = await addAndFetch(user, 'https://down.example/a');
+    // The failed first fetch is tried again; deliver the retries the worker sent.
+    for (let i = 0; i < 2 && retries.length; i++) {
+      await deliverFetches(retries.splice(0, retries.length).map((m) => m.body));
+    }
+    const [kept = ''] = await seedLinks(user, [{ url: 'https://kept.example/', state: 'active' }]);
+    env.FETCH_QUEUE = {
+      send: () => Promise.reject(new Error('the queue is down')),
+    } as unknown as typeof env.FETCH_QUEUE;
+    expect((await api('POST', `/api/v1/links/${kept}/archive`, { as: user.session })).status).toBe(
+      200,
+    );
+    const shown = await historyFetches(user, [ok.id, down.id, kept]);
+    expect(shown.ok).toBe(1);
+    expect(shown.failed).toBeGreaterThanOrEqual(2);
+    const day = await today(user);
+    expect({ ok: day.fetch_ok, failed: day.fetch_failed }).toEqual(shown);
+  });
+
+  it('counts a fetch delivered again only as often as the history records it', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    new FakeOrigin().page('https://twice.example/a', blogArticle);
+    const fetched = await addAndFetch(user, 'https://twice.example/a');
+    await deliverFetches(fetched.sent.map((m) => m.body));
+    const shown = await historyFetches(user, [fetched.id]);
+    expect((await today(user)).fetch_ok).toBe(shown.ok);
+  });
+
+  it('counts each enrichment stored and each failure stored', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    new FakeOrigin()
+      .page('https://enrich.example/a', blogArticle)
+      .page('https://fails.example/a', blogArticle);
+    const enrich = recordEnrichQueue();
+    await addAndFetch(user, 'https://enrich.example/a');
+    await deliverEnrichments(enrich.splice(0, enrich.length).map((m) => m.body));
+    ai.status(400, 'the request could not be used');
+    await addAndFetch(user, 'https://fails.example/a');
+    // The first automatic attempt fails and is sent again; the retry fails too.
+    for (let i = 0; i < 2 && enrich.length; i++) {
+      await deliverEnrichments(enrich.splice(0, enrich.length).map((m) => m.body));
+    }
+    expect(await today(user)).toMatchObject({ enriched: 1, enrichment_failed: 2 });
+  });
+
+  it.each([
+    ['answered by the provider', 'answer', 1],
+    ['with no passage near enough', 'nothing', 1],
+    ['with the provider failing', 'fail', 1],
+    ['refused as empty', 'empty', 0],
+    ['refused without a key', 'nokey', 0],
+  ])('counts an Ask question %s', async (_, how, expected) => {
+    setNow(NOW);
+    const user = await signIn();
+    const ai = new FakeAi();
+    if (how !== 'nokey') await saveKey(user);
+    const id = await seedArticle(user, ARTICLES.alarms);
+    expect((await deliverIndexing([{ user_id: user.id, link_id: id }])).retried).toEqual([]);
+    if (how === 'fail') ai.status(500, 'overloaded');
+    const question =
+      how === 'empty'
+        ? ''
+        : how === 'nothing'
+          ? 'quarterly tax return'
+          : 'how do I schedule background work on cloudflare';
+    const r = await api('POST', '/api/v1/ask', { as: user.session, body: { question } });
+    await r.response.text();
+    expect((await today(user)).asks).toBe(expected);
   });
 });

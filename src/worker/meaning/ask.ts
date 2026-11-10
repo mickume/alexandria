@@ -6,11 +6,13 @@
  */
 import { Hono } from 'hono';
 import { limitReached, readJson, refusal, validationError } from '../api/errors';
+import { now } from '../clock';
 import type { AppEnv } from '../env';
 import { decryptKey, getAiSettings, markKeyRejected } from '../enrich/keys';
 import { streamAnswer, type AnswerRequest } from '../enrich/providers';
 import { getLink, toView } from '../links/store';
 import { parseQuery } from '../search/query';
+import { countStatement } from '../stats/daily';
 import { findPassages, MeaningUnavailable, type Passage } from './passages';
 
 /** The longest question, in characters. */
@@ -122,6 +124,8 @@ askRoutes.post('/', async (c) => {
     const row = await getLink(c.env.DB, userId, id);
     if (row) sources.push({ n, link: toView(row) });
   }
+  // The question is accepted and its answer starts: it counts, whatever the provider does.
+  await countStatement(c.env.DB, { userId, at: now(), counter: 'asks' }).run();
   const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
   const call = { provider: settings.provider, apiKey, model: settings.model };
 
