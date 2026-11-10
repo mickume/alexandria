@@ -110,19 +110,20 @@ export interface PromptInput {
   /** The reader-view text, or '' when the reader view is empty. */
   text: string;
   description: string | null;
-  topics: VocabularyEntry[];
+  /** The topics' paths, such as 'Software engineering > Testing'. */
+  topics: string[];
   tags: VocabularyEntry[];
 }
 
-/** Vocabulary entries as the request lists them: each name with its link count. */
+/** Tags as the request lists them: each name with its link count. */
 function listEntries(entries: VocabularyEntry[]): string {
   return entries.length ? entries.map((e) => `${e.name} (${e.count})`).join(', ') : '(none)';
 }
 
 /**
  * The request sent to the provider: instructions, the link's title and host,
- * the user's topic and tag names with how many links carry each, and the
- * first 20,000 characters of the page
+ * the user's topic paths, one per line, and tag names with how many links
+ * carry each, and the first 20,000 characters of the page
  * text, or its title and description when it has none. Nothing else of the
  * page or of the user.
  */
@@ -132,11 +133,13 @@ export function buildPrompt(input: PromptInput): string {
     'From the page below, give:',
     '- summary: what the page is about, in at most 60 words;',
     '- tags: 1 to 5 lower-case tags, each a single word or a hyphenated phrase;',
-    '- topic: the one topic the page belongs to.',
-    'Reuse an existing topic or tag when one fits, preferring the more used ones;',
+    '- topic: the path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by " > ".',
+    'File the page under the most specific topic that fits, existing or new, and put a new topic under the existing topic it belongs to.',
+    'Reuse an existing tag when one fits, preferring the more used ones;',
     'make a new one only when none does. A few tags that fit well beat many that fit loosely.',
-    'Each existing name is followed by the number of links that carry it.',
-    `Existing topics: ${listEntries(input.topics)}`,
+    'Each existing tag is followed by the number of links that carry it.',
+    'Existing topics:',
+    ...(input.topics.length ? input.topics : ['(none)']),
     `Existing tags: ${listEntries(input.tags)}`,
     '',
     `Title: ${input.title}`,

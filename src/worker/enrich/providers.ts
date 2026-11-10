@@ -43,7 +43,11 @@ export const RESULT_SCHEMA = {
       items: { type: 'string' },
       description: '1 to 5 lower-case tags: single words or hyphenated phrases.',
     },
-    topic: { type: 'string', description: 'The one topic the page belongs to.' },
+    topic: {
+      type: 'string',
+      description:
+        'The path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by " > ".',
+    },
   },
   required: ['summary', 'tags', 'topic'],
   additionalProperties: false,

@@ -15,8 +15,8 @@ import {
 } from '../test/helpers';
 import { blogArticle, longArticle } from '../fetcher/fixtures/pages';
 import { scannedPdf } from '../fetcher/fixtures/pdfs';
-import { normalizeResult } from './enrich';
-import { setProviderTimeout } from './providers';
+import { buildPrompt, normalizeResult } from './enrich';
+import { RESULT_SCHEMA, setProviderTimeout } from './providers';
 
 const ARTICLE = 'https://news.example/enrich-me';
 
@@ -247,6 +247,56 @@ describe('enriching a fetched link', () => {
       expect(body.includes(name), name).toBe(i >= 100);
     }
     expect(body).toContain('tag-100 (1)');
+    expect(body).toContain('Reuse an existing tag when one fits, preferring the more used ones');
+  });
+
+  it('lists the 100 topics with the newest links as paths, without counts', async () => {
+    const user = await signIn();
+    const day = (n: number) => new Date(Date.UTC(2026, 0, 1) + n * 86_400_000).toISOString();
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: 104 }, (_, i) => ({ url: `https://t${i}.example/`, addedAt: day(i) })),
+    );
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < 103; i++) {
+      const topic = `T${String(i).padStart(3, '0')}`;
+      statements.push(
+        env.DB.prepare('INSERT INTO topics (id, user_id, name) VALUES (?, ?, ?)').bind(
+          topic,
+          user.id,
+          topic,
+        ),
+        env.DB.prepare('UPDATE links SET topic_id = ? WHERE id = ?').bind(topic, ids[i]),
+      );
+    }
+    // The newest link of all is filed under a child: its parent ranks with it.
+    statements.push(
+      env.DB.prepare('INSERT INTO topics (id, user_id, name) VALUES (?, ?, ?)').bind(
+        'se',
+        user.id,
+        'Software engineering',
+      ),
+      env.DB.prepare('INSERT INTO topics (id, user_id, name, parent_id) VALUES (?, ?, ?, ?)').bind(
+        'testing',
+        user.id,
+        'Testing',
+        'se',
+      ),
+      env.DB.prepare('UPDATE links SET topic_id = ? WHERE id = ?').bind('testing', ids[103]),
+    );
+    await env.DB.batch(statements);
+    new FakeOrigin().page(ARTICLE, blogArticle);
+    const ai = new FakeAi();
+    await saveKey(user);
+    await addFetchAndEnrich(user, ARTICLE);
+    const body = JSON.stringify(ai.enrichments[0]!.body);
+    expect(body).toContain('\\nSoftware engineering > Testing\\n');
+    expect(body).toContain('\\nSoftware engineering\\n');
+    for (let i = 0; i < 103; i++) {
+      const topic = `T${String(i).padStart(3, '0')}`;
+      expect(body.includes(`\\n${topic}\\n`), topic).toBe(i >= 5);
+    }
+    expect(body).not.toMatch(/(T\d{3}|Testing|Software engineering) \(\d+\)/);
   });
 
   it.each([
@@ -325,6 +375,41 @@ describe('enriching a fetched link', () => {
   });
 });
 
+describe('the enrichment request', () => {
+  const prompt = buildPrompt({
+    title: 'A page',
+    host: 'page.example',
+    text: 'Some text.',
+    description: null,
+    topics: ['Software engineering', 'Software engineering > Testing'],
+    tags: [
+      { name: 'rust', count: 3 },
+      { name: 'wasm', count: 1 },
+    ],
+  });
+
+  it('asks for the most specific topic that fits, as a path of up to three names', () => {
+    expect(prompt).toContain(
+      'topic: the path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by " > "',
+    );
+    expect(prompt).toContain(
+      'File the page under the most specific topic that fits, existing or new, and put a new topic under the existing topic it belongs to.',
+    );
+    expect(prompt).toContain(
+      'Existing topics:\nSoftware engineering\nSoftware engineering > Testing\n',
+    );
+    expect(prompt.match(/preferring the more used/g)).toHaveLength(1);
+    expect(prompt).toContain('Reuse an existing tag when one fits, preferring the more used ones');
+    expect(prompt).toContain('Existing tags: rust (3), wasm (1)');
+  });
+
+  it('describes the result’s topic as a path', () => {
+    expect(RESULT_SCHEMA.properties.topic.description).toBe(
+      'The path of the one topic the page belongs to: one to three names from the most general to the most specific, separated by " > ".',
+    );
+  });
+});
+
 describe('enrichment after renames and merges', () => {
   /** Two links: one tagged js with topic Infra, one tagged javascript with topic Infrastructure. */
   async function vocabularyWithTwoNames(user: TestUser) {
@@ -359,10 +444,12 @@ describe('enrichment after renames and merges', () => {
     await saveKey(user);
     await addFetchAndEnrich(user, ARTICLE);
     const body = JSON.stringify(ai.enrichments[0]!.body);
-    // Each name with the number of links that carry it; the merge moved js's link.
+    // Each tag with the number of links that carry it (the merge moved js's
+    // link); each topic as its path, without a count.
     expect(body).toContain('javascript (2)');
-    expect(body).toContain('Infrastructure (1)');
-    expect(body).toContain('Operations (1)');
+    expect(body).toContain('\\nInfrastructure\\n');
+    expect(body).toContain('\\nOperations\\n');
+    expect(body).not.toContain('Infrastructure (1)');
     expect(body).not.toMatch(/\bjs\b/);
     expect(body).not.toMatch(/\bInfra\b/);
   });

@@ -255,8 +255,11 @@ describe('the topics and tags lists', () => {
       expect(await names()).not.toContain('solo');
       expect(await names()).toContain('kept');
       const vocabulary = await listVocabulary(env.DB, user.id);
-      expect(vocabulary[kind].map((e) => e.name.toLowerCase())).not.toContain('solo');
-      expect(vocabulary[kind].map((e) => e.name.toLowerCase())).toContain('kept');
+      const offered = (
+        kind === 'topics' ? vocabulary.topics : vocabulary.tags.map((e) => e.name)
+      ).map((name) => name.toLowerCase());
+      expect(offered).not.toContain('solo');
+      expect(offered).toContain('kept');
     });
 
     describe('and so is each parent it leaves with no link and no child', () => {

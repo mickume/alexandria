@@ -197,9 +197,12 @@ key is rejected it is `waiting_for_key`; otherwise it is `queued` and one
 handler for `alexandria-enrich`) decrypts the user's own key
 (`enrich/keys.ts`: AES-GCM under `KEY_ENCRYPTION_KEY`, the user id as
 additional data), builds the request (`enrich/enrich.ts`: instructions, title,
-host, the user's 100 most used topics and 300 most used tags, each with the
-number of links that carry it, and the first 20,000 characters of the reader
-text, or the title and description), asks
+host, the paths of the user's 100 topics whose newest link (under the topic
+or beneath it) is the most recent, one per line and without counts, the 300
+most used tags, each with the number of links that carry it, and the first
+20,000 characters of the reader text, or the title and description; it asks
+for the topic as a path of one to three names, the most specific that fits),
+asks
 the user's provider for a structured result (`enrich/providers.ts`: a JSON
 schema through structured outputs, `output_config.format`, with
 `@anthropic-ai/sdk`, since current models refuse a forced tool call; or a

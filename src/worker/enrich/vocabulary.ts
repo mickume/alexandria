@@ -4,16 +4,28 @@ import { nameKey, nearKeys, type Aliases, type VocabularyEntry } from './enrich'
 export const PROMPT_TOPICS = 100;
 export const PROMPT_TAGS = 300;
 
-/** The user's most used topic and tag names with their link counts, for the provider to reuse. */
+/**
+ * What the provider is shown of the user's vocabulary, for it to reuse: the
+ * paths of the 100 topics whose newest link, filed under the topic or under a
+ * topic beneath it, was added most recently, each as its names from the top
+ * level down joined with ' > ', without counts; and the 300 most used tags,
+ * each with its number of links.
+ */
 export async function listVocabulary(
   db: D1Database,
   userId: string,
-): Promise<{ topics: VocabularyEntry[]; tags: VocabularyEntry[] }> {
-  const [topics, tags] = await db.batch<VocabularyEntry>([
+): Promise<{ topics: string[]; tags: VocabularyEntry[] }> {
+  const [topics, tags] = await db.batch<{ path: string } & VocabularyEntry>([
     db
       .prepare(
-        `SELECT tp.name, COUNT(l.id) AS count FROM topics tp LEFT JOIN links l ON l.topic_id = tp.id
-         WHERE tp.user_id = ? GROUP BY tp.id ORDER BY COUNT(l.id) DESC, tp.name LIMIT ?`,
+        `SELECT COALESCE(p2.name || ' > ', '') || COALESCE(p1.name || ' > ', '') || v.name AS path
+         FROM topics v
+         LEFT JOIN topics p1 ON p1.id = v.parent_id
+         LEFT JOIN topics p2 ON p2.id = p1.parent_id
+         JOIN topics d ON d.id = v.id OR d.parent_id = v.id
+           OR d.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = v.id)
+         JOIN links l ON l.topic_id = d.id
+         WHERE v.user_id = ? GROUP BY v.id ORDER BY MAX(l.added_at) DESC, path LIMIT ?`,
       )
       .bind(userId, PROMPT_TOPICS),
     db
@@ -23,7 +35,10 @@ export async function listVocabulary(
       )
       .bind(userId, PROMPT_TAGS),
   ]);
-  return { topics: topics?.results ?? [], tags: tags?.results ?? [] };
+  return {
+    topics: (topics?.results ?? []).map((r) => r.path),
+    tags: (tags?.results ?? []).map(({ name, count }) => ({ name, count })),
+  };
 }
 
 /** How names are matched to the user's vocabulary. */
