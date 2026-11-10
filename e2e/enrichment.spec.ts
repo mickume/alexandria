@@ -40,7 +40,7 @@ async function saveKey(
 ) {
   await page.goto('/settings');
   await page.getByLabel('Provider').selectOption({ label: provider });
-  await page.getByLabel('API key').fill(key);
+  await page.getByLabel('API key', { exact: true }).fill(key);
   if (model) await page.getByLabel('Model').fill(model);
   await page.getByRole('button', { name: 'Save key' }).click();
   await expect(page.getByText('key verified')).toBeVisible();
