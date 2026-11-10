@@ -164,7 +164,7 @@ describe('adding a link to a workspace on the stream page', () => {
     const before = makeLink({
       id: 'l0',
       title: 'Title 0',
-      decay_note: '60 points: expires in 60 days',
+      decay_note: 'expires in 60 days',
     });
     const after: Link = {
       ...before,
@@ -192,7 +192,7 @@ describe('adding a link to a workspace on the stream page', () => {
       .on('GET', '/api/v1/links/l0', { status: 200, body: after });
     renderPage('/', api);
     const card = await screen.findByRole('article', { name: 'Title 0' });
-    expect(within(card).getByText('60 points: expires in 60 days')).toBeTruthy();
+    expect(within(card).getByText('expires in 60 days')).toBeTruthy();
 
     await act(async () => within(card).getByRole('button', { name: 'More actions' }).click());
     await act(async () => within(card).getByRole('button', { name: 'Add to workspace' }).click());

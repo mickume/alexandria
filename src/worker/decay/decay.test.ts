@@ -166,22 +166,22 @@ describe('why a link is in its state', () => {
     {
       label: 'active with 42 points',
       setup: (u: TestUser) => withPoints(u, 42),
-      note: '42 points: expires in 42 days',
+      note: 'expires in 42 days',
     },
     {
       label: 'active with 1 point',
       setup: (u: TestUser) => withPoints(u, 1),
-      note: '1 point: expires in 1 day',
+      note: 'expires in 1 day',
     },
     {
       label: 'pending with 0 points',
       setup: (u: TestUser) => withPoints(u, 0, { state: 'pending' }),
-      note: '0 points: expires today',
+      note: 'expires today',
     },
     {
       label: 'active with -2 points',
       setup: (u: TestUser) => withPoints(u, -2),
-      note: '-2 points: expires today',
+      note: 'expires today',
     },
     {
       label: 'pinned with -3 points',

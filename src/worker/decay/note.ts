@@ -32,7 +32,7 @@ export function pointsAt(
 /**
  * Why a link stands where it does, in one sentence: when an expired link
  * expired and will be removed; that a pinned link, or one in a workspace,
- * never expires; otherwise its points and the days until it expires.
+ * never expires; otherwise the days until it expires.
  */
 function decayNote(
   row: LinkRow,
@@ -47,8 +47,8 @@ function decayNote(
   if (row.workspaces_json && row.workspaces_json !== '[]') {
     return `in a workspace: never expires, ${pointsText(points)}`;
   }
-  if (points <= 0) return `${pointsText(points)}: expires today`;
-  return `${pointsText(points)}: expires in ${points} ${points === 1 ? 'day' : 'days'}`;
+  if (points <= 0) return 'expires today';
+  return `expires in ${points} ${points === 1 ? 'day' : 'days'}`;
 }
 
 /**

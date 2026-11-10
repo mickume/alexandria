@@ -64,8 +64,8 @@ test('the stream lists a much-used link above a recently used one, each with its
   d1(`UPDATE links SET last_used_at = '${daysAgo(5)}' WHERE id = '${used}'`);
 
   await page.goto('/');
-  await expect(cardOf(page, used).getByText('65 points: expires in 65 days')).toBeVisible();
-  await expect(cardOf(page, recent).getByText('61 points: expires in 61 days')).toBeVisible();
+  await expect(cardOf(page, used).getByText('expires in 65 days')).toBeVisible();
+  await expect(cardOf(page, recent).getByText('expires in 61 days')).toBeVisible();
   // Each card's links to its address, in the order the stream lists the cards.
   const ids = await page
     .locator('article a[href$="/open"]')

@@ -411,8 +411,8 @@ describe('a card’s note and workspaces', () => {
 
 describe('a card’s decay', () => {
   it.each([
-    { state: 'active', decay_note: '42 points: expires in 42 days' },
-    { state: 'pending', decay_note: '0 points: expires today' },
+    { state: 'active', decay_note: 'expires in 42 days' },
+    { state: 'pending', decay_note: 'expires today' },
     { state: 'active', decay_note: 'pinned: never expires, -3 points', pinned: true },
     {
       state: 'active',
