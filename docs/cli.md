@@ -40,9 +40,10 @@ The steps:
 0. **Reset the topics and tags** (only with `--reset-vocabulary`). Every link
    loses its topic and tags in D1, except a topic or tags the owner set by
    hand, and the former names of renamed and merged topics and tags are
-   forgotten. Topics and tags left without a link are deleted, as they always
-   are, so enrichment then builds the vocabulary again from nothing, the
-   first links enriched naming it. The option needs a verified AI key and stops
+   forgotten. Tags left without a link, and topics left with no link and no
+   child topic, are deleted as they always are, so the topic tree collapses
+   to the paths of the topics set by hand, and enrichment then builds the
+   tree and the tags again from nothing, the first links enriched naming them. The option needs a verified AI key and stops
    before changing anything without one. A link whose enrichment then fails
    is left without a topic or tags until it is enriched again (Settings offers
    to enrich every such link).

@@ -13,9 +13,10 @@
  *
  * 0. With --reset-vocabulary, first takes every topic and tag off the links,
  *    except those the owner set by hand, and forgets the former names of
- *    renamed and merged ones, in D1. Topics and tags left without a link are
- *    deleted by the database's own triggers, so enrichment builds the
- *    vocabulary again from nothing. It needs a verified AI key.
+ *    renamed and merged ones, in D1. Tags left without a link, and topics left
+ *    with no link and no child topic, are deleted by the database's own
+ *    triggers, so enrichment builds the topic tree and the tags again from
+ *    nothing. It needs a verified AI key.
  * 1. Refreshes every link that is active, unreachable or archived, at most
  *    --per-minute (default 20) a minute. A successful refresh rewrites the
  *    reader text, which makes the link stale for the index, and enriches the
@@ -215,9 +216,11 @@ function markStale(ids: string[]) {
 
 /**
  * Takes the topics and tags off the links, except those the owner set by hand
- * (`edited_fields`), and forgets the owner's aliases. The triggers of
- * migration 0006 delete every topic and tag left without a link, and keep the
- * keyword index and the text version in step.
+ * (`edited_fields`), and forgets the owner's aliases. The database's triggers
+ * delete every tag left without a link and every topic left with no link and
+ * no child topic, with each ancestor left the same way (migrations 0006 and
+ * 0014), so a topic the owner set by hand keeps its whole path; they also keep
+ * the keyword index and the text version in step.
  */
 function resetVocabulary(ids: string[]) {
   const [first] = ids;
