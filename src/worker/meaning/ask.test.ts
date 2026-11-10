@@ -93,16 +93,6 @@ describe('a question that is refused before the answer streams', () => {
       },
     },
     {
-      name: 'a refused filter',
-      body: { question: 'alarms state:bogus' },
-      status: 400,
-      json: {
-        error: 'invalid_filter',
-        field: 'question',
-        message: expect.stringContaining('state:bogus'),
-      },
-    },
-    {
       name: 'a detailed flag that is not true or false',
       body: { question: 'alarms', detailed: 'yes' },
       status: 400,

@@ -77,7 +77,9 @@ function isWebHost(hostname: string): boolean {
 
 /** Whether a URL's hostname is localhost or a loopback, private, link-local or unspecified address. */
 export function isPrivateHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
+  // A trailing dot names the same host.
+  const name = hostname.replace(/\.$/, '');
+  if (name === 'localhost' || name.endsWith('.localhost')) return true;
   if (hostname.startsWith('[')) return isPrivateIPv6(hostname.slice(1, -1));
   const v4 = parseIPv4(hostname);
   return v4 !== null && isPrivateIPv4(v4);
@@ -95,9 +97,12 @@ function isPrivateIPv4([a = 0, b = 0]: number[]): boolean {
     a === 0 || // 0.0.0.0/8, "this network"
     a === 10 ||
     a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) || // 100.64.0.0/10, shared address space
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
-    (a === 169 && b === 254)
+    (a === 169 && b === 254) ||
+    (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15, benchmarking
+    a >= 224 // multicast, reserved and broadcast
   );
 }
 
@@ -105,14 +110,16 @@ function isPrivateIPv4([a = 0, b = 0]: number[]): boolean {
 function isPrivateIPv6(address: string): boolean {
   if (address === '::1' || address === '::') return true;
   // IPv4-mapped addresses, which the URL parser writes as ::ffff:7f00:1.
-  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(address);
+  // Likewise the IPv4-compatible (::7f00:1) and NAT64 (64:ff9b::7f00:1) forms.
+  const mapped = /^(?:::ffff:|::|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(address);
   if (mapped) {
     const hi = parseInt(mapped[1] ?? '0', 16);
     const lo = parseInt(mapped[2] ?? '0', 16);
     return isPrivateIPv4([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff]);
   }
   const first = parseInt(address.split(':')[0] || '0', 16);
-  return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
+  // Unique local (fc00::/7), link-local (fe80::/10), site-local (fec0::/10), multicast (ff00::/8).
+  return (first & 0xfe00) === 0xfc00 || (first & 0xff80) === 0xfe80 || first >= 0xff00;
 }
 
 /**
@@ -121,5 +128,9 @@ function isPrivateIPv6(address: string): boolean {
  * is checked with this, so a public URL cannot lead the fetcher into a private network.
  */
 export function isFetchable(url: URL): boolean {
-  return (url.protocol === 'http:' || url.protocol === 'https:') && !isPrivateHost(url.hostname);
+  return (
+    (url.protocol === 'http:' || url.protocol === 'https:') &&
+    isWebHost(url.hostname) &&
+    !isPrivateHost(url.hostname)
+  );
 }

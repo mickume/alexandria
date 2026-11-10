@@ -2013,7 +2013,7 @@ Moves a topic, with everything beneath it, under another topic, or to the top le
 
 ##### split
 
-> **split**: (`id`) => `Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>; \}\>
+> **split**: (`id`) => `Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\> \| `null`; \}\>
 
 Has the owner's AI provider divide the links filed directly under a topic into sub-topics.
 
@@ -2025,7 +2025,7 @@ Has the owner's AI provider divide the links filed directly under a topic into s
 
 ###### Returns
 
-`Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>; \}\>
+`Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\> \| `null`; \}\>
 
 ***
 
@@ -2056,16 +2056,6 @@ Has the owner's AI provider divide the links filed directly under a topic into s
 ###### Returns
 
 `Promise`\<\{ `position`: `number`; \}\>
-
-##### all
-
-> **all**: () => `Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
-
-Every workspace, by name, page after page.
-
-###### Returns
-
-`Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
 
 ##### create
 
@@ -2099,6 +2089,8 @@ Every workspace, by name, page after page.
 
 > **links**: (`id`) => `Promise`\<[`Member`](#member)[]\>
 
+Every link of a workspace, in its order, page after page.
+
 ###### Parameters
 
 ###### id
@@ -2112,6 +2104,8 @@ Every workspace, by name, page after page.
 ##### list
 
 > **list**: () => `Promise`\<[`WorkspaceSummary`](#workspacesummary)[]\>
+
+Every workspace, by name, page after page.
 
 ###### Returns
 

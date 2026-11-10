@@ -43,6 +43,12 @@ A fetch that reached a 2xx response.
 
 The body read, or null for a kind that is not stored or a PDF over PDF_LIMIT.
 
+##### charset?
+
+> `optional` **charset?**: `string`
+
+The character encoding the response declared for a web page, lower-cased, if it declared one.
+
 ##### contentType
 
 > **contentType**: `string`
@@ -146,6 +152,39 @@ The most of a web page that is read; the rest is cut off.
 The largest PDF that is stored.
 
 ## Functions
+
+### decodeHtml()
+
+> **decodeHtml**(`bytes`, `declared?`): `object`
+
+A web page's bytes as text, in the encoding the response declared, else the
+one its byte order mark or its first <meta charset> names, else UTF-8, as a
+browser reads it. An encoding the runtime does not know reads as UTF-8;
+`utf8` says whether the bytes were read as UTF-8.
+
+#### Parameters
+
+##### bytes
+
+`Uint8Array`
+
+##### declared?
+
+`string`
+
+#### Returns
+
+`object`
+
+##### html
+
+> **html**: `string`
+
+##### utf8
+
+> **utf8**: `boolean`
+
+***
 
 ### fetchPage()
 

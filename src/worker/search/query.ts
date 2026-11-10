@@ -59,9 +59,11 @@ function asFilter(term: string): { name: FilterName; value: string } | null {
  * `host:`, `state:`, `in:` and `is:`, case-insensitive, each followed by one
  * word or a double-quoted phrase. Every other term, another `word:value` and
  * an unclosed quote included, is a free word. Refuses a query over `max`
- * characters (200 unless given), and a `state:` or `is:` value the filter does not take.
+ * characters (200 unless given), and a `state:` or `is:` value the filter does not take;
+ * with `prose`, for a question written as a sentence ("what I mean is: …"),
+ * such a term is a free word instead.
  */
-export function parseQuery(q: string, max = QUERY_MAX): ParsedQuery {
+export function parseQuery(q: string, max = QUERY_MAX, { prose = false } = {}): ParsedQuery {
   if (q.length > max) {
     return {
       ok: false,
@@ -78,6 +80,10 @@ export function parseQuery(q: string, max = QUERY_MAX): ParsedQuery {
       continue;
     }
     const refused = refusal(filter.name, filter.value);
+    if (refused && prose) {
+      words.push(term);
+      continue;
+    }
     if (refused) {
       return { ok: false, error: 'invalid_filter', message: `${term} is not a filter: ${refused}` };
     }

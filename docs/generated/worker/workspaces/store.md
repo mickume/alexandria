@@ -302,7 +302,7 @@ One of the user's workspaces, or null.
 
 ### leaveAllWorkspaces()
 
-> **leaveAllWorkspaces**(`db`, `linkId`): `D1PreparedStatement`[]
+> **leaveAllWorkspaces**(`db`, `userId`, `linkId`): `D1PreparedStatement`[]
 
 The statements that take a link out of every workspace it is in, closing
 each gap; part of deleting the link.
@@ -312,6 +312,10 @@ each gap; part of deleting the link.
 ##### db
 
 `D1Database`
+
+##### userId
+
+`string`
 
 ##### linkId
 

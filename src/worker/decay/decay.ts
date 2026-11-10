@@ -1,10 +1,13 @@
 import { now } from '../clock';
 import type { Env } from '../env';
-import { deleteLinkObjects } from '../fetcher/snapshots';
+import { readerKey, snapshotKey } from '../fetcher/snapshots';
 import { countStatement } from '../stats/daily';
 import { getThresholds } from './routes';
 
 const DAY_MS = 86_400_000;
+
+/** The most keys one R2 delete takes. */
+const R2_DELETE_KEYS = 1000;
 
 /** Test seams of the evaluation, as the clock is one. */
 export const decayHooks: { afterSelect?: (userId: string) => Promise<void> } = {};
@@ -108,8 +111,11 @@ export async function evaluateDecay(env: Env, userId: string): Promise<void> {
   await decayHooks.afterSelect?.(userId);
   const results = await env.DB.batch<{ id: string }>(statements);
   const removed = results.at(-2)?.results ?? [];
-  for (const { id } of removed) {
-    await deleteLinkObjects(env, userId, id).catch((err) =>
+  // A link stores its objects under two known keys, so the objects of many
+  // links go in a few calls: a removal of thousands stays within one run.
+  const keys = removed.flatMap(({ id }) => [snapshotKey(userId, id), readerKey(userId, id)]);
+  for (let i = 0; i < keys.length; i += R2_DELETE_KEYS) {
+    await env.SNAPSHOTS.delete(keys.slice(i, i + R2_DELETE_KEYS)).catch((err) =>
       console.error('removing stored objects failed', err),
     );
   }

@@ -22,11 +22,10 @@ The time between two of a user's background jobs: at most 20 a minute.
 
 > **deferIfEarly**(`env`, `body`): `Promise`\<`boolean`\>
 
-Whether a throttled message must wait: it arrived before its slot, or less
-than 3 seconds (and a margin) after the user's previous background job
-started (queue delivery is not exact). Such a message has been sent again for the time
-left, and the caller must not process it; otherwise this job's start has
-been recorded.
+Whether a throttled message must wait: it arrived before its slot (queue
+delivery is not exact). Such a message has been sent again for the time
+left, and the caller must not process it. The slots alone space the jobs:
+each user's are reserved 3 seconds apart.
 
 #### Parameters
 

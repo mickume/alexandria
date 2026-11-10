@@ -103,6 +103,17 @@ describe('creating a token', () => {
   });
 });
 
+describe('creating a token with a token', () => {
+  it('is refused: only the signed-in owner makes tokens', async () => {
+    const user = await signIn();
+    const token = await createToken(user);
+    const r = await api('POST', '/api/v1/tokens', { bearer: token.secret, body: { name: 'more' } });
+    expect(r.status).toBe(403);
+    expect(r.json.error).toBe('session_required');
+    expect(await count('tokens', 'user_id = ?', user.id)).toBe(1);
+  });
+});
+
 describe('listing tokens', () => {
   it('shows the unrevoked tokens newest first, without their secrets', async () => {
     const user = await signIn();

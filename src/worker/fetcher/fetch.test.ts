@@ -807,6 +807,30 @@ describe('the stream’s change feed', () => {
     expect(r2.json.server_time).toBe('2026-10-04T10:00:10.000Z');
   });
 
+  it('goes on from the last change it answered when more than 500 links changed', async () => {
+    const user = await signIn();
+    const base = Date.parse('2026-10-05T00:00:00.000Z');
+    await seedLinks(
+      user,
+      Array.from({ length: 620 }, (_, i) => ({
+        url: `https://many-${i}.example/`,
+        lastUsedAt: new Date(base + i * 1000).toISOString(),
+      })),
+    );
+    setNow(base + 3_600_000);
+    const seen = new Set<string>();
+    let since = new Date(base).toISOString();
+    for (let page = 0; page < 3; page++) {
+      const r = await api('GET', `/api/v1/links?changed_since=${encodeURIComponent(since)}`, {
+        as: user.session,
+      });
+      for (const l of r.json.items as { id: string }[]) seen.add(l.id);
+      since = r.json.server_time;
+    }
+    expect(seen.size).toBe(620);
+    expect(since).toBe(new Date(base + 3_600_000).toISOString());
+  });
+
   it.each(['yesterday', '', '2026-13-40T00:00:00Z'])('refuses changed_since=%j', async (value) => {
     const user = await signIn();
     const r = await api('GET', `/api/v1/links?changed_since=${encodeURIComponent(value)}`, {

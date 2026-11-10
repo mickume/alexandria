@@ -36,6 +36,16 @@ The article's plain text, whitespace collapsed; '' when the view is empty.
 
 ## Variables
 
+### MAX\_DEPTH
+
+> `const` **MAX\_DEPTH**: `256` = `256`
+
+The deepest nesting of elements a page may have to be read. Readability's
+time grows steeply with depth: a page nested thousands deep would use the
+whole CPU limit and never be stored. No page written to be read comes near.
+
+***
+
 ### MAX\_TEXT
 
 > `const` **MAX\_TEXT**: `500000` = `500_000`

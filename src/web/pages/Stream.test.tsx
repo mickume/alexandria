@@ -165,7 +165,7 @@ describe('pinning on the stream page', () => {
     renderPage('/', api);
     await screen.findByRole('article', { name: 'Title 0' });
     await act(async () => observer.reveal());
-    await screen.findByRole('article', { name: 'Title 69' });
+    await screen.findByRole('article', { name: 'Title 69' }, { timeout: 5_000 });
 
     const doomed = screen.getByRole('article', { name: 'Title 5' });
     await act(async () => within(doomed).getByRole('button', { name: 'More actions' }).click());

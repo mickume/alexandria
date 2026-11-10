@@ -113,6 +113,21 @@ export function mcpRoutes(api: Hono<AppEnv>): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
   routes.use('*', requireToken, rateLimit);
   routes.post('/', async (c) => {
+    // One message a request, so that the rate limit counts every tool call.
+    const body: unknown = await c.req.raw
+      .clone()
+      .json()
+      .catch(() => null);
+    if (Array.isArray(body)) {
+      return c.json(
+        {
+          jsonrpc: '2.0',
+          error: { code: -32600, message: 'batches are not accepted: send one message a request' },
+          id: null,
+        },
+        400,
+      );
+    }
     const server = buildServer(apiCaller(api, c));
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

@@ -430,6 +430,14 @@ describe('renaming a topic or tag', () => {
     });
     expect(topic.status).toBe(409);
     expect(topic.json.error).toBe('name_taken');
+    // A space reads as a hyphen where names are resolved, so "a b" is "a-b".
+    await patch(user, l2!, { topic: 'a-b' });
+    const spaced = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'A')}`, {
+      as: user.session,
+      body: { name: 'A B' },
+    });
+    expect([spaced.status, spaced.json.error]).toEqual([409, 'name_taken']);
+    await patch(user, l2!, { topic: 'B' });
     expect(await linkLabels(user, l1!)).toEqual({ tags: ['js'], topic: 'A' });
     expect(await linkLabels(user, l2!)).toEqual({ tags: ['javascript'], topic: 'B' });
     expect(await aliases(user, 'tag')).toEqual([]);
@@ -698,6 +706,19 @@ describe('moving a topic', () => {
     Tools: 'Programming',
     Systems: null,
   };
+
+  it('never leaves a cycle when two topics are moved under each other at once', async () => {
+    const { user } = await library();
+    await Promise.all([move(user, 'Systems', 'Programming'), move(user, 'Programming', 'Systems')]);
+    const rows = await env.DB.prepare(
+      "SELECT name, parent_id FROM topics WHERE user_id = ? AND name IN ('Systems', 'Programming')",
+    )
+      .bind(user.id)
+      .all<{ name: string; parent_id: string | null }>();
+    expect(rows.results.filter((r) => r.parent_id === null)).not.toHaveLength(0);
+    // And the tree still answers.
+    expect((await api('GET', '/api/v1/topics', { as: user.session })).status).toBe(200);
+  });
 
   it.each([
     { topic: 'Systems', parent: 'Programming', changes: { Systems: 'Programming' } },
@@ -1066,6 +1087,24 @@ describe('splitting a topic', () => {
       ]),
     );
   }
+
+  it('answers the split that emptied its topic into topics elsewhere, the topic gone', async () => {
+    setNow(T0);
+    const user = await signIn();
+    await fileLinks(user, 'Dev', 22);
+    await fileLinks(user, 'Programming', 1);
+    await fileLinks(user, 'Web', 1);
+    const ai = new FakeAi();
+    await saveKey(user);
+    ai.split(filed(['Programming', 'Web'], (i) => (i % 2 === 0 ? 'Programming' : 'Web')));
+    const r = await split(user, 'Dev');
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ topic: null, children: [], moved: 22 });
+    expect(await topics(user)).toEqual({
+      Programming: { parent: null, count: 12 },
+      Web: { parent: null, count: 12 },
+    });
+  });
 
   it('files the links under the sub-topics the provider proposes, in one request', async () => {
     const { user, ai } = await library();

@@ -863,7 +863,7 @@ export const operations: Operation[] = [
         mediaType: 'text/event-stream',
       },
       400: error(
-        'invalid_json, invalid_question (field question), question_too_long (field question), invalid_filter (field question) or invalid_detailed (field detailed)',
+        'invalid_json, invalid_question (field question), question_too_long (field question) or invalid_detailed (field detailed)',
       ),
       409: error('no_ai_key, or ai_key_rejected with the provider’s message'),
       503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
@@ -940,9 +940,10 @@ export const operations: Operation[] = [
       'Divide the links filed directly under a topic into 2 to 10 sub-topics the owner’s AI provider proposes, applied at once',
     responses: {
       200: {
-        description: 'The topic, every child of it by name, and how many links moved',
+        description:
+          'The topic, every child of it by name, and how many links moved; the topic is null when every link went to a topic elsewhere and the emptied topic was removed',
         schema: z.strictObject({
-          topic: TopicEntry,
+          topic: TopicEntry.nullable(),
           children: z.array(VocabularyEntry),
           moved: z.number().int(),
         }),
@@ -1128,7 +1129,8 @@ export const operations: Operation[] = [
     method: 'post',
     path: '/tokens',
     operationId: 'createToken',
-    summary: 'Create a personal access token; its secret is returned this once',
+    summary:
+      'Create a personal access token, with a session only; its secret is returned this once',
     body: z.object({ name: z.string().min(1).max(100) }),
     responses: {
       201: {
@@ -1136,7 +1138,9 @@ export const operations: Operation[] = [
         schema: Token.extend({ secret: z.string() }),
       },
       400: error('invalid_json, or invalid_name: a name of 1 to 100 characters is required'),
-      403: error('not_allowed: the address has left the allow-list; or forbidden_origin'),
+      403: error(
+        'session_required: a token cannot create tokens; not_allowed: the address has left the allow-list; or forbidden_origin',
+      ),
       409: error('token_limit: 20 unrevoked tokens already, "token limit reached"'),
     },
   },

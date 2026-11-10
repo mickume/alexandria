@@ -81,6 +81,11 @@ authRoutes.post('/signout', requireSameOrigin, async (c) => {
 export const tokenRoutes = new Hono<AppEnv>();
 
 tokenRoutes.post('/', async (c) => {
+  // Only the signed-in owner makes tokens: a token that leaked cannot make
+  // others that would outlive its own revocation.
+  if (c.get('via') !== 'session') {
+    return refusal(c, 403, 'session_required', 'create tokens from the settings page');
+  }
   const parsed = await readJson(c);
   if (!parsed.ok) return parsed.response;
   const user = c.get('user');

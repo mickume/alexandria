@@ -30,6 +30,17 @@ describe('parseQuery', () => {
     });
   });
 
+  it.each(['what I mean is: alarms', 'the state:of the art', 'is:starred'])(
+    'reads %j as words when the query is a question in prose',
+    (question) => {
+      expect(parseQuery(question, 500, { prose: true })).toEqual({
+        ok: true,
+        words: question.split(' '),
+        filters: {},
+      });
+    },
+  );
+
   it.each(['state:gone', 'state:dormant', 'is:starred', 'state:', 'is:', 'state:""'])(
     'refuses the filter %j, naming it',
     (query) => {

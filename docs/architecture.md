@@ -260,6 +260,28 @@ owner alone, and record a use. The stream keeps cards current by polling
 `GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or
 refreshing; every write to a link sets its `updated_at`.
 
+A page is decoded in the encoding its `Content-Type` declares, else the one
+its byte order mark or first `<meta charset>` names, else UTF-8
+(`decodeHtml`), and its snapshot is stored as UTF-8. A page that cannot be
+parsed, or nests its elements deeper than 256 levels (`MAX_DEPTH` in
+`fetcher/reader.ts`; Readability's time grows steeply with depth), keeps its
+snapshot with the note "page could not be read" and is not enriched. The
+writes of a fetch check the row as it is when they run: a failed first fetch
+changes only a link still `pending` (one archived meanwhile stays archived),
+and a failed write of a refresh leaves the copy the link had.
+
+### Lost messages
+
+A queue send can fail after the row it belongs to is stored, and a message can
+be dropped after its last retry. The hourly run (`fetcher/stranded.ts`,
+`recoverStranded`) recovers what that leaves behind: a link `pending` and
+untouched for 3 hours, not an imported link the dispatcher still holds, counts
+one more attempt and is sent to the fetch worker again (500 a run), or at its
+third attempt becomes `unreachable` with the reason "the fetch did not
+complete"; a link `queued` for enrichment that long, with none of its user's
+throttled slots still ahead, becomes `failed` ("the enrichment did not
+complete"), which "enrich all" takes up.
+
 ## Enrichment
 
 When a fetch (first or refresh) makes a link `active`, the fetch worker hands
@@ -301,7 +323,10 @@ name that matches a topic (its name, then an alias, then for enrichment and
 splits a near name) is that topic wherever it is in the tree, and the next
 name belongs under it; any other name is created under the topic before it,
 beside a level-3 topic rather than below it. Topics created for a path that
-end up empty are deleted again. Enrichment keeps the first two and the last
+end up empty are deleted again. The owner's edits win whenever they are made:
+`storeEnrichment` and the fetch write check `edited_fields` on the row itself
+(`ownerEdited` in `links/store.ts`), so an edit made while the provider
+answers is kept, and `applyEdit` writes only the fields it was given. Enrichment keeps the first two and the last
 name of a longer path and refuses an empty name or one over 100 characters as
 an unusable result.
 
@@ -334,7 +359,8 @@ account's Workers AI report no usage and are not recorded.
 ### The background throttle
 
 Background enrichment ("enrich all") goes through
-`enrich/throttle.ts`: `scheduleThrottled` reserves a user's slots 3 seconds
+`enrich/throttle.ts` (the slots alone space the jobs; there is no second gate
+on their starts): `scheduleThrottled` reserves a user's slots 3 seconds
 apart (at most 20 a minute), starting at the user's next free slot
 (`users.throttle_next_at`) or now, in one statement so concurrent calls never
 share a slot; users are independent. `sendThrottled` sends each message with
@@ -389,7 +415,8 @@ nothing (that user is evaluated again at the next run):
 - an expired link that is neither pinned nor in a workspace, expired
   `remove_days` ago or more, is removed with everything
   `DELETE /api/v1/links/{id}` removes, its stored R2 objects deleted after the
-  transaction;
+  transaction, a thousand keys to a call (a link's two keys are known, so
+  nothing is listed);
 - `last_decay_at` is set.
 
 A link's points are never stored: `decay/note.ts` computes them for every link
@@ -613,7 +640,8 @@ HTTP with the official SDK (`@modelcontextprotocol/sdk`). Every POST builds a
 new `McpServer` and a `WebStandardStreamableHTTPServerTransport` (no session
 id generator, JSON responses) bound to the request's user; nothing is kept
 between requests. `requireToken` (`auth/middleware.ts`) accepts only a bearer
-token, and the API's `rateLimit` counts the request once.
+token, and the API's `rateLimit` counts the request once; a JSON-RPC batch
+(an array of messages) is refused with 400, so that every tool call is counted.
 
 The tools (`mcp/tools.ts`) do no work of their own: each sends the equivalent
 requests to the API sub-application in the same Worker, as the agent's user.

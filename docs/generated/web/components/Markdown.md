@@ -44,8 +44,8 @@ Makes every http or https link a sanitiser keeps open in a new tab, as a card's 
 
 > **renderAnswer**(`source`, `citation`): `string`
 
-An answer as HTML, rendered as a note is, with each citation [n] that
-`citation` gives a link page for made a link to that page.
+An answer as HTML, rendered as a note is but without images, with each
+citation [n] that `citation` gives a link page for made a link to that page.
 
 #### Parameters
 

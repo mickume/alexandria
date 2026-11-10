@@ -22,7 +22,7 @@ import {
   type LinkView,
   type NewLink,
 } from './store';
-import { isStreamCursor, listChanged, listStream, parseTimestamp } from './stream';
+import { CHANGES_LIMIT, isStreamCursor, listChanged, listStream, parseTimestamp } from './stream';
 import { isHistoryCursor, listHistory, recordUse } from './use';
 
 /** The most URLs one batch may carry. */
@@ -109,7 +109,12 @@ linkRoutes.get('/', async (c) => {
     }
     const serverTime = now().toISOString();
     const rows = await listChanged(c.env.DB, c.get('user').id, since);
-    return c.json({ items: rows.map(toView), server_time: serverTime });
+    // A full answer may not be all of them: the next one goes on from its last change.
+    // (Unless that would ask the same again: 500 changes in one millisecond.)
+    const last = rows.at(-1)?.updated_at;
+    const more = rows.length === CHANGES_LIMIT && last !== undefined && last > since.toISOString();
+    const next = more ? last : serverTime;
+    return c.json({ items: rows.map(toView), server_time: next });
   }
   const limit = parseLimit(c.req.query('limit'));
   if (limit === null) {

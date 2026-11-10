@@ -538,3 +538,23 @@ describe('a workspace and its links', () => {
     expect(l.json.next_cursor).toBeNull();
   });
 });
+
+describe('adding links to a workspace at the same time', () => {
+  it('gives every link a position of its own', async () => {
+    const user = await signIn();
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: 6 }, (_, i) => ({ url: `https://at-once-${i}.example/` })),
+    );
+    const w = await workspace(user, 'Together');
+    const answers = await Promise.all(
+      ids.map((link_id) =>
+        api('POST', `/api/v1/workspaces/${w}/links`, { as: user.session, body: { link_id } }),
+      ),
+    );
+    expect(answers.map((r) => r.status)).toEqual(ids.map(() => 201));
+    const stored = await members(w);
+    expect(stored.map(([, position]) => position)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(answers.map((r) => r.json.position).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+});

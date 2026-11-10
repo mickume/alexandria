@@ -3,12 +3,6 @@ import type { EnrichMessage, Env } from '../env';
 
 /** The time between two of a user's background jobs: at most 20 a minute. */
 export const THROTTLE_SPACING_MS = 3_000;
-/**
- * Background jobs' actual starts are kept this far apart: the spacing and a
- * margin for the moment between a start and the provider call it leads to.
- */
-const START_SPACING_MS = THROTTLE_SPACING_MS + 250;
-
 /** The longest delay a queue message can be sent with. */
 export const MAX_DELAY_SECONDS = 12 * 60 * 60;
 
@@ -62,11 +56,10 @@ export async function sendThrottled(env: Env, userId: string, linkIds: string[])
 }
 
 /**
- * Whether a throttled message must wait: it arrived before its slot, or less
- * than 3 seconds (and a margin) after the user's previous background job
- * started (queue delivery is not exact). Such a message has been sent again for the time
- * left, and the caller must not process it; otherwise this job's start has
- * been recorded.
+ * Whether a throttled message must wait: it arrived before its slot (queue
+ * delivery is not exact). Such a message has been sent again for the time
+ * left, and the caller must not process it. The slots alone space the jobs:
+ * each user's are reserved 3 seconds apart.
  */
 export async function deferIfEarly(env: Env, body: EnrichMessage): Promise<boolean> {
   if (body.slot === undefined) return false;
@@ -75,18 +68,5 @@ export async function deferIfEarly(env: Env, body: EnrichMessage): Promise<boole
     await env.ENRICH_QUEUE.send(body, { delaySeconds: Math.max(1, delayUntil(body.slot)) });
     return true;
   }
-  const claimed = await env.DB.prepare(
-    `UPDATE users SET throttle_last_start = ?1
-     WHERE id = ?2 AND (throttle_last_start IS NULL OR throttle_last_start <= ?1 - ?3)
-     RETURNING id`,
-  )
-    .bind(t, body.user_id, START_SPACING_MS)
-    .first();
-  if (claimed) return false;
-  const last = await env.DB.prepare('SELECT throttle_last_start AS at FROM users WHERE id = ?')
-    .bind(body.user_id)
-    .first<{ at: number | null }>();
-  const wait = Math.ceil(((last?.at ?? t) + START_SPACING_MS - t) / 1000);
-  await env.ENRICH_QUEUE.send(body, { delaySeconds: Math.max(1, wait) });
-  return true;
+  return false;
 }

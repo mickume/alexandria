@@ -60,7 +60,9 @@ export async function requestDeletion(c: Context<AppEnv>): Promise<Response> {
       .prepare(
         `UPDATE users SET ai_provider = NULL, ai_model = NULL, ai_key_ciphertext = NULL,
            ai_key_iv = NULL, ai_key_last4 = NULL, ai_key_status = NULL,
-           ai_key_rejected_message = NULL, deletion_requested_at = ?
+           ai_key_rejected_message = NULL, firecrawl_key_ciphertext = NULL,
+           firecrawl_key_iv = NULL, firecrawl_key_last4 = NULL, firecrawl_key_status = NULL,
+           firecrawl_key_rejected_message = NULL, deletion_requested_at = ?
          WHERE id = ?`,
       )
       .bind(now().toISOString(), user.id),

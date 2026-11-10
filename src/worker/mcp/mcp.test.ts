@@ -1,3 +1,4 @@
+import { SELF } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import {
   api,
@@ -58,6 +59,22 @@ describe('the MCP endpoint', () => {
     expect(instructions).toMatch(/use get_link_content to read a whole link/i);
     const tokens = await api('GET', '/api/v1/tokens', { as: a.session });
     expect(tokens.json.items[0].last_used_at).toBe(t);
+  });
+
+  it('refuses a batch of messages, which one count of the rate limit would cover', async () => {
+    const a = await agent();
+    const message = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/list', params: {} });
+    const r = await SELF.fetch(new URL('/mcp', ORIGIN), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        Authorization: `Bearer ${a.secret}`,
+      },
+      body: JSON.stringify([message(1), message(2)]),
+    });
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: { code: number } }).error.code).toBe(-32600);
   });
 
   it('lists exactly the ten tools with their arguments', async () => {

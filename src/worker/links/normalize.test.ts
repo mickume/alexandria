@@ -42,6 +42,15 @@ describe('normalizeUrl', () => {
     'http://169.254.169.254',
     'http://[fd00::1]',
     'http://[fe80::1]',
+    'http://foo.localhost./',
+    'http://100.64.0.1',
+    'http://198.18.0.1',
+    'http://224.0.0.1',
+    'http://255.255.255.255',
+    'http://[::7f00:1]/',
+    'http://[64:ff9b::7f00:1]/',
+    'http://[fec0::1]',
+    'http://[ff02::1]',
   ])('rejects %j', (input) => {
     expect(normalizeUrl(input)).toEqual({ ok: false, error: 'invalid_url' });
   });

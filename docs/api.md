@@ -84,11 +84,15 @@ Every request with a token records its `last_used_at`.
 
 #### `POST /api/v1/tokens`
 
-Body `{"name": "<1 to 100 characters>"}` (trimmed).
+Body `{"name": "<1 to 100 characters>"}` (trimmed). With a session only: a
+token cannot create tokens, so that one that leaked cannot make others that
+would outlive its revocation.
 
 - `201 {"id", "name", "created_at", "last_used_at": null, "secret": "alx_…"}`
 - `400 {"error": "invalid_name", "field": "name", "message"}` for a missing,
   empty, whitespace-only or too long name
+- `403 {"error": "session_required", "message"}` for a request made with a
+  token
 - `403 {"error": "not_allowed", "message"}` when the user's address is no
   longer on `ALLOWED_EMAILS` (existing tokens keep working until revoked)
 - `409 {"error": "token_limit", "message": "token limit reached"}`
@@ -151,7 +155,7 @@ succeeds, `title` is the host,
 then, once an attempt fails, words read from the address (unless the owner
 edited it). A fetch fills `final_url`, `http_status`, `title`,
 `description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
-(`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "not a
+(`html`, `pdf` or `other`); `notes` holds remarks such as "truncated", "page could not be read", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
 
@@ -272,10 +276,12 @@ is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
 
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
 every link that is neither expired nor archived and changed at or after that time (every
-write to a link sets its `updated_at`), oldest change first, with the
-server's time to ask from next:
-`200 {"items": [<link>], "server_time": "…"}`. A link changed in the very
-millisecond asked from may come again. A value that is not an ISO 8601
+write to a link sets its `updated_at`), oldest change first, at most 500, with
+the time to ask from next:
+`200 {"items": [<link>], "server_time": "…"}`. `server_time` is the server's
+time, or, when the answer is full, the time of its last change, so that asking
+again from it brings the rest. A link changed in the very millisecond asked
+from may come again. A value that is not an ISO 8601
 timestamp is `400 {"error": "invalid_changed_since", "field": "changed_since", "message"}`.
 The website polls this every 5 seconds while a card is pending or
 refreshing.
@@ -898,8 +904,9 @@ the index:
   question of at most 500 characters"}`;
 - `400 {"error": "invalid_detailed", "field": "detailed", "message": "detailed
   must be true or false"}`;
-- `400 {"error": "invalid_filter", "field": "question", "message"}` naming the
-  filter, as in search;
+- (a `state:` or `is:` with a value the filter does not take is not refused
+  here, as it is in search: a question is prose, and "what I mean is: …" reads
+  as words;)
 - `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`;
 - `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
   while the saved key is marked rejected;
@@ -1046,7 +1053,9 @@ split only when the owner asks for it.
 
 `200 {"topic": {"id", "name", "parent_id", "count", "subtree_count"}, "children": [{"id", "name", "count"}], "moved": <n>}`:
 `children` is every child of the topic after the split, by name, and `moved`
-the number of links whose topic changed. Refused, changing nothing:
+the number of links whose topic changed. When every link went to a topic that
+already existed elsewhere, the emptied topic is removed with them: `topic` is
+then `null` and `children` empty. Refused, changing nothing:
 
 - `404 {"error": "not_found"}`: the topic is not one of the user's;
 - `409 {"error": "too_deep", "message": "topics are at most three levels deep"}`:

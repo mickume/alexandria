@@ -24,7 +24,9 @@ The ids of the links whose topic changed.
 
 ##### topic
 
-> **topic**: [`TopicEntry`](#topicentry)
+> **topic**: [`TopicEntry`](#topicentry) \| `null`
+
+Null when the split emptied the topic and it went with its links.
 
 ***
 

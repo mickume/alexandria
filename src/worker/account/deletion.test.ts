@@ -37,7 +37,9 @@ async function owner(): Promise<TestUser> {
   for (let i = 0; i < 3; i++) await createToken(user);
   await env.DB.prepare(
     `UPDATE users SET ai_provider = 'anthropic', ai_model = 'm', ai_key_ciphertext = 'c',
-       ai_key_iv = 'iv', ai_key_last4 = '1234', ai_key_status = 'verified' WHERE id = ?`,
+       ai_key_iv = 'iv', ai_key_last4 = '1234', ai_key_status = 'verified',
+       firecrawl_key_ciphertext = 'f', firecrawl_key_iv = 'iv', firecrawl_key_last4 = '9876'
+     WHERE id = ?`,
   )
     .bind(user.id)
     .run();
@@ -51,7 +53,8 @@ async function state(user: TestUser) {
     tokens: await count('tokens', 'user_id = ?', user.id),
     links: await count('links', 'user_id = ?', user.id),
     user: await env.DB.prepare(
-      'SELECT ai_key_ciphertext, ai_key_last4, deletion_requested_at FROM users WHERE id = ?',
+      `SELECT ai_key_ciphertext, ai_key_last4, firecrawl_key_ciphertext, firecrawl_key_last4,
+         deletion_requested_at FROM users WHERE id = ?`,
     )
       .bind(user.id)
       .first(),
@@ -78,7 +81,13 @@ describe('DELETE /api/v1/me', () => {
         sessions: 0,
         tokens: 0,
         links: 2,
-        user: { ai_key_ciphertext: null, ai_key_last4: null, deletion_requested_at: t },
+        user: {
+          ai_key_ciphertext: null,
+          ai_key_last4: null,
+          firecrawl_key_ciphertext: null,
+          firecrawl_key_last4: null,
+          deletion_requested_at: t,
+        },
       });
       expect(queue.map((m) => m.body)).toEqual([{ user_id: user.id }]);
       expect((await api('GET', '/api/v1/me', { as: user.session })).status).toBe(401);

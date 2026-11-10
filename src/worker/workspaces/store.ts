@@ -205,43 +205,45 @@ export async function addMember(
   linkId: string,
   position?: number,
 ): Promise<AddMemberOutcome> {
-  const [link, current, total] = await db.batch<{ v: number | null }>([
+  const [link, current] = await db.batch<{ v: number | null }>([
     db.prepare('SELECT 1 AS v FROM links WHERE id = ? AND user_id = ?').bind(linkId, userId),
     db
       .prepare('SELECT position AS v FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
       .bind(workspaceId, linkId),
-    db
-      .prepare('SELECT COUNT(*) AS v FROM workspace_links WHERE workspace_id = ?')
-      .bind(workspaceId),
   ]);
   if (!link?.results.length) return { status: 'no_link' };
   const was = current?.results[0]?.v ?? null;
   if (was !== null && position === undefined) return { status: 'unchanged', position: was };
-  const others = (total?.results[0]?.v ?? 0) - (was === null ? 0 : 1);
-  const target = Math.min(position ?? others + 1, others + 1);
-  await db.batch([
-    ...(was === null
-      ? []
-      : [
-          db
-            .prepare(
-              'UPDATE workspace_links SET position = position - 1 WHERE workspace_id = ? AND position > ?',
-            )
-            .bind(workspaceId, was),
-          db
-            .prepare('DELETE FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
-            .bind(workspaceId, linkId),
-        ]),
+  // The place is worked out in the statements that take it, from the members
+  // as they are then, so that two adds at once never share a position: the
+  // link leaves the place it had, then goes to `position` or to the end.
+  const target = `MIN(?3, (SELECT COUNT(*) FROM workspace_links WHERE workspace_id = ?1) + 1)`;
+  const end = Number.MAX_SAFE_INTEGER;
+  const results = await db.batch<{ position: number }>([
     db
       .prepare(
-        'UPDATE workspace_links SET position = position + 1 WHERE workspace_id = ? AND position >= ?',
+        `UPDATE workspace_links SET position = position - 1 WHERE workspace_id = ?1 AND position > (
+           SELECT position FROM workspace_links WHERE workspace_id = ?1 AND link_id = ?2)`,
       )
-      .bind(workspaceId, target),
+      .bind(workspaceId, linkId),
     db
-      .prepare('INSERT INTO workspace_links (workspace_id, link_id, position) VALUES (?, ?, ?)')
-      .bind(workspaceId, linkId, target),
+      .prepare('DELETE FROM workspace_links WHERE workspace_id = ? AND link_id = ?')
+      .bind(workspaceId, linkId),
+    db
+      .prepare(
+        `UPDATE workspace_links SET position = position + 1
+         WHERE workspace_id = ?1 AND position >= ${target} AND ?2 IS NOT NULL`,
+      )
+      .bind(workspaceId, linkId, position ?? end),
+    db
+      .prepare(
+        `INSERT INTO workspace_links (workspace_id, link_id, position)
+         VALUES (?1, ?2, ${target}) RETURNING position`,
+      )
+      .bind(workspaceId, linkId, position ?? end),
   ]);
-  return { status: was === null ? 'added' : 'moved', position: target };
+  const placed = results.at(-1)?.results[0]?.position ?? 0;
+  return { status: was === null ? 'added' : 'moved', position: placed };
 }
 
 /** Removes a link from one workspace, closing the gap; false when it was not a member. */

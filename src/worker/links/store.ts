@@ -363,23 +363,26 @@ export async function pinLink(
   // After the link is taken out, "others" is the number of other pinned links.
   const others = `(SELECT COUNT(*) FROM links WHERE user_id = ?1 AND pin_position IS NOT NULL)`;
   const target = `MIN(?3, ${others} + 1)`;
+  // Checked again in the statements: a link archived meanwhile is not pinned.
+  const pinnable = `EXISTS (SELECT 1 FROM links WHERE id = ?2 AND user_id = ?1 AND state <> 'archived')`;
   await db.batch([
     ...unpinStatements(db, userId, id),
     db
       .prepare(
         `UPDATE links SET pin_position = pin_position + 1, updated_at = ?5
-         WHERE user_id = ?1 AND pin_position >= ${target} AND ${others} < ?4`,
+         WHERE user_id = ?1 AND pin_position >= ${target} AND ${others} < ?4 AND ${pinnable}`,
       )
       .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
     db
       .prepare(
         `UPDATE links SET pin_position = ${target}, updated_at = ?5
-         WHERE id = ?2 AND user_id = ?1 AND ${others} < ?4`,
+         WHERE id = ?2 AND user_id = ?1 AND ${others} < ?4 AND state <> 'archived'`,
       )
       .bind(userId, id, position ?? PIN_LIMIT + 1, PIN_LIMIT, now().toISOString()),
   ]);
   const after = await getLink(db, userId, id);
   if (!after) return { status: 'not_found' };
+  if (after.state === 'archived') return { status: 'archived' };
   if (after.pin_position === null) return { status: 'pin_limit' };
   return { status: 'pinned', link: toView(after) };
 }

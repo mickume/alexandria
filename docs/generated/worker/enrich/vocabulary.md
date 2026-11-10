@@ -40,6 +40,28 @@ The deepest level of the topic tree: a top-level topic is level 1.
 
 ## Functions
 
+### dropIfEmptyStatement()
+
+> **dropIfEmptyStatement**(`db`, `topicId`): `D1PreparedStatement`
+
+The statement that deletes a topic with no link and no topic beneath it.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### topicId
+
+`string`
+
+#### Returns
+
+`D1PreparedStatement`
+
+***
+
 ### listAliases()
 
 > **listAliases**(`db`, `userId`): `Promise`\<[`Aliases`](enrich.md#aliases)\>
@@ -158,7 +180,7 @@ the first), or, where that would be below the third level, beside it.
 
 ### setTagsStatements()
 
-> **setTagsStatements**(`db`, `userId`, `linkId`, `tagIds`): `D1PreparedStatement`[]
+> **setTagsStatements**(`db`, `userId`, `linkId`, `tagIds`, `__namedParameters?`): `D1PreparedStatement`[]
 
 The statements that give one of the user's links exactly the tags `tagIds`,
 in that order. Tags the link keeps are never removed on the way, so that a
@@ -181,6 +203,12 @@ kept tag is not deleted as unused in between.
 ##### tagIds
 
 `string`[]
+
+##### \_\_namedParameters?
+
+###### unlessEdited?
+
+`boolean` = `false`
 
 #### Returns
 

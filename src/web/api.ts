@@ -349,7 +349,8 @@ export const vocabulary = {
   /** Has the owner's AI provider divide the links filed directly under a topic into sub-topics. */
   split: (id: string) =>
     request<{
-      topic: Omit<TopicItem, 'newest_added_at'>;
+      /** Null when every link went to a topic elsewhere and the emptied topic went with them. */
+      topic: Omit<TopicItem, 'newest_added_at'> | null;
       children: { id: string; name: string; count: number }[];
       moved: number;
     }>('POST', `/topics/${encodeURIComponent(id)}/split`),

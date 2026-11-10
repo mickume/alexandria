@@ -1,5 +1,6 @@
 /** The user's topics and tags as the owner browses them: listed, renamed and merged. */
 import { now } from '../clock';
+import { nameKey } from '../enrich/enrich';
 import { dropIfEmptyStatement, resolveTopicPath, TOPIC_LEVELS } from '../enrich/vocabulary';
 
 /** Topics or tags: which vocabulary a route is about. */
@@ -167,7 +168,7 @@ export async function getEntry(
     .first<VocabularyEntry>();
 }
 
-/** Whether another of the user's topics (or tags) than `id` is named `name`, ignoring case. */
+/** Whether another of the user's topics (or tags) than `id` has `name`'s key (nameKey). */
 async function nameTaken(
   db: D1Database,
   userId: string,
@@ -175,13 +176,14 @@ async function nameTaken(
   name: string,
   id: string,
 ): Promise<boolean> {
-  const row = await db
-    .prepare(
-      `SELECT 1 FROM ${TABLES[kind].table} WHERE user_id = ? AND name = ? COLLATE NOCASE AND id <> ?`,
-    )
-    .bind(userId, name, id)
-    .first();
-  return row !== null;
+  // By the key names are resolved by (spaces read as hyphens), so that no two
+  // of them are one name to an edit or an enrichment.
+  const rows = await db
+    .prepare(`SELECT name FROM ${TABLES[kind].table} WHERE user_id = ? AND id <> ?`)
+    .bind(userId, id)
+    .all<{ name: string }>();
+  const key = nameKey(name);
+  return rows.results.some((r) => nameKey(r.name) === key);
 }
 
 /** Marks the links carrying a topic or tag as changed, for the stream's change feed. */
@@ -339,7 +341,8 @@ async function topicTree(db: D1Database, userId: string) {
   /** The topic's level: 1 at the top; 0 for none. */
   const level = (id: string | null): number => {
     let n = 0;
-    for (let at = id; at !== null; at = parents.get(at) ?? null) n++;
+    // Bounded, so that a tree gone wrong cannot hold a request for ever.
+    for (let at = id; at !== null && n <= rows.results.length; at = parents.get(at) ?? null) n++;
     return n;
   };
   /** The levels the topic's subtree spans: 1 for a topic with no children. */
@@ -347,7 +350,11 @@ async function topicTree(db: D1Database, userId: string) {
     1 + Math.max(0, ...(children.get(id) ?? []).map((c) => height(c)));
   /** Whether `id` is `ancestor` or beneath it. */
   const within = (id: string | null, ancestor: string): boolean => {
-    for (let at = id; at !== null; at = parents.get(at) ?? null) if (at === ancestor) return true;
+    let steps = 0;
+    for (let at = id; at !== null && steps <= rows.results.length; at = parents.get(at) ?? null) {
+      if (at === ancestor) return true;
+      steps++;
+    }
     return false;
   };
   return { parents, children, level, height, within };
@@ -391,8 +398,15 @@ export async function moveTopic(
       db
         .prepare(`UPDATE links SET updated_at = ?3 WHERE topic_id IN (${SUBTREE}) AND user_id = ?2`)
         .bind(id, userId, now().toISOString()),
+      // Checked again as it is written: of two moves at once, the second
+      // cannot put a topic under one that the first put beneath it.
       db
-        .prepare('UPDATE topics SET parent_id = ? WHERE id = ? AND user_id = ?')
+        .prepare(
+          `UPDATE topics SET parent_id = ?1 WHERE id = ?2 AND user_id = ?3
+             AND NOT EXISTS (
+               SELECT 1 FROM topics p LEFT JOIN topics g ON g.id = p.parent_id
+               WHERE p.id = ?1 AND (p.id = ?2 OR p.parent_id = ?2 OR g.parent_id = ?2))`,
+        )
         .bind(parent, id, userId),
       ...dropEmptied(db, [former, former === null ? null : tree.parents.get(former)]),
     ]);
@@ -464,7 +478,8 @@ export async function prepareSplit(
 
 /** A split as it answers: the topic, every child of it by name, and how many links moved. */
 export interface SplitOutcome {
-  topic: TopicEntry;
+  /** Null when the split emptied the topic and it went with its links. */
+  topic: TopicEntry | null;
   children: VocabularyEntry[];
   moved: number;
   /** The ids of the links whose topic changed. */
@@ -523,6 +538,11 @@ export async function applySplit(
   const created = [...new Set(targets.values())].filter((t) => t !== id);
   if (created.length > 0) await db.batch(dropEmptied(db, created));
   const topic = await getTopic(db, userId, id);
+  // Every link went to a topic elsewhere and the emptied topic with them: the
+  // split was applied all the same.
+  if (!topic && movedIds.length > 0) {
+    return { topic: null, children: [], moved: movedIds.length, movedIds };
+  }
   // The topic itself went (merged or emptied) while the provider answered.
   if (!topic) return null;
   const children = await db

@@ -86,7 +86,7 @@ askRoutes.post('/', async (c) => {
   if (typeof detailed !== 'boolean') {
     return validationError(c, 'invalid_detailed', 'detailed', 'detailed must be true or false');
   }
-  const parsed = parseQuery(question, QUESTION_MAX);
+  const parsed = parseQuery(question, QUESTION_MAX, { prose: true });
   if (!parsed.ok) return validationError(c, parsed.error, 'question', parsed.message);
   if (parsed.words.length === 0) return noWord();
 

@@ -595,6 +595,26 @@ One of the user's links, or null when the user has no link with this id.
 
 ***
 
+### ownerEdited()
+
+> **ownerEdited**(`field`): `string`
+
+The SQL condition that the owner edited `field` of the link being written,
+read from the row itself, so that a write decided before the edit still
+keeps the owner's value.
+
+#### Parameters
+
+##### field
+
+`"title"` \| `"summary"` \| `"tags"` \| `"topic"`
+
+#### Returns
+
+`string`
+
+***
+
 ### parseStrings()
 
 > **parseStrings**(`notes`): `string`[]

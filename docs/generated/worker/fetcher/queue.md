@@ -8,6 +8,14 @@
 
 Failed attempts of a link's first fetch before it is given up as unreachable.
 
+***
+
+### UNREADABLE\_NOTE
+
+> `const` **UNREADABLE\_NOTE**: `"page could not be read"` = `'page could not be read'`
+
+The note on a page stored without metadata or reader view, because it could not be parsed.
+
 ## Functions
 
 ### handleFetchBatch()

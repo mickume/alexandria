@@ -110,35 +110,3 @@ describe('the background throttle', () => {
     expect(ai.enrichments.length).toBe(before + 1);
   });
 });
-
-describe('a throttled job that arrives too soon after the previous one', () => {
-  it('waits until 3 seconds and a margin have passed since the previous start', async () => {
-    new FakeOrigin()
-      .page('https://soon-a.example/', blogArticle)
-      .page('https://soon-b.example/', blogArticle);
-    const ai = new FakeAi();
-    const user = await signIn();
-    await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
-    recordEnrichQueue();
-    const a = await addAndFetch(user, 'https://soon-a.example/');
-    const b = await addAndFetch(user, 'https://soon-b.example/');
-    setNow(T);
-    const sent = recordEnrichQueue();
-    await sendThrottled(env, user.id, [a.id, b.id]);
-    const before = ai.enrichments.length;
-    setNow(T + 500);
-    await deliverEnrichments([sent[0]!.body]);
-    // The second job's slot has come, but the first started only 2.999 seconds earlier.
-    setNow(T + 3_499);
-    const again = recordEnrichQueue();
-    await deliverEnrichments([sent[1]!.body]);
-    expect(ai.enrichments.length).toBe(before + 1);
-    expect(again).toEqual([{ body: sent[1]!.body, delaySeconds: 1 }]);
-    setNow(T + 3_750);
-    await deliverEnrichments([sent[1]!.body]);
-    expect(ai.enrichments.length).toBe(before + 2);
-  });
-});

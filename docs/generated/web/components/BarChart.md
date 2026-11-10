@@ -84,7 +84,7 @@ for screen readers is beside it.
 
 ###### kind?
 
-`"lines"` \| `"bars"` \| `"stacked"` = `'bars'`
+`"bars"` \| `"stacked"` \| `"lines"` = `'bars'`
 
 ###### series
 

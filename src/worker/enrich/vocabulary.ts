@@ -145,7 +145,12 @@ export async function resolveTopicPath(
   const { add: addNear, find: nearId } = nearIndex(near ? topics : []);
   const level = (id: string | null): number => {
     let n = 0;
-    for (let at = id; at !== null && at !== undefined; at = parents.get(at) ?? null) n++;
+    for (
+      let at = id;
+      at !== null && at !== undefined && n <= parents.size;
+      at = parents.get(at) ?? null
+    )
+      n++;
     return n;
   };
 
