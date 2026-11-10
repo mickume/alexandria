@@ -351,15 +351,21 @@ export interface ImportProgress {
   enriched: number;
 }
 
+/**
+ * The SQL columns of an import's progress, over its `import_links il` joined
+ * with their `links l`: waiting, in_progress, done and enriched.
+ */
+export const PROGRESS_COLUMNS = `
+  COALESCE(SUM(il.dispatched_at IS NULL), 0) AS waiting,
+  COALESCE(SUM(il.dispatched_at IS NOT NULL AND l.state = 'pending'), 0) AS in_progress,
+  COALESCE(SUM(l.state <> 'pending'), 0) AS done,
+  COALESCE(SUM(l.state <> 'pending' AND l.enrichment_status = 'enriched'), 0) AS enriched`;
+
 /** The progress of one import's links still in the library. */
 export async function importProgress(db: D1Database, importId: string): Promise<ImportProgress> {
   const row = await db
     .prepare(
-      `SELECT
-         COALESCE(SUM(il.dispatched_at IS NULL), 0) AS waiting,
-         COALESCE(SUM(il.dispatched_at IS NOT NULL AND l.state = 'pending'), 0) AS in_progress,
-         COALESCE(SUM(l.state <> 'pending'), 0) AS done,
-         COALESCE(SUM(l.state <> 'pending' AND l.enrichment_status = 'enriched'), 0) AS enriched
+      `SELECT ${PROGRESS_COLUMNS}
        FROM import_links il JOIN links l ON l.id = il.link_id
        WHERE il.import_id = ?`,
     )

@@ -136,23 +136,38 @@ export async function handleLivenessBatch(
  * not enqueued in the last 6 hours. The enqueue time is recorded in the same
  * statement that selects the links.
  */
+/**
+ * The SQL condition that the link `l` is due a weekly check: neither expired nor
+ * archived, active or pinned, last checked (or, never checked, added) at or
+ * before `checkedBefore`, and not enqueued after `enqueuedBefore`; both are SQL
+ * expressions of stored times, such as bound parameters.
+ */
+export function checkDue(l: string, checkedBefore: string, enqueuedBefore: string): string {
+  return `${l}.state NOT IN ('expired', 'archived')
+    AND (${l}.state = 'active' OR ${l}.pin_position IS NOT NULL)
+    AND COALESCE(${l}.last_checked_at, ${l}.added_at) <= ${checkedBefore}
+    AND (${l}.check_enqueued_at IS NULL OR ${l}.check_enqueued_at <= ${enqueuedBefore})`;
+}
+
+/** The stored times checkDue compares with at `t`: the check interval and the enqueue window before it. */
+export function checkDueTimes(t: number): [string, string] {
+  return [
+    new Date(t - CHECK_INTERVAL_MS).toISOString(),
+    new Date(t - ENQUEUE_WINDOW_MS).toISOString(),
+  ];
+}
+
 export async function enqueueDueChecks(env: Env): Promise<void> {
   const t = now().getTime();
   const due = await env.DB.prepare(
     `UPDATE links SET check_enqueued_at = ?1 WHERE id IN (
        SELECT id FROM links
        WHERE user_id IN (SELECT id FROM users WHERE deletion_requested_at IS NULL)
-         AND state NOT IN ('expired', 'archived') AND (state = 'active' OR pin_position IS NOT NULL)
-         AND COALESCE(last_checked_at, added_at) <= ?2
-         AND (check_enqueued_at IS NULL OR check_enqueued_at <= ?3)
+         AND ${checkDue('links', '?2', '?3')}
        LIMIT 1000)
      RETURNING id, user_id`,
   )
-    .bind(
-      new Date(t).toISOString(),
-      new Date(t - CHECK_INTERVAL_MS).toISOString(),
-      new Date(t - ENQUEUE_WINDOW_MS).toISOString(),
-    )
+    .bind(new Date(t).toISOString(), ...checkDueTimes(t))
     .all<{ id: string; user_id: string }>();
   const messages = due.results.map((r) => ({ body: { user_id: r.user_id, link_id: r.id } }));
   for (let i = 0; i < messages.length; i += 100) {

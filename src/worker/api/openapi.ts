@@ -371,6 +371,30 @@ export const Stats = z.strictObject({
     }),
     ai_key: z.enum(['none', 'verified', 'rejected']),
   }),
+  backlog: z.strictObject({
+    fetch_pending: count,
+    fetch_retrying: count.describe('Pending links with a failed attempt'),
+    enrichment_queued: count,
+    imports: z
+      .array(
+        z.strictObject({
+          id: z.string(),
+          created_at: z.string(),
+          added: count,
+          waiting: count,
+          in_progress: count,
+          done: count,
+        }),
+      )
+      .describe('Imports with links waiting or in progress, newest first, at most 10'),
+    index_stale: count.describe('Links whose meaning index is out of date'),
+    vector_deletions: count,
+    liveness_due: count.describe('Links the next hourly run would enqueue for a liveness check'),
+    throttle_clear_at: z
+      .string()
+      .nullable()
+      .describe('When the background throttle frees up; null when it already has'),
+  }),
 });
 
 const NO_SNAPSHOT = error('not_found, or no_snapshot: "no snapshot stored for this link"');

@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { runScheduled } from '../decay/cron';
 import { FakeAi } from '../test/ai';
-import { api, createToken, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  createToken,
+  env,
+  recordLivenessQueue,
+  seedLinks,
+  setNow,
+  signIn,
+  type TestUser,
+} from '../test/helpers';
 import { statsHooks } from './stats';
 
 const NOW = '2026-11-10T12:00:00.000Z';
@@ -528,5 +538,154 @@ describe('health', () => {
     }
     const r = await stats(user);
     expect(r.json.health.ai_key).toBe(status);
+  });
+});
+
+/** Imports a file of `urls` through the API at the current clock; returns the import's id. */
+async function importUrls(user: TestUser, urls: string[]): Promise<string> {
+  const r = await api('POST', '/api/v1/imports', {
+    as: user.session,
+    body: urls.join('\n') + '\n',
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  expect(r.status).toBe(201);
+  return r.json.id;
+}
+
+describe('background backlog', () => {
+  it('counts the pending fetches, the retries and the queued enrichments', async () => {
+    const user = await signIn();
+    const [p1 = '', , , q1 = '', q2 = ''] = await seedMany(user, 5, 'b');
+    await setLink(p1, 'fetch_attempts', 2);
+    for (const id of [q1, q2]) {
+      await setLink(id, 'state', 'active');
+      await setLink(id, 'enrichment_status', 'queued');
+    }
+    const r = await stats(user);
+    expect(r.json.backlog).toMatchObject({
+      fetch_pending: 3,
+      fetch_retrying: 1,
+      enrichment_queued: 2,
+    });
+  });
+
+  it('lists the 10 newest imports still waiting or in progress, as the import reports them', async () => {
+    const user = await signIn();
+    const ids: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      setNow(Date.parse(NOW) + i * 60_000);
+      ids.push(await importUrls(user, [`https://imp${i}.example/a`, `https://imp${i}.example/b`]));
+    }
+    setNow(Date.parse(NOW) + 20 * 60_000);
+    const finished = await importUrls(user, ['https://done.example/']);
+    await env.DB.batch([
+      env.DB.prepare('UPDATE import_links SET dispatched_at = ? WHERE import_id IN (?, ?)').bind(
+        NOW,
+        finished,
+        ids[11],
+      ),
+      env.DB.prepare(
+        `UPDATE links SET state = 'active'
+         WHERE id IN (SELECT link_id FROM import_links WHERE import_id = ?)`,
+      ).bind(finished),
+    ]);
+    const r = await stats(user);
+    const listed = r.json.backlog.imports as { id: string }[];
+    expect(listed.map((i) => i.id)).toEqual(ids.slice(2).reverse());
+    const report = await api('GET', `/api/v1/imports/${ids[11]}`, { as: user.session });
+    expect(listed[0]).toEqual({
+      id: ids[11],
+      created_at: report.json.created_at,
+      added: 2,
+      waiting: report.json.progress.waiting,
+      in_progress: report.json.progress.in_progress,
+      done: report.json.progress.done,
+    });
+  });
+
+  it('counts the stale links of the meaning index and the vectors waiting deletion', async () => {
+    const user = await signIn();
+    const other = await signIn('other@example.test', 'B');
+    const [indexed = '', stale = ''] = await seedMany(user, 2, 'm', { state: 'active' });
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO link_passages (vector_id, link_id, user_id, version, position, text)
+         VALUES (?, ?, ?, 0, 0, 'text')`,
+      ).bind(`${indexed}:0:0`, indexed, user.id),
+      env.DB.prepare(
+        'INSERT INTO link_passages (vector_id, link_id, user_id, version, position, text) VALUES (?, ?, ?, 0, 0, ?)',
+      ).bind(`${stale}:0:0`, stale, user.id, 'text'),
+    ]);
+    // The note's change moves the stale link's text version past its passage.
+    await api('PATCH', `/api/v1/links/${stale}`, { as: user.session, body: { note: 'new' } });
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO vector_deletions (vector_id, user_id) VALUES (?, ?)').bind(
+        'v1',
+        user.id,
+      ),
+      env.DB.prepare('INSERT INTO vector_deletions (vector_id, user_id) VALUES (?, ?)').bind(
+        'v2',
+        user.id,
+      ),
+      env.DB.prepare('INSERT INTO vector_deletions (vector_id, user_id) VALUES (?, ?)').bind(
+        'v3',
+        other.id,
+      ),
+    ]);
+    const r = await stats(user);
+    expect(r.json.backlog.index_stale).toBe(1);
+    expect(r.json.backlog.vector_deletions).toBe(2);
+  });
+
+  it('counts the links due a liveness check, as the hourly run enqueues them', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const seed = async (state: string, opts: Record<string, unknown>) => {
+      const [id = ''] = await seedLinks(user, [
+        {
+          url: `https://live${crypto.randomUUID()}.example/`,
+          state,
+          lastUsedAt: NOW,
+          addedAt: daysAgo(30),
+        },
+      ]);
+      for (const [k, v] of Object.entries(opts)) await setLink(id, k, v);
+      return id;
+    };
+    const due1 = await seed('active', { last_checked_at: daysAgo(8) });
+    await seed('active', { last_checked_at: daysAgo(2) });
+    const due2 = await seed('pending', { pin_position: 1, added_at: daysAgo(8) });
+    await seed('active', {
+      last_checked_at: daysAgo(8),
+      check_enqueued_at: new Date(Date.parse(NOW) - 3_600_000).toISOString(),
+    });
+    await seed('expired', { last_checked_at: daysAgo(8) });
+    await seed('archived', { last_checked_at: daysAgo(8) });
+
+    const r = await stats(user);
+    expect(r.json.backlog.liveness_due).toBe(2);
+    const sent = recordLivenessQueue();
+    await runScheduled(env);
+    expect(sent.map((m) => m.body.link_id).sort()).toEqual([due1, due2].sort());
+  });
+
+  it.each([
+    ['the throttle’s next slot', 12 * 60_000, null, 12 * 60_000],
+    ['the later import window', 60_000, 5 * 60_000, 5 * 60_000],
+    ['nothing, once the slot has passed', -60_000, null, null],
+    ['nothing, with no slot', null, null, null],
+  ])('gives when background work clears: %s', async (_, next, windowEnd, expected) => {
+    setNow(NOW);
+    const user = await signIn();
+    const t = Date.parse(NOW);
+    await env.DB.prepare(
+      'UPDATE users SET throttle_next_at = ?, import_window_end = ? WHERE id = ?',
+    )
+      .bind(next === null ? null : t + next, windowEnd === null ? null : t + windowEnd, user.id)
+      .run();
+    const r = await stats(user);
+    expect(r.json.backlog.throttle_clear_at).toBe(
+      expected === null ? null : new Date(t + expected).toISOString(),
+    );
   });
 });

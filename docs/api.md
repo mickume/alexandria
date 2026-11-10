@@ -1202,6 +1202,25 @@ answers `500 {"error": "internal"}`, with no partial result.
       "failed_by_reason": [{ "reason": "provider_failed", "count": 2 }]
     },
     "ai_key": "verified"
+  },
+  "backlog": {
+    "fetch_pending": 3,
+    "fetch_retrying": 1,
+    "enrichment_queued": 2,
+    "imports": [
+      {
+        "id": "…",
+        "created_at": "2026-11-10T12:00:00.000Z",
+        "added": 50,
+        "waiting": 30,
+        "in_progress": 20,
+        "done": 0
+      }
+    ],
+    "index_stale": 1,
+    "vector_deletions": 2,
+    "liveness_due": 2,
+    "throttle_clear_at": "2026-11-10T12:12:00.000Z"
   }
 }
 ```
@@ -1234,6 +1253,14 @@ answers `500 {"error": "internal"}`, with no partial result.
   those dead for 30 days or more; the links in each `enrichment_status`
   (`none` for none yet) with the 5 most common reasons of the failed ones;
   and the AI key's status, `none`, `verified` or `rejected`.
+- `backlog`: what the database records as waiting for background work. The
+  pending links and, of them, those with a failed attempt; the links queued for
+  enrichment; the imports with links still waiting or in progress (newest
+  first, at most 10), with the numbers `GET /api/v1/imports/{id}` reports; the
+  links whose meaning index is out of date and the vectors waiting to be
+  deleted; the links the next hourly run would enqueue for a liveness check;
+  and `throttle_clear_at`, when the background throttle frees up (the later of
+  its next slot and the import window), or `null` once that has passed.
 
 Every list holds at most 10 entries (5 for reasons), most first; ties are
 broken by name (or host, or reason), A to Z ignoring case. An empty library

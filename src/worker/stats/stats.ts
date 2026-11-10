@@ -1,5 +1,8 @@
 import { epochMs } from '../decay/decay';
+import { checkDue, checkDueTimes } from '../decay/liveness';
+import { PROGRESS_COLUMNS } from '../imports/imports';
 import { LIBRARY_LIMIT } from '../links/store';
+import { IS_STALE } from '../meaning/indexing';
 
 /**
  * The owner's library statistics, computed at one instant from the rows the
@@ -343,6 +346,70 @@ const health: Section = {
   }),
 };
 
+const backlog: Section = {
+  name: 'backlog',
+  statements: (ctx) => {
+    const t = ctx.at.getTime();
+    return [
+      ctx.db
+        .prepare(
+          `SELECT SUM(state = 'pending' AND fetch_attempts > 0) AS fetch_retrying,
+             SUM(enrichment_status = 'queued') AS enrichment_queued
+           FROM links WHERE user_id = ?`,
+        )
+        .bind(ctx.userId),
+      ctx.db
+        .prepare(
+          `SELECT * FROM (
+             SELECT i.id, i.created_at, i.added, ${PROGRESS_COLUMNS}
+             FROM imports i JOIN import_links il ON il.import_id = i.id
+               JOIN links l ON l.id = il.link_id
+             WHERE i.user_id = ? GROUP BY i.id)
+           WHERE waiting + in_progress > 0
+           ORDER BY created_at DESC, id DESC LIMIT 10`,
+        )
+        .bind(ctx.userId),
+      ctx.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM links l LEFT JOIN link_index_state s ON s.link_id = l.id
+           WHERE l.user_id = ? AND ${IS_STALE}`,
+        )
+        .bind(ctx.userId),
+      ctx.db
+        .prepare('SELECT COUNT(*) AS n FROM vector_deletions WHERE user_id = ?')
+        .bind(ctx.userId),
+      ctx.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM links l WHERE l.user_id = ?1 AND ${checkDue('l', '?2', '?3')}`,
+        )
+        .bind(ctx.userId, ...checkDueTimes(t)),
+      ctx.db
+        .prepare('SELECT throttle_next_at, import_window_end FROM users WHERE id = ?')
+        .bind(ctx.userId),
+    ];
+  },
+  build: ([[fetches], imports, [stale], [vectors], [due], [throttle]], { links, at }) => {
+    const clear = Math.max(n(throttle, 'throttle_next_at'), n(throttle, 'import_window_end'));
+    return {
+      fetch_pending: n(links, 'pending'),
+      fetch_retrying: n(fetches, 'fetch_retrying'),
+      enrichment_queued: n(fetches, 'enrichment_queued'),
+      imports: imports.map((i) => ({
+        id: i.id,
+        created_at: i.created_at,
+        added: i.added,
+        waiting: i.waiting,
+        in_progress: i.in_progress,
+        done: i.done,
+      })),
+      index_stale: n(stale, 'n'),
+      vector_deletions: n(vectors, 'n'),
+      liveness_due: n(due, 'n'),
+      throttle_clear_at: clear > at.getTime() ? new Date(clear).toISOString() : null,
+    };
+  },
+};
+
 /** Every section of the answer, in its order. */
 export const SECTIONS: Section[] = [
   library,
@@ -353,6 +420,7 @@ export const SECTIONS: Section[] = [
   hosts,
   expiry,
   health,
+  backlog,
 ];
 
 /**
