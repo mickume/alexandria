@@ -3,11 +3,11 @@
   "spec_id": "17",
   "spec_name": "split_a_topic",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-10T10:04:36Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

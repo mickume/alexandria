@@ -998,6 +998,36 @@ changes nothing.
 
 Nothing changes when a move is refused.
 
+#### `POST /api/v1/topics/{id}/split`
+
+Divides the links filed directly under a topic into sub-topics, in one request
+to the owner's AI provider, which has 60 seconds to answer; the request waits
+for the answer and applies it before it answers. No body. The provider is sent
+each such link's id, title and summary, and the names of the topic's existing
+children, and returns 2 to 10 sub-topic names and, for each link, the name it
+belongs under, or an empty name to leave it under the topic. Each sub-topic a
+link is filed under is reused where it already is when an existing topic has
+its name (ignoring case, as an alias, or as a near name such as a plural), and
+is otherwise created as a child of the topic; each link is filed under its
+sub-topic and marked changed, and indexed again for word and meaning search.
+Links whose topic the owner edited are neither sent nor moved. A topic is
+split only when the owner asks for it.
+
+`200 {"topic": {"id", "name", "parent_id", "count", "subtree_count"}, "children": [{"id", "name", "count"}], "moved": <n>}`:
+`children` is every child of the topic after the split, by name, and `moved`
+the number of links whose topic changed. Refused, changing nothing:
+
+- `404 {"error": "not_found"}`: the topic is not one of the user's;
+- `409 {"error": "too_deep", "message": "topics are at most three levels deep"}`:
+  the topic is at level 3;
+- `409 {"error": "too_few_links", "message": "a topic needs at least 20 links to be split"}`
+  and `409 {"error": "too_many_links", "message": "a topic with more than 500 links cannot be split at once"}`,
+  counting every link filed directly under the topic;
+- `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`, and
+  `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}` while
+  the saved key is marked rejected, as `POST /api/v1/ask` answers;
+- `502 {"error": "provider_failed", "message"}` when the provider fails.
+
 #### Aliases
 
 A renamed or merged-away name is an alias of its survivor. When enrichment's

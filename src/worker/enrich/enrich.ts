@@ -164,6 +164,39 @@ export function buildPrompt(input: PromptInput): string {
   return lines.join('\n');
 }
 
+/** What the request for a topic's split is built from. */
+export interface SplitPromptInput {
+  topic: string;
+  /** The names of the topic's existing children. */
+  children: string[];
+  links: { id: string; title: string; summary: string | null }[];
+}
+
+/**
+ * The request for a topic's split: instructions, the topic's name, its
+ * children's names, and each link's id, title and summary as one JSON object
+ * per line. Nothing else of the links or of the user.
+ */
+export function buildSplitPrompt(input: SplitPromptInput): string {
+  return [
+    'You organise a personal library of web pages into topics.',
+    `The links below are all filed under the topic "${input.topic}", which has grown too broad.`,
+    'Divide them into 2 to 10 sub-topics of it, each a short name without ">".',
+    'Reuse an existing sub-topic when one fits; make new ones only where none does.',
+    'Then give every link the name of the sub-topic it belongs under,',
+    `or an empty name to leave it under "${input.topic}" itself when no sub-topic fits.`,
+    'Give:',
+    '- subtopics: the names of the 2 to 10 sub-topics;',
+    '- links: for each link, its id and its sub-topic (one of the names you gave, or an empty name).',
+    `Existing sub-topics: ${input.children.length ? input.children.join('; ') : '(none)'}`,
+    '',
+    'Links:',
+    ...input.links.map((l) =>
+      JSON.stringify({ id: l.id, title: l.title, summary: l.summary ?? '' }),
+    ),
+  ].join('\n');
+}
+
 /** The user's tag aliases: each former name's key (nameKey) with the name of its survivor. */
 export interface Aliases {
   tags: Map<string, string>;

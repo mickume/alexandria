@@ -15,14 +15,22 @@ export interface AiResult {
   topic: string;
 }
 
+/** A split's result as a provider returns it. */
+export interface SplitResult {
+  subtopics: string[];
+  links: { id: string; subtopic: string }[];
+}
+
 /** One request a provider received. */
 export interface AiRequest {
   provider: 'anthropic' | 'openrouter';
   url: string;
   headers: Headers;
   body: Record<string, unknown>;
-  /** Whether it asked for an enrichment (rather than testing a key). */
+  /** Whether it asked for an enrichment (rather than testing a key or splitting a topic). */
   enrichment: boolean;
+  /** Whether it asked for a topic's split. */
+  split: boolean;
   /** Whether it asked for a streamed answer to a question. */
   ask: boolean;
   at: number;
@@ -59,6 +67,7 @@ function eventStream(chunks: string[], hang: boolean): ReadableStream<Uint8Array
 export class FakeAi {
   readonly requests: AiRequest[] = [];
   private enrichAnswer: Answer = { kind: 'result', result: DEFAULT_RESULT };
+  private splitResult: SplitResult = { subtopics: [], links: [] };
   private keyAnswer: Answer | null = null;
   private pieces = DEFAULT_PIECES;
   private hangAfterPieces = false;
@@ -66,6 +75,17 @@ export class FakeAi {
   constructor() {
     onOutbound(new URL(env.ANTHROPIC_BASE_URL).origin, (r) => this.handle('anthropic', r));
     onOutbound(new URL(env.OPENROUTER_BASE_URL).origin, (r) => this.handle('openrouter', r));
+  }
+
+  /** Answers a split with `result`, unless an error, a stall or a refusal is scripted. */
+  split(result: SplitResult): this {
+    this.splitResult = result;
+    return this;
+  }
+
+  /** The requests that asked for a topic's split. */
+  get splits(): AiRequest[] {
+    return this.requests.filter((r) => r.split);
   }
 
   /** Answers enrichments with `result`. */
@@ -123,17 +143,27 @@ export class FakeAi {
     return this.requests.filter((r) => r.ask);
   }
 
-  /** The enrichment requests, leaving out key tests. */
+  /** The enrichment requests, leaving out key tests and splits. */
   get enrichments(): AiRequest[] {
     return this.requests.filter((r) => r.enrichment);
   }
 
   private async handle(provider: 'anthropic' | 'openrouter', request: Request): Promise<Response> {
     const body = (await request.json()) as Record<string, unknown>;
-    const enrichment =
+    const structured =
       provider === 'anthropic'
         ? 'output_config' in body || 'tools' in body
         : 'response_format' in body;
+    const schema =
+      provider === 'anthropic'
+        ? (body.output_config as { format?: { schema?: { properties?: object } } } | undefined)
+            ?.format?.schema
+        : (
+            body.response_format as
+              { json_schema?: { schema?: { properties?: object } } } | undefined
+          )?.json_schema?.schema;
+    const split = structured && 'subtopics' in (schema?.properties ?? {});
+    const enrichment = structured && !split;
     const ask = body.stream === true;
     this.requests.push({
       provider,
@@ -141,11 +171,12 @@ export class FakeAi {
       headers: request.headers,
       body,
       enrichment,
+      split,
       ask,
       at: Date.now(),
     });
     const answer =
-      enrichment || ask
+      structured || ask
         ? this.enrichAnswer
         : (this.keyAnswer ?? { kind: 'result', result: DEFAULT_RESULT });
     if (answer.kind === 'stall') return new Promise<Response>(() => undefined);
@@ -187,8 +218,8 @@ export class FakeAi {
       const content =
         answer.kind === 'refusal'
           ? [{ type: 'text', text: 'I cannot help with that.' }]
-          : enrichment
-            ? [{ type: 'text', text: JSON.stringify(answer.result) }]
+          : structured
+            ? [{ type: 'text', text: JSON.stringify(split ? this.splitResult : answer.result) }]
             : [{ type: 'text', text: 'ok' }];
       return Response.json({
         id: 'msg_1',
@@ -214,7 +245,11 @@ export class FakeAi {
           message: {
             role: 'assistant',
             content:
-              answer.kind === 'refusal' ? null : enrichment ? JSON.stringify(answer.result) : 'ok',
+              answer.kind === 'refusal'
+                ? null
+                : structured
+                  ? JSON.stringify(split ? this.splitResult : answer.result)
+                  : 'ok',
             refusal: answer.kind === 'refusal' ? 'I cannot help with that.' : null,
           },
         },

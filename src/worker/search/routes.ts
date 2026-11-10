@@ -1,9 +1,12 @@
 import { Hono, type Context } from 'hono';
-import { notFound, readJson, refusal, validationError } from '../api/errors';
+import { limitReached, notFound, readJson, refusal, validationError } from '../api/errors';
 import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
+import { decryptKey, getAiSettings } from '../enrich/keys';
+import { splitWith } from '../enrich/providers';
+import { buildSplitPrompt } from '../enrich/enrich';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
 import { hybridRanking, passageSnippet } from './hybrid';
@@ -12,8 +15,10 @@ import {
   carrierIds,
   isVocabularyCursor,
   listVocabularyItems,
+  applySplit,
   mergeEntry,
   moveTopic,
+  prepareSplit,
   parseName,
   renameEntry,
   TAG_NAME_MAX,
@@ -316,3 +321,49 @@ topicRoutes.post('/:id/move', async (c) => {
 });
 /** The tags, at /api/v1/tags. */
 export const tagRoutes = vocabularyRoutes('tags');
+
+/** What a split refused before the provider is asked answers. */
+const SPLIT_REFUSALS = {
+  too_deep: 'topics are at most three levels deep',
+  too_few_links: 'a topic needs at least 20 links to be split',
+  too_many_links: 'a topic with more than 500 links cannot be split at once',
+} as const;
+
+/** The split the provider answered, as sub-topic names and each sent link's sub-topic. */
+interface SplitAnswer {
+  subtopics: string[];
+  links: { id: string; subtopic: string }[];
+}
+
+topicRoutes.post('/:id/split', async (c) => {
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const request = await prepareSplit(c.env.DB, userId, id);
+  if (request === 'not_found') return notFound(c);
+  if (typeof request === 'string') return refusal(c, 409, request, SPLIT_REFUSALS[request]);
+  const settings = await getAiSettings(c.env.DB, userId);
+  if (!settings) return limitReached(c, 'no_ai_key', 'add an AI key in settings');
+  if (settings.status === 'rejected') {
+    return limitReached(
+      c,
+      'ai_key_rejected',
+      settings.rejectedMessage ?? 'the provider rejected the key',
+    );
+  }
+  const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
+  const outcome = await splitWith(
+    c.env,
+    { provider: settings.provider, apiKey, model: settings.model },
+    buildSplitPrompt({
+      topic: request.path.at(-1)!,
+      children: request.children,
+      links: request.links,
+    }),
+  );
+  if (!outcome.ok) return refusal(c, 502, 'provider_failed', outcome.message);
+  const answer = outcome.value as SplitAnswer;
+  const assignments = new Map(answer.links.map((l) => [l.id, l.subtopic.trim()]));
+  const split = await applySplit(c.env.DB, userId, id, request.path, assignments);
+  await queueIndexing(c.env, userId, split.movedIds);
+  return c.json({ topic: split.topic, children: split.children, moved: split.moved });
+});

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { api, env, placeTopic, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  env,
+  placeTopic,
+  recordIndexQueue,
+  seedLinks,
+  setNow,
+  signIn,
+  type TestUser,
+} from '../test/helpers';
+import { FakeAi } from '../test/ai';
+import { markKeyRejected } from '../enrich/keys';
 import { listVocabulary } from '../enrich/vocabulary';
 
 async function patch(user: TestUser, id: string, body: Record<string, unknown>) {
@@ -955,5 +966,280 @@ describe('merging and renaming topics in the tree', () => {
     );
     const moved = changed.json.items.find((l: { id: string }) => l.id === links.Async);
     expect(moved.topic_path).toEqual(['Rust', 'Async']);
+  });
+});
+
+describe('splitting a topic', () => {
+  const T0 = Date.parse('2026-07-01T00:00:00.000Z');
+
+  async function saveKey(user: TestUser) {
+    const r = await api('PUT', '/api/v1/settings/ai', {
+      as: user.session,
+      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
+    });
+    expect(r.status).toBe(200);
+  }
+
+  /**
+   * Files `n` new links of the user directly under the topic `name` (created,
+   * under `parent` when given, if it does not exist), through SQL so that no
+   * topic counts as edited, unless `edited`. Returns the links' ids.
+   */
+  async function fileLinks(
+    user: TestUser,
+    name: string,
+    n: number,
+    {
+      parent,
+      edited = false,
+      prefix = name,
+    }: { parent?: string; edited?: boolean; prefix?: string } = {},
+  ): Promise<string[]> {
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: n }, (_, i) => ({
+        url: `https://${prefix.toLowerCase().replace(/\W+/g, '-')}-${i}.example/`,
+      })),
+    );
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO topics (id, user_id, name, parent_id)
+       VALUES (?1, ?2, ?3, (SELECT id FROM topics WHERE user_id = ?2 AND name = ?4))`,
+    )
+      .bind(crypto.randomUUID(), user.id, name, parent ?? null)
+      .run();
+    await env.DB.batch(
+      ids.map((id, i) =>
+        env.DB.prepare(
+          `UPDATE links SET topic_id = (SELECT id FROM topics WHERE user_id = ?1 AND name = ?2),
+             title = ?3, summary = ?4, edited_fields = ?5 WHERE id = ?6`,
+        ).bind(
+          user.id,
+          name,
+          `${prefix} title ${i}`,
+          `${prefix} summary ${i}`,
+          edited ? '["topic"]' : '[]',
+          id,
+        ),
+      ),
+    );
+    return ids;
+  }
+
+  async function split(user: TestUser, name: string) {
+    return api('POST', `/api/v1/topics/${await idOf(user, 'topics', name)}/split`, {
+      as: user.session,
+    });
+  }
+
+  /** Software engineering with 25 links, its child Testing and a top-level Databases with one each. */
+  async function library() {
+    setNow(T0);
+    const user = await signIn();
+    const se = await fileLinks(user, 'Software engineering', 25);
+    const [testing] = await fileLinks(user, 'Testing', 1, { parent: 'Software engineering' });
+    const [databases] = await fileLinks(user, 'Databases', 1);
+    const ai = new FakeAi();
+    await saveKey(user);
+    ai.split({
+      subtopics: ['Testing', 'Databases', 'Compilers', 'Unused'],
+      links: se.map((id, i) => ({
+        id,
+        subtopic: i < 10 ? 'Testing' : i < 15 ? 'Databases' : i < 20 ? 'Compilers' : '',
+      })),
+    });
+    return { user, ai, se, testing: testing!, databases: databases! };
+  }
+
+  /** The user's topics with their parents' names and their own counts. */
+  async function topics(user: TestUser) {
+    const items = (await api('GET', '/api/v1/topics', { as: user.session })).json.items as {
+      id: string;
+      name: string;
+      parent_id: string | null;
+      count: number;
+    }[];
+    const names = new Map(items.map((i) => [i.id, i.name]));
+    return Object.fromEntries(
+      items.map((i) => [
+        i.name,
+        { parent: i.parent_id === null ? null : names.get(i.parent_id), count: i.count },
+      ]),
+    );
+  }
+
+  it('files the links under the sub-topics the provider proposes, in one request', async () => {
+    const { user, ai } = await library();
+    expect(ai.splits).toHaveLength(0);
+    const r = await split(user, 'Software engineering');
+    expect(r.status).toBe(200);
+    const id = (name: string) => idOf(user, 'topics', name);
+    expect(r.json).toEqual({
+      topic: {
+        id: await id('Software engineering'),
+        name: 'Software engineering',
+        parent_id: null,
+        count: 5,
+        subtree_count: 21,
+      },
+      children: [
+        { id: await id('Compilers'), name: 'Compilers', count: 5 },
+        { id: await id('Testing'), name: 'Testing', count: 11 },
+      ],
+      moved: 20,
+    });
+    expect(await topics(user)).toEqual({
+      'Software engineering': { parent: null, count: 5 },
+      Testing: { parent: 'Software engineering', count: 11 },
+      Compilers: { parent: 'Software engineering', count: 5 },
+      Databases: { parent: null, count: 6 },
+    });
+    expect(ai.splits).toHaveLength(1);
+    expect(ai.enrichments).toHaveLength(0);
+  });
+
+  it('sends the provider the links filed directly under the topic and its children, and nothing of the owner', async () => {
+    const { user, ai, se, testing, databases } = await library();
+    await split(user, 'Software engineering');
+    const body = JSON.stringify(ai.splits[0]!.body);
+    for (const [i, id] of se.entries()) {
+      expect(body).toContain(id);
+      expect(body).toContain(`Software engineering title ${i}`);
+      expect(body).toContain(`Software engineering summary ${i}`);
+    }
+    expect(body).toContain('Testing');
+    expect(body).toContain('2 to 10 sub-topics');
+    expect(body).toContain('an empty name');
+    for (const absent of [testing, databases, 'owner@example.test', 'Ada Owner', user.id]) {
+      expect(body).not.toContain(absent);
+    }
+    const schema = (
+      ai.splits[0]!.body.output_config as { format: { schema: { properties: object } } }
+    ).format.schema;
+    expect(Object.keys(schema.properties).sort()).toEqual(['links', 'subtopics']);
+  });
+
+  it('counts but neither sends nor moves the links whose topic the owner edited', async () => {
+    setNow(T0);
+    const user = await signIn();
+    const sent = await fileLinks(user, 'Rustacean', 17);
+    const edited = await fileLinks(user, 'Rustacean', 3, { edited: true, prefix: 'Edited' });
+    const ai = new FakeAi();
+    await saveKey(user);
+    ai.split({
+      subtopics: ['Async', 'Embedded'],
+      links: sent.map((id, i) => ({ id, subtopic: i % 2 ? 'Async' : 'Embedded' })),
+    });
+    const r = await split(user, 'Rustacean');
+    expect(r.status).toBe(200);
+    expect(r.json.moved).toBe(17);
+    const body = JSON.stringify(ai.splits[0]!.body);
+    for (const id of edited) {
+      expect(body).not.toContain(id);
+      const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+      expect(link.topic).toBe('Rustacean');
+    }
+  });
+
+  it('marks the moved links changed and updates them for word and meaning search', async () => {
+    const { user, se } = await library();
+    const since = new Date(T0 + 1).toISOString();
+    setNow(T0 + 60_000);
+    const sent = recordIndexQueue();
+    expect((await split(user, 'Software engineering')).status).toBe(200);
+    const changed = await api('GET', `/api/v1/links?changed_since=${since}`, { as: user.session });
+    expect(changed.json.items.map((l: { id: string }) => l.id).sort()).toEqual(
+      se.slice(0, 20).sort(),
+    );
+    const found = await api('GET', '/api/v1/search?q=compilers', { as: user.session });
+    expect(found.json.items.map((i: { link: { id: string } }) => i.link.id).sort()).toEqual(
+      se.slice(15, 20).sort(),
+    );
+    expect(sent.map((m) => m.body.link_id).sort()).toEqual(se.slice(0, 20).sort());
+  });
+
+  it.each([
+    {
+      label: '19 links',
+      links: 19,
+      status: 409,
+      error: 'too_few_links',
+      message: 'a topic needs at least 20 links to be split',
+    },
+    { label: '20 links', links: 20, status: 200 },
+    { label: '500 links', links: 500, status: 200 },
+    {
+      label: '501 links',
+      links: 501,
+      status: 409,
+      error: 'too_many_links',
+      message: 'a topic with more than 500 links cannot be split at once',
+    },
+    {
+      label: 'a level-3 topic',
+      links: 25,
+      level3: true,
+      status: 409,
+      error: 'too_deep',
+      message: 'topics are at most three levels deep',
+    },
+    {
+      label: 'no key',
+      links: 25,
+      key: 'none',
+      status: 409,
+      error: 'no_ai_key',
+      message: 'add an AI key in settings',
+    },
+    {
+      label: 'a key marked rejected',
+      links: 25,
+      key: 'rejected',
+      status: 409,
+      error: 'ai_key_rejected',
+      message: 'invalid x-api-key',
+    },
+    { label: 'another user’s topic', links: 25, theirs: true, status: 404, error: 'not_found' },
+    { label: 'an unknown topic', links: 25, unknown: true, status: 404, error: 'not_found' },
+  ] as {
+    label: string;
+    links: number;
+    status: number;
+    error?: string;
+    message?: string;
+    level3?: boolean;
+    key?: 'none' | 'rejected';
+    theirs?: boolean;
+    unknown?: boolean;
+  }[])('answers $status for $label', async (row) => {
+    setNow(T0);
+    const user = await signIn();
+    const other = await signIn('other@example.test');
+    const owner = row.theirs ? other : user;
+    if (row.level3) {
+      await fileLinks(owner, 'Top', 1);
+      await fileLinks(owner, 'Middle', 1, { parent: 'Top' });
+    }
+    const ids = await fileLinks(owner, 'Target', row.links, row.level3 ? { parent: 'Middle' } : {});
+    const ai = new FakeAi();
+    if (row.key !== 'none') await saveKey(user);
+    if (row.key === 'rejected') await markKeyRejected(env.DB, user.id, 'invalid x-api-key');
+    ai.requests.length = 0;
+    ai.split({
+      subtopics: ['Left', 'Right'],
+      links: ids.map((id, i) => ({ id, subtopic: i % 2 ? 'Left' : 'Right' })),
+    });
+    const before = await topics(owner);
+    const target = row.unknown ? 'no-such-topic' : await idOf(owner, 'topics', 'Target');
+    const r = await api('POST', `/api/v1/topics/${target}/split`, { as: user.session });
+    expect(r.status).toBe(row.status);
+    if (row.status === 200) {
+      expect(r.json.moved).toBe(row.links);
+      return;
+    }
+    expect(r.json).toEqual(
+      row.message ? { error: row.error, message: row.message } : { error: row.error },
+    );
+    expect(ai.requests.filter((q) => q.split)).toEqual([]);
+    expect(await topics(owner)).toEqual(before);
   });
 });

@@ -186,16 +186,50 @@ export async function testKey(env: Env, call: ProviderCall): Promise<ProviderOut
   }
 }
 
+/** The structured result asked of the model for a topic's split. */
+export const SPLIT_SCHEMA = {
+  type: 'object',
+  properties: {
+    subtopics: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'The names of 2 to 10 sub-topics.',
+    },
+    links: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'The id of a link you were sent.' },
+          subtopic: {
+            type: 'string',
+            description: 'The sub-topic the link belongs under, or an empty name to leave it.',
+          },
+        },
+        required: ['id', 'subtopic'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['subtopics', 'links'],
+  additionalProperties: false,
+} as const;
+
+/** The longest answers an enrichment and a split may take: a split needs room for 500 links. */
+const ENRICH_MAX_TOKENS = 4096;
+const SPLIT_MAX_TOKENS = 16_384;
+
 /**
- * Asks the user's provider for a structured {summary, tags, topic}: a JSON
- * schema through structured outputs (output_config.format) of Anthropic's
- * Messages API, and through the response format of OpenRouter's chat
- * completions. The value is the model's raw object.
+ * Asks the user's provider for a structured result of `schema`: a JSON schema
+ * through structured outputs (output_config.format) of Anthropic's Messages
+ * API, and through the response format of OpenRouter's chat completions. The
+ * value is the model's raw object.
  */
-export async function enrichWith(
+async function structuredWith(
   env: Env,
   call: ProviderCall,
   prompt: string,
+  { schema, name, maxTokens }: { schema: object; name: string; maxTokens: number },
 ): Promise<ProviderOutcome<unknown>> {
   try {
     return await withTimeout(async (signal) => {
@@ -205,8 +239,10 @@ export async function enrichWith(
         const message = await anthropic(env, call.apiKey).messages.create(
           {
             model: call.model,
-            max_tokens: 4096,
-            output_config: { format: { type: 'json_schema', schema: RESULT_SCHEMA } },
+            max_tokens: maxTokens,
+            output_config: {
+              format: { type: 'json_schema', schema: schema as Record<string, unknown> },
+            },
             messages: [{ role: 'user', content: prompt }],
           },
           { signal },
@@ -230,10 +266,9 @@ export async function enrichWith(
         {
           model: call.model,
           messages: [{ role: 'user', content: prompt }],
-          response_format: {
-            type: 'json_schema',
-            json_schema: { name: 'enrichment', strict: true, schema: RESULT_SCHEMA },
-          },
+          // A split's answer is long; enrichment's fits OpenRouter's default.
+          ...(maxTokens > ENRICH_MAX_TOKENS ? { max_tokens: maxTokens } : {}),
+          response_format: { type: 'json_schema', json_schema: { name, strict: true, schema } },
         },
         signal,
       );
@@ -249,6 +284,32 @@ export async function enrichWith(
   } catch (err) {
     return fromError(err);
   }
+}
+
+/** Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA). */
+export function enrichWith(
+  env: Env,
+  call: ProviderCall,
+  prompt: string,
+): Promise<ProviderOutcome<unknown>> {
+  return structuredWith(env, call, prompt, {
+    schema: RESULT_SCHEMA,
+    name: 'enrichment',
+    maxTokens: ENRICH_MAX_TOKENS,
+  });
+}
+
+/** Asks the user's provider for a topic's split: {subtopics, links} (SPLIT_SCHEMA). */
+export function splitWith(
+  env: Env,
+  call: ProviderCall,
+  prompt: string,
+): Promise<ProviderOutcome<unknown>> {
+  return structuredWith(env, call, prompt, {
+    schema: SPLIT_SCHEMA,
+    name: 'split',
+    maxTokens: SPLIT_MAX_TOKENS,
+  });
 }
 
 /** What a streamed answer is asked: the instruction, and the passages and question. */

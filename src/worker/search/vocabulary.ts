@@ -1,6 +1,6 @@
 /** The user's topics and tags as the owner browses them: listed, renamed and merged. */
 import { now } from '../clock';
-import { TOPIC_LEVELS } from '../enrich/vocabulary';
+import { resolveTopicPath, TOPIC_LEVELS } from '../enrich/vocabulary';
 
 /** Topics or tags: which vocabulary a route is about. */
 export type VocabularyKind = 'topics' | 'tags';
@@ -406,4 +406,126 @@ export async function moveTopic(
     ]);
   }
   return (await getTopic(db, userId, id))!;
+}
+
+/** The fewest and the most links filed directly under a topic that a split takes. */
+export const SPLIT_MIN_LINKS = 20;
+export const SPLIT_MAX_LINKS = 500;
+
+/** Why a split was refused before the provider was asked. */
+export type SplitRefusal = 'not_found' | 'too_deep' | 'too_few_links' | 'too_many_links';
+
+/** What a split asks the provider about: the topic, its children and the links it may move. */
+export interface SplitRequest {
+  /** The topic's names from the top level down, its own last. */
+  path: string[];
+  children: string[];
+  /** The links filed directly under the topic whose topic the owner did not edit. */
+  links: { id: string; title: string; summary: string | null }[];
+}
+
+/**
+ * What a split of one of the user's topics would send the provider, or why it
+ * is refused: not the user's, at the third level, or with fewer than 20 or
+ * more than 500 links filed directly under it (every such link counts, the
+ * ones whose topic the owner edited among them, though those are not sent).
+ */
+export async function prepareSplit(
+  db: D1Database,
+  userId: string,
+  id: string,
+): Promise<SplitRequest | SplitRefusal> {
+  const tree = await topicTree(db, userId);
+  if (!tree.parents.has(id)) return 'not_found';
+  if (tree.level(id) >= TOPIC_LEVELS) return 'too_deep';
+  const [links, names] = await db.batch<{
+    id: string;
+    title: string;
+    summary: string | null;
+    edited_fields: string;
+    name: string;
+    parent_id: string | null;
+  }>([
+    db
+      .prepare(
+        'SELECT id, title, summary, edited_fields FROM links WHERE topic_id = ? AND user_id = ? ORDER BY added_at, id',
+      )
+      .bind(id, userId),
+    db.prepare('SELECT id, name, parent_id FROM topics WHERE user_id = ?').bind(userId),
+  ]);
+  const all = links?.results ?? [];
+  if (all.length < SPLIT_MIN_LINKS) return 'too_few_links';
+  if (all.length > SPLIT_MAX_LINKS) return 'too_many_links';
+  const byId = new Map((names?.results ?? []).map((t) => [t.id, t.name]));
+  const path: string[] = [];
+  for (let at: string | null = id; at !== null; at = tree.parents.get(at) ?? null) {
+    path.unshift(byId.get(at)!);
+  }
+  return {
+    path,
+    children: (tree.children.get(id) ?? []).map((c) => byId.get(c)!).sort(),
+    links: all
+      .filter((l) => !(JSON.parse(l.edited_fields) as string[]).includes('topic'))
+      .map(({ id: linkId, title, summary }) => ({ id: linkId, title, summary })),
+  };
+}
+
+/** A split as it answers: the topic, every child of it by name, and how many links moved. */
+export interface SplitOutcome {
+  topic: TopicEntry;
+  children: VocabularyEntry[];
+  moved: number;
+  /** The ids of the links whose topic changed. */
+  movedIds: string[];
+}
+
+/**
+ * Applies a split of one of the user's topics: each sub-topic name some link
+ * is filed under is resolved as the last name of the topic's own path, with
+ * near names (an existing child or any existing topic is reused where it is,
+ * otherwise a child of the topic is created), and in one batch each link is
+ * filed under its sub-topic and, when its topic changes, marked changed.
+ * `assignments` maps each link to its sub-topic's name; '' leaves it.
+ */
+export async function applySplit(
+  db: D1Database,
+  userId: string,
+  id: string,
+  path: string[],
+  assignments: Map<string, string>,
+): Promise<SplitOutcome> {
+  const targets = new Map<string, string>();
+  for (const name of new Set(assignments.values())) {
+    if (name === '') continue;
+    targets.set(name, await resolveTopicPath(db, userId, [...path, name], { near: true }));
+  }
+  const moves = [...assignments].flatMap(([linkId, name]) => {
+    const target = name === '' ? undefined : targets.get(name);
+    return target && target !== id ? [{ linkId, target }] : [];
+  });
+  const at = now().toISOString();
+  if (moves.length > 0) {
+    await db.batch(
+      moves.map(({ linkId, target }) =>
+        db
+          .prepare(
+            'UPDATE links SET topic_id = ?, updated_at = ? WHERE id = ? AND user_id = ? AND topic_id = ?',
+          )
+          .bind(target, at, linkId, userId, id),
+      ),
+    );
+  }
+  const children = await db
+    .prepare(
+      `SELECT t.id, t.name, (SELECT COUNT(*) FROM links WHERE topic_id = t.id) AS count
+       FROM topics t WHERE t.parent_id = ? AND t.user_id = ? ORDER BY t.name COLLATE NOCASE, t.id`,
+    )
+    .bind(id, userId)
+    .all<VocabularyEntry>();
+  return {
+    topic: (await getTopic(db, userId, id))!,
+    children: children.results,
+    moved: moves.length,
+    movedIds: moves.map((m) => m.linkId),
+  };
 }

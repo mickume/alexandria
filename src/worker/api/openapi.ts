@@ -732,6 +732,27 @@ export const operations: Operation[] = [
   }),
   {
     method: 'post',
+    path: '/topics/{id}/split',
+    operationId: 'splitTopic',
+    summary:
+      'Divide the links filed directly under a topic into 2 to 10 sub-topics the owner’s AI provider proposes, applied at once',
+    responses: {
+      200: {
+        description: 'The topic, every child of it by name, and how many links moved',
+        schema: z.strictObject({
+          topic: TopicEntry,
+          children: z.array(VocabularyEntry),
+          moved: z.number().int(),
+        }),
+      },
+      409: error(
+        'too_few_links (under 20), too_many_links (over 500), too_deep (a level-3 topic), no_ai_key, or ai_key_rejected',
+      ),
+      502: error('provider_failed: the provider failed, or its split could not be used'),
+    },
+  },
+  {
+    method: 'post',
     path: '/topics/{id}/move',
     operationId: 'moveTopic',
     summary: 'Move a topic, with every topic beneath it, under another topic, or to the top level',
