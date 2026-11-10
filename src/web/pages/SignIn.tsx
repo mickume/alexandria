@@ -1,4 +1,8 @@
 import { Mark } from '../components/Icon';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card } from '@/components/ui/card';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const MESSAGES: Record<string, string> = {
   private: 'This library is private',
@@ -19,20 +23,20 @@ export function SignIn() {
         <h1>Alexandria</h1>
         <p className="lead">Your links, kept and found again.</p>
         {deleted && (
-          <p className="q-flash" role="status">
-            Your account and all its data are being deleted.
-          </p>
+          <Alert role="status">
+            <AlertDescription>Your account and all its data are being deleted.</AlertDescription>
+          </Alert>
         )}
         {message && (
-          <p className="notice q-flash q-flash--danger" role="alert">
-            {message}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
         )}
-        <div className="signin-box q-box q-box-body">
-          <a className="q-btn q-btn--primary q-btn--block" href="/auth/google">
+        <Card className="signin-box p-4 shadow-none">
+          <a className={cn(buttonVariants(), 'w-full')} href="/auth/google">
             Sign in with Google
           </a>
-        </div>
+        </Card>
       </div>
     </main>
   );

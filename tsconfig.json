@@ -15,6 +15,7 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "paths": { "@/*": ["./src/web/*"] },
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types", "vite/client", "node"]
   },
   "include": ["src", "e2e", "scripts", "*.ts", "*.js"]

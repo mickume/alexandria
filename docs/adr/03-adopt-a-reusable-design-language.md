@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-11-08).
+Superseded by [ADR 08](08-adopt-shadcn-ui-with-godui.md) (2026-11-10).
 
 ## Context
 

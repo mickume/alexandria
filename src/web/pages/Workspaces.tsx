@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from '../App';
 import { ApiError, workspaces, type WorkspaceSummary } from '../api';
 import { byName } from '../format';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const CONFIRM_DELETE = 'Delete this workspace? Its links stay in your library.';
 
@@ -42,21 +45,19 @@ function WorkspaceRow({
   }
 
   return (
-    <li className="workspace-row q-box-row">
+    <li className="workspace-row list-row">
       {renaming ? (
         <form className="inline-form" onSubmit={rename}>
-          <label htmlFor={`rename-${workspace.id}`} className="visually-hidden">
+          <Label htmlFor={`rename-${workspace.id}`} className="visually-hidden">
             New name of {workspace.name}
-          </label>
-          <input
+          </Label>
+          <Input
             id={`rename-${workspace.id}`}
             value={name}
             maxLength={100}
             onChange={(e) => setName(e.target.value)}
           />
-          <button type="submit" className="q-btn q-btn--primary">
-            Save
-          </button>
+          <Button type="submit">Save</Button>
         </form>
       ) : (
         <Link to={`/workspaces/${workspace.id}`}>
@@ -64,22 +65,24 @@ function WorkspaceRow({
         </Link>
       )}
       <span className="actions">
-        <button
+        <Button
           type="button"
-          className="q-btn-link"
+          variant="link"
+          className="h-auto p-0"
           aria-label={`Rename ${workspace.name}`}
           onClick={() => setRenaming(true)}
         >
           Rename
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="q-btn-link"
+          variant="link"
+          className="h-auto p-0"
           aria-label={`Delete ${workspace.name}`}
           onClick={() => void remove()}
         >
           Delete
-        </button>
+        </Button>
       </span>
     </li>
   );
@@ -118,24 +121,22 @@ export function Workspaces() {
     <section className="workspaces">
       <h1>Workspaces</h1>
       <form className="inline-form" onSubmit={create}>
-        <label htmlFor="workspace-name">Workspace name</label>
-        <input
+        <Label htmlFor="workspace-name">Workspace name</Label>
+        <Input
           id="workspace-name"
           value={name}
           maxLength={100}
           required
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="q-btn q-btn--primary">
-          Create
-        </button>
+        <Button type="submit">Create</Button>
       </form>
       {error && (
         <p className="notice" role="alert">
           {error}
         </p>
       )}
-      <ul className="workspace-list q-box">
+      <ul className="workspace-list list-box">
         {(list ?? []).map((w) => (
           <WorkspaceRow
             key={w.id}

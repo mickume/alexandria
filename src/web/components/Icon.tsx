@@ -1,6 +1,6 @@
 /**
- * The line icons of the website, drawn as Quire asks (see src/design/README.md):
- * 24-unit paths stroked in the text colour, shown at 16 px.
+ * The line icons of the website: 24-unit paths stroked in the text colour,
+ * shown at 16 px.
  */
 const PATHS = {
   stream: ['M4 6h16', 'M4 12h16', 'M4 18h10'],
@@ -42,7 +42,7 @@ export type IconName = keyof typeof PATHS;
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   return (
     <svg
-      className="q-icon"
+      className="icon"
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -65,15 +65,15 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
 export function Mark({ size = 32 }: { size?: number }) {
   return (
     <svg className="mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <circle cx="16" cy="16" r="16" fill="var(--q-fg-default)" />
+      <circle cx="16" cy="16" r="16" fill="var(--foreground)" />
       <path
         d="M8 10.5c3-1.2 5.7-1 8 .8 2.3-1.8 5-2 8-.8v11c-3-1.2-5.7-1-8 .8-2.3-1.8-5-2-8-.8v-11Z"
         fill="none"
-        stroke="var(--q-bg-default)"
+        stroke="var(--background)"
         strokeWidth="1.8"
         strokeLinejoin="round"
       />
-      <path d="M16 11.3v11" stroke="var(--q-bg-default)" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16 11.3v11" stroke="var(--background)" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

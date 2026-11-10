@@ -5,29 +5,33 @@ import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
 import { DeleteAccountSection } from './DeleteAccountSection';
 import { FirecrawlSection } from './FirecrawlSection';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
 
 /** The secret of a token just created, shown until the owner dismisses it. */
 function NewSecret({ secret, onDone }: { secret: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="panel q-box q-box-body" role="status">
+    <Card className="panel gap-3 p-4 shadow-none" role="status">
       <p>Copy this secret now. It will not be shown again.</p>
       <code className="secret">{secret}</code>
       <div className="actions">
-        <button
+        <Button
           type="button"
-          className="q-btn"
+          variant="outline"
           onClick={() => {
             void navigator.clipboard?.writeText(secret).then(() => setCopied(true));
           }}
         >
           {copied ? 'Copied' : 'Copy'}
-        </button>
-        <button type="button" className="q-btn" onClick={onDone}>
+        </Button>
+        <Button type="button" variant="outline" onClick={onDone}>
           Done
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -40,7 +44,7 @@ function ExportSection() {
         Your whole library as one JSON file: every link, workspace, topic and tag, with the
         addresses of each link’s stored copies.
       </p>
-      <a className="q-btn" href="/api/v1/export" download>
+      <a className={buttonVariants({ variant: 'outline' })} href="/api/v1/export" download>
         Export library
       </a>
     </section>
@@ -97,17 +101,15 @@ export function Settings() {
         <code>Authorization: Bearer &lt;secret&gt;</code>.
       </p>
       <form className="inline-form" onSubmit={create}>
-        <label htmlFor="token-name">Token name</label>
-        <input
+        <Label htmlFor="token-name">Token name</Label>
+        <Input
           id="token-name"
           value={name}
           maxLength={100}
           required
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="q-btn q-btn--primary">
-          Create token
-        </button>
+        <Button type="submit">Create token</Button>
       </form>
       {error && (
         <p className="notice" role="alert">
@@ -115,9 +117,9 @@ export function Settings() {
         </p>
       )}
       {secret && <NewSecret secret={secret} onDone={() => setSecret(null)} />}
-      <ul className="token-list q-box">
+      <ul className="token-list list-box">
         {(list ?? []).map((t) => (
-          <li key={t.id} className="q-box-row" aria-label={t.name}>
+          <li key={t.id} className="list-row" aria-label={t.name}>
             <div>
               <strong>{t.name}</strong>
               <div className="muted">
@@ -125,9 +127,9 @@ export function Settings() {
                 {t.last_used_at ? formatDate(t.last_used_at) : 'never'}
               </div>
             </div>
-            <button type="button" className="q-btn" onClick={() => void revoke(t.id)}>
+            <Button type="button" variant="outline" onClick={() => void revoke(t.id)}>
               Revoke
-            </button>
+            </Button>
           </li>
         ))}
       </ul>

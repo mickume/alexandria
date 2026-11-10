@@ -1,1229 +1,1702 @@
 /*
- * Alexandria's own styles, on top of Quire (src/design/quire.css, imported
- * before this file): the frame of its pages and the parts only it has. Every
- * value comes from a Quire token, so light and dark follow the system.
+ * Alexandria's own styles, over the theme (theme.css: Tailwind CSS v4 and
+ * shadcn/ui's variables): the defaults of plain elements, which Tailwind
+ * resets, then the frame of its pages and the parts only it has. Every colour
+ * is one of the theme's variables, so light and dark follow the system. The
+ * rules sit in Tailwind's layers, so a utility on an element always wins.
  */
 
-.muted {
-  color: var(--q-fg-muted);
-}
-
-/* The second, quieter half of a two-tone heading. */
-.soft {
-  color: var(--q-fg-muted);
-}
-
-.lead {
-  margin: 0;
-  color: var(--q-fg-muted);
-  font-size: var(--q-text-md);
-}
-
-.notice {
-  color: var(--q-danger-fg);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* ── The frame: the header (where you are, search, tabs) over the page. ── */
-
-.shell {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.brand {
-  gap: var(--q-space-2);
-  padding-left: 0;
-  font-weight: var(--q-weight-semibold);
-}
-
-a.brand:hover {
-  background: none;
-}
-
-a.brand:hover span {
-  text-decoration: underline;
-  text-underline-offset: 0.2rem;
-}
-
-.mark {
-  flex: none;
-}
-
-.q-header-actions form {
-  margin: 0;
-}
-
-.search {
-  width: 20rem;
-  max-width: 100%;
-  margin: 0;
-}
-
-.page:focus {
-  outline: none;
-}
-
-/* Reading pages keep a comfortable measure. */
-.detail,
-.reader,
-.snapshot,
-.settings,
-.workspace {
-  max-width: var(--q-container-sm);
-  margin: 0 auto;
-}
-
-/* Page headings: a light title over a hairline. */
-.page h1 {
-  margin: 0 0 var(--q-space-4);
-  padding-bottom: var(--q-space-2);
-  border-bottom: var(--q-border-width) solid var(--q-border-muted);
-  font-size: var(--q-text-xl);
-  font-weight: var(--q-weight-normal);
-}
-
-.page h1 a {
-  color: var(--q-fg-default);
-}
-
-.page h1 a:hover {
-  color: var(--q-accent-fg);
-  text-decoration: none;
-}
-
-.page h2 {
-  margin: var(--q-space-6) 0 var(--q-space-2);
-  font-size: var(--q-text-lg);
-}
-
-.page-head {
-  padding-bottom: var(--q-space-3);
-  border-bottom: var(--q-border-width) solid var(--q-border-muted);
-}
-
-.page .page-head h1 {
-  margin-bottom: var(--q-space-1);
-  padding: 0;
-  border: 0;
-}
-
-/* ── Forms and small parts. ── */
-
-.inline-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--q-space-2);
-  margin: var(--q-space-4) 0;
-}
-
-.inline-form input {
-  flex: 1 1 12rem;
-}
-
-.stacked-form {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--q-space-2);
-  max-width: 28rem;
-  margin: var(--q-space-4) 0;
-}
-
-.stacked-form button {
-  align-self: flex-start;
-}
-
-.panel {
-  margin: var(--q-space-4) 0;
-}
-
-.panel p {
-  margin-top: 0;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-2);
-  margin-top: var(--q-space-3);
-}
-
-.secret {
-  display: block;
-  padding: var(--q-space-2) var(--q-space-3);
-  overflow-wrap: anywhere;
-}
-
-.toasts {
-  position: fixed;
-  bottom: var(--q-space-4);
-  left: 50%;
-  z-index: var(--q-z-toast);
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-2);
-  width: min(28rem, calc(100vw - 2 * var(--q-space-4)));
-  transform: translateX(-50%);
-}
-
-/* ── The sign-in page: the mark, the name and one green button. ── */
-
-.signin {
-  display: flex;
-  justify-content: center;
-  min-height: 100vh;
-  padding: var(--q-space-8) var(--q-space-4);
-}
-
-.signin-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--q-space-4);
-  width: min(21rem, 100%);
-  text-align: center;
-}
-
-.signin-card h1 {
-  margin: var(--q-space-2) 0 0;
-  font-size: var(--q-text-xl);
-  font-weight: var(--q-weight-normal);
-}
-
-.signin-card .q-flash {
-  align-self: stretch;
-  margin: 0;
-  text-align: left;
-}
-
-.signin-box {
-  align-self: stretch;
-  background: var(--q-bg-subtle);
-}
-
-/* ── The stream: the add box, then the links in one bordered list. ── */
-
-.stream {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-4);
-}
-
-.add-links {
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-lg);
-  background: var(--q-bg-default);
-  transition:
-    border-color var(--q-duration-fast) var(--q-ease),
-    box-shadow var(--q-duration-fast) var(--q-ease);
-}
-
-.add-links:focus-within {
-  border-color: var(--q-focus-color);
-  box-shadow: inset 0 0 0 1px var(--q-focus-color);
-}
-
-.page .add-links textarea {
-  display: block;
-  width: 100%;
-  min-height: 4.5rem;
-  padding: var(--q-space-3) var(--q-space-4);
-  border: 0;
-  border-radius: var(--q-radius-lg);
-  background: transparent;
-  box-shadow: none;
-  font-size: var(--q-text-md);
-  resize: vertical;
-}
-
-.add-messages {
-  margin: 0;
-  padding: var(--q-space-2) var(--q-space-4);
-  border-top: var(--q-border-width) solid var(--q-border-muted);
-  list-style: none;
-  color: var(--q-fg-muted);
-}
-
-/*
- * Links are the rows of one bordered box: the title and its actions, a line
- * of facts, the summary in one line, then the labels. The row under the
- * pointer is shaded; its actions show on hover or focus, and always on a
- * touch screen.
- */
-.cards {
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-}
-
-.cards:empty {
-  display: none;
-}
-
-.cards > * + * {
-  border-top: var(--q-border-width) solid var(--q-border-muted);
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: var(--q-space-3) var(--q-space-4);
-  transition: background-color var(--q-duration-fast) var(--q-ease);
-}
-
-.card:hover,
-.card:focus-within {
-  background: var(--q-bg-subtle);
-}
-
-.cards > :first-child,
-.cards > :first-child .card {
-  border-top-left-radius: var(--q-radius-md);
-  border-top-right-radius: var(--q-radius-md);
-}
-
-.cards > :last-child,
-.cards > :last-child .card {
-  border-bottom-right-radius: var(--q-radius-md);
-  border-bottom-left-radius: var(--q-radius-md);
-}
-
-.card-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--q-space-1) var(--q-space-4);
-}
-
-.card-head {
-  display: flex;
-  flex: 1 1 18rem;
-  align-items: baseline;
-  gap: var(--q-space-2);
-  min-width: 0;
-}
-
-.favicon {
-  flex: none;
-  align-self: center;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--q-radius-sm);
-}
-
-.card-title {
-  color: var(--q-fg-default);
-  font-size: var(--q-text-md);
-  font-weight: var(--q-weight-semibold);
-  line-height: var(--q-leading-tight);
-}
-
-.card-title:hover {
-  color: var(--q-accent-fg);
-}
-
-.card-host {
-  color: inherit;
-}
-
-.card-host:hover {
-  color: var(--q-accent-fg);
-}
-
-/*
- * The facts read as one line: host · added · used · state. Every fact carries
- * its dot in front, and the dot of the first one on each line falls in a
- * strip on the left that is clipped away.
- */
-.card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.1rem 0;
-  margin: var(--q-space-1) 0 0 -1rem;
-  font-size: var(--q-text-xs);
-  clip-path: inset(-0.5rem -0.5rem -0.5rem 0.75rem);
-}
-
-.card-meta > *::before {
-  content: '·' / '';
-  display: inline-block;
-  width: 1rem;
-  color: var(--q-fg-muted);
-  font-style: normal;
-  font-weight: normal;
-  text-align: center;
-}
-
-.state {
-  text-transform: lowercase;
-}
-
-.state-pending {
-  color: var(--q-attention-fg);
-}
-
-.summary {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--q-space-2);
-  margin-top: var(--q-space-1);
-}
-
-.summary .q-btn-link {
-  flex: none;
-  font-size: var(--q-text-xs);
-}
-
-.summary-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  margin: 0;
-  color: var(--q-fg-muted);
-}
-
-.summary-text.clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
-  overflow: hidden;
-}
-
-.card-labels {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--q-space-1) var(--q-space-2);
-  margin-top: var(--q-space-2);
-}
-
-/* A topic or tag chip is a link that looks exactly as it would as a plain label. */
-.label-link:hover {
-  text-decoration: none;
-}
-
-.q-label.label-link:hover {
-  border-color: var(--q-border-default);
-}
-
-.q-topic.label-link:hover {
-  background: var(--q-accent-subtle);
-  color: var(--q-accent-fg);
-}
-
-.tags,
-.workspace-chips,
-.filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* A workspace chip is purple, so it is not taken for a topic (grey) or a tag (blue); like them, it does not change on hover. */
-.workspace-chip,
-.workspace-chip:hover {
-  border-color: var(--q-done-muted);
-  background: var(--q-done-subtle);
-  color: var(--q-done-fg);
-  text-decoration: none;
-}
-
-/* Actions: small quiet buttons at the end of a row, or under a link's facts. */
-.card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--q-space-1);
-  margin: var(--q-space-3) 0;
-}
-
-.card .card-actions {
-  flex: none;
-  margin: calc(-1 * var(--q-space-1)) calc(-1 * var(--q-space-2)) 0 auto;
-}
-
-.card-actions .q-btn-link {
-  display: inline-flex;
-  align-items: center;
-  height: var(--q-control-sm);
-  padding: 0 var(--q-space-2);
-  border-radius: var(--q-radius-md);
-  color: var(--q-fg-default);
-  font-size: var(--q-text-xs);
-  font-weight: var(--q-weight-medium);
-}
-
-.card-actions .q-btn-link:hover {
-  background: var(--q-bg-neutral-muted);
-  text-decoration: none;
-}
-
-.card-actions .q-btn {
-  color: var(--q-fg-default);
-}
-
-@media (hover: hover) {
-  .card .card-actions {
-    opacity: 0;
-    transition: opacity var(--q-duration-fast) var(--q-ease);
+@layer base {
+  body {
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
   }
 
-  .card:hover .card-actions,
-  .card:focus-within .card-actions,
-  .card-actions:has([aria-expanded='true']) {
-    opacity: 1;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+  }
+
+  h3 {
+    font-size: var(--text-base);
+  }
+
+  p,
+  ul,
+  ol,
+  dl,
+  table,
+  pre,
+  blockquote {
+    margin: 0 0 1rem;
+  }
+
+  /*
+   * The theme has no link colour: a link is the text's own colour, underlined
+   * when pointed at, and always underlined where it sits in running text.
+   */
+  a {
+    color: inherit;
+    text-underline-offset: 0.2rem;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  :is(p, dd, .markdown, .reader-body) a:not([data-slot]) {
+    text-decoration: underline;
+    text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
+  }
+
+  :is(p, dd, .markdown, .reader-body) a:not([data-slot]):hover {
+    text-decoration-color: currentColor;
+  }
+
+  strong,
+  b {
+    font-weight: 600;
+  }
+
+  hr {
+    margin: 1rem 0;
+    border-color: var(--border);
+  }
+
+  img,
+  svg,
+  video {
+    display: inline;
+    max-width: 100%;
+    vertical-align: middle;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  code,
+  samp {
+    padding: 0.2em 0.4em;
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+    font-size: 85%;
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    font-size: 85%;
+    line-height: 1.45;
+  }
+
+  pre code {
+    padding: 0;
+    background: none;
+    font-size: inherit;
+  }
+
+  kbd {
+    display: inline-block;
+    min-width: 1.25rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+    color: var(--muted-foreground);
+    font-size: 0.6875rem;
+    line-height: 1.125rem;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  mark {
+    padding: 0 0.1em;
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklab, var(--chart-4) 35%, transparent);
+    color: inherit;
+  }
+
+  th {
+    font-weight: 600;
+    text-align: left;
+  }
+
+  /* Rendered Markdown (notes, answers, the reader view) keeps its lists and quotes. */
+  .markdown ul,
+  .reader-body ul {
+    padding-left: 1.5rem;
+    list-style: disc;
+  }
+
+  .markdown ol,
+  .reader-body ol {
+    padding-left: 1.5rem;
+    list-style: decimal;
+  }
+
+  .markdown blockquote,
+  .reader-body blockquote {
+    padding-left: 1rem;
+    border-left: 2px solid var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .markdown :is(th, td),
+  .reader-body :is(th, td) {
+    padding: 0.25rem 0.75rem;
+    border: 1px solid var(--border);
   }
 }
 
-/* The ⋯ menu: the less frequent actions of a row, in an overlay under its button. */
-.card-menu {
-  position: relative;
-}
+@layer components {
+  /* ── Parts shared by the pages, in the look of shadcn/ui's own. ── */
 
-.card-menu-panel {
-  position: absolute;
-  top: calc(100% + var(--q-space-1));
-  right: 0;
-}
-
-/* Refresh and the workspace picker are links elsewhere; here they are menu items. */
-.card-menu-panel .q-btn-link {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: var(--q-control-md);
-  padding: 0.375rem var(--q-space-2);
-  border-radius: var(--q-radius-md);
-  color: var(--q-fg-default);
-}
-
-.card-menu-panel .q-btn-link:hover {
-  background: var(--q-bg-neutral-muted);
-  text-decoration: none;
-}
-
-.card-menu-item,
-.card-menu-item .picker {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.card-menu-item .muted,
-.card-menu-item .notice {
-  padding: 0 var(--q-space-2) var(--q-space-1);
-  font-size: var(--q-text-xs);
-}
-
-.card-menu-panel .picker-menu {
-  position: static;
-  min-width: 0;
-  margin: 0 0 var(--q-space-1) var(--q-space-3);
-  padding: 0 0 0 var(--q-space-2);
-  border-left: var(--q-border-width) solid var(--q-border-muted);
-  border-radius: 0;
-  box-shadow: none;
-}
-
-/*
- * An archived link is dimmed wherever it is shown: its title takes the muted
- * colour (which keeps the contrast of muted text) and its icon goes grey.
- */
-.card.archived .card-title {
-  color: var(--q-fg-muted);
-  font-weight: var(--q-weight-medium);
-}
-
-.card.archived .favicon {
-  filter: grayscale(1);
-  opacity: 0.6;
-}
-
-.ask-sources li.archived a {
-  color: var(--q-fg-muted);
-}
-
-/* A pinned card is faintly tinted, a shade under the hover of a row, and grabbable. */
-.card.pinned {
-  background: color-mix(in srgb, var(--q-accent-subtle) 50%, transparent);
-  cursor: grab;
-}
-
-.card.pinned:hover,
-.card.pinned:focus-within {
-  background: var(--q-accent-subtle);
-}
-
-.pin-mark {
-  flex: none;
-  align-self: center;
-  font-size: 0.875rem;
-  line-height: 1;
-}
-
-.note-preview {
-  margin: 0 0 var(--q-space-1);
-  color: var(--q-fg-muted);
-  font-size: var(--q-text-xs);
-  font-style: italic;
-}
-
-.note {
-  font-style: italic;
-}
-
-.note .q-btn-link {
-  font-style: normal;
-}
-
-.dead {
-  color: var(--q-danger-fg);
-}
-
-.enrichment-failed {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-2);
-  margin-top: var(--q-space-1);
-  font-size: var(--q-text-xs);
-}
-
-.empty,
-.nothing-found {
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-}
-
-.empty {
-  margin: 0;
-  font-size: var(--q-text-md);
-}
-
-.nothing-found p {
-  margin: 0;
-  font-size: var(--q-text-md);
-}
-
-.sentinel {
-  height: 1px;
-}
-
-/* The workspace picker on its own: an overlay under its button. */
-.picker {
-  position: relative;
-}
-
-.picker-menu {
-  position: absolute;
-  top: 1.75rem;
-  left: 0;
-}
-
-/* ── A link on its own: facts, history, editable fields, notes. ── */
-
-/* As an issue is laid out: the content on the left, a narrower column of metadata and actions on the right. */
-.detail {
-  max-width: var(--q-container-md);
-}
-
-.detail-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 16rem;
-  gap: var(--q-space-6);
-  align-items: start;
-}
-
-@media (max-width: 48rem) {
-  .detail-layout {
-    grid-template-columns: minmax(0, 1fr);
+  .icon {
+    flex: none;
   }
-}
-
-.detail-side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-3);
-  font-size: var(--q-text-sm);
-}
-
-/* Each part of the side column is divided from the one before it, as an issue's sidebar is. */
-.detail-side > * + * {
-  padding-top: var(--q-space-3);
-  border-top: var(--q-border-width) solid var(--q-border-muted);
-}
-
-/* A side heading reads as the Tags and Topic labels do. */
-.detail-side h2 {
-  margin: 0;
-  color: var(--q-fg-muted);
-  font-size: var(--q-text-xs);
-  font-weight: var(--q-weight-normal);
-}
-
-.detail-workspaces {
-  margin: var(--q-space-1) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.detail-workspaces li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--q-space-2);
-}
-
-.detail-actions .muted {
-  padding: 0 var(--q-space-2) var(--q-space-1);
-  font-size: var(--q-text-xs);
-}
-
-.detail-actions .picker-menu {
-  z-index: var(--q-z-dropdown);
-  min-width: 12rem;
-}
-
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: var(--q-space-1) var(--q-space-4);
-  margin: 0;
-  font-size: var(--q-text-sm);
-}
-
-.facts dt {
-  color: var(--q-fg-muted);
-}
-
-.facts dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.history {
-  padding: 0;
-  list-style: none;
-}
-
-.history li {
-  padding: var(--q-space-1) 0;
-}
-
-/* Similar links: one per line, the title, then its host and likeness. */
-.related-links {
-  padding: 0;
-  list-style: none;
-}
-
-.related-links li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--q-space-2);
-  padding: var(--q-space-1) 0;
-}
-
-.related-links .muted {
-  font-size: var(--q-text-xs);
-}
-
-.editable {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-3);
-  margin: var(--q-space-4) 0;
-}
-
-.field-head {
-  display: flex;
-  align-items: center;
-  gap: var(--q-space-2);
-  font-size: var(--q-text-xs);
-}
-
-.field-edit,
-.note-editing {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-2);
-}
-
-.reader-body {
-  font-size: var(--q-text-md);
-  line-height: 1.65;
-}
-
-.reader-body img {
-  height: auto;
-}
-
-.snapshot-frame {
-  display: block;
-  width: 100%;
-  height: 75vh;
-  margin-top: var(--q-space-4);
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-  background: #fff;
-}
-
-/* ── Lists of things: tokens, workspaces, vocabulary, search results. ── */
-
-.token-list,
-.workspace-list,
-.workspace-results {
-  margin: var(--q-space-4) 0;
-}
-
-.token-list li,
-.workspace-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--q-space-4);
-  padding: var(--q-space-3) var(--q-space-4);
-}
-
-.workspace-row .actions {
-  margin: 0;
-}
-
-.workspace-results li {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-1);
-  padding: var(--q-space-3) var(--q-space-4);
-}
-
-.member {
-  cursor: grab;
-}
-
-.vocabulary .q-table {
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-  overflow: hidden;
-}
-
-.vocabulary th:nth-child(2) {
-  text-align: right;
-}
-
-.vocabulary .actions {
-  margin: 0;
-  text-align: right;
-}
-
-.vocabulary .actions button {
-  margin-left: var(--q-space-3);
-}
-
-.vocabulary form {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--q-space-2);
-}
-
-.vocabulary input,
-.vocabulary select {
-  max-width: 12rem;
-}
-
-/* The topic tree: each level's names one step further in. */
-.vocabulary tr[data-level='2'] td:first-child {
-  padding-left: calc(var(--q-space-4) + var(--q-space-5));
-}
-
-.vocabulary tr[data-level='3'] td:first-child {
-  padding-left: calc(var(--q-space-4) + 2 * var(--q-space-5));
-}
-
-/* Search results: each link's row with the matching passage under it. */
-.results {
-  margin: 0;
-  padding: 0;
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-  list-style: none;
-}
-
-.results:empty {
-  display: none;
-}
-
-.results li + li {
-  border-top: var(--q-border-width) solid var(--q-border-muted);
-}
-
-.results li:hover,
-.results li:focus-within {
-  background: var(--q-bg-subtle);
-}
-
-.results .card:hover,
-.results .card:focus-within {
-  background: none;
-}
-
-.snippet {
-  margin: calc(-1 * var(--q-space-1)) 0 0;
-  padding: 0 var(--q-space-4) var(--q-space-3);
-  color: var(--q-fg-muted);
-  font-size: var(--q-text-xs);
-}
-
-.snippet mark {
-  color: var(--q-fg-default);
-  font-weight: var(--q-weight-semibold);
-}
-
-.workspace-results .snippet {
-  padding: 0;
-}
-
-/* A result found by meaning: its mark beside the start of the passage that matched. */
-.match-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--q-space-2);
-  margin: calc(-1 * var(--q-space-1)) 0 0;
-  padding: 0 var(--q-space-4) var(--q-space-3);
-}
-
-.match-row .snippet {
-  margin: 0;
-  padding: 0;
-}
-
-/* ── Settings: sections one after another, the account's end in a red box. ── */
-
-.decay-settings .field {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--q-space-1);
-}
-
-.decay-settings .field input {
-  width: 8rem;
-}
-
-.decay-settings .field .muted {
-  font-size: var(--q-text-xs);
-}
-
-/* The import page: the drop zone, the workspace choice, then the report. */
-.import-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--q-space-4);
-  margin: var(--q-space-4) 0 var(--q-space-5);
-}
-
-.import-form select,
-.import-form .q-input {
-  max-width: 24rem;
-}
-
-.dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--q-space-2);
-  padding: var(--q-space-6) var(--q-space-4);
-  border: 2px dashed var(--q-border-default);
-  border-radius: var(--q-radius-lg);
-  background: var(--q-bg-subtle);
-  text-align: center;
-  transition:
-    border-color var(--q-duration-fast) var(--q-ease),
-    background var(--q-duration-fast) var(--q-ease);
-}
-
-.dropzone .q-icon {
-  color: var(--q-fg-muted);
-}
-
-.dropzone.is-dragging {
-  border-color: var(--q-focus-color);
-  background: var(--q-accent-subtle);
-}
-
-.dropzone p {
-  margin: 0;
-}
-
-/* The file input is hidden; its label, a button, shows its focus. */
-.dropzone input:focus-visible + label {
-  outline: 2px solid var(--q-focus-color);
-  outline-offset: 2px;
-}
-
-/* The Import button at the end of the header's tabs. */
-.nav-import {
-  flex: none;
-}
-
-.nav-import[aria-current='page'] {
-  border-color: var(--q-focus-color);
-}
-
-.import-counts,
-.import-lines {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-1) var(--q-space-4);
-  padding: 0;
-  list-style: none;
-}
-
-.danger-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--q-space-2);
-  margin-top: var(--q-space-7);
-  padding: var(--q-space-4);
-  border: var(--q-border-width) solid var(--q-danger-emphasis);
-  border-radius: var(--q-radius-md);
-}
-
-.page .danger-zone h2 {
-  margin: 0;
-  color: var(--q-danger-fg);
-  font-size: var(--q-text-md);
-}
-
-.danger-zone p {
-  margin: 0;
-}
-
-.danger-zone input {
-  width: 100%;
-  max-width: 24rem;
-}
-
-/* Phones and narrow windows: Quire gives the search box a line of its own. */
-@media (max-width: 40rem) {
+
+  /* The header: where you are, the search box and signing out, over the tabs. */
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    background: var(--background);
+  }
+
+  .site-header-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.75rem 1rem 0.25rem;
+  }
+
+  .site-context {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    margin: 0;
+    color: var(--muted-foreground);
+  }
+
+  .site-context-current {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .brand:hover span {
+    text-decoration: underline;
+    text-underline-offset: 0.2rem;
+  }
+
+  .site-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+
+  .site-header-actions form {
+    margin: 0;
+  }
+
+  @media (max-width: 40rem) {
+    .site-header-actions {
+      flex: 1 1 100%;
+    }
+
+    .site-header-actions > .search {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+    }
+  }
+
+  /* The tabs: one per section, the current one underlined, scrolling sideways on a phone. */
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0 0.75rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-nav-item {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2rem;
+    margin: 0.25rem 0 0.5rem;
+    padding: 0 0.625rem;
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      color var(--godui-duration-fast) var(--ease-out-expo),
+      background-color var(--godui-duration-fast) var(--ease-out-expo);
+  }
+
+  .site-nav-item:hover {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  .site-nav-item[aria-current]:not([aria-current='false']) {
+    color: var(--foreground);
+  }
+
+  .site-nav-item[aria-current]:not([aria-current='false'])::after {
+    content: '';
+    position: absolute;
+    right: 0.625rem;
+    bottom: -0.5rem;
+    left: 0.625rem;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--foreground);
+  }
+
+  .site-nav-spacer {
+    flex: 1;
+  }
+
+  /* The page under the header. */
+  .page {
+    width: 100%;
+    max-width: 63.25rem;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  /* The search box: an input with its icon and the key that focuses it. */
   .search {
-    width: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.25rem;
+    padding: 0 0.5rem 0 0.75rem;
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--muted-foreground);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    transition: box-shadow var(--godui-duration-fast) var(--ease-out-expo);
   }
-}
 
-/* ── Ask: a question, its streamed answer and the sources under it. ── */
+  .search:focus-within {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
 
-.ask-form {
-  display: flex;
-  gap: var(--q-space-2);
-  margin: var(--q-space-4) 0;
-}
+  .search input {
+    flex: 1;
+    width: 100%;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--foreground);
+  }
 
-.ask-form input {
-  flex: 1;
-  min-width: 0;
-}
+  .search input:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
 
-.ask-answer {
-  padding: var(--q-space-3) var(--q-space-4);
-  border: var(--q-border-width) solid var(--q-border-default);
-  border-radius: var(--q-radius-md);
-}
+  /* A menu: the panel under a button, and its items; also the action list of a link's page. */
+  .menu {
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    min-width: 12rem;
+    max-width: calc(100vw - 2rem);
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow:
+      0 4px 6px -1px rgb(0 0 0 / 0.1),
+      0 2px 4px -2px rgb(0 0 0 / 0.1);
+    transform-origin: top right;
+    animation: var(--animate-godui-popover-in);
+  }
 
-.ask-answer .markdown > :first-child {
-  margin-top: 0;
-}
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--radius-sm);
+    color: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    text-decoration: none;
+    user-select: none;
+  }
 
-.ask-answer .markdown > :last-child {
-  margin-bottom: 0;
-}
+  .menu-item:hover,
+  .menu-item:focus-visible {
+    background: var(--accent);
+    color: var(--accent-foreground);
+    outline: none;
+  }
 
-.ask-answer + .ask-answer {
-  margin-top: var(--q-space-3);
-}
+  .menu-item > svg {
+    color: var(--muted-foreground);
+  }
 
-.ask-progress {
-  display: flex;
-  align-items: center;
-  gap: var(--q-space-2);
-  margin: 0;
-  font-size: var(--q-text-sm);
-}
+  .menu-item[aria-checked='true']::after {
+    content: '✓';
+    margin-left: auto;
+  }
 
-.ask-answer .markdown + .ask-progress {
-  margin-top: var(--q-space-3);
-}
+  .menu-item-danger,
+  .menu-item-danger > svg {
+    color: var(--destructive);
+  }
 
-.ask-actions {
-  display: flex;
-  gap: var(--q-space-2);
-  margin-top: var(--q-space-4);
-}
+  .menu-item-danger:hover,
+  .menu-item-danger:focus-visible {
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+    color: var(--destructive);
+  }
 
-.ask-sources {
-  margin: var(--q-space-4) 0 0;
-  padding-left: 0;
-  list-style: none;
-  font-size: var(--q-text-sm);
-}
+  /* A toast: a short message, with its action, in the theme's inverse colours. */
+  .toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow:
+      0 10px 15px -3px rgb(0 0 0 / 0.1),
+      0 4px 6px -4px rgb(0 0 0 / 0.1);
+    animation: var(--animate-godui-slide-in-from-bottom);
+  }
 
-.ask-sources li + li {
-  margin-top: var(--q-space-1);
-}
+  .toast button {
+    color: inherit;
+    font-weight: 600;
+  }
 
-/* A link's topic path on its detail page: the names with › between them. */
-.topic-path {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--q-space-1);
-}
+  /* A notice across the page that leads somewhere, such as the missing AI key. */
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    text-decoration: none;
+  }
 
-/* Where the topic a search filters on sits, above its results: its path, then its sub-topics. */
-.topic-place {
-  display: grid;
-  gap: var(--q-space-2);
-  margin-bottom: var(--q-space-3);
-}
+  .banner:hover {
+    background: var(--accent);
+  }
 
-.subtopics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+  .notice-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
 
-.subtopics li {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--q-space-1);
-}
+  .notice-box p {
+    margin: 0;
+  }
 
-.topic-path-separator {
-  margin-right: var(--q-space-1);
-  color: var(--q-fg-muted);
-}
+  .blankslate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    text-align: center;
+  }
 
-/* The Stats page: one box per section, each a set of label and count tables. */
-.stats-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--q-space-3);
-}
+  /* A bordered list of rows. */
+  .list-box {
+    margin: 1rem 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    list-style: none;
+  }
 
-.stats-section {
-  margin-block: var(--q-space-4);
-}
+  .list-box:empty {
+    display: none;
+  }
 
-.stats-section .q-box-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-  gap: var(--q-space-4);
-}
+  .list-row {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+  }
 
-.stats-section .q-box-body > p {
-  grid-column: 1 / -1;
-  margin: 0;
-}
+  .list-row:first-child {
+    border-top: 0;
+  }
 
-.stats-counts caption {
-  text-align: start;
-  font-weight: var(--q-weight-semibold);
-  padding-block-end: var(--q-space-2);
-}
+  /* A table of data: quiet headers, hairlines between rows, numbers in a column. */
+  .data-table {
+    width: 100%;
+    margin: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: var(--text-sm);
+  }
 
-.stats-counts th {
-  font-weight: var(--q-weight-normal);
-  text-align: start;
-}
+  .data-table th,
+  .data-table td {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+  }
 
-/* A bar chart: the bars in the accent colour, over a baseline. */
-.bar-chart {
-  margin: 0;
-}
+  .data-table thead th {
+    border-top: 0;
+    color: var(--muted-foreground);
+    font-weight: 500;
+    white-space: nowrap;
+  }
 
-.bar-chart figcaption {
-  font-weight: var(--q-weight-semibold);
-  padding-block-end: var(--q-space-2);
-}
+  .data-table tbody tr:first-child :is(th, td) {
+    border-top: 0;
+  }
 
-.bar-chart svg {
-  display: block;
-  width: 100%;
-  height: 5rem;
-  border-block-end: var(--q-border-width) solid var(--q-border-default);
-}
+  .data-table thead + tbody tr:first-child :is(th, td) {
+    border-top: 1px solid var(--border);
+  }
 
-.bar-chart rect {
-  fill: var(--q-accent-emphasis);
-}
+  .data-table tbody tr:hover {
+    background: color-mix(in oklab, var(--muted) 50%, transparent);
+  }
 
-.bar-chart rect:hover {
-  fill: var(--q-accent-fg);
-}
+  .data-table .number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 
-.bar-chart p {
-  margin-block: var(--q-space-1) 0;
-}
+  .counter {
+    display: inline-block;
+    min-width: 1.25rem;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1.125rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
 
-/* The Trends section's charts: a second series in the attention colour, lines without fill. */
-.trend-chart .series-1 {
-  fill: var(--q-attention-emphasis, var(--q-fg-muted));
-}
+  .form-control {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+  }
 
-.trend-chart polyline {
-  fill: none;
-  stroke: var(--q-accent-emphasis);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
+  .form-caption {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
 
-.trend-chart polyline.series-1 {
-  stroke: var(--q-fg-default, currentColor);
-}
+  .panel {
+    margin: 1rem 0;
+  }
 
-.trend-chart polyline.series-2,
-.trend-chart polyline.series-3,
-.trend-chart polyline.series-4,
-.trend-chart polyline.series-5 {
-  stroke: var(--q-fg-muted);
-  stroke-dasharray: 3 2;
-}
+  .panel p {
+    margin: 0;
+  }
 
-.trend-chart .hover-slot {
-  fill: transparent;
-}
+  .muted {
+    color: var(--muted-foreground);
+  }
 
-.trend-chart .not-recorded {
-  fill: var(--q-bg-neutral-muted);
-}
+  /* The second, quieter half of a two-tone heading. */
+  .soft {
+    color: var(--muted-foreground);
+  }
 
-.trend-chart .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--q-space-3);
-}
+  .lead {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-base);
+  }
 
-.stats-range select {
-  margin-inline-start: var(--q-space-1);
+  .notice {
+    color: var(--destructive);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ── The frame: the header (where you are, search, tabs) over the page. ── */
+
+  .shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .mark {
+    flex: none;
+  }
+
+  .search {
+    width: 20rem;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .page:focus {
+    outline: none;
+  }
+
+  /* Reading pages keep a comfortable measure. */
+  .detail,
+  .reader,
+  .snapshot,
+  .settings,
+  .workspace {
+    max-width: 48rem;
+    margin: 0 auto;
+  }
+
+  /* Page headings: a light title over a hairline. */
+  .page h1 {
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+  }
+
+  .page h1 a {
+    color: var(--foreground);
+  }
+
+  .page h1 a:hover {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .page h2 {
+    margin: 2rem 0 0.5rem;
+    font-size: var(--text-xl);
+  }
+
+  .page-head {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page .page-head h1 {
+    margin-bottom: 0.25rem;
+    padding: 0;
+    border: 0;
+  }
+
+  /* ── Forms and small parts. ── */
+
+  .inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .inline-form input {
+    flex: 1 1 12rem;
+  }
+
+  .stacked-form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    max-width: 28rem;
+    margin: 1rem 0;
+  }
+
+  .stacked-form button {
+    align-self: flex-start;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .secret {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .toasts {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: min(28rem, calc(100vw - 2 * 1rem));
+    transform: translateX(-50%);
+  }
+
+  /* ── The sign-in page: the mark, the name and one green button. ── */
+
+  .signin {
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 3rem 1rem;
+  }
+
+  .signin-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: min(21rem, 100%);
+    text-align: center;
+  }
+
+  .signin-card h1 {
+    margin: 0.5rem 0 0;
+    font-size: var(--text-2xl);
+    font-weight: 400;
+  }
+
+  .signin-box,
+  .signin-card [data-slot='alert'] {
+    align-self: stretch;
+    text-align: left;
+  }
+
+  /* ── The stream: the add box, then the links in one bordered list. ── */
+
+  .stream {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .add-links {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--background);
+    transition:
+      border-color var(--godui-duration-fast) var(--ease-out-expo),
+      box-shadow var(--godui-duration-fast) var(--ease-out-expo);
+  }
+
+  .add-links:focus-within {
+    border-color: var(--ring);
+    box-shadow: inset 0 0 0 1px var(--ring);
+  }
+
+  .page .add-links textarea {
+    display: block;
+    width: 100%;
+    min-height: 4.5rem;
+    padding: 0.75rem 1rem;
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    box-shadow: none;
+    font-size: var(--text-base);
+    resize: vertical;
+  }
+
+  .add-messages {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    border-top: 1px solid var(--border);
+    list-style: none;
+    color: var(--muted-foreground);
+  }
+
+  /*
+   * Links are the rows of one bordered box: the title and its actions, a line
+   * of facts, the summary in one line, then the labels. The row under the
+   * pointer is shaded; its actions show on hover or focus, and always on a
+   * touch screen.
+   */
+  .cards {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .cards:empty {
+    display: none;
+  }
+
+  .cards > * + * {
+    border-top: 1px solid var(--border);
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    transition: background-color var(--godui-duration-fast) var(--ease-out-expo);
+  }
+
+  .card:hover,
+  .card:focus-within {
+    background: var(--muted);
+  }
+
+  .cards > :first-child,
+  .cards > :first-child .card {
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+  }
+
+  .cards > :last-child,
+  .cards > :last-child .card {
+    border-bottom-right-radius: var(--radius-md);
+    border-bottom-left-radius: var(--radius-md);
+  }
+
+  .card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+  }
+
+  .card-head {
+    display: flex;
+    flex: 1 1 18rem;
+    align-items: baseline;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .favicon {
+    flex: none;
+    align-self: center;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-sm);
+  }
+
+  .card-title {
+    color: var(--foreground);
+    font-size: var(--text-base);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .card-title:hover {
+    color: var(--primary);
+  }
+
+  .card-host {
+    color: inherit;
+  }
+
+  .card-host:hover {
+    color: var(--primary);
+  }
+
+  /*
+   * The facts read as one line: host · added · used · state. Every fact carries
+   * its dot in front, and the dot of the first one on each line falls in a
+   * strip on the left that is clipped away.
+   */
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem 0;
+    margin: 0.25rem 0 0 -1rem;
+    font-size: var(--text-xs);
+    clip-path: inset(-0.5rem -0.5rem -0.5rem 0.75rem);
+  }
+
+  .card-meta > *::before {
+    content: '·' / '';
+    display: inline-block;
+    width: 1rem;
+    color: var(--muted-foreground);
+    font-style: normal;
+    font-weight: normal;
+    text-align: center;
+  }
+
+  .state {
+    text-transform: lowercase;
+  }
+
+  .state-pending {
+    color: var(--warning);
+  }
+
+  .summary {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .summary-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--muted-foreground);
+  }
+
+  .summary-text.clamped {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    overflow: hidden;
+  }
+
+  .card-labels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  /* A topic or tag chip is a link that looks exactly as it would as a plain label. */
+  .label-link:hover {
+    text-decoration: none;
+  }
+
+  .tags,
+  .workspace-chips,
+  .filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* A workspace chip is dashed, so it is not taken for a topic (outlined) or a tag (filled). */
+  .workspace-chip {
+    border-style: dashed;
+  }
+
+  /* Actions: small quiet buttons at the end of a row, or under a link's facts. */
+  .card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    margin: 0.75rem 0;
+  }
+
+  .card .card-actions {
+    flex: none;
+    margin: calc(-1 * 0.25rem) calc(-1 * 0.5rem) 0 auto;
+  }
+
+  @media (hover: hover) {
+    .card .card-actions {
+      opacity: 0;
+      transition: opacity var(--godui-duration-fast) var(--ease-out-expo);
+    }
+
+    .card:hover .card-actions,
+    .card:focus-within .card-actions,
+    .card-actions:has([aria-expanded='true']) {
+      opacity: 1;
+    }
+  }
+
+  /* The ⋯ menu: the less frequent actions of a row, in an overlay under its button. */
+  .card-menu {
+    position: relative;
+  }
+
+  .card-menu-panel {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+  }
+
+  .card-menu-item,
+  .card-menu-item .picker {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-menu-item .muted,
+  .card-menu-item .notice {
+    padding: 0 0.5rem 0.25rem;
+    font-size: var(--text-xs);
+  }
+
+  .card-menu-panel .picker-menu {
+    position: static;
+    min-width: 0;
+    margin: 0 0 0.25rem 0.75rem;
+    padding: 0 0 0 0.5rem;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /*
+   * An archived link is dimmed wherever it is shown: its title takes the muted
+   * colour (which keeps the contrast of muted text) and its icon goes grey.
+   */
+  .card.archived .card-title {
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+
+  .card.archived .favicon {
+    filter: grayscale(1);
+    opacity: 0.6;
+  }
+
+  .ask-sources li.archived a {
+    color: var(--muted-foreground);
+  }
+
+  /* A pinned card is faintly tinted, a shade under the hover of a row, and grabbable. */
+  .card.pinned {
+    background: color-mix(in srgb, var(--accent) 50%, transparent);
+    cursor: grab;
+  }
+
+  .card.pinned:hover,
+  .card.pinned:focus-within {
+    background: var(--accent);
+  }
+
+  .pin-mark {
+    flex: none;
+    align-self: center;
+    font-size: 0.875rem;
+    line-height: 1;
+  }
+
+  .note-preview {
+    margin: 0 0 0.25rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-style: italic;
+  }
+
+  .note {
+    font-style: italic;
+  }
+
+  .dead {
+    color: var(--destructive);
+  }
+
+  .enrichment-failed {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    font-size: var(--text-xs);
+  }
+
+  .empty,
+  .nothing-found {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .empty {
+    margin: 0;
+    font-size: var(--text-base);
+  }
+
+  .nothing-found p {
+    margin: 0;
+    font-size: var(--text-base);
+  }
+
+  .sentinel {
+    height: 1px;
+  }
+
+  /* The workspace picker on its own: an overlay under its button. */
+  .picker {
+    position: relative;
+  }
+
+  .picker-menu {
+    position: absolute;
+    top: 1.75rem;
+    left: 0;
+  }
+
+  /* ── A link on its own: facts, history, editable fields, notes. ── */
+
+  /* As an issue is laid out: the content on the left, a narrower column of metadata and actions on the right. */
+  .detail {
+    max-width: 63.25rem;
+  }
+
+  .detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  @media (max-width: 48rem) {
+    .detail-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .detail-side {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-size: var(--text-sm);
+  }
+
+  /* Each part of the side column is divided from the one before it, as an issue's sidebar is. */
+  .detail-side > * + * {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+  }
+
+  /* A side heading reads as the Tags and Topic labels do. */
+  .detail-side h2 {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    font-weight: 400;
+  }
+
+  .detail-workspaces {
+    margin: 0.25rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .detail-workspaces li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .detail-actions .muted {
+    padding: 0 0.5rem 0.25rem;
+    font-size: var(--text-xs);
+  }
+
+  .detail-actions .picker-menu {
+    z-index: 50;
+    min-width: 12rem;
+  }
+
+  .facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+
+  .facts dt {
+    color: var(--muted-foreground);
+  }
+
+  .facts dd {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .history {
+    padding: 0;
+    list-style: none;
+  }
+
+  .history li {
+    padding: 0.25rem 0;
+  }
+
+  /* Similar links: one per line, the title, then its host and likeness. */
+  .related-links {
+    padding: 0;
+    list-style: none;
+  }
+
+  .related-links li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.5rem;
+    padding: 0.25rem 0;
+  }
+
+  .related-links .muted {
+    font-size: var(--text-xs);
+  }
+
+  .editable {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 1rem 0;
+  }
+
+  .field-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: var(--text-xs);
+  }
+
+  .field-edit,
+  .note-editing {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .reader-body {
+    font-size: var(--text-base);
+    line-height: 1.65;
+  }
+
+  .reader-body img {
+    height: auto;
+  }
+
+  .snapshot-frame {
+    display: block;
+    width: 100%;
+    height: 75vh;
+    margin-top: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: #fff;
+  }
+
+  /* ── Lists of things: tokens, workspaces, vocabulary, search results. ── */
+
+  .token-list,
+  .workspace-list,
+  .workspace-results {
+    margin: 1rem 0;
+  }
+
+  .token-list li,
+  .workspace-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .workspace-row .actions {
+    margin: 0;
+  }
+
+  .workspace-results li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .member {
+    cursor: grab;
+  }
+
+  .vocabulary .data-table {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .vocabulary th:nth-child(2) {
+    text-align: right;
+  }
+
+  .vocabulary .actions {
+    margin: 0;
+    text-align: right;
+  }
+
+  .vocabulary .actions button {
+    margin-left: 0.75rem;
+  }
+
+  .vocabulary form {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .vocabulary input,
+  .vocabulary select {
+    max-width: 12rem;
+  }
+
+  /* The topic tree: each level's names one step further in. */
+  .vocabulary tr[data-level='2'] td:first-child {
+    padding-left: calc(1rem + 1.5rem);
+  }
+
+  .vocabulary tr[data-level='3'] td:first-child {
+    padding-left: calc(1rem + 2 * 1.5rem);
+  }
+
+  /* Search results: each link's row with the matching passage under it. */
+  .results {
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    list-style: none;
+  }
+
+  .results:empty {
+    display: none;
+  }
+
+  .results li + li {
+    border-top: 1px solid var(--border);
+  }
+
+  .results li:hover,
+  .results li:focus-within {
+    background: var(--muted);
+  }
+
+  .results .card:hover,
+  .results .card:focus-within {
+    background: none;
+  }
+
+  .snippet {
+    margin: calc(-1 * 0.25rem) 0 0;
+    padding: 0 1rem 0.75rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+  }
+
+  .snippet mark {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  .workspace-results .snippet {
+    padding: 0;
+  }
+
+  /* A result found by meaning: its mark beside the start of the passage that matched. */
+  .match-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin: calc(-1 * 0.25rem) 0 0;
+    padding: 0 1rem 0.75rem;
+  }
+
+  .match-row .snippet {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* ── Settings: sections one after another, the account's end in a red box. ── */
+
+  .decay-settings .field {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .decay-settings .field input {
+    width: 8rem;
+  }
+
+  .decay-settings .field .muted {
+    font-size: var(--text-xs);
+  }
+
+  /* The import page: the drop zone, the workspace choice, then the report. */
+  .import-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin: 1rem 0 1.5rem;
+  }
+
+  .import-form select,
+  .import-form input {
+    max-width: 24rem;
+  }
+
+  .dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem 1rem;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+    text-align: center;
+    transition:
+      border-color var(--godui-duration-fast) var(--ease-out-expo),
+      background var(--godui-duration-fast) var(--ease-out-expo);
+  }
+
+  .dropzone .icon {
+    color: var(--muted-foreground);
+  }
+
+  .dropzone.is-dragging {
+    border-color: var(--ring);
+    background: var(--accent);
+  }
+
+  .dropzone p {
+    margin: 0;
+  }
+
+  /* The file input is hidden; its label, a button, shows its focus. */
+  .dropzone input:focus-visible + label {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* The Import button at the end of the header's tabs. */
+  .nav-import {
+    flex: none;
+  }
+
+  .nav-import[aria-current='page'] {
+    border-color: var(--ring);
+  }
+
+  .import-counts,
+  .import-lines {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    padding: 0;
+    list-style: none;
+  }
+
+  .danger-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 2.5rem;
+    padding: 1rem;
+    border: 1px solid var(--destructive);
+    border-radius: var(--radius-md);
+  }
+
+  .page .danger-zone h2 {
+    margin: 0;
+    color: var(--destructive);
+    font-size: var(--text-base);
+  }
+
+  .danger-zone p {
+    margin: 0;
+  }
+
+  .danger-zone input {
+    width: 100%;
+    max-width: 24rem;
+  }
+
+  /* Phones and narrow windows: the search box has a line of its own. */
+  @media (max-width: 40rem) {
+    .search {
+      width: auto;
+    }
+  }
+
+  /* ── Ask: a question, its streamed answer and the sources under it. ── */
+
+  .ask-form {
+    display: flex;
+    gap: 0.5rem;
+    margin: 1rem 0;
+  }
+
+  .ask-form input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ask-answer {
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .ask-answer .markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .ask-answer .markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .ask-answer + .ask-answer {
+    margin-top: 0.75rem;
+  }
+
+  .ask-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+
+  .ask-answer .markdown + .ask-progress {
+    margin-top: 0.75rem;
+  }
+
+  .ask-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+
+  .ask-sources {
+    margin: 1rem 0 0;
+    padding-left: 0;
+    list-style: none;
+    font-size: var(--text-sm);
+  }
+
+  .ask-sources li + li {
+    margin-top: 0.25rem;
+  }
+
+  /* A link's topic path on its detail page: the names with › between them. */
+  .topic-path {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  /* Where the topic a search filters on sits, above its results: its path, then its sub-topics. */
+  .topic-place {
+    display: grid;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .subtopics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .subtopics li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .topic-path-separator {
+    margin-right: 0.25rem;
+    color: var(--muted-foreground);
+  }
+
+  /* The Stats page: one box per section, each a set of label and count tables. */
+  .stats-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .stats-section {
+    margin-block: 1rem;
+  }
+
+  .stats-body {
+    display: grid;
+    align-items: start;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 1rem;
+  }
+
+  .stats-body > p {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .stats-counts caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block-end: 0.5rem;
+  }
+
+  .stats-counts th {
+    font-weight: 400;
+    text-align: start;
+  }
+
+  /* A bar chart: the bars in the accent colour, over a baseline. */
+  .bar-chart {
+    margin: 0;
+  }
+
+  .bar-chart figcaption {
+    font-weight: 600;
+    padding-block-end: 0.5rem;
+  }
+
+  .bar-chart svg {
+    display: block;
+    width: 100%;
+    height: 5rem;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .bar-chart rect {
+    fill: var(--primary);
+  }
+
+  .bar-chart rect:hover {
+    fill: var(--primary);
+  }
+
+  .bar-chart p {
+    margin-block: 0.25rem 0;
+  }
+
+  /* The Trends section's charts: a second series in the attention colour, lines without fill. */
+  .trend-chart .series-1 {
+    fill: var(--muted-foreground);
+  }
+
+  .trend-chart polyline {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .trend-chart polyline.series-1 {
+    stroke: var(--foreground);
+  }
+
+  .trend-chart polyline.series-2,
+  .trend-chart polyline.series-3,
+  .trend-chart polyline.series-4,
+  .trend-chart polyline.series-5 {
+    stroke: var(--muted-foreground);
+    stroke-dasharray: 3 2;
+  }
+
+  .trend-chart .hover-slot {
+    fill: transparent;
+  }
+
+  .trend-chart .not-recorded {
+    fill: var(--accent);
+  }
+
+  .trend-chart .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .stats-range select {
+    margin-inline-start: 0.25rem;
+  }
 }

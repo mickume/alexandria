@@ -1,5 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, decay, type Thresholds } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const FIELDS: {
   key: keyof Thresholds;
@@ -95,8 +98,8 @@ export function DecaySection() {
       <form className="stacked-form" onSubmit={save} noValidate>
         {FIELDS.map(({ key, label, meaning, min, max }) => (
           <div key={key} className="field" data-field={key}>
-            <label htmlFor={`decay-${key}`}>{label}</label>
-            <input
+            <Label htmlFor={`decay-${key}`}>{label}</Label>
+            <Input
               id={`decay-${key}`}
               type="number"
               min={min}
@@ -120,9 +123,7 @@ export function DecaySection() {
             {error.message}
           </p>
         )}
-        <button type="submit" className="q-btn q-btn--primary">
-          Save
-        </button>
+        <Button type="submit">Save</Button>
         {saved && <span role="status">Saved</span>}
       </form>
     </section>

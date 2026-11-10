@@ -179,7 +179,7 @@ function NoKeyBanner() {
   }, []);
   if (!show) return null;
   return (
-    <PageLink to="/settings" className="banner q-flash">
+    <PageLink to="/settings" className="banner">
       <Icon name="info" />
       not enriched: add an AI key in settings
     </PageLink>
@@ -268,7 +268,7 @@ export function Stream() {
         </p>
       )}
       {loaded && deletes.shown.length === 0 && (
-        <p className="muted empty q-blankslate">Nothing here yet. Paste a link above to start.</p>
+        <p className="muted empty blankslate">Nothing here yet. Paste a link above to start.</p>
       )}
       <div ref={sentinel} className="sentinel" aria-hidden="true" />
       <UndoToasts deletes={deletes} />

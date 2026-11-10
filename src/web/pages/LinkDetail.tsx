@@ -8,6 +8,9 @@ import { NoteEditor } from '../components/NoteEditor';
 import { RefreshButton, SiteLink, TagChips, TopicPath } from '../components/LinkCard';
 import { WorkspacePicker } from '../components/WorkspacePicker';
 import { byName, formatDate } from '../format';
+import { Button } from '@/components/ui/button';
+import { badgeVariants } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 /** What the owner confirms before a link is deleted from its detail page. */
 const CONFIRM_DELETE = 'Delete this link for good? Its note and its saved copy go with it.';
@@ -192,37 +195,36 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           <ul className="detail-workspaces" aria-label="Workspaces">
             {link.workspaces.map((w) => (
               <li key={w.id}>
-                <PageLink to={`/workspaces/${w.id}`} className="q-label workspace-chip">
+                <PageLink
+                  to={`/workspaces/${w.id}`}
+                  className={cn(badgeVariants({ variant: 'outline' }), 'workspace-chip')}
+                >
                   {w.name}
                 </PageLink>
-                <button
+                <Button
                   type="button"
-                  className="q-btn q-btn--sm q-btn--invisible q-btn--icon"
+                  variant="ghost"
+                  size="icon"
                   aria-label={`Remove from ${w.name}`}
                   onClick={() => void leave(w)}
                 >
                   <Icon name="close" />
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </section>
-      <div className="q-menu detail-actions" role="group" aria-label="Actions">
-        <RefreshButton link={link} className="q-menu-item" icon={<Icon name="refresh" />} />
-        <CheckButton
-          link={link}
-          onChecked={onChange}
-          className="q-menu-item"
-          icon={<Icon name="pulse" />}
-        />
+      <div className="detail-actions" role="group" aria-label="Actions">
+        <RefreshButton link={link} menuItem icon={<Icon name="refresh" />} />
+        <CheckButton link={link} onChecked={onChange} menuItem icon={<Icon name="pulse" />} />
         {archived ? (
-          <button type="button" className="q-menu-item" onClick={() => void toggleArchive()}>
+          <button type="button" className="menu-item" onClick={() => void toggleArchive()}>
             <Icon name="archive" />
             Unarchive
           </button>
         ) : (
-          <button type="button" className="q-menu-item" onClick={() => void togglePin()}>
+          <button type="button" className="menu-item" onClick={() => void togglePin()}>
             <Icon name="pin" />
             {link.pinned ? 'Unpin' : 'Pin'}
           </button>
@@ -230,7 +232,7 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
         <WorkspacePicker
           linkId={link.id}
           memberOf={link.workspaces.map((w) => w.id)}
-          className="q-menu-item"
+          menuItem
           icon={<Icon name="workspaces" />}
           onAdded={(w) =>
             onChange({
@@ -240,12 +242,12 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           }
         />
         {!archived && (
-          <button type="button" className="q-menu-item" onClick={() => void toggleArchive()}>
+          <button type="button" className="menu-item" onClick={() => void toggleArchive()}>
             <Icon name="archive" />
             Archive
           </button>
         )}
-        <button type="button" className="q-menu-item q-menu-item--danger" onClick={remove}>
+        <button type="button" className="menu-item menu-item-danger" onClick={remove}>
           <Icon name="trash" />
           Delete
         </button>

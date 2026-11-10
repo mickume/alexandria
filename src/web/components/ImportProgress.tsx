@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from '../App';
 import { imports, type ImportProgress as Progress, type ImportReport } from '../api';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /** How often the progress view asks how far the import's links are. */
 export const POLL_MS = 5_000;
@@ -75,7 +77,11 @@ export function ImportProgress({ report }: { report: ImportReport }) {
         <li>done {progress.done}</li>
         <li>enriched {progress.enriched}</li>
       </ul>
-      <a className="q-btn-link" href={imports.reportUrl(report.id)} download>
+      <a
+        className={cn(buttonVariants({ variant: 'link' }), 'h-auto p-0')}
+        href={imports.reportUrl(report.id)}
+        download
+      >
         Download report
       </a>
     </div>

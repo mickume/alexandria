@@ -17,6 +17,9 @@ import { Tags } from './pages/Tags';
 import { Topics } from './pages/Topics';
 import { WorkspacePage } from './pages/Workspace';
 import { Workspaces } from './pages/Workspaces';
+import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /** Where the website is: the path and the query string of the page. */
 export interface Location {
@@ -118,52 +121,52 @@ function Layout({ location, children }: { location: Location; children: ReactNod
   const section = sectionOf(location.path);
   return (
     <div className="shell">
-      <header className="q-header">
-        <div className="q-header-bar">
-          <p className="q-breadcrumb q-header-context">
-            <Link to="/" className="q-breadcrumb-item brand">
+      <header className="site-header">
+        <div className="site-header-bar">
+          <p className="site-context">
+            <Link to="/" className="brand">
               <Mark />
               <span>Alexandria</span>
             </Link>
-            <span className="q-breadcrumb-separator" aria-hidden="true">
+            <span className="site-context-separator" aria-hidden="true">
               /
             </span>
-            <span className="q-breadcrumb-item is-current">{section}</span>
+            <span className="site-context-current">{section}</span>
           </p>
-          <div className="q-header-actions">
+          <div className="site-header-actions">
             <SearchBox location={location} />
             <form method="post" action="/auth/signout">
-              <button
+              <Button
                 type="submit"
-                className="q-btn q-btn--icon"
+                variant="ghost"
+                size="icon"
                 aria-label="Sign out"
                 title="Sign out"
               >
                 <Icon name="signout" />
-              </button>
+              </Button>
             </form>
           </div>
         </div>
-        <nav className="q-underline-nav" aria-label="Sections">
+        <nav className="site-nav" aria-label="Sections">
           {SECTIONS.map((s) => (
-            <Link
-              key={s.to}
-              to={s.to}
-              className="q-underline-nav-item"
-              current={section === s.label}
-            >
+            <Link key={s.to} to={s.to} className="site-nav-item" current={section === s.label}>
               <Icon name={s.icon} />
               {s.label}
             </Link>
           ))}
-          <span className="q-underline-nav-spacer" />
-          <Link to="/import" className="q-btn q-btn--sm nav-import" current={section === 'Import'}>
+          <span className="site-nav-spacer" />
+          <Link
+            to="/import"
+            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'nav-import')}
+            current={section === 'Import'}
+          >
             <Icon name="import" />
             Import
           </Link>
         </nav>
       </header>
-      <main className="page q-container q-container--md" tabIndex={-1}>
+      <main className="page" tabIndex={-1}>
         {children}
       </main>
     </div>

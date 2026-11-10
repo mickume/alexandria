@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ai, ApiError, type AiSettings } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
 
 /** The default Anthropic model, shown as the model input's placeholder. */
 const DEFAULT_MODEL = 'claude-opus-5-5';
@@ -36,17 +41,17 @@ function KeyForm({
 
   return (
     <form className="stacked-form" onSubmit={save}>
-      <label htmlFor="ai-provider">Provider</label>
-      <select
+      <Label htmlFor="ai-provider">Provider</Label>
+      <NativeSelect
         id="ai-provider"
         value={provider}
         onChange={(e) => setProvider(e.target.value as Provider)}
       >
         <option value="anthropic">Anthropic</option>
         <option value="openrouter">OpenRouter</option>
-      </select>
-      <label htmlFor="ai-key">API key</label>
-      <input
+      </NativeSelect>
+      <Label htmlFor="ai-key">API key</Label>
+      <Input
         id="ai-key"
         type="password"
         autoComplete="off"
@@ -54,8 +59,8 @@ function KeyForm({
         value={apiKey}
         onChange={(e) => setApiKey(e.target.value)}
       />
-      <label htmlFor="ai-model">Model</label>
-      <input
+      <Label htmlFor="ai-model">Model</Label>
+      <Input
         id="ai-model"
         placeholder={provider === 'anthropic' ? DEFAULT_MODEL : 'provider/model'}
         required={provider === 'openrouter'}
@@ -63,9 +68,7 @@ function KeyForm({
         value={model}
         onChange={(e) => setModel(e.target.value)}
       />
-      <button type="submit" className="q-btn q-btn--primary">
-        Save key
-      </button>
+      <Button type="submit">Save key</Button>
     </form>
   );
 }
@@ -121,7 +124,7 @@ export function AiKeySection() {
         else works and links are simply not enriched.
       </p>
       {settings.configured && (
-        <div className="panel q-box q-box-body">
+        <Card className="panel gap-3 p-4 shadow-none">
           {settings.status === 'rejected' && (
             <p className="notice" role="alert">
               your AI key was rejected: {settings.rejected_message ?? 'no reason given'}
@@ -132,23 +135,23 @@ export function AiKeySection() {
             <code>…{settings.key_last4}</code>
           </p>
           <div className="actions">
-            <button
+            <Button
               type="button"
-              className="q-btn"
+              variant="outline"
               onClick={() => document.getElementById('ai-key')?.focus()}
             >
               Replace
-            </button>
-            <button type="button" className="q-btn" onClick={() => void remove()}>
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void remove()}>
               Remove
-            </button>
+            </Button>
           </div>
           {settings.status === 'verified' && settings.unenriched_count > 0 && (
-            <button type="button" className="q-btn q-btn--primary" onClick={() => void enrichAll()}>
+            <Button type="button" onClick={() => void enrichAll()}>
               Enrich all unenriched links ({settings.unenriched_count})
-            </button>
+            </Button>
           )}
-        </div>
+        </Card>
       )}
       {message && <p role="status">{message}</p>}
       <KeyForm

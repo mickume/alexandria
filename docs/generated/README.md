@@ -20,6 +20,7 @@
 - [web/components/VocabularyList](web/components/VocabularyList.md)
 - [web/components/WorkspacePicker](web/components/WorkspacePicker.md)
 - [web/format](web/format.md)
+- [web/lib/utils](web/lib/utils.md)
 - [web/main](web/main.md)
 - [web/pages/AiKeySection](web/pages/AiKeySection.md)
 - [web/pages/Archive](web/pages/Archive.md)

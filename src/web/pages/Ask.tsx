@@ -3,6 +3,9 @@ import { navigate } from '../App';
 import { ApiError, ask, type AskEvent, type AskSource } from '../api';
 import { SiteLink } from '../components/LinkCard';
 import { renderAnswer } from '../components/Markdown';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 
 /** The longest question, in characters. */
 const QUESTION_MAX = 500;
@@ -56,7 +59,7 @@ function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
 function Writing({ children }: { children: string }) {
   return (
     <p className="ask-progress muted" role="status">
-      <span className="q-spinner" aria-hidden="true" /> {children}
+      <Spinner className="inline" aria-hidden="true" /> {children}
     </p>
   );
 }
@@ -148,16 +151,16 @@ export function Ask() {
         links, and each statement cites the links it came from.
       </p>
       <form className="ask-form" onSubmit={(e) => void submit(e)}>
-        <input
+        <Input
           type="text"
           aria-label="Question"
           maxLength={QUESTION_MAX}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
         />
-        <button type="submit" className="q-btn q-btn--primary" disabled={asking}>
+        <Button type="submit" disabled={asking}>
           Ask
-        </button>
+        </Button>
       </form>
       {(answer || writingAnswer) && (
         <section className="ask-answer" aria-label="Answer" aria-busy={writingAnswer}>
@@ -190,14 +193,14 @@ export function Ask() {
       {!asking && (text !== '' || moreable) && (
         <div className="ask-actions">
           {text !== '' && (
-            <button type="button" className="q-btn" onClick={() => void copy()}>
+            <Button type="button" variant="outline" onClick={() => void copy()}>
               {copied ?? 'Copy'}
-            </button>
+            </Button>
           )}
           {moreable && (
-            <button type="button" className="q-btn" onClick={() => void run(asked!.question, true)}>
+            <Button type="button" variant="outline" onClick={() => void run(asked!.question, true)}>
               Tell me more
-            </button>
+            </Button>
           )}
         </div>
       )}

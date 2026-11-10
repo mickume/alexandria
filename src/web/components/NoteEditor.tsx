@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { ApiError } from '../api';
 import { Markdown } from './Markdown';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 /**
  * A note shown rendered, with in-place editing: Save sends the text, and a
@@ -32,35 +35,36 @@ export function NoteEditor({
     return (
       <div className="note">
         {note ? <Markdown source={note} /> : <p className="muted">No note yet.</p>}
-        <button
+        <Button
           type="button"
-          className="q-btn-link"
+          variant="link"
+          className="h-auto p-0"
           onClick={() => {
             setText(note);
             setEditing(true);
           }}
         >
           Edit note
-        </button>
+        </Button>
       </div>
     );
   }
   return (
     <div className="note note-editing">
-      <label htmlFor="note-text">Note</label>
-      <textarea id="note-text" rows={8} value={text} onChange={(e) => setText(e.target.value)} />
+      <Label htmlFor="note-text">Note</Label>
+      <Textarea id="note-text" rows={8} value={text} onChange={(e) => setText(e.target.value)} />
       {error && (
         <p className="notice" role="alert">
           {error}
         </p>
       )}
       <div className="actions">
-        <button type="button" className="q-btn q-btn--primary" onClick={() => void save()}>
+        <Button type="button" onClick={() => void save()}>
           Save note
-        </button>
-        <button type="button" className="q-btn" onClick={() => setEditing(false)}>
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setEditing(false)}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );

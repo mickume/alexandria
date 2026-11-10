@@ -3,6 +3,7 @@ import { links, type Link, type SearchMode } from '../api';
 import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { useStateList } from '../stateList';
 import { UndoToasts, useUndoableDelete } from '../undo';
+import { Button } from '@/components/ui/button';
 
 /**
  * The Expired page: expired links, most recently expired first, each with the
@@ -51,12 +52,22 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
                 <span className="card-title">{link.title}</span>
               </div>
               <div className="card-actions">
-                <button type="button" className="q-btn-link" onClick={() => void restore(link)}>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0"
+                  onClick={() => void restore(link)}
+                >
                   Restore
-                </button>
-                <button type="button" className="q-btn-link" onClick={() => deletes.remove(link)}>
+                </Button>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0"
+                  onClick={() => deletes.remove(link)}
+                >
                   Delete
-                </button>
+                </Button>
               </div>
             </div>
             <div className="card-meta muted">

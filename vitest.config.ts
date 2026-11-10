@@ -1,6 +1,7 @@
 import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { webAlias } from './vite.config.ts';
 
 const migrations = await readD1Migrations('migrations');
 
@@ -39,6 +40,7 @@ export default defineConfig({
       },
       {
         plugins: [react()],
+        resolve: { alias: webAlias },
         test: {
           name: 'web',
           include: ['src/web/**/*.test.tsx'],

@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { workspaces, type WorkspaceSummary } from '../api';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /**
  * 'Add to workspace' on a card or a link's detail page: the owner's workspaces by name, those already
@@ -9,14 +11,14 @@ export function WorkspacePicker({
   linkId,
   memberOf,
   onAdded,
-  className = 'q-btn-link',
+  menuItem = false,
   icon,
 }: {
   linkId: string;
   memberOf: string[];
   onAdded: (workspace: WorkspaceSummary) => void;
-  /** The button's class: a link-like button unless an action list asks for its own. */
-  className?: string;
+  /** Whether the button is an item of a menu or an action list, not a link-like button. */
+  menuItem?: boolean;
   /** An icon before the label. */
   icon?: ReactNode;
 }) {
@@ -51,7 +53,7 @@ export function WorkspacePicker({
     <span className="picker">
       <button
         type="button"
-        className={className}
+        className={menuItem ? 'menu-item' : cn(buttonVariants({ variant: 'link' }), 'h-auto p-0')}
         aria-haspopup="menu"
         onClick={() => void toggle()}
       >
@@ -59,7 +61,7 @@ export function WorkspacePicker({
         Add to workspace
       </button>
       {open && (
-        <span className="picker-menu q-overlay q-menu" role="menu">
+        <span className="picker-menu menu" role="menu">
           {(list ?? []).map((w) => {
             const inIt = memberOf.includes(w.id);
             return (
@@ -68,7 +70,7 @@ export function WorkspacePicker({
                 type="button"
                 role="menuitemcheckbox"
                 aria-checked={inIt}
-                className="q-menu-item"
+                className="menu-item"
                 onClick={() => void choose(w)}
               >
                 {w.name}

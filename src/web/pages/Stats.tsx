@@ -11,6 +11,12 @@ import {
   type StatsHistory,
 } from '../api';
 import { BarChart, TrendChart } from '../components/BarChart';
+import { Button } from '@/components/ui/button';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert } from '@/components/ui/alert';
+import { Spinner } from '@/components/ui/spinner';
 
 /** The caption of every series computed from the history the library keeps. */
 const STILL_IN_LIBRARY = 'counts only links still in your library';
@@ -39,7 +45,7 @@ function Row({
   return (
     <tr>
       <th scope="row">{labelTo ? <Link to={labelTo}>{label}</Link> : label}</th>
-      <td className="q-table-number">{to ? <Link to={to}>{shown}</Link> : shown}</td>
+      <td className="number">{to ? <Link to={to}>{shown}</Link> : shown}</td>
     </tr>
   );
 }
@@ -70,7 +76,7 @@ function throttleLine(clearAt: string | null): string {
 /** A table of label and count rows, under an optional caption. */
 function Counts({ caption, children }: { caption?: string; children: ReactNode }) {
   return (
-    <table className="q-table stats-counts">
+    <table className="data-table stats-counts">
       {caption && <caption>{caption}</caption>}
       <tbody>{children}</tbody>
     </table>
@@ -80,13 +86,17 @@ function Counts({ caption, children }: { caption?: string; children: ReactNode }
 /** One section of the page: a box headed by its name, which is also the region's name. */
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section className="stats-section q-box" aria-labelledby={`stats-${id}`}>
-      <div className="q-box-header">
-        <h2 id={`stats-${id}`} className="q-box-title">
-          {title}
-        </h2>
-      </div>
-      <div className="q-box-body">{children}</div>
+    <section className="stats-section" aria-labelledby={`stats-${id}`}>
+      <Card className="gap-4 py-4 shadow-none">
+        <CardHeader className="px-4">
+          <CardTitle>
+            <h2 id={`stats-${id}`} className="m-0 text-base">
+              {title}
+            </h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="stats-body px-4">{children}</CardContent>
+      </Card>
     </section>
   );
 }
@@ -274,7 +284,7 @@ function ActivitySection({ s }: { s: StatsAnswer }) {
                 Import of {i.created_at.slice(0, 10)}
               </a>
             </th>
-            <td className="q-table-number">
+            <td className="number">
               {num(i.added)} added of {num(i.url_lines)}
             </td>
           </tr>
@@ -329,19 +339,19 @@ function usageTotals(days: HistoryDay[]) {
 function UsageTable({ days }: { days: HistoryDay[] }) {
   const totals = usageTotals(days);
   return (
-    <table className="q-table stats-counts" aria-label="AI usage by purpose and model">
+    <table className="data-table stats-counts" aria-label="AI usage by purpose and model">
       <caption>AI usage by purpose and model</caption>
       <thead>
         <tr>
           <th scope="col">Purpose</th>
           <th scope="col">Model</th>
-          <th scope="col" className="q-table-number">
+          <th scope="col" className="number">
             Calls
           </th>
-          <th scope="col" className="q-table-number">
+          <th scope="col" className="number">
             Input tokens
           </th>
-          <th scope="col" className="q-table-number">
+          <th scope="col" className="number">
             Output tokens
           </th>
         </tr>
@@ -352,9 +362,9 @@ function UsageTable({ days }: { days: HistoryDay[] }) {
           <tr key={`${t.purpose}-${t.model}`}>
             <td>{t.purpose}</td>
             <td>{t.model}</td>
-            <td className="q-table-number">{num(t.calls)}</td>
-            <td className="q-table-number">{num(t.input)}</td>
-            <td className="q-table-number">{num(t.output)}</td>
+            <td className="number">{num(t.calls)}</td>
+            <td className="number">{num(t.input)}</td>
+            <td className="number">{num(t.output)}</td>
           </tr>
         ))}
       </tbody>
@@ -473,8 +483,12 @@ function TrendsSection({ reload }: { reload: number }) {
   return (
     <Section id="trends" title="Trends">
       <p className="muted stats-range">
-        <label htmlFor="trends-range">Range</label>{' '}
-        <select id="trends-range" value={range} onChange={(e) => setRange(Number(e.target.value))}>
+        <Label htmlFor="trends-range">Range</Label>{' '}
+        <NativeSelect
+          id="trends-range"
+          value={range}
+          onChange={(e) => setRange(Number(e.target.value))}
+        >
           {[...RANGES]
             .sort((a, b) => a - b)
             .map((d) => (
@@ -482,25 +496,26 @@ function TrendsSection({ reload }: { reload: number }) {
                 Last {d} days
               </option>
             ))}
-        </select>
+        </NativeSelect>
       </p>
       {failed && (
-        <div className="notice q-flash q-flash--danger" role="alert">
+        <Alert variant="destructive" className="notice-box">
           <p>Couldn&apos;t load trends</p>
-          <button
+          <Button
             type="button"
-            className="q-btn q-btn--sm"
+            variant="outline"
+            size="sm"
             onClick={() => {
               setFailed(false);
               setAttempt((n) => n + 1);
             }}
           >
             Try again
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {history && !failed && <TrendCharts h={history} />}
-      <p className="muted q-text-small">includes links that have since been removed</p>
+      <p className="muted text-xs">includes links that have since been removed</p>
     </Section>
   );
 }
@@ -548,22 +563,22 @@ export function Stats() {
     <section className="stats">
       <div className="stats-head">
         <h1>Stats</h1>
-        <button type="button" className="q-btn q-btn--sm" onClick={load} disabled={loading}>
+        <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
           Refresh
-        </button>
+        </Button>
       </div>
       {loading && !data && (
         <p className="muted" role="status">
-          <span className="q-spinner" aria-hidden="true" /> Loading statistics…
+          <Spinner className="inline" aria-hidden="true" /> Loading statistics…
         </p>
       )}
       {failed && (
-        <div className="notice q-flash q-flash--danger" role="alert">
+        <Alert variant="destructive" className="notice-box">
           <p>Couldn&apos;t load statistics</p>
-          <button type="button" className="q-btn q-btn--sm" onClick={load}>
+          <Button type="button" variant="outline" size="sm" onClick={load}>
             Try again
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
       {data && !failed && (
         <>

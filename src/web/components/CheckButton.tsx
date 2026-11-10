@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { ApiError, links, type Link } from '../api';
 import { formatWhen } from '../format';
+import { Button } from '@/components/ui/button';
 
-/** How a status button looks: its class and an icon before its label. */
+/** How a status button looks: a link-like button, or an item of a menu or an action list. */
 export interface ButtonLook {
-  /** The button's class: a link-like button unless an action list asks for its own. */
-  className?: string;
+  /** Whether the button is an item of a menu or an action list. */
+  menuItem?: boolean;
   /** An icon before the label. */
   icon?: ReactNode;
 }
@@ -18,7 +19,7 @@ export function StatusButton({
   label,
   run,
   failure,
-  className = 'q-btn-link',
+  menuItem = false,
   icon,
 }: ButtonLook & { label: string; run: () => Promise<string>; failure: string }) {
   const [status, setStatus] = useState<string | null>(null);
@@ -32,10 +33,17 @@ export function StatusButton({
   }
   return (
     <>
-      <button type="button" className={className} onClick={() => void click()}>
-        {icon}
-        {label}
-      </button>
+      {menuItem ? (
+        <button type="button" className="menu-item" onClick={() => void click()}>
+          {icon}
+          {label}
+        </button>
+      ) : (
+        <Button type="button" variant="link" className="h-auto p-0" onClick={() => void click()}>
+          {icon}
+          {label}
+        </Button>
+      )}
       {status && (
         <span className="muted" role="status">
           {status}

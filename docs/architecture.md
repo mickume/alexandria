@@ -82,21 +82,25 @@ account and checks the PKCE verifier as Google does.
   `/` and Escape keys), and `pages/Topics` and `pages/Tags`
   (`components/VocabularyList`). `App.tsx` follows the path and the query
   string. `api.ts` is the client of the API, `format.ts`
-  formats dates. The look comes from **Quire**, the reusable design
-  language in `src/design/` ([ADR 03](adr/03-adopt-a-reusable-design-language.md)):
-  `quire.css` loads its tokens, base styles and `q-` components into cascade
-  layers, and `main.tsx` imports it before `styles.css`, which holds only
-  Alexandria's own layout and parts, written with Quire's tokens. Every page
+  formats dates. The look is shadcn/ui's, with GodUI's motion
+  ([ADR 08](adr/08-adopt-shadcn-ui-with-godui.md)): `main.tsx` imports
+  `theme.css` (Tailwind CSS v4, shadcn/ui's neutral variables in light and
+  dark, and GodUI's motion tokens from `motion.css`) before `styles.css`,
+  which holds Alexandria's own layout and parts, written with the theme's
+  variables. `components/ui/` holds the components as their registries publish
+  them (Button, Input and Textarea from GodUI; Card, Badge, Alert, Label,
+  NativeSelect and Spinner from shadcn/ui), `lib/utils.ts` the `cn` helper,
+  and `@/` names `src/web` in imports. Every page
   sits under a light header: the mark and a breadcrumb (Alexandria / the
   section), the search box and a sign-out button, over a row of underlined
-  tabs (Stream, Workspaces, Topics, Tags, Ask, Expired, Settings) that scrolls
-  sideways on a phone. Page titles are light headings over a hairline. Links
-  are the rows of one bordered box (title and actions, a line of facts, a
-  two-line summary, the topic as an outlined label and the tags as blue pills;
-  no thumbnails, the actions showing on hover or focus). Buttons have 6px
-  corners, with green for the main action and red for destructive ones; the
-  account's deletion sits in a red-bordered box. Light and dark follow
-  `prefers-color-scheme`. `components/Icon.tsx` draws the 16 px line icons
+  tabs (Stream, Workspaces, Topics, Tags, Ask, Expired, Archive, Stats,
+  Settings) that scrolls sideways on a phone. Page titles are light headings
+  over a hairline. Links are the rows of one bordered box (title and actions,
+  a line of facts, a two-line summary, the topic as an outlined badge and the
+  tags as filled ones; no thumbnails, the actions showing on hover or focus).
+  The main action of a screen is the dark primary button and destructive ones
+  are red; the account's deletion sits in a red-bordered box. Light and dark
+  follow `prefers-color-scheme`. `components/Icon.tsx` draws the 16 px line icons
   and Alexandria's mark.
   `components/LinkCard` shows one link: its title, its site address and
   Open open the site in a new tab, through `/api/v1/links/{id}/open` so the

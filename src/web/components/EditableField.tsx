@@ -1,5 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { ApiError, links, type Link } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 type Field = 'title' | 'summary' | 'tags' | 'topic';
 
@@ -68,37 +73,41 @@ export function EditableField({
     <div className="field" data-testid={`field-${field}`}>
       <div className="field-head">
         <span className="muted">{label}</span>
-        {link.edited_fields.includes(field) && (
-          <span className="q-label q-label--accent">edited</span>
-        )}
+        {link.edited_fields.includes(field) && <Badge variant="secondary">edited</Badge>}
         {!editing && (
-          <button type="button" className="q-btn-link" onClick={start} aria-label={`Edit ${field}`}>
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto p-0"
+            onClick={start}
+            aria-label={`Edit ${field}`}
+          >
             Edit
-          </button>
+          </Button>
         )}
       </div>
       {editing ? (
         <div className="field-edit">
-          <label htmlFor={inputId} className="visually-hidden">
+          <Label htmlFor={inputId} className="visually-hidden">
             {label}
-          </label>
+          </Label>
           {field === 'summary' ? (
-            <textarea
+            <Textarea
               id={inputId}
               rows={4}
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />
           ) : (
-            <input id={inputId} value={value} onChange={(e) => setValue(e.target.value)} />
+            <Input id={inputId} value={value} onChange={(e) => setValue(e.target.value)} />
           )}
           <div className="actions">
-            <button type="button" className="q-btn q-btn--primary" onClick={() => void save()}>
+            <Button type="button" onClick={() => void save()}>
               Save
-            </button>
-            <button type="button" className="q-btn" onClick={() => setEditing(false)}>
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setEditing(false)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       ) : (

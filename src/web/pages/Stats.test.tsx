@@ -134,7 +134,7 @@ describe('the Stats page', () => {
     expect(tabs.indexOf('Settings')).toBe(tabs.indexOf('Stats') + 1);
     expect(nav.getByRole('link', { name: 'Stats' }).getAttribute('aria-current')).toBe('page');
     expect(nav.getByRole('link', { name: 'Stats' }).getAttribute('href')).toBe('/stats');
-    expect(document.querySelector('.q-breadcrumb .is-current')?.textContent).toBe('Stats');
+    expect(document.querySelector('.site-context-current')?.textContent).toBe('Stats');
   });
 
   it('loads once with a spinner, shows its sections in order, and reloads only on Refresh', async () => {
@@ -146,7 +146,7 @@ describe('the Stats page', () => {
     });
     renderPage('/stats', api);
     expect(await screen.findByRole('status')).toBeTruthy();
-    expect(document.querySelector('.q-spinner')).toBeTruthy();
+    expect(document.querySelector('.animate-spin')).toBeTruthy();
     await act(async () => release());
     await screen.findByRole('heading', { name: 'Library' });
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);

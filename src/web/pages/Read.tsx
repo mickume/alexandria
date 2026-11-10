@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link as PageLink } from '../App';
 import { links, snapshotUrl, type Link, type ReaderView } from '../api';
 import { openWebLinksInNewTab } from '../components/Markdown';
+import { buttonVariants } from '@/components/ui/button';
 
 /** Loads one value for a page, and whether it failed. */
 function useLoad<T>(load: () => Promise<T>, key: string): { value: T | null; failed: boolean } {
@@ -91,7 +92,10 @@ export function Snapshot({ id }: { id: string }) {
       <h1>{link.title}</h1>
       {link.content_kind === 'pdf' ? (
         <>
-          <a className="q-btn" href={snapshotUrl(id, { download: true })}>
+          <a
+            className={buttonVariants({ variant: 'outline' })}
+            href={snapshotUrl(id, { download: true })}
+          >
             Download
           </a>
           <object className="snapshot-frame" data={snapshotUrl(id)} type="application/pdf">

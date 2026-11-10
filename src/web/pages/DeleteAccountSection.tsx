@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { navigate } from '../App';
 import { account, ApiError } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 /** Whether the typed text is the email, ignoring case and surrounding whitespace. */
 function matches(typed: string, email: string | null): boolean {
@@ -51,22 +54,22 @@ export function DeleteAccountSection() {
         Deleting your account removes every link, snapshot, workspace, token and the AI key. It
         cannot be undone.
       </p>
-      <label htmlFor="delete-confirm">Type your email address to confirm</label>
-      <input
+      <Label htmlFor="delete-confirm">Type your email address to confirm</Label>
+      <Input
         id="delete-confirm"
         type="email"
         autoComplete="off"
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
       />
-      <button
+      <Button
         type="button"
-        className="q-btn q-btn--danger"
+        variant="destructive"
         disabled={!matches(typed, email) || busy}
         onClick={() => void remove()}
       >
         Delete account
-      </button>
+      </Button>
       {error && (
         <p className="notice" role="alert">
           {error}

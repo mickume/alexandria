@@ -3,6 +3,11 @@ import { ApiError, imports, workspaces, type ImportReport, type WorkspaceSummary
 import { Icon } from '../components/Icon';
 import { ImportProgress } from '../components/ImportProgress';
 import { byName } from '../format';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
+import { Label } from '@/components/ui/label';
+import { buttonVariants } from '@/components/ui/button';
 
 /** The workspace choice that asks for a new workspace. */
 const NEW_WORKSPACE = 'new';
@@ -63,7 +68,7 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (file: File) =>
           e.target.value = '';
         }}
       />
-      <label htmlFor="import-file" className="q-btn">
+      <label htmlFor="import-file" className={buttonVariants({ variant: 'outline' })}>
         Choose a file
       </label>
       <p className="muted" role="status">
@@ -143,13 +148,10 @@ export function Import() {
             setError(null);
           }}
         />
-        <div className="q-form-control">
-          <label className="q-form-label" htmlFor="import-workspace">
-            Add the links to a workspace
-          </label>
-          <select
+        <div className="form-control">
+          <Label htmlFor="import-workspace">Add the links to a workspace</Label>
+          <NativeSelect
             id="import-workspace"
-            className="q-input"
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
           >
@@ -160,20 +162,17 @@ export function Import() {
               </option>
             ))}
             <option value={NEW_WORKSPACE}>New workspace…</option>
-          </select>
-          <span className="q-form-caption">
+          </NativeSelect>
+          <span className="form-caption">
             Links already in the workspace keep their place; the others are added at its end, in
             file order.
           </span>
         </div>
         {choice === NEW_WORKSPACE && (
-          <div className="q-form-control">
-            <label className="q-form-label" htmlFor="import-new-workspace">
-              Name of the new workspace
-            </label>
-            <input
+          <div className="form-control">
+            <Label htmlFor="import-new-workspace">Name of the new workspace</Label>
+            <Input
               id="import-new-workspace"
-              className="q-input"
               required
               maxLength={100}
               value={newName}
@@ -182,9 +181,9 @@ export function Import() {
           </div>
         )}
         <div>
-          <button type="submit" className="q-btn q-btn--primary" disabled={!file || busy}>
+          <Button type="submit" disabled={!file || busy}>
             {busy ? 'Importing…' : 'Import'}
-          </button>
+          </Button>
         </div>
       </form>
       {error && (

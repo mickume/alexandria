@@ -13,12 +13,6 @@ holding the link marked; choosing another adds the link at its bottom.
 
 ##### \_\_namedParameters
 
-###### className?
-
-`string` = `'q-btn-link'`
-
-The button's class: a link-like button unless an action list asks for its own.
-
 ###### icon?
 
 `ReactNode`
@@ -32,6 +26,12 @@ An icon before the label.
 ###### memberOf
 
 `string`[]
+
+###### menuItem?
+
+`boolean` = `false`
+
+Whether the button is an item of a menu or an action list, not a link-like button.
 
 ###### onAdded
 

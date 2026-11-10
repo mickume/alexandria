@@ -1,5 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, firecrawl, type FirecrawlSettings } from '../api';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card } from '@/components/ui/card';
 
 /**
  * The Firecrawl section of the settings page: the stored key by its last 4
@@ -56,7 +60,7 @@ export function FirecrawlSection() {
         unreachable.
       </p>
       {settings.configured && (
-        <div className="panel q-box q-box-body">
+        <Card className="panel gap-3 p-4 shadow-none">
           {settings.status === 'rejected' && (
             <p className="notice" role="alert">
               your Firecrawl key was rejected: {settings.rejected_message ?? 'no reason given'}
@@ -66,29 +70,29 @@ export function FirecrawlSection() {
             Firecrawl · <code>…{settings.key_last4}</code>
           </p>
           <div className="actions">
-            <button
+            <Button
               type="button"
-              className="q-btn"
+              variant="outline"
               aria-label="Replace Firecrawl key"
               onClick={() => document.getElementById('firecrawl-key')?.focus()}
             >
               Replace
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="q-btn"
+              variant="outline"
               aria-label="Remove Firecrawl key"
               onClick={() => void remove()}
             >
               Remove
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
       {message && <p role="status">{message}</p>}
       <form className="stacked-form" onSubmit={save}>
-        <label htmlFor="firecrawl-key">Firecrawl API key</label>
-        <input
+        <Label htmlFor="firecrawl-key">Firecrawl API key</Label>
+        <Input
           id="firecrawl-key"
           type="password"
           autoComplete="off"
@@ -96,9 +100,7 @@ export function FirecrawlSection() {
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
         />
-        <button type="submit" className="q-btn q-btn--primary">
-          Save Firecrawl key
-        </button>
+        <Button type="submit">Save Firecrawl key</Button>
       </form>
     </section>
   );

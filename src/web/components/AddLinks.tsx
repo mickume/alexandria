@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { urlLines } from '../../worker/imports/parse';
 import { ApiError, links, type Link } from '../api';
+import { Textarea } from '@/components/ui/textarea';
 
 /** The messages a batch's outcome shows the owner. */
 function messagesFor(result: Awaited<ReturnType<typeof links.addBatch>>): string[] {
@@ -56,7 +57,7 @@ export function AddLinks({ onAdded }: { onAdded: (links: Link[]) => void }) {
 
   return (
     <div className="add-links">
-      <textarea
+      <Textarea
         aria-label="Add links"
         placeholder="Paste links and press Enter"
         rows={1}

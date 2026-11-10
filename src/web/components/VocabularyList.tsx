@@ -10,6 +10,9 @@ import {
   type VocabularyKind,
 } from '../api';
 import { byName } from '../format';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 
 const FILTER: Record<VocabularyKind, 'topic' | 'tag'> = { topics: 'topic', tags: 'tag' };
 
@@ -80,17 +83,17 @@ function PickForm({
         void onPick(picked);
       }}
     >
-      <select aria-label={label} value={picked} onChange={(e) => setPicked(e.target.value)}>
+      <NativeSelect aria-label={label} value={picked} onChange={(e) => setPicked(e.target.value)}>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <button type="submit">{action}</button>
-      <button type="button" className="q-btn-link" onClick={onCancel}>
+      <Button type="button" variant="link" className="h-auto p-0" onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
     </form>
   );
 }
@@ -116,9 +119,15 @@ function RowActions({
   onSplit: () => void;
 }) {
   const button = (label: string, onClick: () => void) => (
-    <button type="button" className="q-btn-link" disabled={splitting} onClick={onClick}>
+    <Button
+      type="button"
+      variant="link"
+      className="h-auto p-0"
+      disabled={splitting}
+      onClick={onClick}
+    >
       {label}
-    </button>
+    </Button>
   );
   return (
     <>
@@ -169,7 +178,7 @@ function Row({
       <td>
         <PageLink to={searchPath(filterQuery(FILTER[kind], item.name))}>{item.name}</PageLink>
       </td>
-      <td className="count q-table-number">{(item as TopicItem).subtree_count ?? item.count}</td>
+      <td className="count number">{(item as TopicItem).subtree_count ?? item.count}</td>
       <td className="actions">
         {(mode === 'idle' || mode === 'splitting') && (
           <RowActions
@@ -188,16 +197,21 @@ function Row({
               void act(() => vocabulary.rename(kind, item.id, name));
             }}
           >
-            <input
+            <Input
               aria-label="New name"
               value={name}
               maxLength={kind === 'tags' ? 50 : 100}
               onChange={(e) => setName(e.target.value)}
             />
             <button type="submit">Save</button>
-            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0"
+              onClick={() => setMode('idle')}
+            >
               Cancel
-            </button>
+            </Button>
           </form>
         )}
         {mode === 'merge' && (
@@ -259,7 +273,7 @@ export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: s
       )}
       {items && items.length === 0 && <p className="muted">No {kind} yet.</p>}
       {items && items.length > 0 && (
-        <table className="q-table">
+        <table className="data-table">
           <thead>
             <tr>
               <th scope="col">Name</th>

@@ -58,7 +58,7 @@ export function BarChart({
           ))}
         </tbody>
       </table>
-      {caption && <p className="muted q-text-small">{caption}</p>}
+      {caption && <p className="muted text-xs">{caption}</p>}
     </figure>
   );
 }
@@ -188,7 +188,7 @@ export function TrendChart({
         </tbody>
       </table>
       {series.length > 1 && (
-        <p className="legend muted q-text-small">
+        <p className="legend muted text-xs">
           {series.map((s, k) => (
             <span key={s.name} className={`legend-item series-${k}`}>
               {s.name}

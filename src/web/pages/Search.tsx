@@ -20,14 +20,17 @@ import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
 import { LinkCard, TopicPath, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
 import { UndoToasts, useUndoableDelete } from '../undo';
+import { Button } from '@/components/ui/button';
+import { Badge, badgeVariants } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 /** The workspaces whose name, description or note matched. */
 function WorkspaceResults({ workspaces }: { workspaces: SearchResults['workspaces'] }) {
   if (workspaces.length === 0) return null;
   return (
-    <ul className="workspace-results q-box" aria-label="Matching workspaces">
+    <ul className="workspace-results list-box" aria-label="Matching workspaces">
       {workspaces.map((w) => (
-        <li key={w.id} className="q-box-row">
+        <li key={w.id} className="list-row">
           <PageLink to={`/workspaces/${w.id}`}>{w.name}</PageLink>
           <Snippet segments={w.snippet} />
         </li>
@@ -40,13 +43,13 @@ function WorkspaceResults({ workspaces }: { workspaces: SearchResults['workspace
 function NothingFound({ query }: { query: string }) {
   const filters = activeFilters(query);
   return (
-    <div className="nothing-found q-blankslate">
+    <div className="nothing-found blankslate">
       <p className="muted">nothing found for {query.trim()}</p>
       {filters.length > 0 && (
         <ul className="filter-chips" aria-label="Active filters">
           {filters.map((f) => (
-            <li key={f} className="q-topic">
-              {f}
+            <li key={f}>
+              <Badge variant="secondary">{f}</Badge>
             </li>
           ))}
         </ul>
@@ -106,11 +109,11 @@ function TopicPlace({ name }: { name: string }) {
             <li key={child.id}>
               <PageLink
                 to={searchPath(filterQuery('topic', child.name))}
-                className="topic q-label label-link"
+                className={cn(badgeVariants({ variant: 'outline' }), 'topic label-link')}
               >
                 {child.name}
               </PageLink>
-              <span className="q-counter">{child.subtree_count}</span>
+              <span className="counter">{child.subtree_count}</span>
             </li>
           ))}
         </ul>
@@ -244,9 +247,9 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
         ))}
       </ul>
       {found?.next && (
-        <button type="button" className="q-btn" onClick={() => void more()}>
+        <Button type="button" variant="outline" onClick={() => void more()}>
           More results
-        </button>
+        </Button>
       )}
       <UndoToasts deletes={deletes} />
     </section>

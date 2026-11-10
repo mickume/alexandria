@@ -117,7 +117,7 @@ export function SearchBox({ location }: { location: Location }) {
 
   return (
     <form
-      className="q-input-group search"
+      className="search"
       role="search"
       onSubmit={(e) => {
         e.preventDefault();

@@ -4,21 +4,21 @@
 
 ### ButtonLook
 
-How a status button looks: its class and an icon before its label.
+How a status button looks: a link-like button, or an item of a menu or an action list.
 
 #### Properties
-
-##### className?
-
-> `optional` **className?**: `string`
-
-The button's class: a link-like button unless an action list asks for its own.
 
 ##### icon?
 
 > `optional` **icon?**: `ReactNode`
 
 An icon before the label.
+
+##### menuItem?
+
+> `optional` **menuItem?**: `boolean`
+
+Whether the button is an item of a menu or an action list.
 
 ## Functions
 
