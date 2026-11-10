@@ -172,16 +172,111 @@ The structured result asked of the model.
 
 > `readonly` **type**: `"object"` = `'object'`
 
+***
+
+### SPLIT\_SCHEMA
+
+> `const` **SPLIT\_SCHEMA**: `object`
+
+The structured result asked of the model for a topic's split.
+
+#### Type Declaration
+
+##### additionalProperties
+
+> `readonly` **additionalProperties**: `false` = `false`
+
+##### properties
+
+> `readonly` **properties**: `object`
+
+###### properties.links
+
+> `readonly` **links**: `object`
+
+###### properties.links.items
+
+> `readonly` **items**: `object`
+
+###### properties.links.items.additionalProperties
+
+> `readonly` **additionalProperties**: `false` = `false`
+
+###### properties.links.items.properties
+
+> `readonly` **properties**: `object`
+
+###### properties.links.items.properties.id
+
+> `readonly` **id**: `object`
+
+###### properties.links.items.properties.id.description
+
+> `readonly` **description**: `"The id of a link you were sent."` = `'The id of a link you were sent.'`
+
+###### properties.links.items.properties.id.type
+
+> `readonly` **type**: `"string"` = `'string'`
+
+###### properties.links.items.properties.subtopic
+
+> `readonly` **subtopic**: `object`
+
+###### properties.links.items.properties.subtopic.description
+
+> `readonly` **description**: `"The sub-topic the link belongs under, or an empty name to leave it."` = `'The sub-topic the link belongs under, or an empty name to leave it.'`
+
+###### properties.links.items.properties.subtopic.type
+
+> `readonly` **type**: `"string"` = `'string'`
+
+###### properties.links.items.required
+
+> `readonly` **required**: readonly \[`"id"`, `"subtopic"`\]
+
+###### properties.links.items.type
+
+> `readonly` **type**: `"object"` = `'object'`
+
+###### properties.links.type
+
+> `readonly` **type**: `"array"` = `'array'`
+
+###### properties.subtopics
+
+> `readonly` **subtopics**: `object`
+
+###### properties.subtopics.description
+
+> `readonly` **description**: `"The names of 2 to 10 sub-topics."` = `'The names of 2 to 10 sub-topics.'`
+
+###### properties.subtopics.items
+
+> `readonly` **items**: `object`
+
+###### properties.subtopics.items.type
+
+> `readonly` **type**: `"string"` = `'string'`
+
+###### properties.subtopics.type
+
+> `readonly` **type**: `"array"` = `'array'`
+
+##### required
+
+> `readonly` **required**: readonly \[`"subtopics"`, `"links"`\]
+
+##### type
+
+> `readonly` **type**: `"object"` = `'object'`
+
 ## Functions
 
 ### enrichWith()
 
 > **enrichWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a structured {summary, tags, topic}: a JSON
-schema through structured outputs (output_config.format) of Anthropic's
-Messages API, and through the response format of OpenRouter's chat
-completions. The value is the model's raw object.
+Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA).
 
 #### Parameters
 
@@ -218,6 +313,32 @@ Shortens the provider timeout, for tests; null restores the 60 seconds.
 #### Returns
 
 `void`
+
+***
+
+### splitWith()
+
+> **splitWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
+
+Asks the user's provider for a topic's split: {subtopics, links} (SPLIT_SCHEMA).
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### call
+
+[`ProviderCall`](#providercall)
+
+##### prompt
+
+`string`
+
+#### Returns
+
+`Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
 ***
 

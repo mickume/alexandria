@@ -2,6 +2,68 @@
 
 ## Interfaces
 
+### SplitOutcome
+
+A split as it answers: the topic, every child of it by name, and how many links moved.
+
+#### Properties
+
+##### children
+
+> **children**: [`VocabularyEntry`](#vocabularyentry)[]
+
+##### moved
+
+> **moved**: `number`
+
+##### movedIds
+
+> **movedIds**: `string`[]
+
+The ids of the links whose topic changed.
+
+##### topic
+
+> **topic**: [`TopicEntry`](#topicentry)
+
+***
+
+### SplitRequest
+
+What a split asks the provider about: the topic, its children and the links it may move.
+
+#### Properties
+
+##### children
+
+> **children**: `string`[]
+
+##### links
+
+> **links**: `object`[]
+
+The links filed directly under the topic whose topic the owner did not edit.
+
+###### id
+
+> **id**: `string`
+
+###### summary
+
+> **summary**: `string` \| `null`
+
+###### title
+
+> **title**: `string`
+
+##### path
+
+> **path**: `string`[]
+
+The topic's names from the top level down, its own last.
+
+***
+
 ### TopicEntry
 
 A topic with its place in the tree and its links, as a move answers it.
@@ -118,6 +180,14 @@ Why a move was refused.
 
 ***
 
+### SplitRefusal
+
+> **SplitRefusal** = `"not_found"` \| `"too_deep"` \| `"too_few_links"` \| `"too_many_links"`
+
+Why a split was refused before the provider was asked.
+
+***
+
 ### VocabularyKind
 
 > **VocabularyKind** = `"topics"` \| `"tags"`
@@ -125,6 +195,20 @@ Why a move was refused.
 Topics or tags: which vocabulary a route is about.
 
 ## Variables
+
+### SPLIT\_MAX\_LINKS
+
+> `const` **SPLIT\_MAX\_LINKS**: `500` = `500`
+
+***
+
+### SPLIT\_MIN\_LINKS
+
+> `const` **SPLIT\_MIN\_LINKS**: `20` = `20`
+
+The fewest and the most links filed directly under a topic that a split takes.
+
+***
 
 ### TAG\_NAME\_MAX
 
@@ -139,6 +223,46 @@ The longest tag and topic names.
 > `const` **TOPIC\_NAME\_MAX**: `100` = `100`
 
 ## Functions
+
+### applySplit()
+
+> **applySplit**(`db`, `userId`, `id`, `path`, `assignments`): `Promise`\<[`SplitOutcome`](#splitoutcome) \| `null`\>
+
+Applies a split of one of the user's topics: each sub-topic name some link
+is filed under is resolved as the last name of the topic's own path, with
+near names (an existing child or any existing topic is reused where it is,
+otherwise a child of the topic is created), and in one batch each link is
+filed under its sub-topic and, when its topic changes, marked changed.
+`assignments` maps each link to its sub-topic's name; '' leaves it. Null
+when the topic is no longer the user's.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+##### path
+
+`string`[]
+
+##### assignments
+
+`Map`\<`string`, `string`\>
+
+#### Returns
+
+`Promise`\<[`SplitOutcome`](#splitoutcome) \| `null`\>
+
+***
 
 ### carrierIds()
 
@@ -357,6 +481,35 @@ without `>`.
 #### Returns
 
 `string` \| `null`
+
+***
+
+### prepareSplit()
+
+> **prepareSplit**(`db`, `userId`, `id`): `Promise`\<[`SplitRefusal`](#splitrefusal) \| [`SplitRequest`](#splitrequest)\>
+
+What a split of one of the user's topics would send the provider, or why it
+is refused: not the user's, at the third level, or with fewer than 20 or
+more than 500 links filed directly under it (every such link counts, the
+ones whose topic the owner edited among them, though those are not sent).
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`Promise`\<[`SplitRefusal`](#splitrefusal) \| [`SplitRequest`](#splitrequest)\>
 
 ***
 

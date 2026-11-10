@@ -1528,6 +1528,22 @@ Moves a topic, with everything beneath it, under another topic, or to the top le
 
 `Promise`\<\{ `count`: `number`; `id`: `string`; `name`: `string`; \}\>
 
+##### split
+
+> **split**: (`id`) => `Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>; \}\>
+
+Has the owner's AI provider divide the links filed directly under a topic into sub-topics.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `children`: `object`[]; `moved`: `number`; `topic`: `Omit`\<[`TopicItem`](#topicitem), `"newest_added_at"`\>; \}\>
+
 ***
 
 ### workspaces

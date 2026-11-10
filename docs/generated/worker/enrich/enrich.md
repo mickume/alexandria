@@ -72,6 +72,40 @@ The topics' paths, such as 'Software engineering > Testing'.
 
 ***
 
+### SplitPromptInput
+
+What the request for a topic's split is built from.
+
+#### Properties
+
+##### children
+
+> **children**: `string`[]
+
+The names of the topic's existing children.
+
+##### links
+
+> **links**: `object`[]
+
+###### id
+
+> **id**: `string`
+
+###### summary
+
+> **summary**: `string` \| `null`
+
+###### title
+
+> **title**: `string`
+
+##### topic
+
+> **topic**: `string`
+
+***
+
 ### VocabularyEntry
 
 A tag name with the number of the user's links that carry it.
@@ -160,6 +194,26 @@ page or of the user.
 ##### input
 
 [`PromptInput`](#promptinput)
+
+#### Returns
+
+`string`
+
+***
+
+### buildSplitPrompt()
+
+> **buildSplitPrompt**(`input`): `string`
+
+The request for a topic's split: instructions, the topic's name, its
+children's names, and each link's id, title and summary as one JSON object
+per line. Nothing else of the links or of the user.
+
+#### Parameters
+
+##### input
+
+[`SplitPromptInput`](#splitpromptinput)
 
 #### Returns
 
