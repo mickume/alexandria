@@ -943,7 +943,8 @@ in hyphen-joined words (`web-dev`); a topic name is trimmed, its spaces
 collapsed, and must be 1 to 100 characters without `>`. Otherwise
 `400 {"error": "invalid_name", "field": "name", "message"}` (for a topic, the
 message is "a topic name of 1 to 100 characters, without >"). A renamed topic
-keeps its place in the tree and its children. A name another
+keeps its place in the tree and its children; every link filed under it or
+beneath it is marked changed, as its `topic_path` changes. A name another
 topic (or tag) of the user has, ignoring case, is
 `409 {"error": "name_taken", "message": "another tag is named javascript: merge this tag into it instead"}`
 and nothing changes. Renaming to the same name answers 200.

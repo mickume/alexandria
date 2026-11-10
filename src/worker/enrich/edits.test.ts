@@ -146,6 +146,12 @@ describe('a typed topic path', () => {
       path: ['Software engineering', 'Testing', 'Mutation'],
     },
     { topic: 'Fuzzing > Corpus', path: ['Software engineering', 'Testing', 'Corpus'] },
+    { topic: 'Brand new > Testing', path: ['Software engineering', 'Testing'] },
+    { topic: 'New one > New two > Testing', path: ['Software engineering', 'Testing'] },
+    {
+      topic: 'Fuzzing > Corpus > Seeds',
+      path: ['Software engineering', 'Testing', 'Seeds'],
+    },
   ])('files the link under $topic as $path', async ({ topic, path }) => {
     const user = await signIn();
     const [se = '', testing = '', fuzzing = '', cooking = '', id = ''] = await seedLinks(user, [
@@ -181,6 +187,14 @@ describe('a typed topic path', () => {
       .bind(user.id)
       .all();
     expect(names.results).toEqual([]);
+    const empty = await env.DB.prepare(
+      `SELECT name FROM topics t WHERE user_id = ?
+         AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = t.id)
+         AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = t.id)`,
+    )
+      .bind(user.id)
+      .all();
+    expect(empty.results).toEqual([]);
     expect((await get(user, fuzzing)).topic_path).toEqual([
       'Software engineering',
       'Testing',

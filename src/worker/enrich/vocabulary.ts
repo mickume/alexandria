@@ -144,32 +144,54 @@ export async function resolveTopicPath(
   };
 
   let parent: string | null = null;
+  const created: string[] = [];
   for (const name of names) {
     const key = nameKey(name);
     let id = byKey.get(key) ?? byAlias.get(key) ?? (near ? nearId(name) : undefined);
     if (!id) {
       const under: string | null =
         parent !== null && level(parent) >= TOPIC_LEVELS ? (parents.get(parent) ?? null) : parent;
-      const [, found]: D1Result<{ id: string; parent_id: string | null }>[] = await db.batch<{
-        id: string;
-        parent_id: string | null;
-      }>([
-        db
-          .prepare(
-            'INSERT OR IGNORE INTO topics (id, user_id, name, parent_id) VALUES (?, ?, ?, ?)',
-          )
-          .bind(crypto.randomUUID(), userId, name, under),
-        db
-          .prepare('SELECT id, parent_id FROM topics WHERE user_id = ? AND name = ? COLLATE NOCASE')
-          .bind(userId, name),
-      ]);
+      const [inserted, found]: D1Result<{ id: string; parent_id: string | null }>[] =
+        await db.batch<{
+          id: string;
+          parent_id: string | null;
+        }>([
+          db
+            .prepare(
+              'INSERT OR IGNORE INTO topics (id, user_id, name, parent_id) VALUES (?, ?, ?, ?)',
+            )
+            .bind(crypto.randomUUID(), userId, name, under),
+          db
+            .prepare(
+              'SELECT id, parent_id FROM topics WHERE user_id = ? AND name = ? COLLATE NOCASE',
+            )
+            .bind(userId, name),
+        ]);
       const row: { id: string; parent_id: string | null } = found!.results[0]!;
       id = row.id;
+      if (inserted!.meta.changes > 0) created.push(id);
       parents.set(id, row.parent_id);
       byKey.set(key, id);
       if (near) addNear(name, id);
     }
     parent = id;
+  }
+  // A topic created for an earlier name is left empty when a later name
+  // matched a topic elsewhere in the tree, or went beside it at the third
+  // level: it goes again, the deepest first, so that nothing empty is left.
+  const unused = created.filter((id) => id !== parent).reverse();
+  if (unused.length > 0) {
+    await db.batch(
+      unused.map((id) =>
+        db
+          .prepare(
+            `DELETE FROM topics WHERE id = ?1
+               AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = ?1)
+               AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = ?1)`,
+          )
+          .bind(id),
+      ),
+    );
   }
   return parent!;
 }

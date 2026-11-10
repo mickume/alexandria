@@ -55,6 +55,43 @@ function topicTree(items: TopicItem[]): Entry[] {
   }));
 }
 
+/** A drop-down of choices, the first chosen, with a button to confirm and one to cancel: Merge into or Move under…. */
+function PickForm({
+  label,
+  action,
+  options,
+  onPick,
+  onCancel,
+}: {
+  label: string;
+  action: string;
+  options: { value: string; name: string }[];
+  onPick: (value: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [picked, setPicked] = useState(options[0]?.value ?? '');
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void onPick(picked);
+      }}
+    >
+      <select aria-label={label} value={picked} onChange={(e) => setPicked(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+      <button type="submit">{action}</button>
+      <button type="button" className="q-btn-link" onClick={onCancel}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
 /** One topic or tag: its name opening its search, its count, Rename and Merge, and for a topic Move under…. */
 function Row({
   kind,
@@ -71,8 +108,6 @@ function Row({
 }) {
   const [mode, setMode] = useState<Mode>('idle');
   const [name, setName] = useState(item.name);
-  const [into, setInto] = useState(others[0]?.id ?? '');
-  const [under, setUnder] = useState('');
 
   async function act(run: () => Promise<unknown>) {
     onError(null);
@@ -109,31 +144,6 @@ function Row({
             )}
           </>
         )}
-        {mode === 'move' && moveTargets && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void act(() => vocabulary.move(item.id, under === '' ? null : under));
-            }}
-          >
-            <select
-              aria-label="Move under"
-              value={under}
-              onChange={(e) => setUnder(e.target.value)}
-            >
-              <option value="">Top level</option>
-              {moveTargets.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit">Move</button>
-            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
-              Cancel
-            </button>
-          </form>
-        )}
         {mode === 'rename' && (
           <form
             onSubmit={(e) => {
@@ -154,24 +164,25 @@ function Row({
           </form>
         )}
         {mode === 'merge' && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void act(() => vocabulary.merge(kind, item.id, into));
-            }}
-          >
-            <select aria-label="Merge into" value={into} onChange={(e) => setInto(e.target.value)}>
-              {others.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <button type="submit">Merge into it</button>
-            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
-              Cancel
-            </button>
-          </form>
+          <PickForm
+            label="Merge into"
+            action="Merge into it"
+            options={others.map((o) => ({ value: o.id, name: o.name }))}
+            onPick={(target) => act(() => vocabulary.merge(kind, item.id, target))}
+            onCancel={() => setMode('idle')}
+          />
+        )}
+        {mode === 'move' && moveTargets && (
+          <PickForm
+            label="Move under"
+            action="Move"
+            options={[
+              { value: '', name: 'Top level' },
+              ...moveTargets.map((o) => ({ value: o.id, name: o.name })),
+            ]}
+            onPick={(parent) => act(() => vocabulary.move(item.id, parent === '' ? null : parent))}
+            onCancel={() => setMode('idle')}
+          />
         )}
       </td>
     </tr>

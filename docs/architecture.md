@@ -207,7 +207,8 @@ JSON-schema response format through OpenRouter's HTTP API), normalises it
 (1 to 5 tags), resolves the names against the user's vocabulary
 (`enrich/vocabulary.ts`), and stores summary, topic and
 tags (`topics`, `tags`, `link_tags`). Links are read through the
-`link_views` view, which adds the topic's name and the tags in order.
+`link_views` view, which adds the topic's name, its topic path (the names from
+the top-level topic down, `topic_path_json`) and the tags in order.
 
 Resolution keeps the vocabulary converging. A name equal to an existing one
 (ignoring case, spaces read as hyphens) reuses it, for enrichment and for the
@@ -398,12 +399,14 @@ one namespace per user.
   (`scripts/provision.sh`), so a query can be filtered on it.
 - **The text version.** Triggers (`migrations/0011_meaning_index.sql`) move
   `link_index_state.text_version` whenever the title, summary, topic, tags, note
-  or reader text changes, or a topic or tag the link carries is renamed. A link
+  or reader text changes, or a topic or tag the link carries is renamed — for a
+  topic, also when it or a topic above the link's own is renamed or moved
+  (`migrations/0016_topic_path_index.sql`, `0017_topic_moves.sql`). A link
   is stale when no passage carries its version; a link never indexed is stale
   too. Writers need do nothing for that to hold.
 - **Queueing** (`meaning/indexing.ts`, `queueIndexing`). The fetch consumer,
-  enrichment, `PATCH /api/v1/links/{id}` and the rename and merge of topics and
-  tags send `{user_id, link_id}` on `INDEX_QUEUE` for each of their links that is
+  enrichment, `PATCH /api/v1/links/{id}`, the rename and merge of topics and
+  tags and the move of a topic send `{user_id, link_id}` on `INDEX_QUEUE` for each of their links that is
   stale. A send that fails is logged and fails nothing; the backfill picks the
   link up.
 - **The index worker** (`handleIndexBatch`, the `alexandria-index` consumer,

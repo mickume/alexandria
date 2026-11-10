@@ -142,7 +142,10 @@ export const Workspace = WorkspaceSummary.extend({ note: z.string() });
 /** The link list's filters, with the meaning of the search's prefix filters; each may repeat. */
 const FILTER_PARAMETERS: Operation['query'] = {
   tag: { description: 'Links with this tag (ignoring case)', schema: z.string() },
-  topic: { description: 'Links with this topic (ignoring case)', schema: z.string() },
+  topic: {
+    description: 'Links with this topic or a topic beneath it (ignoring case)',
+    schema: z.string(),
+  },
   host: { description: 'Links on this host or a subdomain of it', schema: z.string() },
   state: {
     description:

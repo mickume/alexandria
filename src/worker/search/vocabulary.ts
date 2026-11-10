@@ -218,7 +218,14 @@ export async function renameEntry(
       db
         .prepare(`INSERT OR REPLACE INTO ${aliases} (user_id, name, ${column}) VALUES (?, ?, ?)`)
         .bind(userId, entry.name, id),
-      touchCarriers(db, kind, id),
+      // A topic's name is in the path of every link beneath it, too.
+      kind === 'topics'
+        ? db
+            .prepare(
+              `UPDATE links SET updated_at = ?3 WHERE topic_id IN (${SUBTREE}) AND user_id = ?2`,
+            )
+            .bind(id, userId, now().toISOString())
+        : touchCarriers(db, kind, id),
     );
   }
   await db.batch(statements);

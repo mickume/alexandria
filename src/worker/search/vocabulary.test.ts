@@ -908,6 +908,8 @@ describe('merging and renaming topics in the tree', () => {
     expect(await tree(user)).toEqual({ A: null, B: 'A', C: null });
     expect((await merge(user, 'B', 'C')).status).toBe(200);
     expect(await tree(user)).toEqual({ C: null });
+    const items = (await api('GET', '/api/v1/topics', { as: user.session })).json.items;
+    expect(items).toMatchObject([{ name: 'C', count: 3, subtree_count: 3 }]);
   });
 
   it('keeps a renamed topic where it is, with its children', async () => {
@@ -922,6 +924,21 @@ describe('merging and renaming topics in the tree', () => {
       'Rust language': 'Languages',
       Async: 'Rust language',
     });
+  });
+
+  it('marks the links beneath a renamed topic changed, and only those', async () => {
+    const { user, links } = await library(['Languages', 'Languages > Rust', 'Other']);
+    const since = new Date(T0 + 1).toISOString();
+    setNow(T0 + 60_000);
+    const r = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'Languages')}`, {
+      as: user.session,
+      body: { name: 'Programming languages' },
+    });
+    expect(r.status).toBe(200);
+    const changed = await api('GET', `/api/v1/links?changed_since=${since}`, { as: user.session });
+    expect(changed.json.items.map((l: { id: string }) => l.id).sort()).toEqual(
+      [links.Languages, links.Rust].sort(),
+    );
   });
 
   it('marks the links beneath the source changed, and only those', async () => {
