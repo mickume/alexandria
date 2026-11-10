@@ -1,0 +1,126 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "20",
+  "spec_name": "dampen_use_boost",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/decay src/worker/links src/worker/imports src/web/pages/Settings.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "13",
+      "reason": "supersedes its rule that a use resets a link's points, and changes its points formula, stream order and expiry to count from decay_from"
+    },
+    {
+      "spec": "14",
+      "reason": "unarchive, from its archive routes, resets decay_from"
+    },
+    {
+      "spec": "05",
+      "reason": "extends its decay settings routes and the Settings page's DecaySection with use_boost"
+    },
+    {
+      "spec": "01",
+      "reason": "changes recordUse and the re-paste of an existing link"
+    },
+    {
+      "spec": "07",
+      "reason": "imported links start with decay_from"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Count points from a decay start every link carries",
+      "criteria": [
+        "REQ-1",
+        "REQ-6"
+      ],
+      "steps": [
+        "Add the task's behaviours to the test files in touches and confirm they fail",
+        "Add a migration, at the next free number of migrations/, that adds decay_from to links and use_boost (default 50) to users, sets every link's decay_from to its last_used_at and every user's use_boost to 50, and recreates link_views so it carries decay_from",
+        "Give seedLinks in src/worker/test/helpers.ts a decayFrom option that defaults to the seeded lastUsedAt, and set decay_from alongside last_used_at wherever an existing e2e test in e2e/ moves a link back in time with d1()",
+        "Make pointsAt take decay_from in place of last_used_at, and make the stream's points expression and the expiry statement count whole days from decay_from",
+        "Set decay_from to the same time as last_used_at when POST /api/v1/links adds a new link and when an import creates one",
+        "Return decay_from on every link the API serves (the link view, the OpenAPI link schema in src/worker/api/openapi.ts, and the website's Link type in src/web/api.ts)",
+        "Leave last_used_at as the stream's tie-break after points, and leave every other reader of last_used_at as it is"
+      ],
+      "touches": [
+        "migrations/",
+        "src/worker/decay/note.ts",
+        "src/worker/decay/decay.ts",
+        "src/worker/links/stream.ts",
+        "src/worker/links/store.ts",
+        "src/worker/imports/imports.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/api.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/decay/decay.test.ts",
+        "src/worker/decay/migration.test.ts",
+        "src/worker/links/stream.test.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/imports/imports.test.ts",
+        "e2e/decay.spec.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Make a use win back a share of the decay, and boosts reset it",
+      "criteria": [
+        "REQ-2",
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the task's behaviours to the test files in touches and confirm they fail",
+        "In recordUse, in the one UPDATE that counts the use, move decay_from forward by floor((t - decay_from) * use_boost / 100) milliseconds when the link's previous last_used_at falls on an earlier UTC day than t, reading use_boost from the link's user, and leave it unchanged when it falls on the same UTC day; compute both from the row's values in that statement, so concurrent uses of one link move decay_from once",
+        "When the link used is expired, make it active, clear expired_at and set decay_from to t, whatever use_boost and the day of its last use",
+        "Apply the same rule to pinned links, links in a workspace and archived links; an archived link stays archived with points null",
+        "Set decay_from to now, with last_used_at, in the re-paste of an existing link (addStatement in src/worker/links/store.ts), in POST /api/v1/links/{id}/restore and in POST /api/v1/links/{id}/unarchive",
+        "Leave decay_from unchanged when a link is archived",
+        "Add a property test that a use never raises a link's points by less than 1, over use_boost 10 to 100, use counts, decay lengths and the same or previous UTC day",
+        "Add the end-to-end test of PATH-1 to e2e/decay.spec.ts, cleaning up its links as the tests there do"
+      ],
+      "touches": [
+        "src/worker/links/use.ts",
+        "src/worker/links/store.ts",
+        "src/worker/decay/archive.ts",
+        "src/worker/links/use.test.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/decay/archive.test.ts",
+        "e2e/decay.spec.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Let the owner set the use boost through the API and the Settings page",
+      "criteria": [
+        "REQ-4",
+        "REQ-5"
+      ],
+      "steps": [
+        "Add the task's behaviours to the test files in touches and confirm they fail",
+        "Make GET /api/v1/settings/decay answer use_boost with start_points and remove_days, and PUT take all three, refusing a use_boost that is missing, not a whole number or outside 10 to 100 with 400 invalid_threshold, field use_boost and the message 'use_boost must be a whole number from 10 to 100', storing nothing",
+        "Describe use_boost in the OpenAPI schemas of the two decay settings routes",
+        "Add the 'Use boost (%)' field to DecaySection with its help text, change the help text of 'Start points', send the three fields on save, and show a refusal for use_boost beside its field as the other two do",
+        "Add the end-to-end test of PATH-2 to e2e/decay.spec.ts, putting use_boost back to 50 and deleting its link at the end",
+        "Run make doc, and update docs/api.md (the decay settings routes, decay_from on links, the points rule), docs/configuration.md (the use_boost setting) and docs/architecture.md (how points count from decay_from and how a use moves it)"
+      ],
+      "touches": [
+        "src/worker/decay/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/api.ts",
+        "src/web/pages/DecaySection.tsx",
+        "src/worker/decay/decay.test.ts",
+        "src/web/pages/Settings.test.tsx",
+        "src/web/test/",
+        "e2e/decay.spec.ts",
+        "docs/api.md",
+        "docs/configuration.md",
+        "docs/architecture.md",
+        "docs/generated/"
+      ]
+    }
+  ]
+}

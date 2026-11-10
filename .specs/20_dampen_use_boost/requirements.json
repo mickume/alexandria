@@ -1,0 +1,385 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "20",
+  "spec_name": "dampen_use_boost",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "Points count from the decay start",
+      "rationale": "A use can only win back part of the decay if decay counts from a time of its own, while last_used_at keeps meaning the last use.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "ubiquitous",
+          "action": "return on every link it returns, archived links included, a field decay_from holding the time the link's decay counts from, as an ISO 8601 UTC timestamp in the same form as last_used_at",
+          "contract": "each link object in a response carries decay_from: string (ISO 8601, millisecond precision, 'Z' suffix)",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, extend the table of 'a link’s points' so seedLinks takes a decayFrom distinct from lastUsedAt: GET /api/v1/links/{id}; assert link.decay_from == seeded decayFrom and link.last_used_at == seeded lastUsedAt; for one archived row assert decay_from is the seeded value and points is null"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "ubiquitous",
+          "action": "for any link that is not archived, compute its points at time t as start_points + use_count - max(0, whole 24-hour periods from decay_from to t), whatever its last_used_at",
+          "contract": "link.points: integer as computed by pointsAt from start_points, use_count and decay_from; null for an archived link",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts 'a link’s points', the table over {uses, decayed, lastUsed}: {0, 0, now} -> 60; {0, DAY - 60000, now} -> 60; {0, DAY, now} -> 59; {5, 62 DAY, 1 DAY ago} -> 3; {10, 5 DAY, 5 DAY ago} -> 65; {0, 61 DAY, now} -> -1; assert link.points equals the expected value; the case where last_used_at is recent but decay_from is old shows the points follow decay_from"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "ubiquitous",
+          "action": "order the unpinned links of the stream, and of a search made of filters alone, by points computed from decay_from descending, then last_used_at descending, then id descending",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/stream.test.ts, extend 'lists pinned links by position, then the rest by points, last use and id' with two links whose last_used_at order is the reverse of their decay_from order: assert the stream lists them by the points decay_from gives, and two links of equal points by last_used_at descending"
+          }
+        },
+        {
+          "id": "REQ-1.4",
+          "pattern": "event_driven",
+          "condition": "the scheduled decay evaluation runs for an owner",
+          "action": "expire every link at 0 points or below, computed from decay_from, that is active, pending or unreachable, not pinned and in no workspace, and leave every link above 0 points as it was",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts 'expiry by decay', a table: a link with last_used_at today and decay_from 61 days ago (0 uses) expires; a link with last_used_at 61 days ago and decay_from today stays active; assert state and expired_at after evaluateDecay"
+          }
+        },
+        {
+          "id": "REQ-1.5",
+          "pattern": "event_driven",
+          "condition": "a link is added through POST /api/v1/links or created by an import",
+          "action": "set the new link's decay_from equal to its last_used_at",
+          "contract": "the created link has decay_from == last_used_at, so its points are start_points + 0",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, after POST /api/v1/links adds a new URL assert link.decay_from == link.last_used_at; in src/worker/imports/imports.test.ts 'POST /api/v1/imports adds', for each imported link assert decay_from == last_used_at"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "A use wins back a share of the decay",
+      "rationale": "One use says a link still matters, but less than steady use, so a link close to expiry gets a reprieve instead of the top of the stream.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "a use (an open, a read, a snapshot view or an MCP open) of a link that is not expired is recorded at time t and the link's last_used_at before the use falls on an earlier UTC day than t",
+          "action": "add 1 to use_count, set last_used_at to t, and move decay_from forward to decay_from + floor((t - decay_from) * use_boost / 100) milliseconds, where use_boost is the owner's setting",
+          "contract": "the link returned by GET /api/v1/links/{id} after the use has use_count + 1, last_used_at == t, and decay_from as given; its points follow REQ-1.2",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "start_points 60",
+              "setNow fixes t at 12:00 UTC"
+            ],
+            "pseudocode": "in src/worker/links/use.test.ts, a new describe for the boost of a use, recording uses through GET /api/v1/links/{id}/open, a table over {use_boost, uses, decayed} with last use on the previous UTC day: {50, 5, 62 DAY} -> points 35 and decay_from 31 DAY ago; {50, 5, 6 DAY} -> 63 and 3 DAY ago; {100, 3, 20 DAY} -> start_points + 4 and decay_from == t; {10, 0, 30 DAY} -> decay_from moved 3 DAY, points 60 + 1 - 27 = 34; assert use_count, last_used_at == t, decay_from and points"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "a use of a link that is not expired is recorded at time t and the link's last_used_at before the use falls on the same UTC day as t",
+          "action": "add 1 to use_count and set last_used_at to t, and leave decay_from unchanged",
+          "contract": "points after the use == points before the use + 1",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts beside the table above, a table over the previous last use {t's UTC day at 00:00:00.000, one minute before t}: open the link; assert decay_from unchanged and points == points before + 1; and the boundary case last use at 23:59:59.999 of the previous UTC day with t at 00:00:00.000 does move decay_from"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "event_driven",
+          "condition": "a use of an expired link is recorded at time t",
+          "action": "make the link active, clear expired_at, add 1 to use_count, and set both last_used_at and decay_from to t, whatever use_boost is and whatever day it was last used",
+          "contract": "GET /api/v1/links/{id} answers state 'active', expired_at null, decay_from == t and points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, extend 'using an expired link' with use_boost 50 and decay_from 200 days ago: open it; assert state 'active', expired_at null, decay_from == t, points == start_points + use_count"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "apply to a pinned link, a link in a workspace and an archived link the same rules for a use as to any other link that is not expired",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, a table over {pinned, in a workspace, archived} each with decay_from 40 days ago and last use on the previous UTC day, use_boost 50: open it; assert decay_from is 20 days before t; for the archived link assert points is null and state stays 'archived'"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "several uses of one link are recorded concurrently on a UTC day on which the link had not yet been used or boosted",
+          "action": "move decay_from once, by the rule of REQ-2.1, and count every use",
+          "contract": "use_count rises by the number of uses; decay_from equals the value a single first use of the day gives",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/use.test.ts, extend 'counts every one of concurrent opens': a link last used on the previous UTC day with decay_from 40 days ago, use_boost 50, 5 opens in parallel; assert use_count + 5 and decay_from exactly 20 days before t, not further"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "ubiquitous",
+          "action": "for any recorded use of a link that is not archived, leave its points after the use at least 1 higher than its points just before it",
+          "check": {
+            "kind": "property",
+            "pseudocode": "in src/worker/links/use.test.ts, over generated (use_boost in 10..100, uses in 0..50, decayed in 0..400 days, last use on the same or the previous UTC day, state active or expired): points after open >= points before + 1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "title": "Deliberate boosts reset the decay in full",
+      "rationale": "A re-paste, a restore and an unarchive are the owner's explicit choices, and a restored link must not come back at 0 points to expire again at the next run.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-3.1",
+          "pattern": "event_driven",
+          "condition": "the owner re-pastes the URL of a link they already have at time t",
+          "action": "set both last_used_at and decay_from to t without adding a use",
+          "contract": "the boosted link has decay_from == last_used_at == t and points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/links/links.test.ts, extend 'boosts or adds when $label' with a link whose decay_from is 30 days ago: re-paste its URL; assert status 'boosted', decay_from == last_used_at == t and points == start_points + use_count"
+          }
+        },
+        {
+          "id": "REQ-3.2",
+          "pattern": "event_driven",
+          "condition": "the owner restores an expired link with POST /api/v1/links/{id}/restore or unarchives an archived link with POST /api/v1/links/{id}/unarchive at time t",
+          "action": "set both last_used_at and decay_from to t without adding a use, and make the link active",
+          "contract": "200 <link> with state 'active', decay_from == last_used_at == t, points == start_points + use_count",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts, extend 'restoring a link' (brings it back active to the top of the stream) and 'unarchiving a link' (makes it active with its points reset) with decay_from 200 days ago: assert the answer's decay_from == last_used_at == t and points == start_points + use_count"
+          }
+        },
+        {
+          "id": "REQ-3.3",
+          "pattern": "event_driven",
+          "condition": "the owner archives a link with POST /api/v1/links/{id}/archive",
+          "action": "leave its decay_from unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/archive.test.ts 'archiving a link', with decay_from 12 days ago: POST /api/v1/links/{id}/archive; assert the answer's decay_from equals the seeded value"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "title": "The owner sets the use boost through the API",
+      "rationale": "The owner tunes how much a use counts, and 100 brings back the behaviour of package 13.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-4.1",
+          "pattern": "event_driven",
+          "condition": "the owner sends GET /api/v1/settings/decay",
+          "action": "answer with the owner's three decay settings",
+          "contract": "200 {\"start_points\": integer, \"remove_days\": integer, \"use_boost\": integer}, use_boost 50 for an owner who never changed it",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts 'the decay settings', extend 'are 60 start points and 180 days to removal for a user who never changed them': assert the body equals {start_points: 60, remove_days: 180, use_boost: 50}"
+          }
+        },
+        {
+          "id": "REQ-4.2",
+          "pattern": "event_driven",
+          "condition": "the owner sends PUT /api/v1/settings/decay with start_points and remove_days from 7 to 3650 and use_boost a whole number from 10 to 100",
+          "action": "store the three values and answer with them",
+          "contract": "200 {\"start_points\", \"remove_days\", \"use_boost\"} with the stored values",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts 'the decay settings', a table over use_boost {10, 50, 100}: PUT with start_points 60, remove_days 180 and that use_boost; assert 200 with the three values, and GET answers the same"
+          }
+        },
+        {
+          "id": "REQ-4.3",
+          "pattern": "unwanted",
+          "condition": "the body of PUT /api/v1/settings/decay has a use_boost that is missing, not a whole number, or outside 10 to 100",
+          "action": "refuse the request and store none of the three values",
+          "contract": "400 {\"error\": \"invalid_threshold\", \"field\": \"use_boost\", \"message\": \"use_boost must be a whole number from 10 to 100\"}; the stored settings are unchanged",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts 'the decay settings', a table over the use_boost of the body {missing, 9, 101, 50.5, \"50\", null}: PUT; assert 400 with the exact body of the contract; GET answers the values stored before"
+          }
+        },
+        {
+          "id": "REQ-4.4",
+          "pattern": "event_driven",
+          "condition": "the owner changes use_boost with PUT /api/v1/settings/decay",
+          "action": "leave every link's decay_from and points as they were, and apply the new use_boost to the uses recorded after the change",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/decay.test.ts, extend 'are stored per user and apply to the points of every link at once': with a link 40 days into decay, PUT use_boost 25; assert the link's decay_from and points unchanged; open it on a later UTC day; assert decay_from moved by 25 percent of the time decayed"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-5",
+      "title": "The Settings page edits the use boost",
+      "rationale": "The owner changes decay settings on the Settings page, as they do today for the other two.",
+      "system": "website",
+      "criteria": [
+        {
+          "id": "REQ-5.1",
+          "pattern": "event_driven",
+          "condition": "the owner opens the Settings page",
+          "action": "show in the decay section a field labelled 'Use boost (%)' holding the owner's use_boost, with the help text 'Share of the points a link has lost that a use wins back, once a day. At 100, a use gives back all of them.', and show the help text of 'Start points' as 'Points a link starts with, plus one per use. It loses one a day.'",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx 'the decay section of the settings page', with FakeApi answering use_boost 40: assert the field labelled 'Use boost (%)' has value 40 and its description is the help text; assert the 'Start points' description is the new text"
+          }
+        },
+        {
+          "id": "REQ-5.2",
+          "pattern": "event_driven",
+          "condition": "the owner changes 'Use boost (%)' and saves the decay section",
+          "action": "send PUT /api/v1/settings/decay with start_points, remove_days and use_boost, and show the stored values in the three fields",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx beside the test above: type 75 into 'Use boost (%)' and save; assert FakeApi received a PUT whose body has the three fields with use_boost 75, and the field shows 75"
+          }
+        },
+        {
+          "id": "REQ-5.3",
+          "pattern": "unwanted",
+          "condition": "the API refuses the save with 400 invalid_threshold for field use_boost",
+          "action": "show the refusal's message beside the 'Use boost (%)' field and keep the value the owner typed in it",
+          "contract": "the message 'use_boost must be a whole number from 10 to 100' is shown beside 'Use boost (%)'; the other fields show no error",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/web/pages/Settings.test.tsx, extend the existing test of a refused threshold with FakeApi refusing field use_boost: assert the text 'use_boost must be a whole number from 10 to 100' is shown as the error of the 'Use boost (%)' field and no other field shows an error"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-6",
+      "title": "The existing library carries over unchanged",
+      "rationale": "Deploying the change must not move, expire or reorder any link.",
+      "system": "Alexandria API",
+      "criteria": [
+        {
+          "id": "REQ-6.1",
+          "pattern": "event_driven",
+          "condition": "the migration that introduces decay_from and use_boost is applied",
+          "action": "set every link's decay_from to its last_used_at and every owner's use_boost to 50",
+          "contract": "for every link, points computed after the migration == points computed before it; GET /api/v1/settings/decay answers use_boost 50",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/decay/migration.test.ts, a new describe for carrying a library over to the decay start: rows in states active, pending, unreachable, expired and archived with varied last_used_at, built in the schema before the migration; apply the migration; assert each decay_from == last_used_at, each user's use_boost == 50, and each link's points equal the points computed from last_used_at before the migration"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "The owner uses a link close to expiry and it lands mid-stream",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the stream on the website, where link B (5 uses, decayed 62 days, 3 points) is listed below link A (5 uses, decayed 6 days, 59 points)"
+        },
+        {
+          "actor": "owner",
+          "action": "opens link B from its card"
+        },
+        {
+          "actor": "website",
+          "action": "follows the card's link to GET /api/v1/links/{id}/open"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "records the use: use_count 6, last_used_at now, decay_from moved forward by half the time decayed"
+        },
+        {
+          "actor": "owner",
+          "action": "reloads the stream and sees B's card with 'expires in 35 days', still listed below A"
+        },
+        {
+          "actor": "owner",
+          "action": "opens link B again the same day and, after reloading, sees 'expires in 36 days'"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1"
+        ],
+        "setup": [
+          "wrangler dev serves the website and the Worker",
+          "the owner's use_boost is 50 and start_points 60",
+          "links A and B are added through POST /api/v1/links, opened 5 times each, and their last_used_at and decay_from set with d1() to 6 and 62 days ago"
+        ],
+        "end_state": [
+          "B's card shows 'expires in 35 days' after the first open and 'expires in 36 days' after the second",
+          "the stream lists A above B",
+          "GET /api/v1/links/{B} answers use_count 7 and decay_from 31 days ago"
+        ],
+        "pseudocode": "new test in e2e/decay.spec.ts beside 'the stream lists a much-used link above a recently used one, each with its points': seed with d1(); page.request.get(open B, maxRedirects 0); page.goto('/'); expect cardOf(B) 'expires in 35 days'; assert index(A) < index(B); open B again; reload; expect 'expires in 36 days'; delete both links at the end, as that test does"
+      }
+    },
+    {
+      "id": "PATH-2",
+      "title": "The owner changes the use boost on the Settings page",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "opens the Settings page and types 5 into 'Use boost (%)', then saves"
+        },
+        {
+          "actor": "website",
+          "action": "sends PUT /api/v1/settings/decay with the three fields"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "refuses it with 400 invalid_threshold for use_boost and stores nothing"
+        },
+        {
+          "actor": "website",
+          "action": "shows 'use_boost must be a whole number from 10 to 100' beside the field"
+        },
+        {
+          "actor": "owner",
+          "action": "types 100 and saves; the website shows 100 after the save"
+        },
+        {
+          "actor": "owner",
+          "action": "opens a link decayed 20 days, last used on an earlier UTC day, and sees it listed at the top of the unpinned links of the stream"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Alexandria API",
+          "D1"
+        ],
+        "setup": [
+          "wrangler dev serves the website and the Worker",
+          "one link added through POST /api/v1/links with last_used_at and decay_from set with d1() to 20 days ago"
+        ],
+        "end_state": [
+          "GET /api/v1/settings/decay answers use_boost 100",
+          "the link's decay_from equals its last_used_at after the open, and its card is the first unpinned card of the stream"
+        ],
+        "pseudocode": "new test in e2e/decay.spec.ts: page.goto('/settings'); fill 'Use boost (%)' with 5; save; expect the error text; fill 100; save; expect value 100; open the link with page.request.get(open, maxRedirects 0); page.goto('/'); assert its card is first; set use_boost back to 50 with PUT and delete the link at the end, because the other specs share this library"
+      }
+    }
+  ]
+}
