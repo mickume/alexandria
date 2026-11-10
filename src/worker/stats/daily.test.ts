@@ -1,4 +1,10 @@
+import {
+  createExecutionContext,
+  createScheduledController,
+  waitOnExecutionContext,
+} from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import worker from '../index';
 import { runScheduled } from '../decay/cron';
 import { evaluateDecay } from '../decay/decay';
 import { blogArticle } from '../fetcher/fixtures/pages';
@@ -624,5 +630,30 @@ describe('AI usage', () => {
     }
     // The key's test was recorded before the recorder broke; the enrichment's usage is lost.
     expect((await usageToday(user)).map((u) => u.purpose)).toEqual(['key_test']);
+  });
+});
+
+describe('the hourly run after midnight', () => {
+  it('records the day’s size through the Worker’s scheduled handler, as the history answers it', async () => {
+    const user = await signIn();
+    await seedLinks(user, [
+      { url: 'https://h1.example/', state: 'active' },
+      { url: 'https://h2.example/', state: 'pending' },
+      { url: 'https://h3.example/', state: 'archived' },
+    ]);
+    setNow('2026-11-10T00:05:00.000Z');
+    const ctx = createExecutionContext();
+    await worker.scheduled?.(createScheduledController({ cron: '0 * * * *' }), env, ctx);
+    await waitOnExecutionContext(ctx);
+    const r = await api('GET', '/api/v1/stats/history?days=2', { as: user.session });
+    expect(r.json.days[0].day).toBe('2026-11-09');
+    expect(r.json.days[0].size).toEqual({
+      total: 3,
+      pending: 1,
+      active: 1,
+      unreachable: 0,
+      expired: 0,
+      archived: 1,
+    });
   });
 });
