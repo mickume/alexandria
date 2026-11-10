@@ -1,6 +1,7 @@
 import { now } from '../clock';
 import type { Env } from '../env';
 import { deleteLinkObjects } from '../fetcher/snapshots';
+import { countStatement } from '../stats/daily';
 import { getThresholds } from './routes';
 
 const DAY_MS = 86_400_000;
@@ -52,11 +53,26 @@ export function expiryStatement(db: D1Database, userId: string, t: Date): D1Prep
  * statement, so a link restored, pinned or added to a workspace meanwhile is
  * kept.
  */
-function removalStatements(db: D1Database, userId: string, cutoff: string): D1PreparedStatement[] {
-  const removable = `l.user_id = ?1 AND l.state = 'expired' AND l.expired_at <= ?2
-    AND l.pin_position IS NULL AND NOT ${MEMBER}`;
+function removalStatements(
+  db: D1Database,
+  userId: string,
+  cutoff: string,
+  t: Date,
+): D1PreparedStatement[] {
+  // The cutoff is the parameter `cut`: ?2 in the removal, ?3 in its count.
+  const removableAt = (cut: string) => `l.user_id = ?1 AND l.state = 'expired'
+    AND l.expired_at <= ${cut} AND l.pin_position IS NULL AND NOT ${MEMBER}`;
+  const removable = removableAt('?2');
   const removed = `SELECT l.id FROM links l WHERE ${removable}`;
   return [
+    // Counted first, on the removal's own condition, while the links are still there.
+    countStatement(db, {
+      userId,
+      at: t,
+      counter: 'removed',
+      amount: `(SELECT COUNT(*) FROM links l WHERE ${removableAt('?3')})`,
+      binds: [cutoff],
+    }),
     db.prepare(`DELETE FROM link_uses WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_texts WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_passages WHERE link_id IN (${removed})`).bind(userId, cutoff),
@@ -77,7 +93,7 @@ export async function evaluateDecay(env: Env, userId: string): Promise<void> {
   const { remove_days } = await getThresholds(env.DB, userId);
   const statements = [
     expiryStatement(env.DB, userId, t),
-    ...removalStatements(env.DB, userId, daysBefore(t, remove_days)),
+    ...removalStatements(env.DB, userId, daysBefore(t, remove_days), t),
     env.DB.prepare('UPDATE users SET last_decay_at = ? WHERE id = ?').bind(t.toISOString(), userId),
   ];
   await decayHooks.afterSelect?.(userId);

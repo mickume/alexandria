@@ -88,3 +88,12 @@ BEGIN
   VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
   ON CONFLICT (user_id, day) DO UPDATE SET unarchived = unarchived + 1;
 END;
+
+-- Decay is the only write that makes a link expired.
+CREATE TRIGGER daily_link_expired AFTER UPDATE OF state ON links
+WHEN old.state <> 'expired' AND new.state = 'expired'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, expired)
+  VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET expired = expired + 1;
+END;

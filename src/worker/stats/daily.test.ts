@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { evaluateDecay } from '../decay/decay';
 import {
   api,
   createToken,
+  env,
   mcpTool,
   seedLinks,
   setNow,
@@ -217,5 +219,61 @@ describe('counting link events', () => {
     });
     expect(r.status).toBe(409);
     expect((await today(user)).added).toBe(0);
+  });
+});
+
+describe('counting decay', () => {
+  /** Seeds 3 links past their points and 2 expired links past remove_days (180). */
+  async function seedDecaying(user: TestUser) {
+    const old = '2026-01-01T00:00:00.000Z';
+    const ids = await seedLinks(user, [
+      ...[1, 2, 3].map((i) => ({
+        url: `https://old${i}.example/`,
+        state: 'active',
+        lastUsedAt: old,
+      })),
+      ...[1, 2].map((i) => ({
+        url: `https://gone${i}.example/`,
+        state: 'expired',
+        lastUsedAt: old,
+      })),
+    ]);
+    for (const id of ids.slice(3)) {
+      await env.DB.prepare('UPDATE links SET expired_at = ? WHERE id = ?').bind(old, id).run();
+    }
+    return ids;
+  }
+
+  it('counts the links an evaluation expires and removes, once', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    await seedDecaying(user);
+    await evaluateDecay(env, user.id);
+    expect(await today(user)).toMatchObject({ expired: 3, removed: 2 });
+    await evaluateDecay(env, user.id);
+    expect(await today(user)).toMatchObject({ expired: 3, removed: 2 });
+  });
+
+  it('counts nothing when the evaluation is rolled back', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const ids = await seedDecaying(user);
+    // A batch that ends in a failing statement: D1 rolls the whole batch back.
+    const failing = {
+      ...env.DB,
+      prepare: env.DB.prepare.bind(env.DB),
+      batch: (statements: D1PreparedStatement[]) =>
+        env.DB.batch([...statements, env.DB.prepare('SELECT * FROM no_such_table')]),
+    } as unknown as D1Database;
+    await expect(evaluateDecay({ ...env, DB: failing }, user.id)).rejects.toThrow();
+    const states = await env.DB.prepare(
+      `SELECT state FROM links WHERE id IN (${ids.map(() => '?').join(', ')}) ORDER BY url`,
+    )
+      .bind(...ids)
+      .all<{ state: string }>();
+    expect(states.results.map((r) => r.state).sort()).toEqual(
+      ['active', 'active', 'active', 'expired', 'expired'].sort(),
+    );
+    expect(await today(user)).toMatchObject({ expired: 0, removed: 0 });
   });
 });
