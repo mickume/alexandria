@@ -77,7 +77,9 @@ test.describe.serial('enriching links', () => {
       (r) => r.enrichment && r.provider === 'openrouter',
     );
     expect(enrichments).toHaveLength(2);
-    expect(enrichments[1]!.at - enrichments[0]!.at).toBeGreaterThanOrEqual(3_000);
+    // Their slots are 3 seconds apart; the queue delivers each within a little of its slot,
+    // and nothing else spaces the starts (docs/errata/03_ai_enrichment.md, item 4).
+    expect(enrichments[1]!.at - enrichments[0]!.at).toBeGreaterThanOrEqual(2_500);
   });
 
   test('the owner adds a key and a pasted link is enriched within a minute', async ({ page }) => {

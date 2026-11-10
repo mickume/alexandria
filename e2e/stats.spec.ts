@@ -233,6 +233,7 @@ test('the owner’s AI calls show as token usage under Trends', async ({ page })
     .getByRole('region', { name: 'Trends' })
     .getByRole('table', { name: 'AI usage by purpose and model' });
   for (const p of ['key_test', 'enrich', 'ask']) {
-    await expect(totals.getByRole('cell', { name: p, exact: true })).toBeVisible();
+    // One row a model: the other specs of a run may have called a second one.
+    await expect(totals.getByRole('cell', { name: p, exact: true }).first()).toBeVisible();
   }
 });
