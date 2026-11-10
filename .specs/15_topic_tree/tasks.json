@@ -1,0 +1,244 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "15",
+  "spec_name": "topic_tree",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/search src/worker/enrich/edits.test.ts src/worker/links/links.test.ts src/worker/account/export.test.ts src/worker/meaning src/worker/decay/migration.test.ts src/web/pages/Topics.test.tsx src/web/pages/Tags.test.tsx src/web/pages/LinkDetail.test.tsx src/web/components/LinkCard.test.tsx"
+  },
+  "dependencies": [
+    {
+      "spec": "03",
+      "reason": "changes the owner's edit of a link's topic (parseEdit, applyEdit) and adds a path resolver beside resolveTopic"
+    },
+    {
+      "spec": "06",
+      "reason": "changes the topic: filter, the word index's topic column, GET /api/v1/topics, renaming, merging and the Topics page"
+    },
+    {
+      "spec": "09",
+      "reason": "adds parent_id to the export's topics"
+    },
+    {
+      "spec": "10",
+      "reason": "embeds a link's topic path instead of its topic name and re-indexes the links whose path changes"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Store topics in a tree and carry the existing topics over",
+      "criteria": [
+        "REQ-1.2",
+        "REQ-1.3",
+        "REQ-10"
+      ],
+      "steps": [
+        "Move emptySchema from src/worker/decay/migration.test.ts into src/worker/test/helpers.ts and use it from there, so that the new migration test shares it",
+        "Add the task's behaviours to src/worker/search/vocabulary.test.ts and the new src/worker/search/migration.test.ts, and confirm they fail",
+        "Add the next migration in migrations/ (0014_topic_tree.sql at the time of writing): a nullable topics.parent_id referencing topics(id), with an index on it; every existing topic is left with parent_id null",
+        "In the same migration, rename every topic whose name holds > by replacing each > with -, inserting the former name into topic_aliases for it; where the new name is already another topic's of the same user, ignoring case, merge it into that topic instead: move its links and aliases to it, add its former name as an alias, then delete it",
+        "Replace the triggers topics_drop_unused and topics_drop_unused_with_link: a topic is deleted when it has no link filed directly under it and no child topic, and that deletion goes on up the tree to each parent left the same way; with at most three levels this is at most two ancestors, so do not rely on recursive triggers being enabled in D1",
+        "Make sure renameEntry's name_taken check still covers a topic anywhere in the tree (it compares by user and name alone) and that nothing else assumes a flat list"
+      ],
+      "touches": [
+        "migrations/0014_topic_tree.sql",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/test/helpers.ts",
+        "src/worker/decay/migration.test.ts",
+        "src/worker/search/vocabulary.test.ts",
+        "src/worker/search/migration.test.ts"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "List topics with their place in the tree, and give every link its topic path",
+      "criteria": [
+        "REQ-2",
+        "REQ-3"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/search/vocabulary.test.ts, src/worker/links/links.test.ts and src/worker/account/export.test.ts, and confirm they fail",
+        "Give listVocabularyItems a topics query that lists every topic of the user, linked or not, with parent_id, count (links filed directly under it, any state), subtree_count and newest_added_at over the links of its subtree (itself and up to two levels beneath), keeping the keyset cursor on (newest_added_at, id); the tags query and its item shape stay as they are",
+        "Add a migration that redefines link_views with the link's topic path as a JSON array of names from the top level down (topic_path_json), joining up to two ancestors, beside topic",
+        "Return topic_path from toView in src/worker/links/store.ts (parsed from topic_path_json, [] without a topic), so every route, the export's links and the MCP tools that return links carry it",
+        "Give each topic in the export (vocabulary in src/worker/account/export.ts) its parent_id; tags stay {id, name, link_count}",
+        "Document the topics item (parent_id, subtree_count) separately from the tags item, the Link's topic_path and the exported topic's parent_id in src/worker/api/openapi.ts, so that every response the tests receive still matches it, and in docs/api.md",
+        "Add topic_path to the website's Link type and a topic item type with parent_id and subtree_count in src/web/api.ts, and topic_path: [] to the link factory in src/web/test/helpers.tsx"
+      ],
+      "touches": [
+        "migrations",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/links/store.ts",
+        "src/worker/account/export.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/api.ts",
+        "src/web/test/helpers.tsx",
+        "docs/api.md",
+        "src/worker/search/vocabulary.test.ts",
+        "src/worker/links/links.test.ts",
+        "src/worker/account/export.test.ts"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Set a link's topic by typing a path",
+      "criteria": [
+        "REQ-1.1",
+        "REQ-7"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/enrich/edits.test.ts, and confirm they fail",
+        "Teach parseEdit to read topic as one to three names separated by >, each trimmed with inner spaces collapsed and 1 to 100 characters, refusing anything else with invalid_topic and the message 'a topic or a path of up to three topics separated by >, each 1 to 100 characters'",
+        "Add resolveTopicPath(db, userId, names, options) to src/worker/enrich/vocabulary.ts, taking the same ResolveOptions as resolveTopic: from the first name, a name equal to a topic's name (nameKey) or to an alias uses that topic where it is; with near, a near name does too; any other name is created under the topic the previous name resolved to, or at the top level for the first, except that a topic that would be at level 4 is created under the parent of the level-3 topic before it; it returns the id of the last name's topic",
+        "Resolve the alias with the user's topic_aliases (as listAliases does for enrichment), and keep creating a name as typed when it matches nothing, never matching near names for the owner's edit",
+        "Use resolveTopicPath without near in applyEdit; leave storeEnrichment in src/worker/enrich/queue.ts resolving a single name as today (package 16 changes it)",
+        "Accept a topic path of up to 306 characters in the PATCH body of src/worker/api/openapi.ts, and describe the path input and the new refusal message in docs/api.md"
+      ],
+      "touches": [
+        "src/worker/enrich/edits.ts",
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md",
+        "src/worker/enrich/edits.test.ts"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Search a topic with everything beneath it, by word and by meaning",
+      "criteria": [
+        "REQ-6.1",
+        "REQ-6.2",
+        "REQ-6.3",
+        "REQ-6.4"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/search/search.test.ts and src/worker/meaning/indexing.test.ts, and confirm they fail",
+        "Make topic:<name> in filterConditions (src/worker/search/query.ts) match links whose topic is the named topic or one of its descendants (up to two levels down), still by current name ignoring case and never by alias",
+        "Add a migration that keeps link_search.topic holding every name of the link's topic path, separated by spaces: replace the link_search insert and update triggers and link_search_topic_renamed so a rename rewrites the entry of every link in the renamed topic's subtree, and rebuild the column for the existing links",
+        "In the same migration, replace link_text_version_topic_renamed so a rename moves the text version of every link in the renamed topic's subtree",
+        "Pass the topic path joined with ' > ' to cutPassages from indexLink in src/worker/meaning/indexing.ts, where the topic name was passed",
+        "Queue for meaning indexing, after a rename in src/worker/search/routes.ts, every link of the renamed topic's subtree (a subtree variant of carrierIds), not only the links filed directly under it",
+        "Say in the README's search section and in docs/api.md that topic: includes the topics beneath"
+      ],
+      "touches": [
+        "migrations",
+        "src/worker/search/query.ts",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/meaning/indexing.ts",
+        "README.md",
+        "docs/api.md",
+        "src/worker/search/search.test.ts",
+        "src/worker/meaning/indexing.test.ts"
+      ],
+      "depends_on": [
+        2
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Move a topic with everything beneath it",
+      "criteria": [
+        "REQ-4",
+        "REQ-6.5"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/search/vocabulary.test.ts, src/worker/search/search.test.ts and src/worker/meaning/indexing.test.ts, and confirm they fail",
+        "Add moveTopic to src/worker/search/vocabulary.ts: not_found when the topic or the parent is not the user's; invalid_move when the parent is the topic or beneath it; too_deep when the parent's level plus the depth of the topic's subtree exceeds 3; no change at all when the parent is the current one; otherwise set parent_id and mark every link of the subtree changed (updated_at now) in one batch",
+        "After the move, delete the former parent, and its parent, when left with no link and no child, as the link triggers do",
+        "Keep the word index and the text version current on a move: a trigger on topics.parent_id (in a new migration) rewrites link_search.topic and moves the text version of every link in the moved subtree; queue those links for meaning indexing from the route",
+        "Add POST /:id/move to the topics routes only (not the tags), refusing a body whose parent key is missing or is neither null nor a non-empty string with 400 invalid_move field parent, and answering 200 {id, name, parent_id, count, subtree_count}",
+        "Document the operation with its refusals in src/worker/api/openapi.ts and docs/api.md, and add vocabulary.move(id, parent) to src/web/api.ts"
+      ],
+      "touches": [
+        "migrations",
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/api/openapi.ts",
+        "src/web/api.ts",
+        "docs/api.md",
+        "src/worker/search/vocabulary.test.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/meaning/indexing.test.ts"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Merge and rename topics within the tree",
+      "criteria": [
+        "REQ-5",
+        "REQ-6.6"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/search/vocabulary.test.ts, src/worker/search/search.test.ts and src/worker/meaning/indexing.test.ts, and confirm they fail",
+        "In mergeEntry for topics, refuse with invalid_merge when the survivor is beneath the source and with too_deep when the survivor's level plus the depth of the source's children's subtrees exceeds 3, both before any write",
+        "Otherwise, in the same batch as today's merge, give the source's children the survivor as parent before the source is deleted, and mark changed every link of the source's subtree",
+        "After the merge, delete the source's former parent, and its parent, when left with no link and no child",
+        "Queue for meaning indexing every link of the source's subtree, not only the source's own links; the parent_id trigger of task 5 keeps the word index of the reparented subtrees current",
+        "Refuse a topic name holding > in parseName with the message 'a topic name of 1 to 100 characters, without >' (NAME_RULE in src/worker/search/routes.ts); a rename keeps parent_id and the children as they are",
+        "Document the new merge and rename refusals in src/worker/api/openapi.ts and docs/api.md"
+      ],
+      "touches": [
+        "src/worker/search/vocabulary.ts",
+        "src/worker/search/routes.ts",
+        "src/worker/api/openapi.ts",
+        "docs/api.md",
+        "src/worker/search/vocabulary.test.ts",
+        "src/worker/search/search.test.ts",
+        "src/worker/meaning/indexing.test.ts"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Show the tree on the Topics page, with Move under…",
+      "criteria": [
+        "REQ-8"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/web/pages/Topics.test.tsx and src/web/pages/Tags.test.tsx, and confirm they fail",
+        "Order the topics as a tree on the Topics page: top-level topics by name (byName in src/web/format.ts), each followed by its children by name and theirs beneath them; give each row data-level and an indentation per level, and show subtree_count in the Links column",
+        "Add Move under… to each topic row: a select labelled 'Move under' with 'Top level' and every topic outside the row's subtree in the page's order, and a 'Move' button that calls vocabulary.move and reloads the tree; a refusal's message goes to the alert above the list, as a failed rename or merge does",
+        "Keep Rename and Merge as they are, the Merge select listing the other topics by name, flat",
+        "Keep the Tags page a flat list by name without Move under…: let VocabularyList take the tree behaviour only for topics, or give the Topics page its own list component that reuses the row's Rename and Merge",
+        "Style the indentation in src/web/styles.css with the design tokens of src/design/tokens.css, and say in the README that the Topics page shows the tree and moves topics"
+      ],
+      "touches": [
+        "src/web/components/VocabularyList.tsx",
+        "src/web/pages/Topics.tsx",
+        "src/web/api.ts",
+        "src/web/styles.css",
+        "README.md",
+        "src/web/pages/Topics.test.tsx",
+        "src/web/pages/Tags.test.tsx"
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Show a link's topic path on its card and its detail page",
+      "criteria": [
+        "REQ-9"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/web/components/LinkCard.test.tsx and src/web/pages/LinkDetail.test.tsx, and confirm they fail",
+        "Give TopicChip the link's topic_path and set its title to the path joined with ' › ', its text and its search staying those of the link's own topic",
+        "On the detail page, show the topic as a navigation landmark labelled 'Topic path': one link per name of topic_path, each opening the topic: search of that name (filterQuery), separated by '›'",
+        "Open the detail page's topic field on topic_path joined with ' > ', and save what the owner typed unchanged as topic; a refusal's message shows in the field's alert as other refused edits do (EditableField)"
+      ],
+      "touches": [
+        "src/web/components/LinkCard.tsx",
+        "src/web/pages/LinkDetail.tsx",
+        "src/web/components/EditableField.tsx",
+        "src/web/styles.css",
+        "src/web/components/LinkCard.test.tsx",
+        "src/web/pages/LinkDetail.test.tsx"
+      ],
+      "depends_on": [
+        3
+      ]
+    }
+  ]
+}
