@@ -74,7 +74,13 @@ export function WorkspacePicker({
           {icon}
           Add to workspace
         </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>{items}</DropdownMenuSubContent>
+        {/* No wider than the room beside the menu: on a phone a long name wraps instead of running off the screen. */}
+        <DropdownMenuSubContent
+          collisionPadding={8}
+          className="max-w-(--radix-dropdown-menu-content-available-width)"
+        >
+          {items}
+        </DropdownMenuSubContent>
       </DropdownMenuSub>
     );
   }
@@ -86,7 +92,13 @@ export function WorkspacePicker({
           Add to workspace
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">{items}</DropdownMenuContent>
+      <DropdownMenuContent
+        align="start"
+        collisionPadding={8}
+        className="max-w-(--radix-dropdown-menu-content-available-width)"
+      >
+        {items}
+      </DropdownMenuContent>
     </DropdownMenu>
   );
 }
