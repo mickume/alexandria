@@ -131,10 +131,81 @@ account and checks the PKCE verifier as Google does.
 | `vector_deletions` | the ids of vectors to delete from the Vectorize index, filled by a trigger on every deleted passage |
 | `topics`, `tags` | per user: the names a link is filed under; a topic's `parent_id` places it in the topic tree (at most three levels) |
 | `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
+| `link_tags` | the tags of each link, at positions |
+| `imports`, `import_links` | each import's report, and the links it added with their line and dispatch time (see Imports) |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
 - **The database** (`migrations/`): plain SQL migrations applied in order.
+
+Besides D1, a link's data lives in two more stores: the R2 bucket `SNAPSHOTS`
+(under `u/{user_id}/l/{link_id}/`) and the Vectorize index
+`alexandria-passages` (one namespace per user).
+
+### What a link stores
+
+A link's data is stored in four stages, each written by its own step. The
+quantities in the last list are never stored.
+
+1. **On add** (`links/store.ts`, `addStatement`; `imports/imports.ts` for an
+   import): one `links` row with the normalised `url`, the `original_url` as
+   given, the `host`, the host as a placeholder `title`, `state` `pending`,
+   `added_at`, `last_used_at` and `updated_at`. An insert trigger gives it its
+   `link_search` row (and `link_search_keys` id), with empty reader text. One
+   `FETCH_QUEUE` message is sent (an import's links go through its
+   dispatcher). Adding a URL the library already has stores nothing new: it
+   *boosts* the link (`last_used_at` now, and an expired link becomes active
+   again). It records no use and sends no fetch.
+2. **On fetch** (`fetcher/queue.ts`, `writeFetched`): the objects are written
+   to R2 first: `snapshot` (the raw HTML, or the whole PDF up to 50 MB) and, for
+   a web page with a readable article, `reader.json` (the reader view's title,
+   byline and sanitised HTML). Then one D1 batch writes:
+   - on `links`: `final_url`, `http_status`, `description`, `favicon_url` and
+     `language` (from the page's metadata, `fetcher/html.ts`), the page's
+     title unless the owner edited it, `content_kind`, `fetched_at`,
+     `has_snapshot`, `reader_empty`, `notes` and the state (`active`, or
+     unchanged when `archived`);
+   - `link_texts`: the reader text (or the PDF's text), at most 500,000
+     characters, which replaces the earlier text;
+   - the same text into `link_search.reader_text`;
+   - a `link_events` row for the attempt.
+
+   A failed attempt writes only its event and the retry bookkeeping
+   (`fetch_attempts`, `state_reason`); a failed first fetch also titles the
+   link from the words of its URL.
+   Anything other than a page or a PDF keeps no snapshot, only a note.
+3. **Derived after the fetch:**
+   - *Enrichment*, with the owner's own key (`enrich/queue.ts`): `summary`,
+     `topic_id` (a topic path filed into `topics`, creating the topics it
+     lacks), tags (`tags`, `link_tags`), `enriched_at` and
+     `enrichment_status`. Fields listed in `edited_fields` keep the owner's
+     value.
+   - *The meaning index* (`meaning/indexing.ts`): the passages in
+     `link_passages` (the metadata passage carries the topic path as
+     `A > B > C`), their vectors in Vectorize, and `link_index_state`.
+   - *The word index*: triggers keep `link_search` current, its `topic`
+     column holding every name of the topic path.
+   - *Over the link's life*: each recorded use (`link_uses`, `use_count`,
+     `last_used_at`); the owner's `note`, `pin_position` and workspace
+     memberships; the weekly liveness check (`liveness_failures`,
+     `dead_since`, `last_checked_at`, `last_check_result`); decay's
+     `expired_at` and state; `archived_at`.
+4. **Computed on every read, never stored:**
+   - the link's `points` (`pointsAt` in `decay/note.ts`), its `removal_at` and
+     its `decay_note`; decay compares the same quantity in SQL;
+   - the topic's name, the `topic_path`, the tags in order and the
+     workspaces, joined in by the `link_views` view;
+   - related links (`meaning/related.ts`), worked out on each request;
+   - keyword and hybrid rankings, snippets, and the passages found for a
+     question;
+   - Ask's answers: nothing about a question or an answer is stored, and no
+     use is recorded.
+
+The page's content is therefore kept in several places: the R2 snapshot and
+reader view, the text in `link_texts` and again in the FTS5 index (a table
+with its own content), its passages in `link_passages`, and their vectors.
+`deleteLink` and decay's removal delete them all: the rows in one batch, the
+R2 objects after it, and the vectors through `vector_deletions`.
 
 ## Fetching
 
