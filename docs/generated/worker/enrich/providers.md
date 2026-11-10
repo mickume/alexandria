@@ -178,7 +178,10 @@ The structured result asked of the model.
 
 > `const` **SPLIT\_SCHEMA**: `object`
 
-The structured result asked of the model for a topic's split.
+The structured result asked of the model for a topic's split: each
+sub-topic with the numbers of its links in the request. Links are named by
+short numbers rather than ids, and a link left out stays where it is, so
+that the answer for 500 links stays a few thousand tokens.
 
 #### Type Declaration
 
@@ -190,73 +193,65 @@ The structured result asked of the model for a topic's split.
 
 > `readonly` **properties**: `object`
 
-###### properties.links
-
-> `readonly` **links**: `object`
-
-###### properties.links.items
-
-> `readonly` **items**: `object`
-
-###### properties.links.items.additionalProperties
-
-> `readonly` **additionalProperties**: `false` = `false`
-
-###### properties.links.items.properties
-
-> `readonly` **properties**: `object`
-
-###### properties.links.items.properties.id
-
-> `readonly` **id**: `object`
-
-###### properties.links.items.properties.id.description
-
-> `readonly` **description**: `"The id of a link you were sent."` = `'The id of a link you were sent.'`
-
-###### properties.links.items.properties.id.type
-
-> `readonly` **type**: `"string"` = `'string'`
-
-###### properties.links.items.properties.subtopic
-
-> `readonly` **subtopic**: `object`
-
-###### properties.links.items.properties.subtopic.description
-
-> `readonly` **description**: `"The sub-topic the link belongs under, or an empty name to leave it."` = `'The sub-topic the link belongs under, or an empty name to leave it.'`
-
-###### properties.links.items.properties.subtopic.type
-
-> `readonly` **type**: `"string"` = `'string'`
-
-###### properties.links.items.required
-
-> `readonly` **required**: readonly \[`"id"`, `"subtopic"`\]
-
-###### properties.links.items.type
-
-> `readonly` **type**: `"object"` = `'object'`
-
-###### properties.links.type
-
-> `readonly` **type**: `"array"` = `'array'`
-
 ###### properties.subtopics
 
 > `readonly` **subtopics**: `object`
 
 ###### properties.subtopics.description
 
-> `readonly` **description**: `"The names of 2 to 10 sub-topics."` = `'The names of 2 to 10 sub-topics.'`
+> `readonly` **description**: `"The 2 to 10 sub-topics, each with the numbers of the links it holds."` = `'The 2 to 10 sub-topics, each with the numbers of the links it holds.'`
 
 ###### properties.subtopics.items
 
 > `readonly` **items**: `object`
 
-###### properties.subtopics.items.type
+###### properties.subtopics.items.additionalProperties
+
+> `readonly` **additionalProperties**: `false` = `false`
+
+###### properties.subtopics.items.properties
+
+> `readonly` **properties**: `object`
+
+###### properties.subtopics.items.properties.links
+
+> `readonly` **links**: `object`
+
+###### properties.subtopics.items.properties.links.description
+
+> `readonly` **description**: `"The numbers of the links that belong under it."` = `'The numbers of the links that belong under it.'`
+
+###### properties.subtopics.items.properties.links.items
+
+> `readonly` **items**: `object`
+
+###### properties.subtopics.items.properties.links.items.type
+
+> `readonly` **type**: `"integer"` = `'integer'`
+
+###### properties.subtopics.items.properties.links.type
+
+> `readonly` **type**: `"array"` = `'array'`
+
+###### properties.subtopics.items.properties.name
+
+> `readonly` **name**: `object`
+
+###### properties.subtopics.items.properties.name.description
+
+> `readonly` **description**: `"The sub-topic’s name."` = `'The sub-topic’s name.'`
+
+###### properties.subtopics.items.properties.name.type
 
 > `readonly` **type**: `"string"` = `'string'`
+
+###### properties.subtopics.items.required
+
+> `readonly` **required**: readonly \[`"name"`, `"links"`\]
+
+###### properties.subtopics.items.type
+
+> `readonly` **type**: `"object"` = `'object'`
 
 ###### properties.subtopics.type
 
@@ -264,7 +259,7 @@ The structured result asked of the model for a topic's split.
 
 ##### required
 
-> `readonly` **required**: readonly \[`"subtopics"`, `"links"`\]
+> `readonly` **required**: readonly \[`"subtopics"`\]
 
 ##### type
 
@@ -320,7 +315,7 @@ Shortens the provider timeout, for tests; null restores the 60 seconds.
 
 > **splitWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a topic's split: {subtopics, links} (SPLIT_SCHEMA).
+Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA).
 
 #### Parameters
 

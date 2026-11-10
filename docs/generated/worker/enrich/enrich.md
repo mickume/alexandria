@@ -88,9 +88,7 @@ The names of the topic's existing children.
 
 > **links**: `object`[]
 
-###### id
-
-> **id**: `string`
+The links in the order they are numbered, from 1.
 
 ###### summary
 
@@ -206,8 +204,9 @@ page or of the user.
 > **buildSplitPrompt**(`input`): `string`
 
 The request for a topic's split: instructions, the topic's name, its
-children's names, and each link's id, title and summary as one JSON object
-per line. Nothing else of the links or of the user.
+children's names, and each link's title and summary as one JSON object per
+line, numbered from 1 (`n`), which the answer names it by. Nothing else of
+the links or of the user.
 
 #### Parameters
 
