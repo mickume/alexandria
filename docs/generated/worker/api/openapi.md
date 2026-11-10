@@ -152,6 +152,14 @@ The owner's library statistics, computed at the time of the request.
 
 ***
 
+### StatsHistory
+
+> `const` **StatsHistory**: `ZodObject`\<\{ `days`: `ZodArray`\<`ZodObject`\<\{ `added`: `ZodNullable`\<`ZodNumber`\>; `ai`: `ZodArray`\<`ZodObject`\<\{ `calls`: `ZodNumber`; `calls_without_usage`: `ZodNumber`; `input_tokens`: `ZodNumber`; `model`: `ZodString`; `output_tokens`: `ZodNumber`; `purpose`: `ZodEnum`\<\{ `ask`: `"ask"`; `enrich`: `"enrich"`; `key_test`: `"key_test"`; `split`: `"split"`; \}\>; \}, `$strict`\>\>; `archived`: `ZodNullable`\<`ZodNumber`\>; `asks`: `ZodNullable`\<`ZodNumber`\>; `day`: `ZodString`; `deleted`: `ZodNullable`\<`ZodNumber`\>; `enriched`: `ZodNullable`\<`ZodNumber`\>; `enrichment_failed`: `ZodNullable`\<`ZodNumber`\>; `expired`: `ZodNullable`\<`ZodNumber`\>; `fetch_failed`: `ZodNullable`\<`ZodNumber`\>; `fetch_ok`: `ZodNullable`\<`ZodNumber`\>; `removed`: `ZodNullable`\<`ZodNumber`\>; `restored`: `ZodNullable`\<`ZodNumber`\>; `size`: `ZodNullable`\<`ZodObject`\<\{ `active`: `ZodNumber`; `archived`: `ZodNumber`; `expired`: `ZodNumber`; `pending`: `ZodNumber`; `total`: `ZodNumber`; `unreachable`: `ZodNumber`; \}, `$strict`\>\>; `unarchived`: `ZodNullable`\<`ZodNumber`\>; `used`: `ZodNullable`\<`ZodNumber`\>; \}, `$strict`\>\>; `recorded_since`: `ZodNullable`\<`ZodString`\>; \}, `$strict`\>
+
+The owner's daily record, as GET /api/v1/stats/history answers it.
+
+***
+
 ### Token
 
 > `const` **Token**: `ZodObject`\<\{ `created_at`: `ZodString`; `id`: `ZodString`; `last_used_at`: `ZodNullable`\<`ZodString`\>; `name`: `ZodString`; \}, `$strict`\>

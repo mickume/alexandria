@@ -42,6 +42,12 @@ The provider and credentials one call runs with: always the user's own.
 
 > **provider**: [`Provider`](keys.md#provider-1)
 
+##### userId?
+
+> `optional` **userId?**: `string`
+
+The owner the call is made for: with it, the call's token usage is recorded.
+
 ## Type Aliases
 
 ### ProviderOutcome

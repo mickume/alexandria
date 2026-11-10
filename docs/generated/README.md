@@ -108,6 +108,7 @@
 - [worker/search/routes](worker/search/routes.md)
 - [worker/search/search](worker/search/search.md)
 - [worker/search/vocabulary](worker/search/vocabulary.md)
+- [worker/stats/daily](worker/stats/daily.md)
 - [worker/stats/routes](worker/stats/routes.md)
 - [worker/stats/stats](worker/stats/stats.md)
 - [worker/workspaces/notes](worker/workspaces/notes.md)

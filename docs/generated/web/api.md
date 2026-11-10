@@ -278,6 +278,102 @@ A count of one UTC day ('YYYY-MM-DD').
 
 ***
 
+### HistoryDay
+
+One UTC day of the owner's daily record; counters are null before the record began.
+
+#### Properties
+
+##### added
+
+> **added**: `number` \| `null`
+
+##### ai
+
+> **ai**: `object`[]
+
+###### calls
+
+> **calls**: `number`
+
+###### calls\_without\_usage
+
+> **calls\_without\_usage**: `number`
+
+###### input\_tokens
+
+> **input\_tokens**: `number`
+
+###### model
+
+> **model**: `string`
+
+###### output\_tokens
+
+> **output\_tokens**: `number`
+
+###### purpose
+
+> **purpose**: `"enrich"` \| `"split"` \| `"ask"` \| `"key_test"`
+
+##### archived
+
+> **archived**: `number` \| `null`
+
+##### asks
+
+> **asks**: `number` \| `null`
+
+##### day
+
+> **day**: `string`
+
+##### deleted
+
+> **deleted**: `number` \| `null`
+
+##### enriched
+
+> **enriched**: `number` \| `null`
+
+##### enrichment\_failed
+
+> **enrichment\_failed**: `number` \| `null`
+
+##### expired
+
+> **expired**: `number` \| `null`
+
+##### fetch\_failed
+
+> **fetch\_failed**: `number` \| `null`
+
+##### fetch\_ok
+
+> **fetch\_ok**: `number` \| `null`
+
+##### removed
+
+> **removed**: `number` \| `null`
+
+##### restored
+
+> **restored**: `number` \| `null`
+
+##### size
+
+> **size**: `Record`\<`"pending"` \| `"active"` \| `"unreachable"` \| `"expired"` \| `"archived"` \| `"total"`, `number`\> \| `null`
+
+##### unarchived
+
+> **unarchived**: `number` \| `null`
+
+##### used
+
+> **used**: `number` \| `null`
+
+***
+
 ### ImportProgress
 
 Where an import's added links stand.
@@ -993,6 +1089,22 @@ When the background throttle frees up; null when it already has.
 ###### total
 
 > **total**: `number`
+
+***
+
+### StatsHistory
+
+The owner's daily record, as GET /api/v1/stats/history answers it.
+
+#### Properties
+
+##### days
+
+> **days**: [`HistoryDay`](#historyday)[]
+
+##### recorded\_since
+
+> **recorded\_since**: `string` \| `null`
 
 ***
 
@@ -1739,6 +1851,22 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<[`Stats`](#stats)\>
+
+##### history
+
+> **history**: (`days`) => `Promise`\<[`StatsHistory`](#statshistory)\>
+
+The daily record of the last `days` UTC days, today included.
+
+###### Parameters
+
+###### days
+
+`number`
+
+###### Returns
+
+`Promise`\<[`StatsHistory`](#statshistory)\>
 
 ***
 
