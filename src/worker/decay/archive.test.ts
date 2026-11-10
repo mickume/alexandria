@@ -39,7 +39,7 @@ async function addToWorkspace(user: TestUser, link: string): Promise<string> {
 async function seedArchived(
   user: TestUser,
   at: number,
-  opts: { useCount?: number; url?: string } = {},
+  opts: { useCount?: number; url?: string; decayFrom?: string } = {},
 ): Promise<string> {
   const [id = ''] = await seedLinks(user, [
     {
@@ -47,6 +47,7 @@ async function seedArchived(
       state: 'archived',
       useCount: opts.useCount ?? 0,
       lastUsedAt: new Date(at - 1000).toISOString(),
+      decayFrom: opts.decayFrom,
     },
   ]);
   await env.DB.prepare('UPDATE links SET archived_at = ?, updated_at = ? WHERE id = ?')
@@ -61,8 +62,9 @@ describe('archiving a link', () => {
     async (state) => {
       setNow(T);
       const user = await signIn();
+      const decayFrom = new Date(T - 12 * 86_400_000).toISOString();
       const [link = '', second = '', third = ''] = await seedLinks(user, [
-        { url: 'https://kept.example/', state, pinPosition: 1 },
+        { url: 'https://kept.example/', state, pinPosition: 1, decayFrom },
         { url: 'https://second.example/', state: 'active', pinPosition: 2 },
         { url: 'https://third.example/', state: 'active', pinPosition: 3 },
       ]);
@@ -85,6 +87,7 @@ describe('archiving a link', () => {
         pinned: false,
         pin_position: null,
         workspaces: [{ id: workspace }],
+        decay_from: decayFrom,
       });
       expect(await pinned(user)).toEqual([
         [second, 1],
@@ -160,7 +163,10 @@ describe('unarchiving a link', () => {
   it('makes it active with its points reset, without counting a use or pinning it', async () => {
     setNow(T);
     const user = await signIn();
-    const id = await seedArchived(user, T - 300 * 86_400_000, { useCount: 3 });
+    const id = await seedArchived(user, T - 300 * 86_400_000, {
+      useCount: 3,
+      decayFrom: new Date(T - 200 * 86_400_000).toISOString(),
+    });
     const t = T + 5_000;
     setNow(t);
     const r = await api('POST', `/api/v1/links/${id}/unarchive`, { as: user.session });
@@ -171,6 +177,7 @@ describe('unarchiving a link', () => {
       pinned: false,
       use_count: 3,
       last_used_at: new Date(t).toISOString(),
+      decay_from: new Date(t).toISOString(),
       points: 63,
     });
     const stream = await api('GET', '/api/v1/links', { as: user.session });
@@ -398,6 +405,7 @@ describe('restoring a link', () => {
         state: 'expired',
         useCount: 3,
         lastUsedAt: new Date(T - 300 * 86_400_000).toISOString(),
+        decayFrom: new Date(T - 200 * 86_400_000).toISOString(),
       },
       {
         url: 'https://other.example/',
@@ -417,6 +425,7 @@ describe('restoring a link', () => {
       expired_at: null,
       removal_at: null,
       last_used_at: new Date(t).toISOString(),
+      decay_from: new Date(t).toISOString(),
       use_count: 3,
       points: 63,
     });

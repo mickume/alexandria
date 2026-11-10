@@ -1,4 +1,23 @@
 import { now } from '../clock';
+import { epochMs, isoFromMs } from '../decay/decay';
+
+/**
+ * The SQL expression of a link's decay start after a use at the time bound as
+ * ?1 (?4 in milliseconds), for the user bound as ?3. A use of an expired link
+ * starts its decay afresh, as a restore does. Otherwise the first use of a UTC
+ * day wins back the user's use_boost percent of the time decayed, and a later
+ * use that day wins back nothing, so the uses of one visit do not compound.
+ * It reads the row as it was before the use, so of concurrent uses on a new
+ * day only the first moves it.
+ */
+const DECAY_FROM_AFTER_USE = `CASE
+    WHEN state = 'expired' THEN ?1
+    WHEN substr(last_used_at, 1, 10) < substr(?1, 1, 10) THEN ${isoFromMs(
+      `${epochMs('decay_from')} + MAX(0, ?4 - ${epochMs('decay_from')})
+         * (SELECT use_boost FROM users WHERE id = ?3) / 100`,
+    )}
+    ELSE decay_from
+  END`;
 
 /** One event in a link's history: a use, or a fetch attempt with its outcome. */
 export type LinkEvent =
@@ -13,8 +32,8 @@ export type LinkEvent =
 
 /**
  * Records one use of a user's link: increments its use count, sets its last
- * use to now, makes an expired link active again and stores a use event, in
- * one transaction. Every way of opening
+ * use to now, moves its decay start forward, makes an expired link active
+ * again and stores a use event, in one transaction. Every way of opening
  * a link (the open endpoint, and later reads, snapshots and MCP) goes through
  * here. Returns the link's normalised URL, or null when the user has no such link.
  */
@@ -23,15 +42,17 @@ export async function recordUse(
   userId: string,
   linkId: string,
 ): Promise<string | null> {
-  const at = now().toISOString();
+  const t = now();
+  const at = t.toISOString();
   const [updated] = await db.batch<{ url: string }>([
     db
       .prepare(
-        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1, decay_from = ?1, updated_at = ?1,
+        `UPDATE links SET use_count = use_count + 1, last_used_at = ?1, updated_at = ?1,
+           decay_from = ${DECAY_FROM_AFTER_USE},
            state = CASE WHEN state = 'expired' THEN 'active' ELSE state END, expired_at = NULL
          WHERE id = ?2 AND user_id = ?3 RETURNING url`,
       )
-      .bind(at, linkId, userId),
+      .bind(at, linkId, userId, t.getTime()),
     db
       .prepare(
         `INSERT INTO link_uses (link_id, user_id, at)

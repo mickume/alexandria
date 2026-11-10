@@ -21,6 +21,15 @@ export function epochMs(column: string): string {
   return `(CAST(strftime('%s', ${column}) AS INTEGER) * 1000 + CAST(substr(${column}, 21, 3) AS INTEGER))`;
 }
 
+/**
+ * The SQL expression of the integer milliseconds `ms` since the epoch as a
+ * stored timestamp, to the millisecond: the inverse of epochMs.
+ */
+export function isoFromMs(ms: string): string {
+  return `(strftime('%Y-%m-%dT%H:%M:%S', (${ms}) / 1000, 'unixepoch')
+    || printf('.%03dZ', (${ms}) % 1000))`;
+}
+
 /** The time `days` before `t`, as stored. */
 function daysBefore(t: Date, days: number): string {
   return new Date(t.getTime() - days * DAY_MS).toISOString();

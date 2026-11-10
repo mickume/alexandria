@@ -81,3 +81,58 @@ test('the stream lists a much-used link above a recently used one, each with its
     await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
   }
 });
+
+test('a use of a link close to expiry wins back half its decay and lands it mid-stream', async ({
+  page,
+}) => {
+  await signIn(page);
+  const origin = new URL(page.url()).origin;
+  const add = async (url: string) =>
+    (
+      await (
+        await page.request.post('/api/v1/links', { data: { url }, headers: { Origin: origin } })
+      ).json()
+    ).link.id as string;
+  const open = (id: string) => page.request.get(`/api/v1/links/${id}/open`, { maxRedirects: 0 });
+  const a = await add('https://example.org/steady');
+  const b = await add('https://example.org/fading');
+  for (let i = 0; i < 5; i++) {
+    await open(a);
+    await open(b);
+  }
+  for (const [id, days] of [
+    [a, 6],
+    [b, 62],
+  ] as const) {
+    const past = daysAgo(days);
+    d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${id}'`);
+  }
+
+  // The order of the cards, by their links to their addresses.
+  const order = async () => {
+    const hrefs = await page
+      .locator('article a[href$="/open"]')
+      .evaluateAll((links) => links.map((l) => l.getAttribute('href')));
+    return (id: string) => hrefs.indexOf(`/api/v1/links/${id}/open`);
+  };
+
+  await open(b);
+  await page.goto('/');
+  await expect(cardOf(page, b).getByText('expires in 35 days')).toBeVisible();
+  await expect(cardOf(page, a).getByText('expires in 59 days')).toBeVisible();
+  const at = await order();
+  expect(at(a)).toBeGreaterThanOrEqual(0);
+  expect(at(a)).toBeLessThan(at(b));
+
+  await open(b);
+  await page.reload();
+  await expect(cardOf(page, b).getByText('expires in 36 days')).toBeVisible();
+  const link = await (await page.request.get(`/api/v1/links/${b}`)).json();
+  expect(link.use_count).toBe(7);
+  expect(Math.abs(Date.now() - 31 * DAY - Date.parse(link.decay_from))).toBeLessThan(60_000);
+
+  // The other specs share this library and expect a link they add to lead the stream.
+  for (const id of [a, b]) {
+    await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
+  }
+});

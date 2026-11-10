@@ -72,7 +72,12 @@ describe('adding a link', () => {
     const user = await signIn('owner@example.test');
     const other = await signIn('other@example.test', 'Other');
     const [existing] = await seedLinks(owner === 'self' ? user : other, [
-      { url: 'https://example.com/a', lastUsedAt: '2026-01-01T00:00:00.000Z', useCount: 4 },
+      {
+        url: 'https://example.com/a',
+        lastUsedAt: '2026-01-01T00:00:00.000Z',
+        decayFrom: '2026-05-03T08:00:00.000Z',
+        useCount: 4,
+      },
     ]);
     const t = '2026-06-02T08:00:00.000Z';
     setNow(t);
@@ -86,6 +91,9 @@ describe('adding a link', () => {
       expect(r.json.link.id).toBe(existing);
       expect(r.json.link.use_count).toBe(4);
       expect(r.json.link.last_used_at).toBe(t);
+      // A re-paste resets the decay in full: the points are start points plus uses.
+      expect(r.json.link.decay_from).toBe(t);
+      expect(r.json.link.points).toBe(64);
       expect(await count('links', 'user_id = ?', user.id)).toBe(1);
     } else {
       expect(r.status).toBe(201);
