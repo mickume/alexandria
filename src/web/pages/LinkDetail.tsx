@@ -154,9 +154,11 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
     );
 
   const togglePin = () =>
-    act(link.pinned ? 'unpin' : 'pin', async () =>
-      onChange(await (link.pinned ? links.unpin(link.id) : links.pin(link.id))),
-    );
+    act(link.pinned ? 'unpin' : 'pin', async () => {
+      // The pin routes answer as a list does, without the note: keep the one shown.
+      const pinned = await (link.pinned ? links.unpin(link.id) : links.pin(link.id));
+      onChange({ ...pinned, note: link.note });
+    });
 
   const leave = (workspace: { id: string; name: string }) =>
     act('remove the link from the workspace', async () => {

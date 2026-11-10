@@ -501,36 +501,39 @@ describe('the side column of a link’s detail page', () => {
       link_count: 1,
       created_at: '2026-03-01T00:00:00.000Z',
     });
-    return new FakeApi()
-      .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
-      .on('GET', '/api/v1/links/abc/history', {
-        status: 200,
-        body: { items: [], next_cursor: null },
-      })
-      .on('GET', '/api/v1/links', { status: 200, body: { items: [], next_cursor: null } })
-      .on('POST', '/api/v1/links/abc/pin', () => {
-        current = { ...current, pinned: true };
-        return { status: 200, body: current };
-      })
-      .on('DELETE', '/api/v1/links/abc/pin', () => {
-        current = { ...current, pinned: false };
-        return { status: 200, body: current };
-      })
-      .on('POST', '/api/v1/links/abc/archive', () => {
-        current = { ...current, state: 'archived', points: null, pinned: false };
-        return { status: 200, body: current };
-      })
-      .on('POST', '/api/v1/links/abc/unarchive', () => {
-        current = { ...current, state: 'active', points: 60 };
-        return { status: 200, body: current };
-      })
-      .on('GET', '/api/v1/workspaces', {
-        status: 200,
-        body: { items: [workspace('wa', 'A'), workspace('wb', 'B')], next_cursor: null },
-      })
-      .on('POST', '/api/v1/workspaces/wb/links', { status: 201, body: { position: 1 } })
-      .on('DELETE', '/api/v1/workspaces/wa/links/abc', { status: 204 })
-      .on('DELETE', '/api/v1/links/abc', { status: 204 });
+    return (
+      new FakeApi()
+        .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
+        .on('GET', '/api/v1/links/abc/history', {
+          status: 200,
+          body: { items: [], next_cursor: null },
+        })
+        .on('GET', '/api/v1/links', { status: 200, body: { items: [], next_cursor: null } })
+        // The pin routes answer as a list does: without the note.
+        .on('POST', '/api/v1/links/abc/pin', () => {
+          current = { ...current, pinned: true };
+          return { status: 200, body: { ...current, note: undefined } };
+        })
+        .on('DELETE', '/api/v1/links/abc/pin', () => {
+          current = { ...current, pinned: false };
+          return { status: 200, body: { ...current, note: undefined } };
+        })
+        .on('POST', '/api/v1/links/abc/archive', () => {
+          current = { ...current, state: 'archived', points: null, pinned: false };
+          return { status: 200, body: current };
+        })
+        .on('POST', '/api/v1/links/abc/unarchive', () => {
+          current = { ...current, state: 'active', points: 60 };
+          return { status: 200, body: current };
+        })
+        .on('GET', '/api/v1/workspaces', {
+          status: 200,
+          body: { items: [workspace('wa', 'A'), workspace('wb', 'B')], next_cursor: null },
+        })
+        .on('POST', '/api/v1/workspaces/wb/links', { status: 201, body: { position: 1 } })
+        .on('DELETE', '/api/v1/workspaces/wa/links/abc', { status: 204 })
+        .on('DELETE', '/api/v1/links/abc', { status: 204 })
+    );
   }
 
   const side = async () =>
@@ -578,8 +581,8 @@ describe('the side column of a link’s detail page', () => {
     expect(api.sent('POST', '/api/v1/links/abc/unarchive')).toHaveLength(1);
   });
 
-  it('pins the link and unpins it again', async () => {
-    const api = sideApi();
+  it('pins the link and unpins it again, keeping its note', async () => {
+    const api = sideApi({ note: 'read this first' });
     renderPage('/links/abc', api);
     const column = await side();
 
@@ -587,6 +590,7 @@ describe('the side column of a link’s detail page', () => {
     fireEvent.click(await column.findByRole('button', { name: 'Unpin' }));
 
     await column.findByRole('button', { name: 'Pin' });
+    expect(screen.getByText('read this first')).toBeTruthy();
     expect(api.sent('POST', '/api/v1/links/abc/pin')).toHaveLength(1);
     expect(api.sent('DELETE', '/api/v1/links/abc/pin')).toHaveLength(1);
   });
