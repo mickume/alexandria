@@ -5,6 +5,7 @@ import {
   filterQuery,
   searchPath,
   vocabulary,
+  type TopicItem,
   type VocabularyItem,
   type VocabularyKind,
 } from '../api';
@@ -12,19 +13,58 @@ import { byName } from '../format';
 
 const FILTER: Record<VocabularyKind, 'topic' | 'tag'> = { topics: 'topic', tags: 'tag' };
 
-/** What a row is doing: showing its actions, renaming, or merging. */
-type Mode = 'idle' | 'rename' | 'merge';
+/** What a row is doing: showing its actions, renaming, merging, or moving. */
+type Mode = 'idle' | 'rename' | 'merge' | 'move';
 
-/** One topic or tag: its name opening its search, its count, Rename and Merge. */
+/** A topic or tag in the list's order, with its level in the topic tree (1 for a tag). */
+interface Entry {
+  item: VocabularyItem;
+  level: number;
+  /** For a topic: the topics it can move under, outside its own subtree, in the list's order. */
+  moveTargets?: VocabularyItem[];
+}
+
+/**
+ * The topics as a tree: the top-level topics by name, each followed by its
+ * children by name and theirs beneath them. A topic whose parent is not
+ * listed is shown at the top level.
+ */
+function topicTree(items: TopicItem[]): Entry[] {
+  const ids = new Set(items.map((t) => t.id));
+  const children = new Map<string | null, TopicItem[]>();
+  for (const t of items) {
+    const parent = t.parent_id !== null && ids.has(t.parent_id) ? t.parent_id : null;
+    children.set(parent, [...(children.get(parent) ?? []), t]);
+  }
+  const order: { item: TopicItem; level: number; subtree: Set<string> }[] = [];
+  const visit = (parent: string | null, level: number): Set<string> => {
+    const below = new Set<string>();
+    for (const t of [...(children.get(parent) ?? [])].sort(byName)) {
+      const entry = { item: t, level, subtree: new Set([t.id]) };
+      order.push(entry);
+      for (const id of visit(t.id, level + 1)) entry.subtree.add(id);
+      for (const id of entry.subtree) below.add(id);
+    }
+    return below;
+  };
+  visit(null, 1);
+  return order.map(({ item, level, subtree }) => ({
+    item,
+    level,
+    moveTargets: order.filter((o) => !subtree.has(o.item.id)).map((o) => o.item),
+  }));
+}
+
+/** One topic or tag: its name opening its search, its count, Rename and Merge, and for a topic Move under…. */
 function Row({
   kind,
-  item,
+  entry: { item, level, moveTargets },
   others,
   onChanged,
   onError,
 }: {
   kind: VocabularyKind;
-  item: VocabularyItem;
+  entry: Entry;
   others: VocabularyItem[];
   onChanged: () => void;
   onError: (message: string | null) => void;
@@ -32,6 +72,7 @@ function Row({
   const [mode, setMode] = useState<Mode>('idle');
   const [name, setName] = useState(item.name);
   const [into, setInto] = useState(others[0]?.id ?? '');
+  const [under, setUnder] = useState('');
 
   async function act(run: () => Promise<unknown>) {
     onError(null);
@@ -45,11 +86,11 @@ function Row({
   }
 
   return (
-    <tr>
+    <tr data-level={kind === 'topics' ? level : undefined}>
       <td>
         <PageLink to={searchPath(filterQuery(FILTER[kind], item.name))}>{item.name}</PageLink>
       </td>
-      <td className="count q-table-number">{item.count}</td>
+      <td className="count q-table-number">{(item as TopicItem).subtree_count ?? item.count}</td>
       <td className="actions">
         {mode === 'idle' && (
           <>
@@ -61,7 +102,37 @@ function Row({
                 Merge
               </button>
             )}
+            {moveTargets && (
+              <button type="button" className="q-btn-link" onClick={() => setMode('move')}>
+                Move under…
+              </button>
+            )}
           </>
+        )}
+        {mode === 'move' && moveTargets && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void act(() => vocabulary.move(item.id, under === '' ? null : under));
+            }}
+          >
+            <select
+              aria-label="Move under"
+              value={under}
+              onChange={(e) => setUnder(e.target.value)}
+            >
+              <option value="">Top level</option>
+              {moveTargets.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+            <button type="submit">Move</button>
+            <button type="button" className="q-btn-link" onClick={() => setMode('idle')}>
+              Cancel
+            </button>
+          </form>
         )}
         {mode === 'rename' && (
           <form
@@ -108,9 +179,10 @@ function Row({
 }
 
 /**
- * The Topics or Tags page: every topic or tag with its number of links,
- * by name, each opening the search for its filter, with Rename and Merge; the
- * Merge drop-down offers the others in the same order.
+ * The Topics or Tags page: every tag by name with its number of links, or
+ * the topic tree with each topic's links and those beneath it; each opens the
+ * search for its filter, with Rename and Merge, whose drop-down offers the
+ * others by name, and for a topic Move under….
  */
 export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: string }) {
   const [items, setItems] = useState<VocabularyItem[] | null>(null);
@@ -150,12 +222,15 @@ export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: s
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {(kind === 'topics'
+              ? topicTree(items as TopicItem[])
+              : items.map((item) => ({ item, level: 1 }))
+            ).map((entry) => (
               <Row
-                key={`${item.id}-${item.name}`}
+                key={`${entry.item.id}-${entry.item.name}-${entry.level}`}
                 kind={kind}
-                item={item}
-                others={items.filter((o) => o.id !== item.id)}
+                entry={entry}
+                others={items.filter((o) => o.id !== entry.item.id)}
                 onChanged={load}
                 onError={setError}
               />

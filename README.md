@@ -61,10 +61,16 @@ Filters narrow a search, and can be combined with words or each other:
 | `is:pinned`, `is:dead` | pinned links; links whose page is gone |
 | `state:expired`, `state:any`, `state:active`, … | expired links only; every state; one state |
 
-Expired links are left out unless a `state:` filter asks for them. The Topics
-and Tags pages list every topic and tag with its number of links, in
-alphabetical order; each opens its search, and each can be renamed or merged
-into another, chosen from a list in the same order. The topic and tags on a
+Expired links are left out unless a `state:` filter asks for them. The Tags
+page lists every tag with its number of links, in alphabetical order. Topics
+form a tree of up to three levels, and the Topics page shows it: the top-level
+topics in alphabetical order, each followed by its sub-topics, indented, with
+the number of links under each topic and beneath it. Each opens its search, and
+each can be renamed or merged into another, chosen from a list in alphabetical
+order; a topic can also be moved, with everything beneath it, under another
+topic or to the top level with **Move under…**. Typing a path such as
+`Software engineering > Testing` into a link's topic files it under a sub-topic,
+creating what does not exist yet. The topic and tags on a
 link's card and on its detail page open the same searches.
 
 Two keys, and no others: `/` (outside a text field) puts the cursor in the

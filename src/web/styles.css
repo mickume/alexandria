@@ -847,6 +847,15 @@ a.brand:hover span {
   max-width: 12rem;
 }
 
+/* The topic tree: each level's names one step further in. */
+.vocabulary tr[data-level='2'] td:first-child {
+  padding-left: calc(var(--q-space-4) + var(--q-space-5));
+}
+
+.vocabulary tr[data-level='3'] td:first-child {
+  padding-left: calc(var(--q-space-4) + 2 * var(--q-space-5));
+}
+
 /* Search results: each link's row with the matching passage under it. */
 .results {
   margin: 0;
