@@ -288,6 +288,9 @@ const count = z.number().int();
 /** One of the 5 most common reasons, most first, ties by reason. */
 const Reason = z.strictObject({ reason: z.string(), count });
 
+/** The count of one UTC day. */
+const DayCount = z.strictObject({ day: z.string().describe('YYYY-MM-DD'), count });
+
 /** The owner's library statistics, computed at the time of the request. */
 export const Stats = z.strictObject({
   library: z.strictObject({
@@ -394,6 +397,34 @@ export const Stats = z.strictObject({
       .string()
       .nullable()
       .describe('When the background throttle frees up; null when it already has'),
+  }),
+  activity: z.strictObject({
+    added_per_day: z
+      .array(DayCount)
+      .describe('The last 30 UTC days, today included, oldest first; links still in the library'),
+    uses_per_day: z.array(DayCount).describe('As added_per_day, for the uses recorded'),
+    added_last_7_days: count,
+    added_last_30_days: count,
+    most_used: z
+      .array(z.strictObject({ id: z.string(), title: z.string(), host: z.string(), uses: count }))
+      .describe('The 10 links with the most uses in the last 30 days, ties by the latest use'),
+    never_used: count.describe('Links with no use at all'),
+    fetches: z
+      .strictObject({ ok: count, failed: count, failed_by_reason: z.array(Reason) })
+      .describe('The fetch attempts of the last 30 days'),
+    imports: z
+      .array(
+        z.strictObject({
+          id: z.string(),
+          created_at: z.string(),
+          url_lines: count,
+          added: count,
+          duplicates: count,
+          invalid: count,
+          not_imported: count,
+        }),
+      )
+      .describe('The last 10 imports, newest first'),
   }),
 });
 

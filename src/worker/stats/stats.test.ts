@@ -689,3 +689,129 @@ describe('background backlog', () => {
     );
   });
 });
+
+/** Records a use of the link at `at`, directly. */
+async function useAt(user: TestUser, link: string, at: string): Promise<void> {
+  await env.DB.prepare('INSERT INTO link_uses (link_id, user_id, at) VALUES (?, ?, ?)')
+    .bind(link, user.id, at)
+    .run();
+}
+
+describe('activity', () => {
+  const T = '2026-11-10T00:30:00.000Z';
+
+  it('gives links added and uses per UTC day over the last 30 days, oldest first', async () => {
+    setNow(T);
+    const user = await signIn();
+    const added = [
+      '2026-11-10T00:10:00.000Z',
+      '2026-11-09T23:50:00.000Z',
+      '2026-11-09T23:59:59.999Z',
+      '2026-10-11T23:59:00.000Z',
+      '2026-10-12T00:00:00.000Z',
+      '2026-11-05T08:00:00.000Z',
+    ];
+    const ids = await seedLinks(
+      user,
+      added.map((addedAt, i) => ({ url: `https://a${i}.example/`, addedAt, lastUsedAt: T })),
+    );
+    await useAt(user, ids[0]!, '2026-11-09T10:00:00.000Z');
+    await useAt(user, ids[1]!, '2026-11-09T11:00:00.000Z');
+    await useAt(user, ids[1]!, '2026-10-01T11:00:00.000Z');
+
+    const r = await stats(user);
+    const days = r.json.activity.added_per_day as { day: string; count: number }[];
+    expect(days).toHaveLength(30);
+    expect(days[0]!.day).toBe('2026-10-12');
+    expect(days.at(-1)!.day).toBe('2026-11-10');
+    const at = (list: { day: string; count: number }[], day: string) =>
+      list.find((d) => d.day === day)?.count;
+    expect(at(days, '2026-10-12')).toBe(1);
+    expect(at(days, '2026-11-09')).toBe(2);
+    expect(at(days, '2026-11-10')).toBe(1);
+    expect(at(days, '2026-11-05')).toBe(1);
+    expect(days.reduce((sum, d) => sum + d.count, 0)).toBe(5);
+    const uses = r.json.activity.uses_per_day as { day: string; count: number }[];
+    expect(uses).toHaveLength(30);
+    expect(at(uses, '2026-11-09')).toBe(2);
+    expect(uses.reduce((sum, d) => sum + d.count, 0)).toBe(2);
+    expect(r.json.activity.added_last_7_days).toBe(4);
+    expect(r.json.activity.added_last_30_days).toBe(5);
+  });
+
+  it('lists the 10 most used links of the last 30 days, and counts the never used', async () => {
+    setNow(T);
+    const user = await signIn();
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: 12 }, (_, i) => ({
+        url: `https://u${i}.example/`,
+        useCount: i < 10 ? 1 : 0,
+      })),
+    );
+    // Links 0 and 1 tie on 3 uses; link 0 was used last, yesterday.
+    for (const day of ['2026-11-01', '2026-11-02', '2026-11-09']) {
+      await useAt(user, ids[0]!, `${day}T10:00:00.000Z`);
+    }
+    for (const day of ['2026-11-01', '2026-11-02', '2026-11-08']) {
+      await useAt(user, ids[1]!, `${day}T10:00:00.000Z`);
+    }
+    // Link 2 was used only 31 days ago.
+    await useAt(user, ids[2]!, '2026-10-10T10:00:00.000Z');
+    for (const i of [3, 4, 5, 6, 7, 8, 9]) await useAt(user, ids[i]!, '2026-11-03T10:00:00.000Z');
+    await setLink(ids[2]!, 'use_count', 1);
+    const r = await stats(user);
+    const most = r.json.activity.most_used as { id: string; uses: number }[];
+    expect(most.map((m) => m.id).slice(0, 2)).toEqual([ids[0], ids[1]]);
+    expect(most[0]).toEqual({ id: ids[0], title: 'u0.example', host: 'u0.example', uses: 3 });
+    expect(most.map((m) => m.id)).not.toContain(ids[2]);
+    expect(most).toHaveLength(9);
+    expect(r.json.activity.never_used).toBe(2);
+  });
+
+  it('counts the fetch attempts of the last 30 days and their failures’ reasons', async () => {
+    setNow(T);
+    const user = await signIn();
+    const [id = ''] = await seedMany(user, 1, 'f');
+    const event = (at: string, outcome: string, reason: string | null) =>
+      env.DB.prepare(
+        `INSERT INTO link_events (link_id, user_id, kind, at, outcome, reason)
+         VALUES (?, ?, 'fetch', ?, ?, ?)`,
+      ).bind(id, user.id, at, outcome, reason);
+    await env.DB.batch([
+      event('2026-11-09T10:00:00.000Z', 'ok', null),
+      event('2026-11-01T10:00:00.000Z', 'ok', null),
+      event('2026-10-12T00:00:00.000Z', 'ok', null),
+      event('2026-11-02T10:00:00.000Z', 'failed', 'HTTP 503'),
+      event('2026-11-03T10:00:00.000Z', 'failed', 'HTTP 503'),
+      event('2026-10-01T10:00:00.000Z', 'failed', 'timed out'),
+    ]);
+    const r = await stats(user);
+    expect(r.json.activity.fetches).toEqual({
+      ok: 3,
+      failed: 2,
+      failed_by_reason: [{ reason: 'HTTP 503', count: 2 }],
+    });
+  });
+
+  it('lists the owner’s last 10 imports with their counts', async () => {
+    const user = await signIn();
+    const ids: string[] = [];
+    for (let i = 0; i < 11; i++) {
+      setNow(Date.parse(T) + i * 60_000);
+      ids.push(await importUrls(user, [`https://imp${i}.example/`, 'http://localhost/x']));
+    }
+    const r = await stats(user);
+    const listed = r.json.activity.imports as { id: string }[];
+    expect(listed.map((i) => i.id)).toEqual(ids.slice(1).reverse());
+    expect(listed[0]).toEqual({
+      id: ids[10],
+      created_at: new Date(Date.parse(T) + 10 * 60_000).toISOString(),
+      url_lines: 2,
+      added: 1,
+      duplicates: 0,
+      invalid: 1,
+      not_imported: 0,
+    });
+  });
+});

@@ -1221,6 +1221,26 @@ answers `500 {"error": "internal"}`, with no partial result.
     "vector_deletions": 2,
     "liveness_due": 2,
     "throttle_clear_at": "2026-11-10T12:12:00.000Z"
+  },
+  "activity": {
+    "added_per_day": [{ "day": "2026-10-12", "count": 1 }, "… one per day …"],
+    "uses_per_day": [{ "day": "2026-10-12", "count": 0 }, "… one per day …"],
+    "added_last_7_days": 4,
+    "added_last_30_days": 5,
+    "most_used": [{ "id": "…", "title": "Example", "host": "example.com", "uses": 3 }],
+    "never_used": 2,
+    "fetches": { "ok": 3, "failed": 2, "failed_by_reason": [{ "reason": "HTTP 503", "count": 2 }] },
+    "imports": [
+      {
+        "id": "…",
+        "created_at": "2026-11-10T12:00:00.000Z",
+        "url_lines": 2,
+        "added": 1,
+        "duplicates": 0,
+        "invalid": 1,
+        "not_imported": 0
+      }
+    ]
   }
 }
 ```
@@ -1261,6 +1281,15 @@ answers `500 {"error": "internal"}`, with no partial result.
   deleted; the links the next hourly run would enqueue for a liveness check;
   and `throttle_clear_at`, when the background throttle frees up (the later of
   its next slot and the import window), or `null` once that has passed.
+- `activity`: from the history the library keeps, so only links still in it
+  count. Days are UTC days: `added_per_day` and `uses_per_day` give one entry
+  for each of the last 30 days, today included, oldest first, days with none
+  included; `added_last_7_days` and `added_last_30_days` count over the same
+  days. `most_used` lists the 10 links with the most uses in those 30 days
+  (ties: the latest use first); `never_used` counts the links never used.
+  `fetches` counts the fetch attempts of those days by outcome, with the 5
+  most common failure reasons; `imports` lists the last 10 imports with their
+  counts, newest first.
 
 Every list holds at most 10 entries (5 for reasons), most first; ties are
 broken by name (or host, or reason), A to Z ignoring case. An empty library

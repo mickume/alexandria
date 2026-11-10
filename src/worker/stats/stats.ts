@@ -410,6 +410,103 @@ const backlog: Section = {
   },
 };
 
+/** The UTC days the activity covers: the last 30, today included, oldest first, as 'YYYY-MM-DD'. */
+export function lastDays(at: Date, count = 30): string[] {
+  const today = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate());
+  return Array.from({ length: count }, (_, i) =>
+    new Date(today - (count - 1 - i) * DAY_MS).toISOString().slice(0, 10),
+  );
+}
+
+/** One {day, count} per day of `days`, from rows of {day, count}, 0 for a day with none. */
+function perDay(days: string[], rows: Row[]) {
+  const byDay = new Map(rows.map((r) => [r.day, r.count]));
+  return days.map((day) => ({ day, count: (byDay.get(day) as number | undefined) ?? 0 }));
+}
+
+const activity: Section = {
+  name: 'activity',
+  statements: (ctx) => {
+    const days = lastDays(ctx.at);
+    const since = `${days[0]}T00:00:00.000Z`;
+    const week = `${days[days.length - 7]}T00:00:00.000Z`;
+    return [
+      ctx.db
+        .prepare(
+          `SELECT substr(added_at, 1, 10) AS day, COUNT(*) AS count FROM links
+           WHERE user_id = ?1 AND added_at >= ?2 GROUP BY day`,
+        )
+        .bind(ctx.userId, since),
+      ctx.db
+        .prepare(
+          `SELECT substr(at, 1, 10) AS day, COUNT(*) AS count FROM link_uses
+           WHERE user_id = ?1 AND at >= ?2 GROUP BY day`,
+        )
+        .bind(ctx.userId, since),
+      ctx.db
+        .prepare(
+          `SELECT l.id, l.title, l.host, COUNT(*) AS uses, MAX(u.at) AS last_use
+           FROM link_uses u JOIN links l ON l.id = u.link_id
+           WHERE u.user_id = ?1 AND u.at >= ?2
+           GROUP BY l.id ORDER BY uses DESC, last_use DESC, l.id LIMIT 10`,
+        )
+        .bind(ctx.userId, since),
+      ctx.db
+        .prepare(
+          `SELECT SUM(use_count = 0) AS never_used, SUM(added_at >= ?2) AS last_7_days
+           FROM links WHERE user_id = ?1`,
+        )
+        .bind(ctx.userId, week),
+      ctx.db
+        .prepare(
+          `SELECT SUM(outcome = 'ok') AS ok, SUM(outcome = 'failed') AS failed
+           FROM link_events WHERE user_id = ?1 AND kind = 'fetch' AND at >= ?2`,
+        )
+        .bind(ctx.userId, since),
+      ctx.db
+        .prepare(
+          `SELECT reason, COUNT(*) AS count FROM link_events
+           WHERE user_id = ?1 AND kind = 'fetch' AND outcome = 'failed' AND at >= ?2
+             AND reason IS NOT NULL
+           GROUP BY reason ORDER BY count DESC, reason COLLATE NOCASE, reason LIMIT 5`,
+        )
+        .bind(ctx.userId, since),
+      ctx.db
+        .prepare(
+          `SELECT id, created_at, url_lines, added, duplicates, invalid, not_imported
+           FROM imports WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 10`,
+        )
+        .bind(ctx.userId),
+    ];
+  },
+  build: ([added, uses, mostUsed, [links], [fetches], failed, imports], { at }) => {
+    const days = lastDays(at);
+    const addedPerDay = perDay(days, added);
+    return {
+      added_per_day: addedPerDay,
+      uses_per_day: perDay(days, uses),
+      added_last_7_days: n(links, 'last_7_days'),
+      added_last_30_days: addedPerDay.reduce((sum, d) => sum + d.count, 0),
+      most_used: mostUsed.map((m) => ({ id: m.id, title: m.title, host: m.host, uses: m.uses })),
+      never_used: n(links, 'never_used'),
+      fetches: {
+        ok: n(fetches, 'ok'),
+        failed: n(fetches, 'failed'),
+        failed_by_reason: reasons(failed),
+      },
+      imports: imports.map((i) => ({
+        id: i.id,
+        created_at: i.created_at,
+        url_lines: i.url_lines,
+        added: i.added,
+        duplicates: i.duplicates,
+        invalid: i.invalid,
+        not_imported: i.not_imported,
+      })),
+    };
+  },
+};
+
 /** Every section of the answer, in its order. */
 export const SECTIONS: Section[] = [
   library,
@@ -421,6 +518,7 @@ export const SECTIONS: Section[] = [
   expiry,
   health,
   backlog,
+  activity,
 ];
 
 /**
