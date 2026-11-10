@@ -11,6 +11,7 @@ import {
 } from '../test/helpers';
 import { FakeAi } from '../test/ai';
 import { markKeyRejected } from '../enrich/keys';
+import { setProviderTimeout } from '../enrich/providers';
 import { listVocabulary } from '../enrich/vocabulary';
 
 async function patch(user: TestUser, id: string, body: Record<string, unknown>) {
@@ -1242,4 +1243,112 @@ describe('splitting a topic', () => {
     expect(ai.requests.filter((q) => q.split)).toEqual([]);
     expect(await topics(owner)).toEqual(before);
   });
+
+  /** The topic 'Target' with 25 links, a verified key, and the topic's links by id. */
+  async function target() {
+    setNow(T0);
+    const user = await signIn();
+    const ids = await fileLinks(user, 'Target', 25);
+    const ai = new FakeAi();
+    await saveKey(user);
+    const unchanged = async () => {
+      expect(await topics(user)).toEqual({ Target: { parent: null, count: 25 } });
+    };
+    return { user, ids, ai, unchanged };
+  }
+
+  it.each([
+    {
+      label: 'the provider rejects the key',
+      arrange: (ai: FakeAi) => ai.status(401, 'invalid x-api-key', { testsToo: false }),
+      status: 409,
+      json: { error: 'ai_key_rejected', message: 'invalid x-api-key' },
+      rejected: true,
+    },
+    {
+      label: 'the provider answers 500',
+      arrange: (ai: FakeAi) => ai.status(500, 'overloaded', { testsToo: false }),
+      status: 503,
+      json: { error: 'provider_unavailable', message: 'overloaded' },
+    },
+    {
+      label: 'the provider gives no answer in time',
+      arrange: (ai: FakeAi) => ai.stall(),
+      status: 503,
+      json: { error: 'provider_unavailable', message: 'timed out' },
+    },
+    {
+      label: 'the model declines',
+      arrange: (ai: FakeAi) => ai.refusal(),
+      status: 502,
+      json: { error: 'provider_failed', message: 'the model declined' },
+    },
+  ])(
+    'answers $status when $label, changing nothing',
+    async ({ arrange, status, json, rejected }) => {
+      const { user, ai, unchanged } = await target();
+      arrange(ai);
+      setProviderTimeout(200);
+      try {
+        const r = await split(user, 'Target');
+        expect(r.status).toBe(status);
+        expect(r.json).toEqual(json);
+      } finally {
+        setProviderTimeout(null);
+      }
+      await unchanged();
+      const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
+      expect(settings.status).toBe(rejected ? 'rejected' : 'verified');
+    },
+  );
+
+  it.each([
+    { label: 'one sub-topic', answer: (ids: string[]) => answer(['A'], ids) },
+    {
+      label: 'eleven sub-topics',
+      answer: (ids: string[]) =>
+        answer(
+          Array.from({ length: 11 }, (_, i) => `S${i}`),
+          ids,
+        ),
+    },
+    { label: 'an empty sub-topic', answer: (ids: string[]) => answer(['A', ' '], ids) },
+    {
+      label: 'a sub-topic of 101 characters',
+      answer: (ids: string[]) => answer(['A', 'x'.repeat(101)], ids),
+    },
+    { label: 'a sub-topic holding >', answer: (ids: string[]) => answer(['A', 'B > C'], ids) },
+    {
+      label: 'a link id that was not sent',
+      answer: (ids: string[]) => {
+        const a = answer(['A', 'B'], ids);
+        return { ...a, links: [...a.links, { id: 'not-sent', subtopic: 'A' }] };
+      },
+    },
+    {
+      label: 'a link filed under a name not proposed',
+      answer: (ids: string[]) => {
+        const a = answer(['A', 'B'], ids);
+        return { ...a, links: [{ id: ids[0]!, subtopic: 'Elsewhere' }, ...a.links.slice(1)] };
+      },
+    },
+  ])('refuses an answer with $label, changing nothing', async ({ answer: make }) => {
+    const { user, ids, ai, unchanged } = await target();
+    ai.split(make(ids));
+    const r = await split(user, 'Target');
+    expect(r.status).toBe(502);
+    expect(r.json).toEqual({
+      error: 'provider_failed',
+      message: "the provider's split could not be used",
+    });
+    await unchanged();
+  });
 });
+
+/** A split's answer proposing `subtopics`, filing the links round-robin under the first two. */
+function answer(subtopics: string[], ids: string[]) {
+  return {
+    subtopics,
+    links: ids.map((id, i) => ({ id, subtopic: subtopics[i % Math.min(2, subtopics.length)]! })),
+  };
+}

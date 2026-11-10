@@ -1026,7 +1026,15 @@ the number of links whose topic changed. Refused, changing nothing:
 - `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`, and
   `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}` while
   the saved key is marked rejected, as `POST /api/v1/ask` answers;
-- `502 {"error": "provider_failed", "message"}` when the provider fails.
+- the provider's failures, with Ask's codes and the provider's message:
+  `409 {"error": "ai_key_rejected", "message"}` when it rejects the key, which
+  is then marked rejected; `503 {"error": "provider_unavailable", "message"}`
+  when it is unreachable, answers 5xx or gives no answer within 60 seconds;
+  `502 {"error": "provider_failed", "message"}` for any other failure;
+- `502 {"error": "provider_failed", "message": "the provider's split could not be used"}`
+  for an answer that is not usable: fewer than 2 or more than 10 sub-topics, a
+  name that is empty, over 100 characters or holds `>`, a link id that was not
+  sent, or a link filed under a name that is not among the sub-topics.
 
 #### Aliases
 

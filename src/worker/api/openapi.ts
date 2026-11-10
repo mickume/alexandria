@@ -746,9 +746,10 @@ export const operations: Operation[] = [
         }),
       },
       409: error(
-        'too_few_links (under 20), too_many_links (over 500), too_deep (a level-3 topic), no_ai_key, or ai_key_rejected',
+        'too_few_links (under 20), too_many_links (over 500), too_deep (a level-3 topic), no_ai_key, or ai_key_rejected (the key is marked rejected)',
       ),
       502: error('provider_failed: the provider failed, or its split could not be used'),
+      503: error('provider_unavailable: unreachable, 5xx, or no answer within 60 seconds'),
     },
   },
   {

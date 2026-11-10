@@ -4,7 +4,7 @@ import { decodeCursor, encodeCursor, MAX_LIMIT, parseLimit } from '../api/pagina
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
-import { decryptKey, getAiSettings } from '../enrich/keys';
+import { decryptKey, getAiSettings, markKeyRejected } from '../enrich/keys';
 import { splitWith } from '../enrich/providers';
 import { buildSplitPrompt } from '../enrich/enrich';
 import { isStreamCursor, listStream } from '../links/stream';
@@ -329,10 +329,35 @@ const SPLIT_REFUSALS = {
   too_many_links: 'a topic with more than 500 links cannot be split at once',
 } as const;
 
-/** The split the provider answered, as sub-topic names and each sent link's sub-topic. */
-interface SplitAnswer {
-  subtopics: string[];
-  links: { id: string; subtopic: string }[];
+/** The fewest and the most sub-topics a split's answer may propose, and the longest name. */
+const SPLIT_MIN_SUBTOPICS = 2;
+const SPLIT_MAX_SUBTOPICS = 10;
+const SUBTOPIC_NAME_MAX = 100;
+
+/**
+ * The provider's split as each sent link's sub-topic name ('' to leave it),
+ * or null when it cannot be used: not 2 to 10 sub-topics, each 1 to 100
+ * characters once its spaces are collapsed and without '>'; a link that was
+ * not sent; or a link filed under a name that is not among the sub-topics
+ * (ignoring case).
+ */
+function usableSplit(value: unknown, sent: Set<string>): Map<string, string> | null {
+  const answer = value as { subtopics?: unknown; links?: unknown } | null;
+  if (!answer || !Array.isArray(answer.subtopics) || !Array.isArray(answer.links)) return null;
+  const clean = (name: unknown) =>
+    typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : null;
+  const names = answer.subtopics.map(clean);
+  if (names.length < SPLIT_MIN_SUBTOPICS || names.length > SPLIT_MAX_SUBTOPICS) return null;
+  if (names.some((n) => !n || n.length > SUBTOPIC_NAME_MAX || n.includes('>'))) return null;
+  const proposed = new Map(names.map((n) => [n!.toLowerCase(), n!]));
+  const assignments = new Map<string, string>();
+  for (const link of answer.links as { id?: unknown; subtopic?: unknown }[]) {
+    const name = clean(link?.subtopic);
+    if (typeof link?.id !== 'string' || !sent.has(link.id) || name === null) return null;
+    if (name !== '' && !proposed.has(name.toLowerCase())) return null;
+    assignments.set(link.id, name === '' ? '' : proposed.get(name.toLowerCase())!);
+  }
+  return assignments;
 }
 
 topicRoutes.post('/:id/split', async (c) => {
@@ -360,9 +385,19 @@ topicRoutes.post('/:id/split', async (c) => {
       links: request.links,
     }),
   );
+  // The provider's failures take Ask's codes.
+  if (!outcome.ok && outcome.kind === 'rejected') {
+    await markKeyRejected(c.env.DB, userId, outcome.message);
+    return refusal(c, 409, 'ai_key_rejected', outcome.message);
+  }
+  if (!outcome.ok && outcome.kind === 'unavailable') {
+    return refusal(c, 503, 'provider_unavailable', outcome.message);
+  }
   if (!outcome.ok) return refusal(c, 502, 'provider_failed', outcome.message);
-  const answer = outcome.value as SplitAnswer;
-  const assignments = new Map(answer.links.map((l) => [l.id, l.subtopic.trim()]));
+  const assignments = usableSplit(outcome.value, new Set(request.links.map((l) => l.id)));
+  if (!assignments) {
+    return refusal(c, 502, 'provider_failed', "the provider's split could not be used");
+  }
   const split = await applySplit(c.env.DB, userId, id, request.path, assignments);
   await queueIndexing(c.env, userId, split.movedIds);
   return c.json({ topic: split.topic, children: split.children, moved: split.moved });
