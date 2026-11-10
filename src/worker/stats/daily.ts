@@ -63,6 +63,35 @@ export function countStatement(db: D1Database, c: Count): D1PreparedStatement {
 /** The size columns of the daily record, in the order the answer gives them. */
 export const SIZE_STATES = ['pending', 'active', 'unreachable', 'expired', 'archived'] as const;
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Records, at an hourly run starting between 00:00 and 01:00 UTC, every
+ * owner's library size under the UTC day that just ended: the total and the
+ * count in each state, for every owner not being deleted. A day's size is
+ * written once and never filled in later; a run outside that hour records
+ * nothing.
+ */
+export async function recordDaySizes(db: D1Database, t: Date): Promise<void> {
+  if (t.getUTCHours() !== 0) return;
+  const day = dayOf(t.getTime() - DAY_MS);
+  const states = SIZE_STATES.map((s) => `COALESCE(SUM(l.state = '${s}'), 0)`).join(', ');
+  const columns = SIZE_STATES.map((s) => `size_${s}`);
+  await db
+    .prepare(
+      `INSERT INTO daily_stats (user_id, day, size_total, ${columns.join(', ')})
+       SELECT u.id, ?1, COUNT(l.id), ${states}
+       FROM users u LEFT JOIN links l ON l.user_id = u.id
+       WHERE u.deletion_requested_at IS NULL
+       GROUP BY u.id
+       ON CONFLICT (user_id, day) DO UPDATE SET size_total = excluded.size_total,
+         ${columns.map((c) => `${c} = excluded.${c}`).join(', ')}
+       WHERE daily_stats.size_total IS NULL`,
+    )
+    .bind(day)
+    .run();
+}
+
 type Row = Record<string, unknown>;
 
 /** One day of the record as GET /api/v1/stats/history answers it. */

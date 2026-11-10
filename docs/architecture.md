@@ -618,7 +618,11 @@ unarchived or expired, an enrichment stored or failed), and `countStatement`,
 an upsert put in the same D1 batch as a change, counts what a trigger cannot
 tell apart (a delete by the owner or by decay, an Ask question). A change that
 fails or is rolled back is never counted, and a stored one is counted exactly
-once, a redelivered message included. Counters only grow; nothing deletes a row but the account's
+once, a redelivered message included. The hourly run (`decay/cron.ts`), when it starts between 00:00
+and 01:00 UTC, first records every owner's library size (the total and each
+state) under the day that just ended (`recordDaySizes`), before decay changes
+anything; a day's size is written once, and a day without such a run keeps
+none. Counters only grow; nothing deletes a row but the account's
 deletion, which finds both tables by their `user_id` column.
 `GET /api/v1/stats/history` (`readHistory`) answers a range of days, filling
 the days without a row.

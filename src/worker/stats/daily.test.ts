@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runScheduled } from '../decay/cron';
 import { evaluateDecay } from '../decay/decay';
 import { blogArticle } from '../fetcher/fixtures/pages';
 import { FakeAi } from '../test/ai';
@@ -389,5 +390,73 @@ describe('counting background work', () => {
     const r = await api('POST', '/api/v1/ask', { as: user.session, body: { question } });
     await r.response.text();
     expect((await today(user)).asks).toBe(expected);
+  });
+});
+
+describe('end-of-day size', () => {
+  /** Seeds 2 pending, 3 active, 1 unreachable, 1 expired and 1 archived link. */
+  async function seedEveryState(user: TestUser, prefix: string) {
+    const states = [
+      'pending',
+      'pending',
+      'active',
+      'active',
+      'active',
+      'unreachable',
+      'expired',
+      'archived',
+    ];
+    await seedLinks(
+      user,
+      states.map((state, i) => ({ url: `https://${prefix}${i}.example/`, state })),
+    );
+  }
+
+  /** The size recorded for `day`, by the history route. */
+  async function sizeOn(user: TestUser, day: string) {
+    const r = await api('GET', '/api/v1/stats/history?days=3', { as: user.session });
+    return (r.json.days as { day: string; size: unknown }[]).find((d) => d.day === day)?.size;
+  }
+
+  it('records each owner’s size for the day that ended, once, at the first run after midnight', async () => {
+    const user = await signIn();
+    const leaving = await signIn('leaving@example.test', 'L');
+    await seedEveryState(user, 's');
+    await seedEveryState(leaving, 'l');
+    await env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
+      .bind('2026-11-09T20:00:00.000Z', leaving.id)
+      .run();
+    setNow('2026-11-10T00:05:00.000Z');
+    await runScheduled(env);
+    setNow('2026-11-10T00:50:00.000Z');
+    await seedLinks(user, [{ url: 'https://later.example/', state: 'active' }]);
+    await runScheduled(env);
+    expect(await sizeOn(user, '2026-11-09')).toEqual({
+      total: 8,
+      pending: 2,
+      active: 3,
+      unreachable: 1,
+      expired: 1,
+      archived: 1,
+    });
+    expect(await sizeOn(user, '2026-11-10')).toBeNull();
+    const theirs = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM daily_stats WHERE user_id = ? AND size_total IS NOT NULL',
+    )
+      .bind(leaving.id)
+      .first<{ n: number }>();
+    expect(theirs?.n).toBe(0);
+  });
+
+  it('leaves a day’s size null when no run starts in the hour after midnight', async () => {
+    const user = await signIn();
+    await seedEveryState(user, 's');
+    setNow('2026-11-10T02:00:00.000Z');
+    await runScheduled(env);
+    setNow('2026-11-11T00:10:00.000Z');
+    await runScheduled(env);
+    setNow('2026-11-11T12:00:00.000Z');
+    expect(await sizeOn(user, '2026-11-09')).toBeNull();
+    expect(await sizeOn(user, '2026-11-10')).toMatchObject({ total: 8 });
   });
 });
