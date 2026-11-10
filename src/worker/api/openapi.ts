@@ -692,6 +692,14 @@ export const operations: Operation[] = [
   })),
   ...(['topics', 'tags'] as const).flatMap((kind): Operation[] => {
     const one = kind === 'topics' ? 'Topic' : 'Tag';
+    const mergeRefusals: Record<number, ResponseSpec> =
+      kind === 'topics'
+        ? {
+            409: error(
+              'invalid_merge: the survivor is beneath the source; too_deep: a child would end up below the third level',
+            ),
+          }
+        : {};
     return [
       {
         method: 'patch',
@@ -714,6 +722,7 @@ export const operations: Operation[] = [
         responses: {
           200: { description: 'The survivor', schema: VocabularyEntry },
           400: error('invalid_json, or invalid_merge (field into): into missing or the source'),
+          ...mergeRefusals,
         },
       },
     ];

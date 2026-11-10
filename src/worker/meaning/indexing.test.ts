@@ -438,6 +438,17 @@ describe('queueing a link for indexing', () => {
       queued: [0, 1],
     },
     {
+      name: 'a merge of a topic with a child',
+      prepare: async ({ user, ids }: Library) => {
+        await api('PATCH', `/api/v1/links/${ids[1]}`, {
+          as: user.session,
+          body: { topic: 'Platform > Queues' },
+        });
+      },
+      write: merge('topics', 'Platform', 'Garden'),
+      queued: [0, 1],
+    },
+    {
       name: 'a merge of a tag one link carries into another',
       prepare: async (lib: Library) => {
         await edit({ tags: ['infra', 'extra'] })(lib);

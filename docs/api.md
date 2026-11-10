@@ -940,8 +940,10 @@ the new name, and the old name becomes an alias of it (see below).
 
 A tag name is lower-cased and must be 1 to 50 characters of letters and digits
 in hyphen-joined words (`web-dev`); a topic name is trimmed, its spaces
-collapsed, and must be 1 to 100 characters. Otherwise
-`400 {"error": "invalid_name", "field": "name", "message"}`. A name another
+collapsed, and must be 1 to 100 characters without `>`. Otherwise
+`400 {"error": "invalid_name", "field": "name", "message"}` (for a topic, the
+message is "a topic name of 1 to 100 characters, without >"). A renamed topic
+keeps its place in the tree and its children. A name another
 topic (or tag) of the user has, ignoring case, is
 `409 {"error": "name_taken", "message": "another tag is named javascript: merge this tag into it instead"}`
 and nothing changes. Renaming to the same name answers 200.
@@ -955,6 +957,16 @@ of the survivor, all at once. `200 {"id", "name", "count"}` of the survivor.
 A missing `into`, or the source itself, is
 `400 {"error": "invalid_merge", "field": "into", "message"}`; a source or
 `into` that is not one of the user's is `404 {"error": "not_found"}`.
+
+Merging a topic also makes its children children of the survivor, with their
+own children beneath them, marks every link filed under the source or beneath
+it as changed and indexes them again with their new paths. A former parent of
+the source left with no link and no child topic is deleted. Nothing changes
+when the merge is refused:
+
+- `409 {"error": "invalid_merge", "message": "a topic cannot merge into a topic beneath it"}`;
+- `409 {"error": "too_deep", "message": "topics are at most three levels deep"}`:
+  a child of the source would end up at level 4 or below.
 
 #### `POST /api/v1/topics/{id}/move`
 

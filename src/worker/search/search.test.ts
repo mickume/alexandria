@@ -164,6 +164,27 @@ describe('the search index', () => {
       expect(await indexed(user, 'programming')).toEqual([other]);
     });
 
+    it('merging a topic through the API, for the links beneath it', async () => {
+      const user = await signIn();
+      const source = await add(user, 'https://one.example/');
+      const deep = await add(user, 'https://two.example/');
+      const survivor = await add(user, 'https://three.example/');
+      await patch(user, source, { topic: 'Rustlang' });
+      await patch(user, deep, { topic: 'Rustlang > Async' });
+      await patch(user, survivor, { topic: 'Rust' });
+      const ids = await env.DB.prepare('SELECT id, name FROM topics WHERE user_id = ?')
+        .bind(user.id)
+        .all<{ id: string; name: string }>();
+      const byName = Object.fromEntries(ids.results.map((t) => [t.name, t.id]));
+      const r = await api('POST', `/api/v1/topics/${byName.Rustlang}/merge`, {
+        as: user.session,
+        body: { into: byName.Rust },
+      });
+      expect(r.status).toBe(200);
+      expect(await indexed(user, 'rustlang')).toEqual([]);
+      expect((await indexed(user, 'rust')).sort()).toEqual([source, deep, survivor].sort());
+    });
+
     it('renaming a tag and merging a topic through the API', async () => {
       const user = await signIn();
       const id = await add(user, 'https://labels.example/');

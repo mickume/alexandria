@@ -95,7 +95,8 @@ const TAG_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /**
  * A new name as it is stored, or null when it is not acceptable: a tag name
  * lower-cased, 1 to 50 characters of letters and digits in hyphen-joined
- * words; a topic name trimmed, its spaces collapsed, 1 to 100 characters.
+ * words; a topic name trimmed, its spaces collapsed, 1 to 100 characters
+ * without `>`.
  */
 export function parseName(kind: VocabularyKind, value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -103,8 +104,9 @@ export function parseName(kind: VocabularyKind, value: unknown): string | null {
     const name = value.toLowerCase();
     return name.length <= TAG_NAME_MAX && TAG_NAME.test(name) ? name : null;
   }
+  // `>` separates the names of a topic path.
   const name = value.replace(/\s+/g, ' ').trim();
-  return name && name.length <= TOPIC_NAME_MAX ? name : null;
+  return name && name.length <= TOPIC_NAME_MAX && !name.includes('>') ? name : null;
 }
 
 /** A topic or tag with its number of links. */
@@ -223,11 +225,17 @@ export async function renameEntry(
   return { ...entry, name };
 }
 
+/** Why a merge of topics was refused. */
+export type MergeRefusal = 'invalid_merge' | 'too_deep';
+
 /**
  * Merges one of the user's topics or tags into another in one batch: every
  * link of the source gets the target (a link never carries a tag twice),
  * the source's name and aliases become aliases of the target, and the source
- * is deleted. Null when either is not the user's.
+ * is deleted. A topic's children become the target's first, and every link
+ * beneath the source is marked changed; a target beneath the source, or a
+ * child that would end up below the third level, refuses the merge. Null
+ * when either is not the user's.
  */
 export async function mergeEntry(
   db: D1Database,
@@ -235,12 +243,16 @@ export async function mergeEntry(
   kind: VocabularyKind,
   sourceId: string,
   targetId: string,
-): Promise<VocabularyEntry | null> {
+): Promise<VocabularyEntry | MergeRefusal | null> {
   const [source, target] = await Promise.all([
     getEntry(db, userId, kind, sourceId),
     getEntry(db, userId, kind, targetId),
   ]);
   if (!source || !target) return null;
+  const tree = kind === 'topics' ? await topicTree(db, userId) : null;
+  if (tree?.within(targetId, sourceId)) return 'invalid_merge';
+  if (tree && tree.level(targetId) + tree.height(sourceId) - 1 > TOPIC_LEVELS) return 'too_deep';
+  const former = tree?.parents.get(sourceId) ?? null;
   const { table, aliases, column } = TABLES[kind];
   const move =
     kind === 'tags'
@@ -255,6 +267,10 @@ export async function mergeEntry(
           db.prepare('DELETE FROM link_tags WHERE tag_id = ?').bind(sourceId),
         ]
       : [
+          // The children move first, so that the source is empty when its links leave it.
+          db
+            .prepare('UPDATE topics SET parent_id = ? WHERE parent_id = ? AND user_id = ?')
+            .bind(targetId, sourceId, userId),
           db
             .prepare('UPDATE links SET topic_id = ? WHERE topic_id = ? AND user_id = ?')
             .bind(targetId, sourceId, userId),
@@ -265,9 +281,16 @@ export async function mergeEntry(
     db
       .prepare(`INSERT OR REPLACE INTO ${aliases} (user_id, name, ${column}) VALUES (?, ?, ?)`)
       .bind(userId, source.name, targetId),
-    touchCarriers(db, kind, sourceId),
+    kind === 'topics'
+      ? db
+          .prepare(
+            `UPDATE links SET updated_at = ?3 WHERE topic_id IN (${SUBTREE}) AND user_id = ?2`,
+          )
+          .bind(sourceId, userId, now().toISOString())
+      : touchCarriers(db, kind, sourceId),
     ...move,
     db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ?`).bind(sourceId, userId),
+    ...(tree ? dropEmptied(db, [former, former === null ? null : tree.parents.get(former)]) : []),
   ]);
   return getEntry(db, userId, kind, targetId);
 }

@@ -453,6 +453,8 @@ describe('renaming a topic or tag', () => {
     ['topics', undefined],
     ['topics', '   '],
     ['topics', 'x'.repeat(101)],
+    ['topics', 'CI>CD'],
+    ['topics', 'A > B'],
   ] as const)('refuses the %s name %j', async (kind, name) => {
     const user = await signIn();
     const [l1] = await seedLinks(user, [{ url: 'https://one.example/' }]);
@@ -464,6 +466,9 @@ describe('renaming a topic or tag', () => {
     });
     expect(r.status).toBe(400);
     expect(r.json).toMatchObject({ error: 'invalid_name', field: 'name' });
+    if (kind === 'topics') {
+      expect(r.json.message).toBe('a topic name of 1 to 100 characters, without >');
+    }
     expect(await linkLabels(user, l1!)).toEqual({ tags: ['before'], topic: 'Before' });
   });
 
@@ -809,5 +814,126 @@ describe('moving a topic', () => {
     );
     const async = changed.json.items.find((l: { id: string }) => l.id === links.Async);
     expect(async.topic_path).toEqual(['Programming', 'Rust', 'Async']);
+  });
+});
+
+describe('merging and renaming topics in the tree', () => {
+  const T0 = Date.parse('2026-06-01T00:00:00.000Z');
+
+  /** A user with one link under each of these topic paths, by the last name. */
+  async function library(paths: string[]) {
+    setNow(T0);
+    const user = await signIn();
+    const ids = await seedLinks(
+      user,
+      paths.map((_, i) => ({ url: `https://m${i}.example/` })),
+    );
+    for (const [i, topic] of paths.entries()) await patch(user, ids[i]!, { topic });
+    return {
+      user,
+      links: Object.fromEntries(paths.map((p, i) => [p.split(' > ').at(-1)!, ids[i]!])),
+    };
+  }
+
+  async function merge(user: TestUser, from: string, into: string) {
+    return api('POST', `/api/v1/topics/${await idOf(user, 'topics', from)}/merge`, {
+      as: user.session,
+      body: { into: await idOf(user, 'topics', into) },
+    });
+  }
+
+  it('gives the survivor the source’s children, with theirs beneath them', async () => {
+    const { user } = await library([
+      'Rustlang',
+      'Rustlang > Async',
+      'Rustlang > Async > Tokio',
+      'Rust',
+    ]);
+    const r = await merge(user, 'Rustlang', 'Rust');
+    expect(r.status).toBe(200);
+    expect(r.json).toEqual({ id: await idOf(user, 'topics', 'Rust'), name: 'Rust', count: 2 });
+    expect(await tree(user)).toEqual({ Rust: null, Async: 'Rust', Tokio: 'Async' });
+    expect(await aliases(user, 'topic')).toEqual([['Rustlang', 'Rust']]);
+  });
+
+  it.each([
+    {
+      from: 'Rust',
+      into: 'Linters',
+      error: 'too_deep',
+      message: 'topics are at most three levels deep',
+    },
+    {
+      from: 'Languages',
+      into: 'Async',
+      error: 'invalid_merge',
+      message: 'a topic cannot merge into a topic beneath it',
+    },
+    {
+      from: 'Languages',
+      into: 'Rust',
+      error: 'invalid_merge',
+      message: 'a topic cannot merge into a topic beneath it',
+    },
+  ])('refuses to merge $from into $into: $error', async ({ from, into, error, message }) => {
+    const { user, links } = await library([
+      'Languages',
+      'Languages > Rust',
+      'Languages > Rust > Async',
+      'Programming',
+      'Programming > Tools',
+      'Programming > Tools > Linters',
+    ]);
+    const was = await tree(user);
+    const r = await merge(user, from, into);
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error, message });
+    expect(await tree(user)).toEqual(was);
+    for (const [name, id] of Object.entries(links)) {
+      expect((await linkLabels(user, id)).topic).toBe(name);
+    }
+  });
+
+  it('deletes the source’s former parent when the merge leaves it with nothing', async () => {
+    const user = await signIn();
+    const [b, c, holder] = await seedLinks(user, [
+      { url: 'https://b.example/' },
+      { url: 'https://c.example/' },
+      { url: 'https://holder.example/' },
+    ]);
+    await patch(user, holder!, { topic: 'A' });
+    await patch(user, b!, { topic: 'A > B' });
+    await patch(user, holder!, { topic: 'C' });
+    await patch(user, c!, { topic: 'C' });
+    expect(await tree(user)).toEqual({ A: null, B: 'A', C: null });
+    expect((await merge(user, 'B', 'C')).status).toBe(200);
+    expect(await tree(user)).toEqual({ C: null });
+  });
+
+  it('keeps a renamed topic where it is, with its children', async () => {
+    const { user } = await library(['Languages', 'Languages > Rust', 'Languages > Rust > Async']);
+    const r = await api('PATCH', `/api/v1/topics/${await idOf(user, 'topics', 'Rust')}`, {
+      as: user.session,
+      body: { name: 'Rust language' },
+    });
+    expect(r.status).toBe(200);
+    expect(await tree(user)).toEqual({
+      Languages: null,
+      'Rust language': 'Languages',
+      Async: 'Rust language',
+    });
+  });
+
+  it('marks the links beneath the source changed, and only those', async () => {
+    const { user, links } = await library(['Rustlang', 'Rustlang > Async', 'Rust']);
+    const since = new Date(T0 + 1).toISOString();
+    setNow(T0 + 60_000);
+    expect((await merge(user, 'Rustlang', 'Rust')).status).toBe(200);
+    const changed = await api('GET', `/api/v1/links?changed_since=${since}`, { as: user.session });
+    expect(changed.json.items.map((l: { id: string }) => l.id).sort()).toEqual(
+      [links.Rustlang, links.Async].sort(),
+    );
+    const moved = changed.json.items.find((l: { id: string }) => l.id === links.Async);
+    expect(moved.topic_path).toEqual(['Rust', 'Async']);
   });
 });

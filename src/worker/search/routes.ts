@@ -258,11 +258,13 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
         `a ${kind.slice(0, -1)} cannot merge into itself`,
       );
     }
-    // The links the merge moves onto the survivor are the source's carriers.
+    // The links the merge moves onto the survivor are the source's carriers,
+    // and a topic's name is also in the path of every link beneath it.
     const userId = c.get('user').id;
-    const moved = await carrierIds(c.env.DB, userId, kind, id);
+    const moved = await carrierIds(c.env.DB, userId, kind, id, { subtree: true });
     const merged = await mergeEntry(c.env.DB, userId, kind, id, into);
     if (!merged) return notFound(c);
+    if (typeof merged === 'string') return refusal(c, 409, merged, MERGE_REFUSALS[merged]);
     await queueIndexing(c.env, userId, moved);
     return c.json(merged);
   });
@@ -272,8 +274,14 @@ function vocabularyRoutes(kind: VocabularyKind): Hono<AppEnv> {
 /** What a valid new name is, as the refusal of an invalid one says. */
 const NAME_RULE: Record<VocabularyKind, string> = {
   tags: `a tag name of 1 to ${TAG_NAME_MAX} lower-case letters and digits in hyphen-joined words`,
-  topics: `a topic name of 1 to ${TOPIC_NAME_MAX} characters`,
+  topics: `a topic name of 1 to ${TOPIC_NAME_MAX} characters, without >`,
 };
+
+/** What a merge of topics refused for each reason answers. */
+const MERGE_REFUSALS = {
+  invalid_merge: 'a topic cannot merge into a topic beneath it',
+  too_deep: 'topics are at most three levels deep',
+} as const;
 
 /** The topics, at /api/v1/topics. */
 export const topicRoutes = vocabularyRoutes('topics');
