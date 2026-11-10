@@ -262,6 +262,22 @@ The links changed since a server time, and the server time to ask from next.
 
 ***
 
+### DayCount
+
+A count of one UTC day ('YYYY-MM-DD').
+
+#### Properties
+
+##### count
+
+> **count**: `number`
+
+##### day
+
+> **day**: `string`
+
+***
+
 ### ImportProgress
 
 Where an import's added links stand.
@@ -602,6 +618,22 @@ A link's stored reader view.
 
 ***
 
+### ReasonCount
+
+One of the most common reasons, with how many links or attempts it gives.
+
+#### Properties
+
+##### count
+
+> **count**: `number`
+
+##### reason
+
+> **reason**: `string`
+
+***
+
 ### SearchResults
 
 One page of a search's results.
@@ -668,6 +700,302 @@ A piece of a snippet: text, and whether it is a matched word.
 
 ***
 
+### Stats
+
+The owner's library statistics, as GET /api/v1/stats computes them.
+
+#### Properties
+
+##### activity
+
+> **activity**: `object`
+
+###### added\_last\_30\_days
+
+> **added\_last\_30\_days**: `number`
+
+###### added\_last\_7\_days
+
+> **added\_last\_7\_days**: `number`
+
+###### added\_per\_day
+
+> **added\_per\_day**: [`DayCount`](#daycount)[]
+
+###### fetches
+
+> **fetches**: `object`
+
+###### fetches.failed
+
+> **failed**: `number`
+
+###### fetches.failed\_by\_reason
+
+> **failed\_by\_reason**: [`ReasonCount`](#reasoncount)[]
+
+###### fetches.ok
+
+> **ok**: `number`
+
+###### imports
+
+> **imports**: `object`[]
+
+###### most\_used
+
+> **most\_used**: `object`[]
+
+###### never\_used
+
+> **never\_used**: `number`
+
+###### uses\_per\_day
+
+> **uses\_per\_day**: [`DayCount`](#daycount)[]
+
+##### backlog
+
+> **backlog**: `object`
+
+###### enrichment\_queued
+
+> **enrichment\_queued**: `number`
+
+###### fetch\_pending
+
+> **fetch\_pending**: `number`
+
+###### fetch\_retrying
+
+> **fetch\_retrying**: `number`
+
+###### imports
+
+> **imports**: `object`[]
+
+###### index\_stale
+
+> **index\_stale**: `number`
+
+###### liveness\_due
+
+> **liveness\_due**: `number`
+
+###### throttle\_clear\_at
+
+> **throttle\_clear\_at**: `string` \| `null`
+
+When the background throttle frees up; null when it already has.
+
+###### vector\_deletions
+
+> **vector\_deletions**: `number`
+
+##### content
+
+> **content**: `object`
+
+###### by\_kind
+
+> **by\_kind**: `Record`\<`"html"` \| `"pdf"` \| `"other"` \| `"unfetched"`, `number`\>
+
+###### reader\_empty
+
+> **reader\_empty**: `number`
+
+###### with\_snapshot
+
+> **with\_snapshot**: `number`
+
+##### expiry
+
+> **expiry**: `object`
+
+###### awaiting\_removal
+
+> **awaiting\_removal**: `object`
+
+###### awaiting\_removal.total
+
+> **total**: `number`
+
+###### awaiting\_removal.within\_30\_days
+
+> **within\_30\_days**: `number`
+
+###### awaiting\_removal.within\_7\_days
+
+> **within\_7\_days**: `number`
+
+###### expiring
+
+> **expiring**: `object`
+
+###### expiring.today
+
+> **today**: `number`
+
+###### expiring.within\_30\_days
+
+> **within\_30\_days**: `number`
+
+###### expiring.within\_7\_days
+
+> **within\_7\_days**: `number`
+
+###### points\_histogram
+
+> **points\_histogram**: `object`[]
+
+###### protected\_at\_risk
+
+> **protected\_at\_risk**: `number`
+
+###### settings
+
+> **settings**: `object`
+
+###### settings.remove\_days
+
+> **remove\_days**: `number`
+
+###### settings.start\_points
+
+> **start\_points**: `number`
+
+##### health
+
+> **health**: `object`
+
+###### ai\_key
+
+> **ai\_key**: `"verified"` \| `"rejected"` \| `"none"`
+
+###### dead
+
+> **dead**: `object`
+
+###### dead.count
+
+> **count**: `number`
+
+###### dead.dead\_over\_30\_days
+
+> **dead\_over\_30\_days**: `number`
+
+###### enrichment
+
+> **enrichment**: `Record`\<`"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `"none"`, `number`\> & `object`
+
+###### Type Declaration
+
+###### failed\_by\_reason
+
+> **failed\_by\_reason**: [`ReasonCount`](#reasoncount)[]
+
+###### unreachable
+
+> **unreachable**: `object`
+
+###### unreachable.by\_reason
+
+> **by\_reason**: [`ReasonCount`](#reasoncount)[]
+
+###### unreachable.count
+
+> **count**: `number`
+
+##### hosts
+
+> **hosts**: `object`
+
+###### distinct
+
+> **distinct**: `number`
+
+###### top
+
+> **top**: `object`[]
+
+##### library
+
+> **library**: `object`
+
+###### by\_state
+
+> **by\_state**: `Record`\<`"pending"` \| `"active"` \| `"unreachable"` \| `"expired"` \| `"archived"`, `number`\>
+
+###### in\_workspace
+
+> **in\_workspace**: `number`
+
+###### limit
+
+> **limit**: `number`
+
+###### pinned
+
+> **pinned**: `number`
+
+###### total
+
+> **total**: `number`
+
+##### tags
+
+> **tags**: `object`
+
+###### links\_without\_tags
+
+> **links\_without\_tags**: `number`
+
+###### top
+
+> **top**: `object`[]
+
+###### total
+
+> **total**: `number`
+
+###### used\_once
+
+> **used\_once**: `number`
+
+##### topics
+
+> **topics**: `object`
+
+###### by\_level
+
+> **by\_level**: `Record`\<`"1"` \| `"2"` \| `"3"`, `number`\>
+
+###### largest
+
+> **largest**: `object`[]
+
+###### links\_without\_topic
+
+> **links\_without\_topic**: `number`
+
+###### total
+
+> **total**: `number`
+
+##### workspaces
+
+> **workspaces**: `object`
+
+###### largest
+
+> **largest**: `object`[]
+
+###### total
+
+> **total**: `number`
+
+***
+
 ### Thresholds
 
 The decay settings: the points a link starts from, and the days from expiry to removal.
@@ -724,7 +1052,7 @@ A topic as listed: also its parent (null at the top level) and the links beneath
 
 ###### Inherited from
 
-[`VocabularyItem`](#vocabularyitem).[`count`](#count-1)
+[`VocabularyItem`](#vocabularyitem).[`count`](#count-3)
 
 ##### id
 
@@ -1395,6 +1723,22 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<[`Link`](#link-1)\>
+
+***
+
+### stats
+
+> `const` **stats**: `object`
+
+#### Type Declaration
+
+##### get
+
+> **get**: () => `Promise`\<[`Stats`](#stats)\>
+
+###### Returns
+
+`Promise`\<[`Stats`](#stats)\>
 
 ***
 

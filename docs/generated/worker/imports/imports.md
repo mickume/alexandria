@@ -136,6 +136,15 @@ The file's links that became members; the others were members already.
 
 > **name**: `string`
 
+## Variables
+
+### PROGRESS\_COLUMNS
+
+> `const` **PROGRESS\_COLUMNS**: "\\n  COALESCE(SUM(il.dispatched\_at IS NULL), 0) AS waiting,\\n  COALESCE(SUM(il.dispatched\_at IS NOT NULL AND l.state = 'pending'), 0) AS in\_progress,\\n  COALESCE(SUM(l.state \<\> 'pending'), 0) AS done,\\n  COALESCE(SUM(l.state \<\> 'pending' AND l.enrichment\_status = 'enriched'), 0) AS enriched"
+
+The SQL columns of an import's progress, over its `import_links il` joined
+with their `links l`: waiting, in_progress, done and enriched.
+
 ## Functions
 
 ### getImport()

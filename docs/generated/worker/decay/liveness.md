@@ -68,6 +68,53 @@ The least time between two on-demand checks of one link.
 
 ## Functions
 
+### checkDue()
+
+> **checkDue**(`l`, `checkedBefore`, `enqueuedBefore`): `string`
+
+The SQL condition that the link `l` is due a weekly check: neither expired nor
+archived, active or pinned, last checked (or, never checked, added) at or
+before `checkedBefore`, and not enqueued after `enqueuedBefore`; both are SQL
+expressions of stored times, such as bound parameters.
+
+#### Parameters
+
+##### l
+
+`string`
+
+##### checkedBefore
+
+`string`
+
+##### enqueuedBefore
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
+### checkDueTimes()
+
+> **checkDueTimes**(`t`): \[`string`, `string`\]
+
+The stored times checkDue compares with at `t`: the check interval and the enqueue window before it.
+
+#### Parameters
+
+##### t
+
+`number`
+
+#### Returns
+
+\[`string`, `string`\]
+
+***
+
 ### checkLink()
 
 > **checkLink**(`env`, `url`, `__namedParameters?`): `Promise`\<[`CheckOutcome`](#checkoutcome)\>
@@ -103,11 +150,6 @@ gate unavailable) is thrown, so that it never counts against the link.
 ### enqueueDueChecks()
 
 > **enqueueDueChecks**(`env`): `Promise`\<`void`\>
-
-Enqueues the weekly check of every link that is due: neither expired nor archived, and
-active or pinned, last checked (or, never checked, added) 7 days ago or more, and
-not enqueued in the last 6 hours. The enqueue time is recorded in the same
-statement that selects the links.
 
 #### Parameters
 
