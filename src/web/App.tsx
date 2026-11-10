@@ -58,11 +58,14 @@ export function Link({
   to,
   children,
   className,
+  title,
   current = false,
 }: {
   to: string;
   children: ReactNode;
   className?: string;
+  /** The link's tooltip. */
+  title?: string;
   /** Marks the link as the page being shown. */
   current?: boolean;
 }) {
@@ -70,6 +73,7 @@ export function Link({
     <a
       href={to}
       className={className}
+      title={title}
       aria-current={current ? 'page' : undefined}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;

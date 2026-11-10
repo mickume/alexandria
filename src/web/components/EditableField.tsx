@@ -10,8 +10,10 @@ const LABELS: Record<Field, string> = {
   topic: 'Topic',
 };
 
+/** The field as it is edited: tags comma-separated, the topic as its path joined with ' > '. */
 function asText(link: Link, field: Field): string {
   if (field === 'tags') return link.tags.join(', ');
+  if (field === 'topic' && link.topic_path.length > 0) return link.topic_path.join(' > ');
   return link[field] ?? '';
 }
 

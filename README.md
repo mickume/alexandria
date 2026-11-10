@@ -71,7 +71,9 @@ order; a topic can also be moved, with everything beneath it, under another
 topic or to the top level with **Move under…**. Typing a path such as
 `Software engineering > Testing` into a link's topic files it under a sub-topic,
 creating what does not exist yet. The topic and tags on a
-link's card and on its detail page open the same searches.
+link's card and on its detail page open the same searches: the card shows the
+topic's own name with its whole path as the tooltip, and the detail page shows
+the path as a breadcrumb, each name opening its own topic's search.
 
 Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the

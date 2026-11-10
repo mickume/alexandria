@@ -5,7 +5,7 @@ import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { Icon } from '../components/Icon';
 import { NoteEditor } from '../components/NoteEditor';
-import { RefreshButton, SiteLink, TagChips, TopicChip } from '../components/LinkCard';
+import { RefreshButton, SiteLink, TagChips, TopicPath } from '../components/LinkCard';
 import { WorkspacePicker } from '../components/WorkspacePicker';
 import { byName, formatDate } from '../format';
 
@@ -178,7 +178,7 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
         {link.tags.length > 0 && <TagChips tags={link.tags} />}
       </EditableField>
       <EditableField link={link} field="topic" onSaved={onChange}>
-        {link.topic && <TopicChip topic={link.topic} />}
+        {link.topic_path.length > 0 && <TopicPath path={link.topic_path} />}
       </EditableField>
       <section className="field" aria-labelledby="workspaces-heading">
         <h2 id="workspaces-heading" className="field-head">

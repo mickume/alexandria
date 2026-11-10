@@ -1087,3 +1087,16 @@ a.brand:hover span {
 .ask-sources li + li {
   margin-top: var(--q-space-1);
 }
+
+/* A link's topic path on its detail page: the names with › between them. */
+.topic-path {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--q-space-1);
+}
+
+.topic-path-separator {
+  margin-right: var(--q-space-1);
+  color: var(--q-fg-muted);
+}

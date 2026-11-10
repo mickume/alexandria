@@ -238,7 +238,8 @@ describe('an enriched card', () => {
       state: 'active',
       summary,
       tags: ['rust', 'wasm', 'performance'],
-      topic: 'Programming',
+      topic: 'Testing',
+      topic_path: ['Software engineering', 'Testing'],
       enrichment_status: 'enriched',
     });
     render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
@@ -248,7 +249,9 @@ describe('an enriched card', () => {
     expect(screen.getByText(summary).classList.contains('clamped')).toBe(false);
     const chips = screen.getAllByRole('listitem').map((li) => li.textContent);
     expect(chips).toEqual(['rust', 'wasm', 'performance']);
-    expect(screen.getByText('Programming')).toBeTruthy();
+    const topic = screen.getByRole('link', { name: 'Testing' });
+    expect(topic.getAttribute('title')).toBe('Software engineering › Testing');
+    expect(topic.getAttribute('href')).toBe(`/search?q=${encodeURIComponent('topic:Testing')}`);
   });
 
   it.each([
@@ -257,7 +260,12 @@ describe('an enriched card', () => {
   ])(
     'opens the search for the links of its $label when the chip is clicked',
     ({ name, search }) => {
-      const l = makeLink({ id: 'rich', tags: ['rust', 'wasm'], topic: 'Machine learning' });
+      const l = makeLink({
+        id: 'rich',
+        tags: ['rust', 'wasm'],
+        topic: 'Machine learning',
+        topic_path: ['Machine learning'],
+      });
       render(<LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />);
 
       const chip = screen.getByRole('link', { name });

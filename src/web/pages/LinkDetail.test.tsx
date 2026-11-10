@@ -226,7 +226,8 @@ describe('editing a link on its detail page', () => {
       state: 'active',
       summary: 'Auto summary.',
       tags: ['auto'],
-      topic: 'Auto',
+      topic: 'Testing',
+      topic_path: ['Software engineering', 'Testing'],
     });
     return new FakeApi()
       .on('GET', '/api/v1/links/abc', () => ({ status: 200, body: current }))
@@ -236,9 +237,12 @@ describe('editing a link on its detail page', () => {
       })
       .on('PATCH', '/api/v1/links/abc', (req) => {
         const body = req.body as Record<string, unknown>;
+        const path =
+          typeof body.topic === 'string' ? body.topic.split('>').map((n) => n.trim()) : null;
         current = {
           ...current,
           ...body,
+          ...(path && { topic: path.at(-1), topic_path: path }),
           edited_fields: [...current.edited_fields, ...Object.keys(body)],
         } as typeof current;
         return { status: 200, body: current };
@@ -261,19 +265,49 @@ describe('editing a link on its detail page', () => {
     expect(within(topic).getByText('edited')).toBeTruthy();
   });
 
-  it('shows a refusal beside the field', async () => {
+  it('opens the topic on its path and sends the path as typed', async () => {
+    const api = detailApi();
+    renderPage('/links/abc', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
+    const input = screen.getByLabelText('Topic');
+    expect(input).toHaveProperty('value', 'Software engineering > Testing');
+    fireEvent.change(input, { target: { value: 'Software engineering > Mocks' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    });
+    expect(api.sent('PATCH', '/api/v1/links/abc')[0]?.body).toEqual({
+      topic: 'Software engineering > Mocks',
+    });
+    const path = await screen.findByRole('navigation', { name: 'Topic path' });
+    expect(
+      within(path)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Software engineering', 'Mocks']);
+  });
+
+  it('shows a refusal beside the field and keeps the path', async () => {
+    const message =
+      'a topic or a path of up to three topics separated by >, each 1 to 100 characters';
     const api = detailApi().on('PATCH', '/api/v1/links/abc', {
       status: 400,
-      body: { error: 'invalid_topic', field: 'topic', message: 'a topic of 1 to 100 characters' },
+      body: { error: 'invalid_topic', field: 'topic', message },
     });
     renderPage('/links/abc', api);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit topic' }));
-    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'A > B > C > D' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     });
     const topic = screen.getByTestId('field-topic');
-    expect(within(topic).getByText('a topic of 1 to 100 characters')).toBeTruthy();
+    expect(within(topic).getByRole('alert').textContent).toBe(message);
+    fireEvent.click(within(topic).getByRole('button', { name: 'Cancel' }));
+    const path = screen.getByRole('navigation', { name: 'Topic path' });
+    expect(
+      within(path)
+        .getAllByRole('link')
+        .map((a) => a.textContent),
+    ).toEqual(['Software engineering', 'Testing']);
   });
 });
 
@@ -282,7 +316,12 @@ describe('the topic and tags of a link on its detail page', () => {
     { label: 'topic', name: 'Machine learning', search: 'topic:"Machine learning"' },
     { label: 'tag', name: 'wasm', search: 'tag:wasm' },
   ])('open the search for the links of the $label when clicked', async ({ name, search }) => {
-    const link = makeLink({ id: 'abc', tags: ['rust', 'wasm'], topic: 'Machine learning' });
+    const link = makeLink({
+      id: 'abc',
+      tags: ['rust', 'wasm'],
+      topic: 'Machine learning',
+      topic_path: ['Machine learning'],
+    });
     renderPage(
       '/links/abc',
       new FakeApi().on('GET', '/api/v1/links/abc', { status: 200, body: link }),
@@ -293,6 +332,28 @@ describe('the topic and tags of a link on its detail page', () => {
     expect(window.location.pathname + window.location.search).toBe(
       `/search?q=${encodeURIComponent(search)}`,
     );
+  });
+
+  it('shows the topic path as a breadcrumb, each name opening its own search', async () => {
+    const link = makeLink({
+      id: 'abc',
+      topic: 'Testing',
+      topic_path: ['Software engineering', 'Testing'],
+    });
+    renderPage(
+      '/links/abc',
+      new FakeApi().on('GET', '/api/v1/links/abc', { status: 200, body: link }),
+    );
+    const path = await screen.findByRole('navigation', { name: 'Topic path' });
+    expect(path.textContent).toBe('Software engineering›Testing');
+    expect(
+      within(path)
+        .getAllByRole('link')
+        .map((a) => [a.textContent, a.getAttribute('href')]),
+    ).toEqual([
+      ['Software engineering', `/search?q=${encodeURIComponent('topic:"Software engineering"')}`],
+      ['Testing', `/search?q=${encodeURIComponent('topic:Testing')}`],
+    ]);
   });
 
   it('say none when the link has no topic or tags', async () => {
@@ -429,6 +490,7 @@ describe('the side column of a link’s detail page', () => {
       title: 'Alarms',
       tags: ['rust'],
       topic: 'Programming',
+      topic_path: ['Programming'],
       workspaces: [{ id: 'wa', name: 'A' }],
       ...fields,
     });

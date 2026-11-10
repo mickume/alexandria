@@ -272,12 +272,42 @@ function CardMeta({ link }: { link: Link }) {
   );
 }
 
-/** A link's topic as a chip that opens the search for the topic's links, as on the Topics page. */
-export function TopicChip({ topic }: { topic: string }) {
+/**
+ * A link's topic as a chip that opens the search for the topic's links, as on
+ * the Topics page, with the topic's whole path as its tooltip.
+ */
+function TopicChip({ topic, path }: { topic: string; path: string[] }) {
   return (
-    <PageLink to={searchPath(filterQuery('topic', topic))} className="topic q-label label-link">
+    <PageLink
+      to={searchPath(filterQuery('topic', topic))}
+      className="topic q-label label-link"
+      title={path.length > 0 ? path.join(' › ') : undefined}
+    >
       {topic}
     </PageLink>
+  );
+}
+
+/** A link's topic path as a breadcrumb, each name opening the search of its own topic. */
+export function TopicPath({ path }: { path: string[] }) {
+  return (
+    <nav aria-label="Topic path" className="topic-path">
+      {path.map((name, i) => (
+        <span key={name}>
+          {i > 0 && (
+            <span className="topic-path-separator" aria-hidden="true">
+              ›
+            </span>
+          )}
+          <PageLink
+            to={searchPath(filterQuery('topic', name))}
+            className="topic q-label label-link"
+          >
+            {name}
+          </PageLink>
+        </span>
+      ))}
+    </nav>
   );
 }
 
@@ -302,7 +332,7 @@ function Labels({ link }: { link: Link }) {
   return (
     <div className="card-labels">
       <WorkspaceChips workspaces={link.workspaces} />
-      {link.topic && <TopicChip topic={link.topic} />}
+      {link.topic && <TopicChip topic={link.topic} path={link.topic_path} />}
       {link.tags.length > 0 && <TagChips tags={link.tags} />}
     </div>
   );
