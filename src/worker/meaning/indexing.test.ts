@@ -418,6 +418,21 @@ describe('queueing a link for indexing', () => {
       queued: [0, 1, 2],
     },
     {
+      name: 'a move of a topic with a child',
+      prepare: async ({ user, ids }: Library) => {
+        await api('PATCH', `/api/v1/links/${ids[1]}`, {
+          as: user.session,
+          body: { topic: 'Platform > Queues' },
+        });
+      },
+      write: async ({ user }: Library) =>
+        api('POST', `/api/v1/topics/${await vocabularyId(user, 'topics', 'Platform')}/move`, {
+          as: user.session,
+          body: { parent: await vocabularyId(user, 'topics', 'Garden') },
+        }),
+      queued: [0, 1],
+    },
+    {
       name: 'a merge of a topic two links carry into another',
       write: merge('topics', 'Platform', 'Garden'),
       queued: [0, 1],

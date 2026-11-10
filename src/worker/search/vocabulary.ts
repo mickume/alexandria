@@ -1,5 +1,6 @@
 /** The user's topics and tags as the owner browses them: listed, renamed and merged. */
 import { now } from '../clock';
+import { TOPIC_LEVELS } from '../enrich/vocabulary';
 
 /** Topics or tags: which vocabulary a route is about. */
 export type VocabularyKind = 'topics' | 'tags';
@@ -269,4 +270,110 @@ export async function mergeEntry(
     db.prepare(`DELETE FROM ${table} WHERE id = ? AND user_id = ?`).bind(sourceId, userId),
   ]);
   return getEntry(db, userId, kind, targetId);
+}
+
+/** A topic with its place in the tree and its links, as a move answers it. */
+export interface TopicEntry {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  count: number;
+  subtree_count: number;
+}
+
+/** One of the user's topics as a move answers it, or null when the user has none such. */
+async function getTopic(db: D1Database, userId: string, id: string): Promise<TopicEntry | null> {
+  return db
+    .prepare(
+      `SELECT v.id, v.name, v.parent_id,
+         (SELECT COUNT(*) FROM links WHERE topic_id = v.id) AS count,
+         (SELECT COUNT(*) FROM links WHERE topic_id IN (${SUBTREE})) AS subtree_count
+       FROM topics v WHERE v.id = ?1 AND v.user_id = ?2`,
+    )
+    .bind(id, userId)
+    .first<TopicEntry>();
+}
+
+/** The user's topic tree: each topic's parent, and its children. */
+async function topicTree(db: D1Database, userId: string) {
+  const rows = await db
+    .prepare('SELECT id, parent_id FROM topics WHERE user_id = ?')
+    .bind(userId)
+    .all<{ id: string; parent_id: string | null }>();
+  const parents = new Map(rows.results.map((r) => [r.id, r.parent_id]));
+  const children = new Map<string, string[]>();
+  for (const r of rows.results) {
+    if (r.parent_id !== null)
+      children.set(r.parent_id, [...(children.get(r.parent_id) ?? []), r.id]);
+  }
+  /** The topic's level: 1 at the top; 0 for none. */
+  const level = (id: string | null): number => {
+    let n = 0;
+    for (let at = id; at !== null; at = parents.get(at) ?? null) n++;
+    return n;
+  };
+  /** The levels the topic's subtree spans: 1 for a topic with no children. */
+  const height = (id: string): number =>
+    1 + Math.max(0, ...(children.get(id) ?? []).map((c) => height(c)));
+  /** Whether `id` is `ancestor` or beneath it. */
+  const within = (id: string | null, ancestor: string): boolean => {
+    for (let at = id; at !== null; at = parents.get(at) ?? null) if (at === ancestor) return true;
+    return false;
+  };
+  return { parents, children, level, height, within };
+}
+
+/**
+ * The statements that delete each of these topics, in order, that has no link
+ * filed under it and no child topic: a topic's former parent, then that
+ * parent's parent, so that an emptied branch goes all the way up.
+ */
+function dropEmptied(db: D1Database, ids: (string | null | undefined)[]): D1PreparedStatement[] {
+  return ids
+    .filter((id): id is string => typeof id === 'string')
+    .map((id) =>
+      db
+        .prepare(
+          `DELETE FROM topics WHERE id = ?1
+             AND NOT EXISTS (SELECT 1 FROM links WHERE topic_id = ?1)
+             AND NOT EXISTS (SELECT 1 FROM topics k WHERE k.parent_id = ?1)`,
+        )
+        .bind(id),
+    );
+}
+
+/** Why a move was refused. */
+export type MoveRefusal = 'not_found' | 'invalid_move' | 'too_deep';
+
+/**
+ * Moves one of the user's topics, with every topic beneath it, under another
+ * of their topics, or to the top level for null. Refused when either is not
+ * the user's, when the parent is the topic or beneath it, and when anything
+ * would end up below the third level. Under the parent it already has,
+ * nothing changes. Otherwise every link beneath the topic is marked changed,
+ * and the former parent and its parent are deleted when left empty.
+ */
+export async function moveTopic(
+  db: D1Database,
+  userId: string,
+  id: string,
+  parent: string | null,
+): Promise<TopicEntry | MoveRefusal> {
+  const tree = await topicTree(db, userId);
+  if (!tree.parents.has(id) || (parent !== null && !tree.parents.has(parent))) return 'not_found';
+  if (parent !== null && tree.within(parent, id)) return 'invalid_move';
+  if (tree.level(parent) + tree.height(id) > TOPIC_LEVELS) return 'too_deep';
+  const former = tree.parents.get(id) ?? null;
+  if (former !== parent) {
+    await db.batch([
+      db
+        .prepare(`UPDATE links SET updated_at = ?3 WHERE topic_id IN (${SUBTREE}) AND user_id = ?2`)
+        .bind(id, userId, now().toISOString()),
+      db
+        .prepare('UPDATE topics SET parent_id = ? WHERE id = ? AND user_id = ?')
+        .bind(parent, id, userId),
+      ...dropEmptied(db, [former, former === null ? null : tree.parents.get(former)]),
+    ]);
+  }
+  return (await getTopic(db, userId, id))!;
 }

@@ -222,6 +222,15 @@ const TopicItem = z.strictObject({
   newest_added_at: z.string().describe('The added date of the newest of those links'),
 });
 
+/** A topic after a move. */
+const TopicEntry = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  parent_id: z.string().nullable(),
+  count: z.number().int().describe('The links filed directly under the topic'),
+  subtree_count: z.number().int().describe('The links filed under the topic or beneath it'),
+});
+
 /** A topic or tag after a rename or merge. */
 const VocabularyEntry = z.strictObject({
   id: z.string(),
@@ -709,6 +718,24 @@ export const operations: Operation[] = [
       },
     ];
   }),
+  {
+    method: 'post',
+    path: '/topics/{id}/move',
+    operationId: 'moveTopic',
+    summary: 'Move a topic, with every topic beneath it, under another topic, or to the top level',
+    body: z.object({
+      parent: z.string().nullable().describe('The id of the new parent, or null for the top level'),
+    }),
+    responses: {
+      200: { description: 'The moved topic', schema: TopicEntry },
+      400: error(
+        'invalid_json, or invalid_move (field parent): parent missing or not a string or null',
+      ),
+      409: error(
+        'too_deep: topics are at most three levels deep; invalid_move: a topic cannot move under itself',
+      ),
+    },
+  },
   {
     method: 'get',
     path: '/expired',

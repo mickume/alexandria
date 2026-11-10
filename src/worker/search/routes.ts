@@ -13,6 +13,7 @@ import {
   isVocabularyCursor,
   listVocabularyItems,
   mergeEntry,
+  moveTopic,
   parseName,
   renameEntry,
   TAG_NAME_MAX,
@@ -276,5 +277,34 @@ const NAME_RULE: Record<VocabularyKind, string> = {
 
 /** The topics, at /api/v1/topics. */
 export const topicRoutes = vocabularyRoutes('topics');
+
+/** What a move refused for each reason answers. */
+const MOVE_REFUSALS = {
+  invalid_move: 'a topic cannot move under itself',
+  too_deep: 'topics are at most three levels deep',
+} as const;
+
+topicRoutes.post('/:id/move', async (c) => {
+  const parsed = await readJson(c);
+  if (!parsed.ok) return parsed.response;
+  const parent = parsed.body.parent;
+  if (!('parent' in parsed.body) || (parent !== null && (typeof parent !== 'string' || !parent))) {
+    return validationError(
+      c,
+      'invalid_move',
+      'parent',
+      'parent must be null or the id of another of your topics',
+    );
+  }
+  const userId = c.get('user').id;
+  const id = c.req.param('id');
+  const before = await carrierIds(c.env.DB, userId, 'topics', id, { subtree: true });
+  const moved = await moveTopic(c.env.DB, userId, id, parent);
+  if (moved === 'not_found') return notFound(c);
+  if (typeof moved === 'string') return refusal(c, 409, moved, MOVE_REFUSALS[moved]);
+  // Every link beneath the topic has a new path; the unchanged ones are not stale and are skipped.
+  await queueIndexing(c.env, userId, before);
+  return c.json(moved);
+});
 /** The tags, at /api/v1/tags. */
 export const tagRoutes = vocabularyRoutes('tags');

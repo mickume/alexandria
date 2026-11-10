@@ -956,6 +956,29 @@ A missing `into`, or the source itself, is
 `400 {"error": "invalid_merge", "field": "into", "message"}`; a source or
 `into` that is not one of the user's is `404 {"error": "not_found"}`.
 
+#### `POST /api/v1/topics/{id}/move`
+
+Moves a topic under another topic, `{"parent": "<topic id>"}`, or to the top
+level, `{"parent": null}`. The topics beneath it move with it. Every link
+filed under it or beneath it is marked changed, so the stream's change feed
+returns it, and is indexed again for word and meaning search with its new
+path. A former parent left with no link and no child topic is deleted, and so
+is its parent when that leaves it the same way.
+`200 {"id", "name", "parent_id", "count", "subtree_count"}` of the moved
+topic; moving a topic under the parent it already has answers the same and
+changes nothing.
+
+- `400 {"error": "invalid_move", "field": "parent", "message"}`: `parent` is
+  missing, or neither `null` nor a non-empty string;
+- `404 {"error": "not_found"}`: the topic or the parent is not one of the
+  user's;
+- `409 {"error": "invalid_move", "message": "a topic cannot move under itself"}`:
+  the parent is the topic or a topic beneath it;
+- `409 {"error": "too_deep", "message": "topics are at most three levels deep"}`:
+  the topic or a topic beneath it would end up at level 4 or below.
+
+Nothing changes when a move is refused.
+
 #### Aliases
 
 A renamed or merged-away name is an alias of its survivor. When enrichment's

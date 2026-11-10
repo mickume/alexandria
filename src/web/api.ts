@@ -369,6 +369,11 @@ export const vocabulary = {
       `/${kind}/${encodeURIComponent(id)}/merge`,
       { into },
     ),
+  /** Moves a topic, with everything beneath it, under another topic, or to the top level for null. */
+  move: (id: string, parent: string | null) =>
+    request<Omit<TopicItem, 'newest_added_at'>>('POST', `/topics/${encodeURIComponent(id)}/move`, {
+      parent,
+    }),
 };
 
 /** The search query of a topic or tag filter, quoting a name that holds a space. */

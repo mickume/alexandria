@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { api, env, placeTopic, seedLinks, signIn, type TestUser } from '../test/helpers';
+import { api, env, placeTopic, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
 import { listVocabulary } from '../enrich/vocabulary';
 
 async function patch(user: TestUser, id: string, body: Record<string, unknown>) {
@@ -622,5 +622,192 @@ describe('merging topics and tags', () => {
       expect(r.status).toBe(404);
       expect(r.json.error).toBe('not_found');
     });
+  });
+});
+
+/** The user's topic tree as listed: each topic's name with its parent's name. */
+async function tree(user: TestUser): Promise<Record<string, string | null>> {
+  const items = (await api('GET', '/api/v1/topics', { as: user.session })).json.items as {
+    id: string;
+    name: string;
+    parent_id: string | null;
+  }[];
+  const names = new Map(items.map((i) => [i.id, i.name]));
+  return Object.fromEntries(
+    items.map((i) => [i.name, i.parent_id === null ? null : (names.get(i.parent_id) ?? '?')]),
+  );
+}
+
+describe('moving a topic', () => {
+  const T0 = Date.parse('2026-05-01T00:00:00.000Z');
+
+  /** Languages > Rust > Async, Programming > Tools and Systems, each topic with one link. */
+  async function library() {
+    setNow(T0);
+    const user = await signIn();
+    const paths = [
+      'Languages',
+      'Languages > Rust',
+      'Languages > Rust > Async',
+      'Programming',
+      'Programming > Tools',
+      'Systems',
+    ];
+    const ids = await seedLinks(
+      user,
+      paths.map((_, i) => ({ url: `https://l${i}.example/` })),
+    );
+    for (const [i, topic] of paths.entries()) await patch(user, ids[i]!, { topic });
+    const links = Object.fromEntries(paths.map((p, i) => [p.split(' > ').at(-1)!, ids[i]!]));
+    return { user, links };
+  }
+
+  async function move(user: TestUser, topic: string, parent: string | null) {
+    return api('POST', `/api/v1/topics/${await idOf(user, 'topics', topic)}/move`, {
+      as: user.session,
+      body: { parent: parent === null ? null : await idOf(user, 'topics', parent) },
+    });
+  }
+
+  const before = {
+    Languages: null,
+    Rust: 'Languages',
+    Async: 'Rust',
+    Programming: null,
+    Tools: 'Programming',
+    Systems: null,
+  };
+
+  it.each([
+    { topic: 'Systems', parent: 'Programming', changes: { Systems: 'Programming' } },
+    { topic: 'Rust', parent: null, changes: { Rust: null } },
+    { topic: 'Async', parent: 'Programming', changes: { Async: 'Programming' } },
+    { topic: 'Rust', parent: 'Systems', changes: { Rust: 'Systems' } },
+  ])(
+    'moves $topic under $parent with everything beneath it',
+    async ({ topic, parent, changes }) => {
+      const { user } = await library();
+      const r = await move(user, topic, parent);
+      expect(r.status).toBe(200);
+      const listed = (await api('GET', '/api/v1/topics', { as: user.session })).json.items.find(
+        (i: { name: string }) => i.name === topic,
+      );
+      expect(r.json).toEqual({
+        id: listed.id,
+        name: topic,
+        parent_id: listed.parent_id,
+        count: listed.count,
+        subtree_count: listed.subtree_count,
+      });
+      expect(await tree(user)).toEqual({ ...before, ...changes });
+    },
+  );
+
+  it.each([
+    { topic: 'Languages', parent: 'Programming', status: 409, error: 'too_deep' },
+    { topic: 'Programming', parent: 'Rust', status: 409, error: 'too_deep' },
+    { topic: 'Languages', parent: 'Async', status: 409, error: 'invalid_move' },
+    { topic: 'Rust', parent: 'Rust', status: 409, error: 'invalid_move' },
+    { topic: 'Rust', body: {}, status: 400, error: 'invalid_move', field: 'parent' },
+    { topic: 'Rust', body: { parent: 42 }, status: 400, error: 'invalid_move', field: 'parent' },
+    { topic: 'Rust', body: { parent: '' }, status: 400, error: 'invalid_move', field: 'parent' },
+    { topic: 'Rust', parent: 'Theirs', status: 404, error: 'not_found' },
+    { topic: 'Theirs', parent: 'Rust', status: 404, error: 'not_found' },
+    { topic: 'unknown', parent: 'Rust', status: 404, error: 'not_found' },
+  ] as {
+    topic: string;
+    parent?: string;
+    body?: Record<string, unknown>;
+    status: number;
+    error: string;
+    field?: string;
+  }[])(
+    'refuses to move $topic under $parent: $error',
+    async ({ topic, parent, body, status, error, field }) => {
+      const { user } = await library();
+      const other = await signIn('other@example.test');
+      const [theirs] = await seedLinks(other, [{ url: 'https://theirs.example/' }]);
+      await patch(other, theirs!, { topic: 'Theirs' });
+      const idOfAny = async (name: string) =>
+        name === 'unknown'
+          ? 'unknown'
+          : name === 'Theirs'
+            ? idOf(other, 'topics', 'Theirs')
+            : idOf(user, 'topics', name);
+      const links = async () =>
+        (await api('GET', '/api/v1/links', { as: user.session })).json.items.map(
+          (l: { id: string; updated_at: string }) => [l.id, l.updated_at],
+        );
+      const was = await links();
+      setNow(T0 + 60_000);
+      const r = await api('POST', `/api/v1/topics/${await idOfAny(topic)}/move`, {
+        as: user.session,
+        body: body ?? { parent: await idOfAny(parent!) },
+      });
+      expect(r.status).toBe(status);
+      const messages: Record<string, string> = {
+        too_deep: 'topics are at most three levels deep',
+        invalid_move: 'a topic cannot move under itself',
+      };
+      expect(r.json).toEqual(
+        status === 404
+          ? { error }
+          : field
+            ? { error, field, message: expect.any(String) }
+            : { error, message: messages[error] },
+      );
+      expect(await tree(user)).toEqual(before);
+      expect(await links()).toEqual(was);
+    },
+  );
+
+  it.each([
+    { topic: 'Rust', parent: 'Languages' },
+    { topic: 'Programming', parent: null },
+  ])('changes nothing when moving $topic under the parent it has', async ({ topic, parent }) => {
+    const { user } = await library();
+    const updated = async () =>
+      (await api('GET', '/api/v1/links', { as: user.session })).json.items.map(
+        (l: { id: string; updated_at: string }) => [l.id, l.updated_at],
+      );
+    const was = await updated();
+    setNow(T0 + 60_000);
+    const r = await move(user, topic, parent);
+    expect(r.status).toBe(200);
+    expect(r.json.parent_id).toBe(parent === null ? null : await idOf(user, 'topics', parent));
+    expect(await updated()).toEqual(was);
+    expect(await tree(user)).toEqual(before);
+  });
+
+  it('deletes the former parent, and its parent, when the move leaves them with nothing', async () => {
+    const user = await signIn();
+    const [c, d, holder] = await seedLinks(user, [
+      { url: 'https://c.example/' },
+      { url: 'https://d.example/' },
+      { url: 'https://holder.example/' },
+    ]);
+    await patch(user, holder!, { topic: 'A > B' });
+    await patch(user, c!, { topic: 'A > B > C' });
+    await api('DELETE', `/api/v1/links/${holder}`, { as: user.session });
+    await patch(user, d!, { topic: 'D' });
+    expect(await tree(user)).toEqual({ A: null, B: 'A', C: 'B', D: null });
+    const r = await move(user, 'C', 'D');
+    expect(r.status).toBe(200);
+    expect(await tree(user)).toEqual({ C: 'D', D: null });
+  });
+
+  it('marks the links beneath the moved topic changed, and only those', async () => {
+    const { user, links } = await library();
+    const since = new Date(T0 + 1).toISOString();
+    setNow(T0 + 60_000);
+    expect((await move(user, 'Rust', 'Programming')).status).toBe(200);
+    const changed = await api('GET', `/api/v1/links?changed_since=${since}`, {
+      as: user.session,
+    });
+    expect(changed.json.items.map((l: { id: string }) => l.id).sort()).toEqual(
+      [links.Rust, links.Async].sort(),
+    );
+    const async = changed.json.items.find((l: { id: string }) => l.id === links.Async);
+    expect(async.topic_path).toEqual(['Programming', 'Rust', 'Async']);
   });
 });
