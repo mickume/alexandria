@@ -284,11 +284,16 @@ One chip per tag, each opening the search for the tag's links, as on the Tags pa
 
 > **TopicPath**(`__namedParameters`): `Element`
 
-A link's topic path as a breadcrumb, each name opening the search of its own topic.
+A topic path as a breadcrumb, each name opening the search of its own topic;
+with `current`, the last name is the page's own topic and opens nothing.
 
 #### Parameters
 
 ##### \_\_namedParameters
+
+###### current?
+
+`boolean` = `false`
 
 ###### path
 

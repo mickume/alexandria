@@ -1890,3 +1890,21 @@ The address of a link's stored snapshot; `download` asks for a PDF as an attachm
 #### Returns
 
 `string`
+
+***
+
+### topicFilter()
+
+> **topicFilter**(`q`): `string` \| `null`
+
+The topic a query's one `topic:` filter names, unquoted; null without one, or with several.
+
+#### Parameters
+
+##### q
+
+`string`
+
+#### Returns
+
+`string` \| `null`
