@@ -44,3 +44,47 @@ CREATE TABLE daily_ai_usage (
   calls_without_usage INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_id, day, purpose, model)
 );
+
+-- The counters the library's own writes move are counted by triggers, in the
+-- same transaction as the write: a write that fails or is rolled back counts
+-- nothing, and a stored one counts once, whichever path made it. The day is
+-- the UTC day of the time the write stores (added_at, at, updated_at).
+
+-- A new link, by pasting, the API, the MCP server or an import; a re-paste of
+-- a link already there updates it instead, and adds nothing.
+CREATE TRIGGER daily_link_added AFTER INSERT ON links
+BEGIN
+  INSERT INTO daily_stats (user_id, day, added) VALUES (new.user_id, substr(new.added_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET added = added + 1;
+END;
+
+CREATE TRIGGER daily_link_used AFTER INSERT ON link_uses
+BEGIN
+  INSERT INTO daily_stats (user_id, day, used) VALUES (new.user_id, substr(new.at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET used = used + 1;
+END;
+
+-- An expired link made active again: by a use, a re-paste or the restore route.
+CREATE TRIGGER daily_link_restored AFTER UPDATE OF state ON links
+WHEN old.state = 'expired' AND new.state = 'active'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, restored)
+  VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET restored = restored + 1;
+END;
+
+CREATE TRIGGER daily_link_archived AFTER UPDATE OF state ON links
+WHEN old.state <> 'archived' AND new.state = 'archived'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, archived)
+  VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET archived = archived + 1;
+END;
+
+CREATE TRIGGER daily_link_unarchived AFTER UPDATE OF state ON links
+WHEN old.state = 'archived' AND new.state <> 'archived'
+BEGIN
+  INSERT INTO daily_stats (user_id, day, unarchived)
+  VALUES (new.user_id, substr(new.updated_at, 1, 10), 1)
+  ON CONFLICT (user_id, day) DO UPDATE SET unarchived = unarchived + 1;
+END;

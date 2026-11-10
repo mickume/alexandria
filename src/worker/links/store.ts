@@ -1,4 +1,5 @@
 import { now } from '../clock';
+import { countStatement } from '../stats/daily';
 import { decayFields } from '../decay/note';
 import { notePreview } from '../workspaces/notes';
 import { leaveAllWorkspaces } from '../workspaces/store';
@@ -386,6 +387,14 @@ export async function unpinLink(
  */
 export async function deleteLink(db: D1Database, userId: string, id: string): Promise<boolean> {
   const results = await db.batch([
+    // Counted first, while the link is still there to count.
+    countStatement(db, {
+      userId,
+      at: now(),
+      counter: 'deleted',
+      when: 'EXISTS (SELECT 1 FROM links WHERE id = ?3 AND user_id = ?1)',
+      binds: [id],
+    }),
     ...unpinStatements(db, userId, id),
     db.prepare('DELETE FROM link_uses WHERE link_id = ? AND user_id = ?').bind(id, userId),
     db.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(id, userId),

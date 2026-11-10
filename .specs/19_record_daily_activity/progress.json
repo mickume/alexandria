@@ -3,7 +3,7 @@
   "spec_id": "19",
   "spec_name": "record_daily_activity",
   "schema_version": 3,
-  "updated_at": "2026-11-10T13:11:12Z",
+  "updated_at": "2026-11-10T13:16:09Z",
   "tasks": [
     {
       "id": 1,
@@ -11,7 +11,7 @@
     },
     {
       "id": 2,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 3,

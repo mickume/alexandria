@@ -610,12 +610,15 @@ test seam that makes a section fail.
 `daily_stats` holds one row per user and UTC day with a counter per event
 (`stats/daily.ts`, `COUNTERS`) and the library's size at the end of the day;
 `daily_ai_usage` one row per user, day, purpose and model with the provider
-calls and their tokens. A counter is added by `countStatement`, an upsert put in
-the same D1 batch as the change it counts and conditioned on that change's
-own result read in the batch (the inserted row exists, the state changed, the
-event row was written), so a change that fails or is rolled back is never
-counted, and a stored one is counted exactly once, a redelivered message
-included. Counters only grow; nothing deletes a row but the account's
+calls and their tokens. A counter moves in the same transaction as the write
+it counts ([ADR 07](adr/07-count-the-daily-record-in-the-writes-it-counts.md)):
+triggers of migration `0018_daily_stats.sql` count the rows written and the
+state changes (a link added, a use, a fetch event, a link restored, archived,
+unarchived or expired, an enrichment stored or failed), and `countStatement`,
+an upsert put in the same D1 batch as a change, counts what a trigger cannot
+tell apart (a delete by the owner or by decay, an Ask question). A change that
+fails or is rolled back is never counted, and a stored one is counted exactly
+once, a redelivered message included. Counters only grow; nothing deletes a row but the account's
 deletion, which finds both tables by their `user_id` column.
 `GET /api/v1/stats/history` (`readHistory`) answers a range of days, filling
 the days without a row.
