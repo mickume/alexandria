@@ -14,7 +14,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "deploy": "scripts/deploy.sh",
-    "configure": "scripts/configure.sh"
+    "configure": "scripts/configure.sh",
+    "rebuild": "node scripts/rebuild.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

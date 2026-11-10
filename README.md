@@ -139,6 +139,6 @@ that tells an agent what Alexandria is and how to use it.
 - [docs/mcp.md](docs/mcp.md): connecting an AI agent through the MCP server
 - [docs/configuration.md](docs/configuration.md): variables, secrets and bindings
 - [docs/architecture.md](docs/architecture.md): how it is put together
-- [docs/cli.md](docs/cli.md): there is no CLI
+- [docs/cli.md](docs/cli.md): the maintenance script that rebuilds a library (`npm run rebuild`)
 - [docs/adr/](docs/adr/): architecture decisions
 - [docs/generated/](docs/generated/): the generated module reference (`make doc`)
