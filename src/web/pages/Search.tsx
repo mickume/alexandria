@@ -3,8 +3,10 @@ import { Link as PageLink } from '../App';
 import {
   activeFilters,
   ApiError,
+  filterQuery,
   links as linksApi,
   search,
+  searchPath,
   topicFilter,
   vocabulary,
   type Link,
@@ -54,37 +56,68 @@ function NothingFound({ query }: { query: string }) {
   );
 }
 
-/** The names from the top of the tree down to the topic called `name` (ignoring case); [] for none. */
-function pathOf(topics: TopicItem[], name: string): string[] {
+/** The topic called `name` (ignoring case), its names from the top of the tree down, and its children by name. */
+function placeOf(
+  topics: TopicItem[],
+  name: string,
+): { path: string[]; children: TopicItem[] } | null {
   const byId = new Map(topics.map((t) => [t.id, t]));
   const wanted = name.toLowerCase();
-  let topic = topics.find((t) => t.name.toLowerCase() === wanted);
+  const found = topics.find((t) => t.name.toLowerCase() === wanted);
+  if (!found) return null;
   const path: string[] = [];
-  while (topic && path.length < 3) {
-    path.unshift(topic.name);
-    topic = topic.parent_id ? byId.get(topic.parent_id) : undefined;
+  for (let t: TopicItem | undefined = found; t && path.length < 3;) {
+    path.unshift(t.name);
+    t = t.parent_id ? byId.get(t.parent_id) : undefined;
   }
-  return path;
+  const children = topics
+    .filter((t) => t.parent_id === found.id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { path, children };
 }
 
-/** The path of the topic a search filters on, as a breadcrumb; nothing while loading or for an unknown topic. */
-function TopicBreadcrumb({ name }: { name: string }) {
-  const [path, setPath] = useState<string[]>([]);
+/**
+ * Where the topic a search filters on sits in the tree: its path as a
+ * breadcrumb, then its sub-topics, each opening its own links with the number
+ * of links in and beneath it; nothing while loading or for an unknown topic.
+ */
+function TopicPlace({ name }: { name: string }) {
+  const [place, setPlace] = useState<ReturnType<typeof placeOf>>(null);
   useEffect(() => {
     let live = true;
     vocabulary
       .listAll('topics')
       .then((topics) => {
-        if (live) setPath(pathOf(topics as TopicItem[], name));
+        if (live) setPlace(placeOf(topics as TopicItem[], name));
       })
       .catch(() => {
-        if (live) setPath([]);
+        if (live) setPlace(null);
       });
     return () => {
       live = false;
     };
   }, [name]);
-  return path.length > 0 ? <TopicPath path={path} current /> : null;
+  if (!place) return null;
+  return (
+    <div className="topic-place">
+      <TopicPath path={place.path} current />
+      {place.children.length > 0 && (
+        <ul className="subtopics" aria-label="Sub-topics">
+          {place.children.map((child) => (
+            <li key={child.id}>
+              <PageLink
+                to={searchPath(filterQuery('topic', child.name))}
+                className="topic q-label label-link"
+              >
+                {child.name}
+              </PageLink>
+              <span className="q-counter">{child.subtree_count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 /** The search's pages so far: the links, their snippets, the workspaces and the next cursor. */
@@ -174,7 +207,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   return (
     <section className="search-results">
       <h1 className="visually-hidden">Search results</h1>
-      {topic && <TopicBreadcrumb key={topic.toLowerCase()} name={topic} />}
+      {topic && <TopicPlace key={topic.toLowerCase()} name={topic} />}
       {error && (
         <p className="notice" role="alert">
           {error}

@@ -63,7 +63,8 @@ Filters narrow a search, and can be combined with words or each other:
 
 Expired links are left out unless a `state:` filter asks for them. A search
 with one `topic:` filter shows the topic's path above the results, as a
-breadcrumb whose parent topics open their own links. The Tags
+breadcrumb whose parent topics open their own links, and under it the topic's
+sub-topics with their numbers of links. The Tags
 page lists every tag with its number of links, in alphabetical order. Topics
 form a tree of up to three levels, and the Topics page shows it: the top-level
 topics in alphabetical order, each followed by its sub-topics, indented, with

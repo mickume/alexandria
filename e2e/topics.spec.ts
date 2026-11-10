@@ -61,6 +61,11 @@ test('the owner moves a topic under another on the Topics page', async ({ page }
   await expect(page).toHaveURL(/\/search\?q=topic%3AOxidation$/);
   await expect(path).toHaveText('Workshop›Oxidation');
   await expect(results.getByRole('article')).toHaveCount(2);
+  const subtopics = page.getByRole('list', { name: 'Sub-topics' });
+  await expect(subtopics.getByRole('listitem')).toHaveText(['Oxidation futures1']);
+  await subtopics.getByRole('link', { name: 'Oxidation futures' }).click();
+  await expect(path).toHaveText('Workshop›Oxidation›Oxidation futures');
+  await expect(subtopics).toHaveCount(0);
 });
 
 test('the owner files a link under a new sub-topic by typing its path', async ({ page }) => {

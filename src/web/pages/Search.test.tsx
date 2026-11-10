@@ -241,11 +241,11 @@ describe('the Search page', () => {
 });
 
 describe("a topic's links", () => {
-  const topic = (id: string, name: string, parent_id: string | null) => ({
+  const topic = (id: string, name: string, parent_id: string | null, subtree_count = 1) => ({
     id,
     name,
     count: 1,
-    subtree_count: 1,
+    subtree_count,
     newest_added_at: '2026-01-01T00:00:00Z',
     parent_id,
   });
@@ -254,6 +254,7 @@ describe("a topic's links", () => {
     topic('t2', 'Testing', 't1'),
     topic('t3', 'Unit tests', 't2'),
     topic('t4', 'Cooking', null),
+    topic('t5', 'Mocking', 't2', 4),
   ];
 
   function withTopics(): FakeApi {
@@ -288,6 +289,32 @@ describe("a topic's links", () => {
 
     const nav = screen.getByRole('navigation', { name: 'Topic path' });
     expect(nav.textContent).toBe('Software engineering›Testing');
+  });
+
+  it('lists the topic’s sub-topics under its path, by name, each with its links', async () => {
+    renderPage('/search?q=topic%3Atesting', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    const list = screen.getByRole('list', { name: 'Sub-topics' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((i) => i.textContent)).toEqual(['Mocking4', 'Unit tests1']);
+    expect(within(list).getByRole('link', { name: 'Mocking' }).getAttribute('href')).toBe(
+      '/search?q=topic%3AMocking',
+    );
+    const nav = screen.getByRole('navigation', { name: 'Topic path' });
+    const results = screen.getByRole('list', { name: 'Results' });
+    expect(nav.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(list.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('lists no sub-topics for a topic without any', async () => {
+    renderPage('/search?q=topic%3A%22unit%20tests%22', withTopics());
+    await act(async () => undefined);
+    await act(async () => undefined);
+
+    expect(screen.getByRole('navigation', { name: 'Topic path' })).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Sub-topics' })).toBeNull();
   });
 
   it('shows a top-level topic alone', async () => {

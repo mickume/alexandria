@@ -1096,9 +1096,26 @@ a.brand:hover span {
   gap: var(--q-space-1);
 }
 
-/* The path of the topic a search filters on, above its results. */
-.search-results > .topic-path {
+/* Where the topic a search filters on sits, above its results: its path, then its sub-topics. */
+.topic-place {
+  display: grid;
+  gap: var(--q-space-2);
   margin-bottom: var(--q-space-3);
+}
+
+.subtopics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--q-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subtopics li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--q-space-1);
 }
 
 .topic-path-separator {
