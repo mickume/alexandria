@@ -90,6 +90,7 @@
 - [worker/fetcher/routes](worker/fetcher/routes.md)
 - [worker/fetcher/snapshots](worker/fetcher/snapshots.md)
 - [worker/fetcher/stranded](worker/fetcher/stranded.md)
+- [worker/fetcher/titles](worker/fetcher/titles.md)
 - [worker/imports/dispatch](worker/imports/dispatch.md)
 - [worker/imports/imports](worker/imports/imports.md)
 - [worker/imports/parse](worker/imports/parse.md)

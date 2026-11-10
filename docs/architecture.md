@@ -143,6 +143,7 @@ account and checks the PKCE verifier as Google does.
 | `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
 | `link_tags` | the tags of each link, at positions |
 | `imports`, `import_links` | each import's report, and the links it added with their line and dispatch time (see Imports) |
+| `title_rules_state` | one row: the hash of the title rules the stored titles were last cleaned with, and when (see Fetching) |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
@@ -173,7 +174,8 @@ quantities in the last list are never stored.
    byline and sanitised HTML). Then one D1 batch writes:
    - on `links`: `final_url`, `http_status`, `description`, `favicon_url` and
      `language` (from the page's metadata, `fetcher/html.ts`), the page's
-     title unless the owner edited it, `content_kind`, `fetched_at`,
+     title cleaned by the title rules unless the owner edited it,
+     `content_kind`, `fetched_at`,
      `has_snapshot`, `reader_empty`, `notes` and the state (`active`, or
      unchanged when `archived`);
    - `link_texts`: the reader text (or the PDF's text), at most 500,000
@@ -254,6 +256,18 @@ will not pass it. A failed first fetch also titles the link from the words of
 its address (`titleFromUrl` in `fetcher/queue.ts`), unless the owner edited
 the title; a failed refresh changes nothing but the history. Every
 attempt is a `link_events` row.
+
+A fetched title is cleaned by the title rules (`fetcher/titles.ts`,
+`cleanTitle`) before it is stored: per host, `fetcher/title-rules.json`
+lists regular expressions whose matches are the site's name rather than the
+page's (GitHub's "GitHub - " and " · GitHub"), and removes them. The reader
+view's title is cleaned the same way as it is served, so a stored
+`reader.json` needs no rewrite. The rules file is bundled with the Worker; the
+every-minute run (`applyTitleRules`) cleans every stored title once after the
+rules change, which it notices by the hash of the file recorded in
+`title_rules_state`, skipping titles the owner edited, and sets `updated_at` on
+the links it changes so that open pages show the new title. The format is in
+[configuration.md](configuration.md#title-rules).
 
 A page behind a bot check can still be fetched through Firecrawl
 (`fetcher/firecrawl.ts`, [ADR 04](adr/04-fetch-pages-behind-a-bot-check-through-firecrawl.md))
