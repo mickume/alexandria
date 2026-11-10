@@ -87,3 +87,55 @@ The page size a request asks for, or null when `value` is not an integer from 1 
 #### Returns
 
 `number` \| `null`
+
+***
+
+### readCursor()
+
+> **readCursor**\<`T`\>(`c`, `isOwn`): `Promise`\<`Response` \| `T` \| `null`\>
+
+The payload of a list request's `cursor`, null without one, or the 400 that
+refuses a cursor this API did not issue for this list (`isOwn` tells).
+
+#### Type Parameters
+
+##### T
+
+`T`
+
+#### Parameters
+
+##### c
+
+`Context`\<[`AppEnv`](../env.md#appenv)\>
+
+##### isOwn
+
+(`payload`) => `payload is T`
+
+#### Returns
+
+`Promise`\<`Response` \| `T` \| `null`\>
+
+***
+
+### readLimit()
+
+> **readLimit**(`c`, `fallback?`): `number` \| `Response`
+
+The page size a list request asks for with `limit` (`fallback` without one),
+or the 400 that refuses a value that is not an integer from 1 to MAX_LIMIT.
+
+#### Parameters
+
+##### c
+
+`Context`\<[`AppEnv`](../env.md#appenv)\>
+
+##### fallback?
+
+`number` = `DEFAULT_LIMIT`
+
+#### Returns
+
+`number` \| `Response`

@@ -20,7 +20,7 @@ The note on a page stored without metadata or reader view, because it could not 
 
 ### handleFetchBatch()
 
-> **handleFetchBatch**(`batch`, `env`, `_ctx?`): `Promise`\<`void`\>
+> **handleFetchBatch**(`batch`, `env`): `Promise`\<`void`\>
 
 The FETCH_QUEUE consumer. The messages of a batch are processed
 concurrently, so that a wait at one host's gate does not hold up the others.
@@ -34,10 +34,6 @@ concurrently, so that a wait at one host's gate does not hold up the others.
 ##### env
 
 [`Env`](../env.md#env)
-
-##### \_ctx?
-
-`ExecutionContext`\<`unknown`\>
 
 #### Returns
 

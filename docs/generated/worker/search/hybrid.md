@@ -70,14 +70,6 @@ How many links meaning adds at most, each with its best passage.
 
 How long the embedding and the query may take, in milliseconds, before meaning is given up.
 
-***
-
-### SNIPPET\_WORDS
-
-> `const` **SNIPPET\_WORDS**: `32` = `32`
-
-The most words of a passage a meaning match's snippet holds.
-
 ## Functions
 
 ### hybridRanking()

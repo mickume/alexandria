@@ -202,25 +202,7 @@ refreshing, or why it was refused. `onRefreshing` hears of an accepted refresh.
 
 ##### \_\_namedParameters
 
-###### className?
-
-`string` = `'q-btn-link'`
-
-The button's class: a link-like button unless an action list asks for its own.
-
-###### icon?
-
-`ReactNode`
-
-An icon before the label.
-
-###### link
-
-[`Link`](../api.md#link-1)
-
-###### onRefreshing?
-
-(`link`) => `void`
+[`ButtonLook`](CheckButton.md#buttonlook) & `object`
 
 #### Returns
 

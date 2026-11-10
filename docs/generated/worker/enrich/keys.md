@@ -6,6 +6,70 @@
 
 A user's stored AI settings.
 
+#### Extends
+
+- [`StoredKey`](#storedkey)
+
+#### Properties
+
+##### ciphertext
+
+> **ciphertext**: `string`
+
+###### Inherited from
+
+[`StoredKey`](#storedkey).[`ciphertext`](#ciphertext-1)
+
+##### iv
+
+> **iv**: `string`
+
+###### Inherited from
+
+[`StoredKey`](#storedkey).[`iv`](#iv-1)
+
+##### last4
+
+> **last4**: `string`
+
+###### Inherited from
+
+[`StoredKey`](#storedkey).[`last4`](#last4-1)
+
+##### model
+
+> **model**: `string`
+
+##### provider
+
+> **provider**: [`Provider`](#provider-1)
+
+##### rejectedMessage
+
+> **rejectedMessage**: `string` \| `null`
+
+###### Inherited from
+
+[`StoredKey`](#storedkey).[`rejectedMessage`](#rejectedmessage-1)
+
+##### status
+
+> **status**: `"verified"` \| `"rejected"`
+
+###### Inherited from
+
+[`StoredKey`](#storedkey).[`status`](#status-1)
+
+***
+
+### StoredKey
+
+A key a user stored: encrypted, with its last 4 characters and whether its service still takes it.
+
+#### Extended by
+
+- [`AiSettings`](#aisettings)
+
 #### Properties
 
 ##### ciphertext
@@ -20,14 +84,6 @@ A user's stored AI settings.
 
 > **last4**: `string`
 
-##### model
-
-> **model**: `string`
-
-##### provider
-
-> **provider**: [`Provider`](#provider-1)
-
 ##### rejectedMessage
 
 > **rejectedMessage**: `string` \| `null`
@@ -37,6 +93,14 @@ A user's stored AI settings.
 > **status**: `"verified"` \| `"rejected"`
 
 ## Type Aliases
+
+### KeyColumns
+
+> **KeyColumns** = `"ai_key"` \| `"firecrawl_key"`
+
+The users columns a stored key is kept in: `ai_key_…` or `firecrawl_key_…`.
+
+***
 
 ### Provider
 
@@ -69,6 +133,36 @@ Forgets the user's provider, model and key.
 ##### userId
 
 `string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### clearStoredKey()
+
+> **clearStoredKey**(`db`, `userId`, `columns`, `extra?`): `Promise`\<`void`\>
+
+Forgets the user's key stored under `columns`, and the `extra` users columns with it.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### columns
+
+[`KeyColumns`](#keycolumns)
+
+##### extra?
+
+`string`[] = `[]`
 
 #### Returns
 
@@ -156,6 +250,37 @@ The user's AI settings, or null when no key is stored.
 
 ***
 
+### getStoredKey()
+
+> **getStoredKey**(`db`, `userId`, `columns`, `extra?`): `Promise`\<\{ `key`: [`StoredKey`](#storedkey); `row`: `Record`\<`string`, `string` \| `null`\>; \} \| `null`\>
+
+The user's key stored under `columns`, with the `extra` users columns read
+beside it, or null when none is stored.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### columns
+
+[`KeyColumns`](#keycolumns)
+
+##### extra?
+
+`string`[] = `[]`
+
+#### Returns
+
+`Promise`\<\{ `key`: [`StoredKey`](#storedkey); `row`: `Record`\<`string`, `string` \| `null`\>; \} \| `null`\>
+
+***
+
 ### markKeyRejected()
 
 > **markKeyRejected**(`db`, `userId`, `message`): `Promise`\<`void`\>
@@ -171,6 +296,36 @@ Marks the user's key as rejected by the provider, pausing their enrichment.
 ##### userId
 
 `string`
+
+##### message
+
+`string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### markStoredKeyRejected()
+
+> **markStoredKeyRejected**(`db`, `userId`, `columns`, `message`): `Promise`\<`void`\>
+
+Marks the user's key under `columns` as rejected by its service, with the service's message.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### userId
+
+`string`
+
+##### columns
+
+[`KeyColumns`](#keycolumns)
 
 ##### message
 
@@ -209,6 +364,41 @@ Stores a verified key, replacing any earlier settings and lifting a rejection.
 ##### key
 
 `string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
+
+### saveStoredKey()
+
+> **saveStoredKey**(`env`, `userId`, `columns`, `key`, `extra?`): `Promise`\<`void`\>
+
+Stores a verified key under `columns`, replacing any earlier one and lifting
+a rejection, and sets the `extra` users columns with it.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### userId
+
+`string`
+
+##### columns
+
+[`KeyColumns`](#keycolumns)
+
+##### key
+
+`string`
+
+##### extra?
+
+`Record`\<`string`, `string`\> = `{}`
 
 #### Returns
 

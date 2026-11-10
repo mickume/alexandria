@@ -72,6 +72,24 @@ The values `state:` accepts.
 
 ## Functions
 
+### andAll()
+
+> **andAll**(`where`): `string`
+
+The conditions as SQL to append to a WHERE clause that already has a condition.
+
+#### Parameters
+
+##### where
+
+[`Conditions`](#conditions)
+
+#### Returns
+
+`string`
+
+***
+
 ### filterConditions()
 
 > **filterConditions**(`filters`): [`Conditions`](#conditions)
@@ -97,7 +115,7 @@ selects only them, `any` every state, another value that state.
 
 ### filtersFromParams()
 
-> **filtersFromParams**(`values`): \{ `filters`: [`Filters`](#filters); `ok`: `true`; \} \| \{ `field`: `"topic"` \| `"host"` \| `"state"` \| `"tag"` \| `"is"` \| `"in"`; `message`: `string`; `ok`: `false`; \}
+> **filtersFromParams**(`values`): \{ `filters`: [`Filters`](#filters); `ok`: `true`; \} \| \{ `field`: `"topic"` \| `"state"` \| `"host"` \| `"tag"` \| `"is"` \| `"in"`; `message`: `string`; `ok`: `false`; \}
 
 The filters of the link list's query parameters, which have the meaning of
 the prefix filters: `values(name)` gives every value of a parameter. Empty
@@ -112,7 +130,30 @@ named with its parameter.
 
 #### Returns
 
-\{ `filters`: [`Filters`](#filters); `ok`: `true`; \} \| \{ `field`: `"topic"` \| `"host"` \| `"state"` \| `"tag"` \| `"is"` \| `"in"`; `message`: `string`; `ok`: `false`; \}
+\{ `filters`: [`Filters`](#filters); `ok`: `true`; \} \| \{ `field`: `"topic"` \| `"state"` \| `"host"` \| `"tag"` \| `"is"` \| `"in"`; `message`: `string`; `ok`: `false`; \}
+
+***
+
+### inSubtree()
+
+> **inSubtree**(`d`, `root`): `string`
+
+The SQL condition that the topic aliased `d` is the topic `root` (the SQL of
+its id) or beneath it: the tree has three levels, so at most two down.
+
+#### Parameters
+
+##### d
+
+`string`
+
+##### root
+
+`string`
+
+#### Returns
+
+`string`
 
 ***
 
@@ -161,7 +202,7 @@ Why a filter's value is refused, or null when it is accepted: `state:` and
 
 ##### name
 
-`"topic"` \| `"host"` \| `"state"` \| `"tag"` \| `"is"` \| `"in"`
+`"topic"` \| `"state"` \| `"host"` \| `"tag"` \| `"is"` \| `"in"`
 
 ##### value
 

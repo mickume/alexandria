@@ -116,14 +116,6 @@ The instant of the request.
 
 ## Variables
 
-### IN\_WORKSPACE
-
-> `const` **IN\_WORKSPACE**: `"EXISTS (SELECT 1 FROM workspace_links wl WHERE wl.link_id = l.id)"` = `'EXISTS (SELECT 1 FROM workspace_links wl WHERE wl.link_id = l.id)'`
-
-The SQL condition that a link `l` is in at least one workspace.
-
-***
-
 ### SECTIONS
 
 > `const` **SECTIONS**: [`Section`](#section)[]

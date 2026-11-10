@@ -82,7 +82,7 @@ The part of a reader view's text that is stored: its first MAX_TEXT characters.
 
 ### extractReader()
 
-> **extractReader**(`html`, `finalUrl`): [`ReaderView`](#readerview)
+> **extractReader**(`page`, `finalUrl`): [`ReaderView`](#readerview)
 
 The reader view of a stored page: Readability's article over a DOM of the
 HTML, sanitised by an allow-list, with every link and image address made
@@ -91,9 +91,9 @@ the view is empty.
 
 #### Parameters
 
-##### html
+##### page
 
-`string`
+`string` \| `Document`
 
 ##### finalUrl
 

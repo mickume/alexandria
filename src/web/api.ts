@@ -1,4 +1,7 @@
 /** The website's client of the Worker's API under /api/v1/. */
+import type { Thresholds } from '../worker/decay/routes';
+import type { LinkView } from '../worker/links/store';
+import type { LinkEvent } from '../worker/links/use';
 
 /** A refusal from the API, with its status and the body's error code and message. */
 export class ApiError extends Error {
@@ -69,57 +72,14 @@ export const tokens = {
   revoke: (id: string) => request<void>('DELETE', `/tokens/${id}`),
 };
 
-/** A link as the API shows it. */
-export interface Link {
-  id: string;
-  url: string;
-  original_url: string;
-  host: string;
-  title: string;
-  state: string;
-  added_at: string;
-  last_used_at: string;
-  /** When the link's decay counts from. */
-  decay_from: string;
-  use_count: number;
-  pinned: boolean;
-  pin_position: number | null;
-  final_url: string | null;
-  http_status: number | null;
-  description: string | null;
-  favicon_url: string | null;
-  language: string | null;
-  fetched_at: string | null;
-  state_reason: string | null;
-  notes: string[];
+/**
+ * A link as the API shows it: the Worker's own view (its fields are described
+ * there), with the values its two enumerations take named.
+ */
+export interface Link extends Omit<LinkView, 'content_kind' | 'enrichment_status'> {
   content_kind: 'html' | 'pdf' | 'other' | null;
-  has_snapshot: boolean;
-  updated_at: string;
-  summary: string | null;
-  tags: string[];
-  topic: string | null;
-  /** The names from the top-level topic down to the link's own topic; [] without a topic. */
-  topic_path: string[];
   enrichment_status:
     'no_key' | 'queued' | 'enriched' | 'failed' | 'skipped' | 'waiting_for_key' | null;
-  enrichment_reason: string | null;
-  edited_fields: string[];
-  note_preview: string | null;
-  workspaces: { id: string; name: string }[];
-  /** The whole note: only on a link read on its own. */
-  note?: string;
-  /** Start points plus the use count, minus the whole days since decay_from; null when archived. */
-  points: number | null;
-  /** When the link was archived, while it is archived. */
-  archived_at: string | null;
-  /** When the link expired, while it is expired. */
-  expired_at: string | null;
-  /** When an expired link will be removed. */
-  removal_at: string | null;
-  dead_since: string | null;
-  last_checked_at: string | null;
-  last_check_result: string | null;
-  decay_note: string;
 }
 
 /** One page of a list. */
@@ -135,16 +95,7 @@ export interface BatchResult {
   invalid: { url: string; error: 'invalid_url' | 'library_full' }[];
 }
 
-/** One event of a link's history: a use, or a fetch attempt. */
-export type LinkEvent =
-  | { kind: 'use'; at: string }
-  | {
-      kind: 'fetch';
-      at: string;
-      outcome: 'ok' | 'failed';
-      http_status: number | null;
-      reason: string | null;
-    };
+export type { LinkEvent };
 
 /** The address that opens a link through the API, recording the use. */
 export function openUrl(id: string): string {
@@ -299,15 +250,7 @@ export const workspaces = {
     request<void>('DELETE', `${ws(id)}/links/${encodeURIComponent(linkId)}`),
 };
 
-/**
- * The decay settings: the points a link starts from, the days from expiry to
- * removal, and the percent of its decay the first use of a day wins back.
- */
-export interface Thresholds {
-  start_points: number;
-  remove_days: number;
-  use_boost: number;
-}
+export type { Thresholds };
 
 export const decay = {
   get: () => request<Thresholds>('GET', '/settings/decay'),

@@ -20,7 +20,7 @@ A decorative icon: hidden from assistive technology, which reads the label besid
 
 ###### name
 
-`"tags"` \| `"workspaces"` \| `"topics"` \| `"expired"` \| `"ask"` \| `"search"` \| `"link"` \| `"alert"` \| `"stream"` \| `"stats"` \| `"archive"` \| `"settings"` \| `"import"` \| `"signout"` \| `"home"` \| `"more"` \| `"info"` \| `"pin"` \| `"refresh"` \| `"pulse"` \| `"trash"` \| `"close"`
+`"expired"` \| `"ask"` \| `"stats"` \| `"link"` \| `"tags"` \| `"workspaces"` \| `"topics"` \| `"search"` \| `"alert"` \| `"stream"` \| `"archive"` \| `"settings"` \| `"import"` \| `"signout"` \| `"home"` \| `"more"` \| `"info"` \| `"pin"` \| `"refresh"` \| `"pulse"` \| `"trash"` \| `"close"`
 
 ###### size?
 

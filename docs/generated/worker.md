@@ -32,7 +32,7 @@
 
 ##### queue()
 
-> **queue**(`batch`, `env`, `ctx`): `Promise`\<`void`\>
+> **queue**(`batch`, `env`, `_ctx`): `Promise`\<`void`\>
 
 ###### Parameters
 
@@ -44,7 +44,7 @@
 
 [`Env`](worker/env.md#env)
 
-###### ctx
+###### \_ctx
 
 `ExecutionContext`\<`unknown`\>
 

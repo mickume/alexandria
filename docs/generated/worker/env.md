@@ -36,7 +36,7 @@ The authenticated user, set by the authentication middleware.
 
 ###### via
 
-> **via**: `"token"` \| `"session"`
+> **via**: `"session"` \| `"token"`
 
 How the request was authenticated.
 
@@ -158,7 +158,7 @@ The website's built static files.
 
 ###### input
 
-`URL` \| `RequestInfo`
+`RequestInfo` \| `URL`
 
 ###### init?
 

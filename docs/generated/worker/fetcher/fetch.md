@@ -71,12 +71,6 @@ The response's media type, without parameters, such as text/html.
 
 > **status**: `number`
 
-##### tooLarge
-
-> **tooLarge**: `boolean`
-
-A PDF longer than PDF_LIMIT, of which nothing is kept.
-
 ##### truncated
 
 > **truncated**: `boolean`

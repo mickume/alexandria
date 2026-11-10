@@ -1,33 +1,5 @@
 # worker/fetcher/firecrawl
 
-## Interfaces
-
-### FirecrawlSettings
-
-A user's stored Firecrawl key.
-
-#### Properties
-
-##### ciphertext
-
-> **ciphertext**: `string`
-
-##### iv
-
-> **iv**: `string`
-
-##### last4
-
-> **last4**: `string`
-
-##### rejectedMessage
-
-> **rejectedMessage**: `string` \| `null`
-
-##### status
-
-> **status**: `"verified"` \| `"rejected"`
-
 ## Type Aliases
 
 ### FirecrawlOutcome
@@ -71,6 +43,14 @@ Firecrawl could not be reached, timed out, was rate limited or answered 5xx: wor
 \{ `kind`: `"failed"`; `message`: `string`; `ok`: `false`; \}
 
 Anything else: Firecrawl could not load the page, or answered unusably.
+
+***
+
+### FirecrawlSettings
+
+> **FirecrawlSettings** = [`StoredKey`](../enrich/keys.md#storedkey)
+
+A user's stored Firecrawl key.
 
 ## Variables
 
@@ -155,7 +135,7 @@ get over is no longer final, so the link's fetch is retried.
 
 ### getFirecrawlSettings()
 
-> **getFirecrawlSettings**(`db`, `userId`): `Promise`\<[`FirecrawlSettings`](#firecrawlsettings) \| `null`\>
+> **getFirecrawlSettings**(`db`, `userId`): `Promise`\<[`StoredKey`](../enrich/keys.md#storedkey) \| `null`\>
 
 The user's Firecrawl settings, or null when no key is stored.
 
@@ -171,7 +151,7 @@ The user's Firecrawl settings, or null when no key is stored.
 
 #### Returns
 
-`Promise`\<[`FirecrawlSettings`](#firecrawlsettings) \| `null`\>
+`Promise`\<[`StoredKey`](../enrich/keys.md#storedkey) \| `null`\>
 
 ***
 

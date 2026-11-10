@@ -28,7 +28,7 @@ The values of `amount` and `when`'s parameters, numbered from ?3.
 
 ##### counter
 
-> **counter**: `"enriched"` \| `"used"` \| `"expired"` \| `"archived"` \| `"deleted"` \| `"removed"` \| `"added"` \| `"unarchived"` \| `"restored"` \| `"fetch_ok"` \| `"fetch_failed"` \| `"enrichment_failed"` \| `"asks"`
+> **counter**: `"added"` \| `"used"` \| `"expired"` \| `"removed"` \| `"deleted"` \| `"archived"` \| `"unarchived"` \| `"restored"` \| `"fetch_ok"` \| `"fetch_failed"` \| `"enriched"` \| `"enrichment_failed"` \| `"asks"`
 
 ##### userId
 

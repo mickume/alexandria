@@ -65,6 +65,7 @@
 - [worker/decay/decay](worker/decay/decay.md)
 - [worker/decay/liveness](worker/decay/liveness.md)
 - [worker/decay/note](worker/decay/note.md)
+- [worker/decay/points](worker/decay/points.md)
 - [worker/decay/routes](worker/decay/routes.md)
 - [worker/enrich/edits](worker/enrich/edits.md)
 - [worker/enrich/enrich](worker/enrich/enrich.md)

@@ -1,5 +1,25 @@
 # web/components/CheckButton
 
+## Interfaces
+
+### ButtonLook
+
+How a status button looks: its class and an icon before its label.
+
+#### Properties
+
+##### className?
+
+> `optional` **className?**: `string`
+
+The button's class: a link-like button unless an action list asks for its own.
+
+##### icon?
+
+> `optional` **icon?**: `ReactNode`
+
+An icon before the label.
+
 ## Functions
 
 ### CheckButton()
@@ -12,25 +32,26 @@
 
 ##### \_\_namedParameters
 
-###### className?
+[`ButtonLook`](#buttonlook) & `object`
 
-`string` = `'q-btn-link'`
+#### Returns
 
-The button's class: a link-like button unless an action list asks for its own.
+`Element`
 
-###### icon?
+***
 
-`ReactNode`
+### StatusButton()
 
-An icon before the label.
+> **StatusButton**(`__namedParameters`): `Element`
 
-###### link
+A button that runs a request and says beside it how that went: what `run`
+answers, the API's own message when it refuses, or `failure`.
 
-[`Link`](../api.md#link-1)
+#### Parameters
 
-###### onChecked?
+##### \_\_namedParameters
 
-(`link`) => `void`
+[`ButtonLook`](#buttonlook) & `object`
 
 #### Returns
 

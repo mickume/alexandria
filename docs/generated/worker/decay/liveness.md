@@ -151,6 +151,9 @@ gate unavailable) is thrown, so that it never counts against the link.
 
 > **enqueueDueChecks**(`env`): `Promise`\<`void`\>
 
+Enqueues the weekly check of every link that is due (checkDue). The enqueue
+time is recorded in the same statement that selects the links.
+
 #### Parameters
 
 ##### env

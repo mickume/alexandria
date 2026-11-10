@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, filterQuery, links, openUrl, searchPath, type Link } from '../api';
+import { StatusButton, type ButtonLook } from './CheckButton';
 import { byName, formatDate, formatWhen } from '../format';
 import { Icon } from './Icon';
 import { WorkspacePicker } from './WorkspacePicker';
@@ -20,39 +21,19 @@ import { WorkspacePicker } from './WorkspacePicker';
 export function RefreshButton({
   link,
   onRefreshing,
-  className = 'q-btn-link',
-  icon,
-}: {
-  link: Link;
-  onRefreshing?: (link: Link) => void;
-  /** The button's class: a link-like button unless an action list asks for its own. */
-  className?: string;
-  /** An icon before the label. */
-  icon?: ReactNode;
-}) {
-  const [status, setStatus] = useState<string | null>(null);
-  async function refresh() {
-    setStatus(null);
-    try {
-      await links.refresh(link.id);
-      setStatus('refreshing…');
-      onRefreshing?.(link);
-    } catch (err) {
-      setStatus(err instanceof ApiError ? err.message : 'could not refresh, try again');
-    }
-  }
+  ...look
+}: ButtonLook & { link: Link; onRefreshing?: (link: Link) => void }) {
   return (
-    <>
-      <button type="button" className={className} onClick={() => void refresh()}>
-        {icon}
-        Refresh
-      </button>
-      {status && (
-        <span className="muted" role="status">
-          {status}
-        </span>
-      )}
-    </>
+    <StatusButton
+      {...look}
+      label="Refresh"
+      failure="could not refresh, try again"
+      run={async () => {
+        await links.refresh(link.id);
+        onRefreshing?.(link);
+        return 'refreshing…';
+      }}
+    />
   );
 }
 

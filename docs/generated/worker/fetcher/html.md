@@ -26,9 +26,27 @@ What a web page says about itself.
 
 ## Functions
 
+### collapse()
+
+> **collapse**(`text`): `string`
+
+Text with its runs of whitespace made one space each, and trimmed.
+
+#### Parameters
+
+##### text
+
+`string` \| `null` \| `undefined`
+
+#### Returns
+
+`string`
+
+***
+
 ### extractMetadata()
 
-> **extractMetadata**(`html`, `finalUrl`): [`PageMetadata`](#pagemetadata)
+> **extractMetadata**(`page`, `finalUrl`): [`PageMetadata`](#pagemetadata)
 
 Reads a page's metadata: the title from <title>, else og:title, else the
 host; the description from og:description, else the meta description; the
@@ -37,9 +55,9 @@ the origin; the language from <html lang>. Whitespace is collapsed.
 
 #### Parameters
 
-##### html
+##### page
 
-`string`
+`string` \| `Document`
 
 ##### finalUrl
 
@@ -48,3 +66,21 @@ the origin; the language from <html lang>. Whitespace is collapsed.
 #### Returns
 
 [`PageMetadata`](#pagemetadata)
+
+***
+
+### parsePage()
+
+> **parsePage**(`html`): `Document`
+
+The DOM of a page's HTML, to read its metadata and then its reader view from one parse.
+
+#### Parameters
+
+##### html
+
+`string`
+
+#### Returns
+
+`Document`

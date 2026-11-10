@@ -26,26 +26,6 @@ Test seams of the evaluation, as the clock is one.
 
 ## Functions
 
-### epochMs()
-
-> **epochMs**(`column`): `string`
-
-The SQL expression of a stored timestamp `column` as milliseconds since the
-epoch, in integers, so that whole days are counted exactly as pointsAt counts
-them.
-
-#### Parameters
-
-##### column
-
-`string`
-
-#### Returns
-
-`string`
-
-***
-
 ### evaluateDecay()
 
 > **evaluateDecay**(`env`, `userId`): `Promise`\<`void`\>
@@ -98,22 +78,3 @@ conditions, so a link used or re-pasted meanwhile is left as the use left it.
 #### Returns
 
 `D1PreparedStatement`
-
-***
-
-### isoFromMs()
-
-> **isoFromMs**(`ms`): `string`
-
-The SQL expression of the integer milliseconds `ms` since the epoch as a
-stored timestamp, to the millisecond: the inverse of epochMs.
-
-#### Parameters
-
-##### ms
-
-`string`
-
-#### Returns
-
-`string`

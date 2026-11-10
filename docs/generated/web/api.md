@@ -238,7 +238,7 @@ What a batch add did to each URL.
 
 ###### error
 
-> **error**: `"invalid_url"` \| `"library_full"`
+> **error**: `"library_full"` \| `"invalid_url"`
 
 ###### url
 
@@ -362,7 +362,7 @@ One UTC day of the owner's daily record; counters are null before the record beg
 
 ##### size
 
-> **size**: `Record`\<`"pending"` \| `"active"` \| `"unreachable"` \| `"expired"` \| `"archived"` \| `"total"`, `number`\> \| `null`
+> **size**: `Record`\<`"expired"` \| `"archived"` \| `"pending"` \| `"active"` \| `"unreachable"` \| `"total"`, `number`\> \| `null`
 
 ##### unarchived
 
@@ -474,7 +474,12 @@ The workspace the links were added to, and how many joined it; null without one.
 
 ### Link
 
-A link as the API shows it.
+A link as the API shows it: the Worker's own view (its fields are described
+there), with the values its two enumerations take named.
+
+#### Extends
+
+- `Omit`\<[`LinkView`](../worker/links/store.md#linkview), `"content_kind"` \| `"enrichment_status"`\>
 
 #### Properties
 
@@ -482,11 +487,19 @@ A link as the API shows it.
 
 > **added\_at**: `string`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`added_at`](../worker/links/store.md#added_at-1)
+
 ##### archived\_at
 
 > **archived\_at**: `string` \| `null`
 
 When the link was archived, while it is archived.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`archived_at`](../worker/links/store.md#archived_at-1)
 
 ##### content\_kind
 
@@ -496,31 +509,59 @@ When the link was archived, while it is archived.
 
 > **dead\_since**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`dead_since`](../worker/links/store.md#dead_since-1)
+
 ##### decay\_from
 
 > **decay\_from**: `string`
 
-When the link's decay counts from.
+When the link's decay counts from: its points lose one a day since then.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`decay_from`](../worker/links/store.md#decay_from-1)
 
 ##### decay\_note
 
 > **decay\_note**: `string`
 
+One sentence: the link's points and when it expires, when it will be removed, or that it is kept.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`decay_note`](../worker/links/store.md#decay_note)
+
 ##### description
 
 > **description**: `string` \| `null`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`description`](../worker/links/store.md#description-1)
 
 ##### edited\_fields
 
 > **edited\_fields**: `string`[]
 
+The fields the owner has set by hand, which automatic work never overwrites.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`edited_fields`](../worker/links/store.md#edited_fields-1)
+
 ##### enrichment\_reason
 
 > **enrichment\_reason**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`enrichment_reason`](../worker/links/store.md#enrichment_reason-1)
+
 ##### enrichment\_status
 
-> **enrichment\_status**: `"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `null`
+> **enrichment\_status**: `"enriched"` \| `"failed"` \| `"no_key"` \| `"queued"` \| `"skipped"` \| `"waiting_for_key"` \| `null`
 
 ##### expired\_at
 
@@ -528,81 +569,168 @@ When the link's decay counts from.
 
 When the link expired, while it is expired.
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`expired_at`](../worker/links/store.md#expired_at-1)
+
 ##### favicon\_url
 
 > **favicon\_url**: `string` \| `null`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`favicon_url`](../worker/links/store.md#favicon_url-1)
 
 ##### fetched\_at
 
 > **fetched\_at**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`fetched_at`](../worker/links/store.md#fetched_at-1)
+
 ##### final\_url
 
 > **final\_url**: `string` \| `null`
+
+The URL of the last response of the latest successful fetch.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`final_url`](../worker/links/store.md#final_url-1)
 
 ##### has\_snapshot
 
 > **has\_snapshot**: `boolean`
 
+Whether a snapshot is stored, so that Read and Snapshot can be offered.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`has_snapshot`](../worker/links/store.md#has_snapshot-1)
+
 ##### host
 
 > **host**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`host`](../worker/links/store.md#host-1)
 
 ##### http\_status
 
 > **http\_status**: `number` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`http_status`](../worker/links/store.md#http_status-1)
+
 ##### id
 
 > **id**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`id`](../worker/links/store.md#id-1)
 
 ##### language
 
 > **language**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`language`](../worker/links/store.md#language-1)
+
 ##### last\_check\_result
 
 > **last\_check\_result**: `string` \| `null`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`last_check_result`](../worker/links/store.md#last_check_result-1)
 
 ##### last\_checked\_at
 
 > **last\_checked\_at**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`last_checked_at`](../worker/links/store.md#last_checked_at-1)
+
 ##### last\_used\_at
 
 > **last\_used\_at**: `string`
+
+When the link was last used or boosted.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`last_used_at`](../worker/links/store.md#last_used_at-1)
 
 ##### note?
 
 > `optional` **note?**: `string`
 
-The whole note: only on a link read on its own.
+The whole note: only on the link read on its own.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`note`](../worker/links/store.md#note-1)
 
 ##### note\_preview
 
 > **note\_preview**: `string` \| `null`
 
+The note's first line as plain text, or null without a note.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`note_preview`](../worker/links/store.md#note_preview)
+
 ##### notes
 
 > **notes**: `string`[]
+
+Short notes such as "truncated" or "not a web page (image/png)".
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`notes`](../worker/links/store.md#notes-1)
 
 ##### original\_url
 
 > **original\_url**: `string`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`original_url`](../worker/links/store.md#original_url-1)
+
 ##### pin\_position
 
 > **pin\_position**: `number` \| `null`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`pin_position`](../worker/links/store.md#pin_position-1)
 
 ##### pinned
 
 > **pinned**: `boolean`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`pinned`](../worker/links/store.md#pinned)
+
 ##### points
 
 > **points**: `number` \| `null`
 
-Start points plus the use count, minus the whole days since decay_from; null when archived.
+Start points plus the use count, minus the whole days since the decay
+start; null for an archived link, which decay leaves alone.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`points`](../worker/links/store.md#points)
 
 ##### removal\_at
 
@@ -610,51 +738,101 @@ Start points plus the use count, minus the whole days since decay_from; null whe
 
 When an expired link will be removed.
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`removal_at`](../worker/links/store.md#removal_at)
+
 ##### state
 
 > **state**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`state`](../worker/links/store.md#state-1)
 
 ##### state\_reason
 
 > **state\_reason**: `string` \| `null`
 
+Why the link is in its state, such as "HTTP 503" for a pending or unreachable link.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`state_reason`](../worker/links/store.md#state_reason-1)
+
 ##### summary
 
 > **summary**: `string` \| `null`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`summary`](../worker/links/store.md#summary-1)
 
 ##### tags
 
 > **tags**: `string`[]
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`tags`](../worker/links/store.md#tags)
+
 ##### title
 
 > **title**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`title`](../worker/links/store.md#title-1)
 
 ##### topic
 
 > **topic**: `string` \| `null`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`topic`](../worker/links/store.md#topic-1)
+
 ##### topic\_path
 
 > **topic\_path**: `string`[]
 
-The names from the top-level topic down to the link's own topic; [] without a topic.
+The names from the link's top-level topic down to its own topic; [] without a topic.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`topic_path`](../worker/links/store.md#topic_path)
 
 ##### updated\_at
 
 > **updated\_at**: `string`
 
+When the link last changed in any way.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`updated_at`](../worker/links/store.md#updated_at-1)
+
 ##### url
 
 > **url**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`url`](../worker/links/store.md#url-1)
 
 ##### use\_count
 
 > **use\_count**: `number`
 
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`use_count`](../worker/links/store.md#use_count-1)
+
 ##### workspaces
 
 > **workspaces**: `object`[]
+
+The workspaces the link is in, by name.
 
 ###### id
 
@@ -663,6 +841,10 @@ The names from the top-level topic down to the link's own topic; [] without a to
 ###### name
 
 > **name**: `string`
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`workspaces`](../worker/links/store.md#workspaces)
 
 ***
 
@@ -988,7 +1170,7 @@ When the background throttle frees up; null when it already has.
 
 ###### enrichment
 
-> **enrichment**: `Record`\<`"no_key"` \| `"queued"` \| `"enriched"` \| `"failed"` \| `"skipped"` \| `"waiting_for_key"` \| `"none"`, `number`\> & `object`
+> **enrichment**: `Record`\<`"enriched"` \| `"failed"` \| `"no_key"` \| `"queued"` \| `"skipped"` \| `"waiting_for_key"` \| `"none"`, `number`\> & `object`
 
 ###### Type Declaration
 
@@ -1111,27 +1293,6 @@ The owner's daily record, as GET /api/v1/stats/history answers it.
 ##### recorded\_since
 
 > **recorded\_since**: `string` \| `null`
-
-***
-
-### Thresholds
-
-The decay settings: the points a link starts from, the days from expiry to
-removal, and the percent of its decay the first use of a day wins back.
-
-#### Properties
-
-##### remove\_days
-
-> **remove\_days**: `number`
-
-##### start\_points
-
-> **start\_points**: `number`
-
-##### use\_boost
-
-> **use\_boost**: `number`
 
 ***
 
@@ -1291,14 +1452,6 @@ The owner's Firecrawl key, never beyond its last 4 characters.
 
 ***
 
-### LinkEvent
-
-> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
-
-One event of a link's history: a use, or a fetch attempt.
-
-***
-
 ### MatchKind
 
 > **MatchKind** = `"keyword"` \| `"meaning"` \| `"both"`
@@ -1447,25 +1600,25 @@ Deletes the account, confirmed by its email typed by the owner.
 
 ##### get
 
-> **get**: () => `Promise`\<[`Thresholds`](#thresholds)\>
+> **get**: () => `Promise`\<[`Thresholds`](../worker/decay/routes.md#thresholds)\>
 
 ###### Returns
 
-`Promise`\<[`Thresholds`](#thresholds)\>
+`Promise`\<[`Thresholds`](../worker/decay/routes.md#thresholds)\>
 
 ##### save
 
-> **save**: (`t`) => `Promise`\<[`Thresholds`](#thresholds)\>
+> **save**: (`t`) => `Promise`\<[`Thresholds`](../worker/decay/routes.md#thresholds)\>
 
 ###### Parameters
 
 ###### t
 
-[`Thresholds`](#thresholds)
+[`Thresholds`](../worker/decay/routes.md#thresholds)
 
 ###### Returns
 
-`Promise`\<[`Thresholds`](#thresholds)\>
+`Promise`\<[`Thresholds`](../worker/decay/routes.md#thresholds)\>
 
 ***
 
@@ -1695,7 +1848,7 @@ Every expired link, most recently expired first, page after page.
 
 ##### history
 
-> **history**: (`id`) => `Promise`\<[`Page`](#page)\<[`LinkEvent`](#linkevent)\>\>
+> **history**: (`id`) => `Promise`\<[`Page`](#page)\<[`LinkEvent`](../worker/links/use.md#linkevent)\>\>
 
 ###### Parameters
 
@@ -1705,7 +1858,7 @@ Every expired link, most recently expired first, page after page.
 
 ###### Returns
 
-`Promise`\<[`Page`](#page)\<[`LinkEvent`](#linkevent)\>\>
+`Promise`\<[`Page`](#page)\<[`LinkEvent`](../worker/links/use.md#linkevent)\>\>
 
 ##### list
 
@@ -2385,3 +2538,15 @@ The topic a query's one `topic:` filter names, unquoted; null without one, or wi
 #### Returns
 
 `string` \| `null`
+
+## References
+
+### LinkEvent
+
+Re-exports [LinkEvent](../worker/links/use.md#linkevent)
+
+***
+
+### Thresholds
+
+Re-exports [Thresholds](../worker/decay/routes.md#thresholds)

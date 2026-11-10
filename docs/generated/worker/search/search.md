@@ -96,32 +96,6 @@ The longest snippet, in words.
 
 ## Functions
 
-### indexReaderText()
-
-> **indexReaderText**(`env`, `linkId`, `text`): `Promise`\<`void`\>
-
-Indexes `text` as the link's reader-view text, at most its first 500,000 characters.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### linkId
-
-`string`
-
-##### text
-
-`string` \| `null`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
 ### indexReaderTextStatement()
 
 > **indexReaderTextStatement**(`db`, `linkId`, `text`): `D1PreparedStatement`

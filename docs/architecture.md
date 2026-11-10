@@ -28,7 +28,8 @@ browser ──► Worker (src/worker/index.ts)
     (`sessions.ts`), personal access tokens (`tokens.ts`), the authentication
     middleware and the page guard (`middleware.ts`), and their routes.
   - `api/`: the error envelope (`errors.ts`), the rate limit (`ratelimit.ts`),
-    signed cursors (`pagination.ts`) and the OpenAPI document (`openapi.ts`).
+    signed cursors and the reading of a list's `limit` and `cursor`
+    (`pagination.ts`: `readLimit`, `readCursor`) and the OpenAPI document (`openapi.ts`).
   - `links/`: URL normalisation (`normalize.ts`), the link store with adding,
     pinning and deleting (`store.ts`), the stream (`stream.ts`), uses and
     history (`use.ts`), and the routes.
@@ -193,7 +194,7 @@ quantities in the last list are never stored.
      `dead_since`, `last_checked_at`, `last_check_result`); decay's
      `expired_at` and state; `archived_at`.
 4. **Computed on every read, never stored:**
-   - the link's `points` (`pointsAt` in `decay/note.ts`), its `removal_at` and
+   - the link's `points` (`pointsAt` in `decay/points.ts`), its `removal_at` and
      its `decay_note`; decay compares the same quantity in SQL;
    - the topic's name, the `topic_path`, the tags in order and the
      workspaces, joined in by the `link_views` view;
@@ -419,16 +420,17 @@ nothing (that user is evaluated again at the next run):
   nothing is listed);
 - `last_decay_at` is set.
 
-A link's points are never stored: `decay/note.ts` computes them for every link
-the API returns (`pointsAt`): the user's `start_points` plus the link's
-`use_count`, minus the whole 24-hour periods since `decay_from`, negative
-allowed. `decay_from` is the time the link's decay counts from, kept apart
-from `last_used_at`, which the card, the stream's tie-break, the searches and
-the statistics read as the last use. The expiry statement, the stream's order
-(`POINTS_AT` in `links/stream.ts`) and the statistics (`stats/stats.ts`)
-compute the same quantity in SQL, counting milliseconds in integers
-(`epochMs`) so the day boundary falls where `pointsAt` puts it; a link expires
-once the whole days since its decay start reach its start points plus its use
+A link's points are never stored. `decay/points.ts` holds the one definition
+of them: `pointsAt`, which `decay/note.ts` answers every link the API returns
+with (the user's `start_points` plus the link's `use_count`, minus the whole
+24-hour periods since `decay_from`, negative allowed), and `pointsSql`, the
+same quantity as SQL. `decay_from` is the time the link's decay counts from,
+kept apart from `last_used_at`, which the card, the stream's tie-break, the
+searches and the statistics read as the last use. The expiry statement, the
+stream's order (`links/stream.ts`) and the statistics (`stats/stats.ts`) all
+use `pointsSql`, which counts milliseconds in integers (`epochMs`) so the day
+boundary falls where `pointsAt` puts it; a link expires once the whole days
+since its decay start reach its start points plus its use
 count. A change of `start_points` therefore applies to every link at once.
 
 A use (`recordUse` in `links/use.ts`) moves `decay_from` in the same UPDATE
