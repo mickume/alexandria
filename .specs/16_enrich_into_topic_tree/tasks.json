@@ -1,0 +1,73 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/tasks.v3.json",
+  "spec_id": "16",
+  "spec_name": "enrich_into_topic_tree",
+  "schema_version": 3,
+  "test_commands": {
+    "all_tests": "make test",
+    "linter": "make lint",
+    "spec_tests": "npx vitest run src/worker/enrich"
+  },
+  "dependencies": [
+    {
+      "spec": "03",
+      "reason": "changes the enrichment request, the provider's structured result, normalizeResult and storeEnrichment"
+    },
+    {
+      "spec": "15",
+      "reason": "files enriched links into the topic tree with resolveTopicPath, and relies on topic_path, the Topics page, the breadcrumb and the topic: filter"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Show the provider the topic tree without counts, and ask for a path",
+      "criteria": [
+        "REQ-1"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/enrich/enrich.test.ts, and confirm they fail",
+        "Make listVocabulary in src/worker/enrich/vocabulary.ts return the topics as paths: the PROMPT_TOPICS (100) topics whose newest link, filed under the topic or under a topic beneath it (up to two levels), was added most recently, each as its names from the top level down joined with ' > '; the tags query and its counts stay as they are",
+        "Change PromptInput's topics to those path strings, and have buildPrompt list them one per line under 'Existing topics:' with no count, '(none)' when there are none; the tags line is unchanged",
+        "Rewrite the topic instructions of buildPrompt: the topic is a path of one to three names from the most general to the most specific, separated by ' > '; file the page under the most specific topic that fits, existing or new; put a new topic under the existing topic it belongs to. Keep the instruction to reuse an existing tag when one fits, preferring the more used ones, for tags only, and say that each tag is followed by its number of links",
+        "Describe the topic in RESULT_SCHEMA (src/worker/enrich/providers.ts) as a path of one to three names separated by ' > ', from the most general to the most specific",
+        "Update 'offers the provider only the current names' in src/worker/enrich/enrich.test.ts, which expects topics with counts: the current topic names are listed without a count, and the aliases are still left out",
+        "Update the request's description in docs/architecture.md (the topics part: 100 topics with the newest links, as paths, without counts)"
+      ],
+      "touches": [
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/enrich/enrich.ts",
+        "src/worker/enrich/providers.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "docs/architecture.md"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "File an enriched link under the returned topic path",
+      "criteria": [
+        "REQ-2"
+      ],
+      "steps": [
+        "Add the task's behaviours to src/worker/enrich/enrich.test.ts and src/worker/enrich/edits.test.ts, and confirm they fail",
+        "In normalizeResult (src/worker/enrich/enrich.ts), split the topic on every '>' into names, each with its spaces collapsed and trimmed; a result with no name, an empty name or a name over 100 characters (TOPIC_MAX) is unusable (null), so processEnrichment records 'the result was not usable' as today; a path of more than three names keeps its first two and its last. Carry the topic in Enrichment as that list of names",
+        "Stop mapping the topic in applyAliases (it keeps mapping tags): resolveTopicPath matches each name against the topic aliases itself",
+        "In storeEnrichment (src/worker/enrich/queue.ts), resolve the names with resolveTopicPath(…, { near: true }) unless the owner edited the topic, which the link keeps",
+        "Leave resolveTopic in place only if something still calls it; otherwise remove it",
+        "Update the tests of normalizeResult and applyAliases that read Enrichment.topic as a string ('a provider’s result', 'stores the survivor for a tag or topic the provider names by an alias'), keeping what they assert",
+        "Say in docs/api.md, where enrichment's topic is described, that enrichment files a link under a topic path it may grow, and update the enrichment section of docs/architecture.md"
+      ],
+      "touches": [
+        "src/worker/enrich/enrich.ts",
+        "src/worker/enrich/queue.ts",
+        "src/worker/enrich/vocabulary.ts",
+        "src/worker/enrich/enrich.test.ts",
+        "src/worker/enrich/edits.test.ts",
+        "e2e/topics.spec.ts",
+        "docs/api.md",
+        "docs/architecture.md"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "$schema": "https://agent-fox.dev/schemas/requirements.v3.json",
+  "spec_id": "16",
+  "spec_name": "enrich_into_topic_tree",
+  "schema_version": 3,
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "title": "The topic tree in the enrichment request",
+      "rationale": "Link counts and the preference for the most used topics are what drew most links into one broad topic.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-1.1",
+          "pattern": "event_driven",
+          "condition": "the enrichment worker builds the request for a link",
+          "action": "list under 'Existing topics:' up to 100 of the owner's topics, one per line, each as its full path with ' > ' between the names, choosing the 100 whose newest link, filed under the topic or under a topic beneath it, was added most recently, and giving no link count for any topic",
+          "contract": "the request holds the path of each of those topics on a line of its own (for example 'Software engineering > Testing'), no other topic, and no '(<number>)' after any topic",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the owner has 103 top-level topics T000..T102, each with one link, T000 the oldest and T102 the newest",
+              "and 'Software engineering' > 'Testing', whose only link (under 'Testing') is the newest of all"
+            ],
+            "pseudocode": "in src/worker/enrich/enrich.test.ts in 'enriching a fetched link', beside 'lists the 300 most used tags in the request': enrich a link with FakeAi; body = the request's prompt; assert the lines 'Software engineering > Testing' and 'Software engineering' are present, T005..T102 are present and T000..T004 absent (100 topics in all), and no listed topic is followed by '(' and a number"
+          }
+        },
+        {
+          "id": "REQ-1.2",
+          "pattern": "ubiquitous",
+          "action": "ask in the request for the topic as a path of one to three names from the most general to the most specific, separated by ' > ', telling the provider to file the page under the most specific topic that fits, existing or new, and to put a new topic under the existing topic it belongs to, and describe the result's topic so in the structured result asked of the model",
+          "contract": "the prompt holds those instructions and no instruction to prefer the more used topics; RESULT_SCHEMA's topic description asks for a path of one to three names separated by ' > '",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, a new describe 'the enrichment request' calling buildPrompt directly with two topic paths and two tags: assert the prompt asks for a path of one to three names from the most general to the most specific separated by ' > ', for the most specific topic that fits, existing or new, and for a new topic under the existing one it belongs to; assert the only 'preferring the more used' instruction is about tags; assert RESULT_SCHEMA.properties.topic.description mentions ' > ' and three names"
+          }
+        },
+        {
+          "id": "REQ-1.3",
+          "pattern": "ubiquitous",
+          "action": "keep the tags part of the request as it was: up to 300 tags, each with its link count, and the instruction to reuse an existing tag when one fits, preferring the more used ones",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, keep 'lists the 300 most used tags in the request' (the 300 used tags present with their counts, such as 'tag-100 (1)', the unused ones absent) and assert the prompt still tells the provider to reuse an existing tag, preferring the more used ones"
+          }
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "title": "Filing the link under the returned path",
+      "rationale": "Enrichment grows the tree by itself, but never moves a topic the owner has placed.",
+      "system": "enrichment worker",
+      "criteria": [
+        {
+          "id": "REQ-2.1",
+          "pattern": "event_driven",
+          "condition": "the provider returns a topic of one or more names separated by >",
+          "action": "split it on every >, trim each name, and resolve the names from the first: a name equal ignoring case to a topic's name, else to a topic alias, else a near name of a topic, uses that topic where it is in the tree, and the next name belongs under it; any other name is created under the topic the name before it resolved to, or at the top level for the first name; then file the link under the topic the last name resolved to",
+          "contract": "the link's topic is the last resolved topic's name and its topic_path that topic's path; no existing topic's parent changes; no topic is left with no link and no child",
+          "check": {
+            "kind": "unit",
+            "setup": [
+              "the owner has 'Software engineering' > 'Testing' > 'Fuzzing' and a top-level 'Databases', each with a link, and the alias 'SE' of 'Software engineering'"
+            ],
+            "pseudocode": "in src/worker/enrich/enrich.test.ts in 'enriching a fetched link', a table 'files the link under the returned path $topic': {'Software engineering > Unit tests' -> ['Software engineering', 'Unit tests']}, {'software engineering' -> ['Software engineering']}, {'SE > Mocks' -> ['Software engineering', 'Mocks']}, {'Database > Indexes' -> ['Databases', 'Indexes'] (near name)}, {'Quality > Testing' -> ['Software engineering', 'Testing'], Testing's parent unchanged and no 'Quality' left}, {'Programming>Rust' -> ['Programming', 'Rust']}, {'Gardening > Tools > Shears > Blades' -> ['Gardening', 'Tools', 'Blades']}, {'Fuzzing > Corpus' -> ['Software engineering', 'Testing', 'Corpus']}; for each: FakeAi answers {summary, tags, topic}; enrich the link; assert GET /api/v1/links/{id} gives topic and topic_path; assert no topic name holds '>' and no topic has neither a link nor a child"
+          }
+        },
+        {
+          "id": "REQ-2.2",
+          "pattern": "event_driven",
+          "condition": "the returned path has more than three names",
+          "action": "keep its first two names and its last, and resolve those",
+          "contract": "the link's topic_path holds at most three names, the last being the returned path's last name or the existing topic it matched",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.3",
+          "pattern": "event_driven",
+          "condition": "a new name of the returned path would be created at level 4, because the name before it matched an existing level-3 topic",
+          "action": "create the new topic under the parent of that level-3 topic and file the link under it",
+          "contract": "the new topic's parent is the level-3 topic's parent; the link's topic_path has three names",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.4",
+          "pattern": "ubiquitous",
+          "action": "for any enrichment result, create no topic whose name holds >",
+          "check": {
+            "same_as": "REQ-2.1"
+          }
+        },
+        {
+          "id": "REQ-2.5",
+          "pattern": "unwanted",
+          "condition": "the returned path holds an empty name or a name longer than 100 characters",
+          "action": "treat the result as unusable: record the enrichment as failed and leave the link's summary, tags and topic as they were, retrying a first automatic attempt once as for any unusable result",
+          "contract": "enrichment_status 'failed', enrichment_reason 'the result was not usable'; summary, tags and topic unchanged; no topic created; one retry sent with attempt 2 and a delay of 600 seconds",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/enrich.test.ts, extend the table of 'a failed enrichment' ('after $label keeps the link usable, marks it failed and retries once in 10 minutes') with {a topic path with an empty name: topic 'A >  > B'}, {a topic path ending in >: topic 'A >'}, {a topic name over 100 characters: topic 'A > ' + 'x'.repeat(101)}; for those rows also assert enrichment_reason == 'the result was not usable' and that the user has no topic"
+          }
+        },
+        {
+          "id": "REQ-2.6",
+          "pattern": "state_driven",
+          "condition": "the owner has edited the link's topic",
+          "action": "keep the owner's topic whatever path the provider returns, while storing the rest of the result",
+          "check": {
+            "kind": "unit",
+            "pseudocode": "in src/worker/enrich/edits.test.ts, extend 'keeps the owner’s $field through $op, while the rest updates' so that the second answer's topic is the path 'Second topic > Deeper': when the topic is the edited field the link keeps 'Owner topic'; otherwise its topic is 'Deeper' with topic_path ['Second topic', 'Deeper']"
+          }
+        }
+      ]
+    }
+  ],
+  "execution_paths": [
+    {
+      "id": "PATH-1",
+      "title": "A new link is enriched into a new sub-topic of an existing topic",
+      "steps": [
+        {
+          "actor": "owner",
+          "action": "adds a link, having a link filed under the topic 'Software engineering' and a verified AI key"
+        },
+        {
+          "actor": "fetch worker",
+          "action": "fetches the page and hands the link to enrichment"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "sends the request, listing 'Software engineering' without a link count"
+        },
+        {
+          "actor": "AI provider",
+          "action": "returns the topic 'Software engineering > Testing'"
+        },
+        {
+          "actor": "enrichment worker",
+          "action": "creates 'Testing' under 'Software engineering' and files the link under it"
+        },
+        {
+          "actor": "website",
+          "action": "shows the card's topic 'Testing', the detail page's breadcrumb and 'Testing' under 'Software engineering' on the Topics page"
+        },
+        {
+          "actor": "Alexandria API",
+          "action": "answers topic:\"software engineering\" with the link"
+        }
+      ],
+      "smoke": {
+        "real_components": [
+          "website",
+          "Worker API",
+          "fetch worker",
+          "enrichment worker",
+          "D1 database",
+          "word search index"
+        ],
+        "setup": [
+          "wrangler dev is running with the fake Google provider, the fake origin and the fake AI provider; the owner is signed in with the Anthropic key the fake accepts",
+          "the owner has one link filed under 'Software engineering' through PATCH /api/v1/links/{id}",
+          "the fake AI answers the new link's enrichment with the topic 'Software engineering > Testing'"
+        ],
+        "end_state": [
+          "the new link's card shows the topic 'Testing' with the tooltip 'Software engineering › Testing'",
+          "its detail page shows the breadcrumb 'Software engineering › Testing'",
+          "the Topics page lists 'Testing' indented under 'Software engineering'",
+          "the search topic:\"software engineering\" lists both links",
+          "the enrichment request the fake AI received lists 'Software engineering' without a count"
+        ],
+        "pseudocode": "extends e2e/topics.spec.ts: fakeAi.answerWhen('marker-tree-enriched', {summary, tags, topic: 'Software engineering > Testing'}); signIn(page); saveAiKey(page); [seed] = addLinkIds(page, ['https://tree.example/se-seed']); PATCH seed {topic: 'Software engineering'}; [id] = addLinkIds(page, ['https://code.example/tree-enriched']); page.goto('/'); expect cardOf(page, id)'s topic link 'Testing' with title 'Software engineering › Testing' within 60 s; page.goto('/links/' + id); expect the navigation 'Topic path' to read 'Software engineering›Testing'; page.goto('/topics'); expect the 'Testing' row at data-level 2 right after 'Software engineering'; page.goto('/search?q=topic%3A%22software%20engineering%22'); expect both cards; the last enrichment in fakeAi.requests() holds 'Software engineering' and no 'Software engineering ('"
+      }
+    }
+  ]
+}
