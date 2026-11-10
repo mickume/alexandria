@@ -33,9 +33,19 @@ It needs Node.js 22.18 or later (it runs the TypeScript file directly).
 | `--dry-run` | count the links and stop |
 | `--yes` | do not ask before starting |
 | `--per-minute N` | refreshes and re-enrichments a minute, 1 to 300 (default 20, the pace of background enrichment) |
+| `--reset-vocabulary` | build the topics and tags again from nothing (step 0 below) |
 
 The steps:
 
+0. **Reset the topics and tags** (only with `--reset-vocabulary`). Every link
+   loses its topic and tags in D1, except a topic or tags the owner set by
+   hand, and the former names of renamed and merged topics and tags are
+   forgotten. Topics and tags left without a link are deleted, as they always
+   are, so enrichment then builds the vocabulary again from nothing, the
+   first links enriched naming it. The option needs a verified AI key and stops
+   before changing anything without one. A link whose enrichment then fails
+   is left without a topic or tags until it is enriched again (Settings offers
+   to enrich every such link).
 1. **Refresh** (`POST /api/v1/links/{id}/refresh`) every active, unreachable
    and archived link, at the chosen pace. A successful refresh replaces the
    snapshot and reader text and enriches the link again, and the new reader
@@ -50,8 +60,9 @@ The steps:
    most 20 minutes after the last one; a fetch that never reports counts as
    failed).
 3. **Enrich again** (`POST /api/v1/links/{id}/enrich`), from the text already
-   stored, the expired links and those whose refresh failed, except
-   unreachable links and those with nothing to read.
+   stored, the expired links and those whose refresh failed (with
+   `--reset-vocabulary`, also those refreshed too recently to refresh again),
+   except unreachable links and those with nothing to read.
 4. **Mark for indexing** those same links, by moving their text version in D1
    (`wrangler d1 execute alexandria --remote`), so that the every-minute
    backfill embeds them again.

@@ -6,10 +6,16 @@
  * and the fields the owner edited by hand.
  *
  *   ALEXANDRIA_TOKEN=alx_… npm run rebuild -- [--dry-run] [--yes] [--per-minute N]
+ *     [--reset-vocabulary]
  *
  * It works through the deployed Worker's API as the token's owner (see
  * docs/cli.md):
  *
+ * 0. With --reset-vocabulary, first takes every topic and tag off the links,
+ *    except those the owner set by hand, and forgets the former names of
+ *    renamed and merged ones, in D1. Topics and tags left without a link are
+ *    deleted by the database's own triggers, so enrichment builds the
+ *    vocabulary again from nothing. It needs a verified AI key.
  * 1. Refreshes every link that is active, unreachable or archived, at most
  *    --per-minute (default 20) a minute. A successful refresh rewrites the
  *    reader text, which makes the link stale for the index, and enriches the
@@ -18,7 +24,8 @@
  *    pending ones (their first fetch is under way).
  * 2. Waits until every refresh has a fetch event in the link's history.
  * 3. Enriches again, from the text already stored, the expired links and those
- *    whose refresh failed (the page is gone or did not answer).
+ *    whose refresh failed (the page is gone or did not answer); with
+ *    --reset-vocabulary, also those refreshed too recently to refresh again.
  * 4. Marks those same links stale for the index with one statement on the D1
  *    database (`wrangler d1 execute --remote`, which needs
  *    CLOUDFLARE_API_TOKEN), so that the every-minute backfill embeds them
@@ -68,6 +75,7 @@ const { values: flags } = parseArgs({
     'dry-run': { type: 'boolean', default: false },
     yes: { type: 'boolean', default: false },
     'per-minute': { type: 'string', default: '20' },
+    'reset-vocabulary': { type: 'boolean', default: false },
   },
 });
 const perMinute = Number(flags['per-minute']);
@@ -173,20 +181,59 @@ async function fetchOutcome(id: string, since: string): Promise<'ok' | 'failed' 
   return first.outcome === 'ok' ? 'ok' : 'failed';
 }
 
+/** Runs SQL on the deployed D1 database. */
+function d1(sql: string) {
+  execFileSync('npx', ['wrangler', 'd1', 'execute', 'alexandria', '--remote', '--command', sql], {
+    cwd: root,
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+}
+
+/** The ids as SQL lists of at most 100, so that no statement grows too large. */
+function idLists(ids: string[]): string[] {
+  const lists: string[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    lists.push(
+      ids
+        .slice(i, i + 100)
+        .map((id) => `'${id}'`)
+        .join(', '),
+    );
+  }
+  return lists;
+}
+
 /** Moves the text version of the links, as migration 0013 did for all of them. */
 function markStale(ids: string[]) {
-  for (let i = 0; i < ids.length; i += 100) {
-    const list = ids
-      .slice(i, i + 100)
-      .map((id) => `'${id}'`)
-      .join(', ');
-    const sql =
+  for (const list of idLists(ids)) {
+    d1(
       `INSERT INTO link_index_state (link_id, text_version) SELECT id, 1 FROM links WHERE id IN (${list}) ` +
-      'ON CONFLICT (link_id) DO UPDATE SET text_version = text_version + 1;';
-    execFileSync('npx', ['wrangler', 'd1', 'execute', 'alexandria', '--remote', '--command', sql], {
-      cwd: root,
-      stdio: ['ignore', 'ignore', 'inherit'],
-    });
+        'ON CONFLICT (link_id) DO UPDATE SET text_version = text_version + 1;',
+    );
+  }
+}
+
+/**
+ * Takes the topics and tags off the links, except those the owner set by hand
+ * (`edited_fields`), and forgets the owner's aliases. The triggers of
+ * migration 0006 delete every topic and tag left without a link, and keep the
+ * keyword index and the text version in step.
+ */
+function resetVocabulary(ids: string[]) {
+  const [first] = ids;
+  if (!first) return;
+  const owner = `(SELECT user_id FROM links WHERE id = '${first}')`;
+  d1(
+    `DELETE FROM topic_aliases WHERE user_id = ${owner}; ` +
+      `DELETE FROM tag_aliases WHERE user_id = ${owner};`,
+  );
+  for (const list of idLists(ids)) {
+    d1(
+      `DELETE FROM link_tags WHERE link_id IN (${list}) AND NOT EXISTS (SELECT 1 FROM links l, ` +
+        `json_each(l.edited_fields) e WHERE l.id = link_tags.link_id AND e.value = 'tags'); ` +
+        `UPDATE links SET topic_id = NULL WHERE id IN (${list}) AND topic_id IS NOT NULL ` +
+        `AND NOT EXISTS (SELECT 1 FROM json_each(links.edited_fields) WHERE value = 'topic');`,
+    );
   }
 }
 
@@ -205,6 +252,16 @@ console.log(`  pending (left alone, their first fetch is under way): ${pending.l
 console.log(
   `At ${perMinute} a minute the refreshes take about ${Math.ceil(toRefresh.length / perMinute)} min.`,
 );
+const reset = flags['reset-vocabulary'];
+if (reset) {
+  console.log('Topics and tags are reset first and built again by enrichment.');
+  // Without a working key every link would be left with no topic or tags.
+  const { body } = await api('GET', '/settings/ai');
+  const ai = body as { configured?: boolean; status?: string } | null;
+  if (!ai?.configured || ai.status !== 'verified') {
+    fail('--reset-vocabulary needs a verified AI key: add one in Settings first');
+  }
+}
 if (flags['dry-run']) process.exit(0);
 if (!process.env.CLOUDFLARE_API_TOKEN) {
   fail('set CLOUDFLARE_API_TOKEN (or put it in .env): step 4 runs a statement on the D1 database');
@@ -216,17 +273,28 @@ if (!flags.yes) {
   if (!/^y(es)?$/i.test(answer.trim())) process.exit(0);
 }
 
+// 0. Reset the vocabulary.
+if (reset) {
+  console.log('0/4 Resetting topics and tags');
+  resetVocabulary(links.map((l) => l.id));
+}
+
 // 1. Refresh.
 console.log('1/4 Refreshing');
 const requested = new Map<string, string>();
-let recent = 0;
+const recent: string[] = [];
 await paced('refreshed', toRefresh, async (link) => {
   const { status, date } = await api('POST', `/links/${link.id}/refresh`);
   if (status === 202) requested.set(link.id, date);
-  else if (status === 429) recent++;
+  else if (status === 429) recent.push(link.id);
   else if (status !== 404) console.warn(`  ${link.url}: refresh answered ${status}`);
 });
-if (recent) console.log(`  already refreshed in the last 10 minutes, left as they are: ${recent}`);
+if (recent.length) {
+  console.log(
+    `  already refreshed in the last 10 minutes: ${recent.length}` +
+      (reset ? ' (enriched again below)' : ', left as they are'),
+  );
+}
 
 // 2. Wait for every fetch to finish.
 console.log('2/4 Waiting for the fetches');
@@ -250,7 +318,7 @@ failed.push(...waiting.keys());
 
 // 3. Enrich the rest again from what is stored.
 const byId = new Map(links.map((l) => [l.id, l]));
-const rest = [...expired.map((l) => l.id), ...failed];
+const rest = [...expired.map((l) => l.id), ...failed, ...(reset ? recent : [])];
 const enrichable = rest.filter((id) => {
   const link = byId.get(id);
   return link && link.state !== 'unreachable' && link.enrichment_status !== 'skipped';
@@ -276,3 +344,8 @@ console.log(
   `Done: ${ok} refreshed, ${failed.length} could not be fetched and kept their page. ` +
     'Enrichment and the index catch up in the background (the index at 60 links a minute).',
 );
+if (reset) {
+  console.log(
+    'A link whose enrichment fails is left without a topic or tags; Settings offers to enrich those again.',
+  );
+}
