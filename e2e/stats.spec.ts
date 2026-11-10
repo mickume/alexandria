@@ -48,8 +48,10 @@ test('the owner adds links and sees them counted on the Stats page', async ({ pa
   await expect(page).toHaveURL(/\/stats$/);
   const library = page.getByRole('region', { name: 'Library' });
   await expect(countOf(page, 'All links', library)).toContainText(num(before.library.total + 3));
-  await expect(countOf(page, 'Active', library)).toContainText(
-    num(before.library.by_state.active + 3),
+  // Other specs' links may still be fetched meanwhile: the three new ones are among the active.
+  const active = await countOf(page, 'Active', library).locator('td').textContent();
+  expect(Number((active ?? '').replace(/,/g, ''))).toBeGreaterThanOrEqual(
+    before.library.by_state.active + 3,
   );
   const bars = page.getByRole('img', { name: 'Added per day' }).locator('rect');
   await expect(bars).toHaveCount(30);
@@ -94,6 +96,11 @@ test('a link reaches 0 points, decay expires it, and the owner follows the count
 test('an import shows under Background work until it is done', async ({ page }) => {
   test.setTimeout(180_000);
   await signIn(page);
+  // Earlier imports' waiting links would be sent first: set them aside, so this
+  // path sends only its own links.
+  d1(
+    `UPDATE import_links SET skipped = 1, dispatched_at = '${new Date().toISOString()}' WHERE dispatched_at IS NULL`,
+  );
   const urls = Array.from({ length: 50 }, (_, i) => `https://code.example/stats-import-${i}`);
   const uploaded = await page.request.post('/api/v1/imports', {
     data: `${urls.join('\n')}\n`,
@@ -113,13 +120,13 @@ test('an import shows under Background work until it is done', async ({ page }) 
   expect(listed.waiting + listed.in_progress).toBeGreaterThan(0);
   await expect(background.getByRole('rowheader', { name: label }).first()).toBeVisible();
 
-  // Each run sends at most 20 links; moving the sent links' times back a minute
-  // frees the budget, as a minute passing would.
+  // Each run sends at most 20 links; moving this import's sent links back a
+  // minute (and freeing the throttle) frees the budget, as a minute passing would.
   await expect
     .poll(
       async () => {
         d1(
-          `UPDATE import_links SET dispatched_at = '${new Date(Date.now() - 120_000).toISOString()}' WHERE dispatched_at IS NOT NULL`,
+          `UPDATE import_links SET dispatched_at = '${new Date(Date.now() - 120_000).toISOString()}' WHERE import_id = '${report.id}' AND dispatched_at IS NOT NULL; UPDATE users SET throttle_next_at = NULL, import_window_end = NULL`,
         );
         await runMinute(page);
         const progress = (await (await page.request.get(`/api/v1/imports/${report.id}`)).json())
@@ -129,6 +136,8 @@ test('an import shows under Background work until it is done', async ({ page }) 
       { timeout: 150_000, intervals: [2_000] },
     )
     .toBe(0);
+  // The enrichments this import queued keep their slots; later work need not wait behind them.
+  d1('UPDATE users SET throttle_next_at = NULL');
 
   await page.getByRole('button', { name: 'Refresh' }).click();
   await expect(page.getByRole('region', { name: 'Activity' })).toBeVisible();
