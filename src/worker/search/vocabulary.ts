@@ -1,6 +1,7 @@
 /** The user's topics and tags as the owner browses them: listed, renamed and merged. */
 import { now } from '../clock';
 import { nameKey } from '../enrich/enrich';
+import { inSubtree } from './query';
 import { dropIfEmptyStatement, resolveTopicPath, TOPIC_LEVELS } from '../enrich/vocabulary';
 
 /** Topics or tags: which vocabulary a route is about. */
@@ -39,9 +40,7 @@ export function isVocabularyCursor(value: unknown): value is VocabularyCursor {
  * the links filed under it or under a topic beneath it (at most two levels).
  */
 const LINKED: Record<VocabularyKind, string> = {
-  topics: `topics v JOIN topics d ON d.id = v.id OR d.parent_id = v.id
-             OR d.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = v.id)
-           JOIN links l ON l.topic_id = d.id`,
+  topics: `topics v JOIN topics d ON ${inSubtree('d', 'v.id')} JOIN links l ON l.topic_id = d.id`,
   tags: 'tags v JOIN link_tags lt ON lt.tag_id = v.id JOIN links l ON l.id = lt.link_id',
 };
 
@@ -130,8 +129,7 @@ const CARRIERS: Record<VocabularyKind, string> = {
 };
 
 /** The ids of the topics in a topic's subtree, as SQL with one parameter (its id): itself and up to two levels beneath. */
-const SUBTREE = `SELECT s.id FROM topics s WHERE s.id = ?1 OR s.parent_id = ?1
-  OR s.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = ?1)`;
+const SUBTREE = `SELECT s.id FROM topics s WHERE ${inSubtree('s', '?1')}`;
 
 /** The ids of the user's links carrying one of their topics or tags, or filed under a topic or beneath it. */
 export async function carrierIds(

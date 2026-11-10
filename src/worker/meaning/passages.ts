@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import { refusal, validationError } from '../api/errors';
 import type { AppEnv, Env } from '../env';
 import type { PassageKind } from './cut';
-import { filterConditions, parseQuery, type Filters } from '../search/query';
+import { andAll, filterConditions, parseQuery, type Filters } from '../search/query';
 import {
   meaningBackend,
   QUERY_TOP_K,
@@ -114,7 +114,7 @@ export async function findPassages(
     `SELECT p.vector_id, p.link_id, p.position, p.text, l.title, l.original_url
      FROM link_passages p JOIN links l ON l.id = p.link_id
      WHERE p.user_id = ? AND l.user_id = ? AND p.vector_id IN (SELECT value FROM json_each(?))
-       ${where.sql.map((c) => `AND ${c}`).join(' ')}`,
+       ${andAll(where)}`,
   )
     .bind(userId, userId, JSON.stringify(matches.map((m) => m.id)), ...where.params)
     .all<PassageRow>();

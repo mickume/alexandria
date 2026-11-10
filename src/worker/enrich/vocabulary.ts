@@ -1,4 +1,5 @@
 import { ownerEdited } from '../links/store';
+import { inSubtree } from '../search/query';
 import { nameKey, nearKeys, type Aliases, type VocabularyEntry } from './enrich';
 
 /** How many of the user's topics and tags the provider is shown. */
@@ -23,8 +24,7 @@ export async function listVocabulary(
          FROM topics v
          LEFT JOIN topics p1 ON p1.id = v.parent_id
          LEFT JOIN topics p2 ON p2.id = p1.parent_id
-         JOIN topics d ON d.id = v.id OR d.parent_id = v.id
-           OR d.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = v.id)
+         JOIN topics d ON ${inSubtree('d', 'v.id')}
          JOIN links l ON l.topic_id = d.id
          WHERE v.user_id = ? GROUP BY v.id ORDER BY MAX(l.added_at) DESC, path LIMIT ?`,
       )

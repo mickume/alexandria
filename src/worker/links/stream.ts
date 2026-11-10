@@ -1,6 +1,6 @@
 import { now } from '../clock';
 import { DEFAULT_THRESHOLDS, pointsSql } from '../decay/points';
-import type { Conditions } from '../search/query';
+import { andAll, type Conditions } from '../search/query';
 import type { LinkRow } from './store';
 
 /**
@@ -69,7 +69,7 @@ export async function listStream(
 ): Promise<{ items: LinkRow[]; next: StreamCursor | null }> {
   const t = after?.t ?? now().getTime();
   const rows: RankedRow[] = [];
-  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
+  const conditions = andAll(where);
   if (!after || after.s === 'p') {
     const pinned = await db
       .prepare(

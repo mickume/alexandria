@@ -13,7 +13,13 @@
 import type { Env } from '../env';
 import { findPassages, MeaningUnavailable } from '../meaning/passages';
 import { filterConditions, type Filters } from './query';
-import { keywordMatches, linkMatch, strongMatchIds, type KeywordMatch } from './search';
+import {
+  keywordMatches,
+  linkMatch,
+  SNIPPET_WORDS,
+  strongMatchIds,
+  type KeywordMatch,
+} from './search';
 
 /** The constant of reciprocal rank fusion: a rank r contributes 1 / (60 + r). */
 const RRF_K = 60;
@@ -23,8 +29,6 @@ export const FUSION_KEYWORD_MAX = 1_000;
 export const MEANING_CANDIDATES = 100;
 /** How long the embedding and the query may take, in milliseconds, before meaning is given up. */
 export const MEANING_DEADLINE_MS = 600;
-/** The most words of a passage a meaning match's snippet holds. */
-export const SNIPPET_WORDS = 32;
 
 /** How a link matched a hybrid search. */
 export type MatchKind = 'keyword' | 'meaning' | 'both';

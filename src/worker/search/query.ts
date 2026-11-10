@@ -98,6 +98,20 @@ export interface Conditions {
   params: unknown[];
 }
 
+/** The conditions as SQL to append to a WHERE clause that already has a condition. */
+export function andAll(where: Conditions): string {
+  return where.sql.map((c) => `AND ${c}`).join(' ');
+}
+
+/**
+ * The SQL condition that the topic aliased `d` is the topic `root` (the SQL of
+ * its id) or beneath it: the tree has three levels, so at most two down.
+ */
+export function inSubtree(d: string, root: string): string {
+  return `(${d}.id = ${root} OR ${d}.parent_id = ${root}
+    OR ${d}.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = ${root}))`;
+}
+
 /**
  * The conditions that select the links satisfying every filter: a tag with
  * that name, a topic with that name or a topic beneath it, and the workspace
@@ -117,8 +131,7 @@ export function filterConditions(filters: Filters): Conditions {
   for (const topic of filters.topic ?? []) {
     // The named topic and the topics beneath it, at most two levels down.
     sql.push(
-      `l.topic_id IN (SELECT d.id FROM topics t JOIN topics d ON d.id = t.id OR d.parent_id = t.id
-        OR d.parent_id IN (SELECT c.id FROM topics c WHERE c.parent_id = t.id)
+      `l.topic_id IN (SELECT d.id FROM topics t JOIN topics d ON ${inSubtree('d', 't.id')}
         WHERE t.user_id = l.user_id AND t.name = ? COLLATE NOCASE)`,
     );
     params.push(topic);

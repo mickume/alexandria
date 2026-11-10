@@ -1,5 +1,5 @@
 /** Search: the full-text index of the user's links, and the searches over it. */
-import type { Conditions } from './query';
+import { andAll, type Conditions } from './query';
 
 /** The most reader-view text the index holds for a link, in characters. */
 export const INDEXED_TEXT_MAX = 500_000;
@@ -105,6 +105,21 @@ export async function snippetsFor(
 }
 
 /**
+ * The FROM and WHERE of every keyword query: the user's links (aliased l)
+ * whose index row matches, under `where`. Its parameters are the match
+ * expression, the user's id and `where`'s own.
+ */
+function matching(where: Conditions): string {
+  return `FROM link_search JOIN links l ON l.id = link_search.link_id
+    WHERE link_search MATCH ? AND l.user_id = ? ${andAll(where)}`;
+}
+
+/** A link's relevance to the match, lower being more relevant. */
+const RELEVANCE = `bm25(link_search, ${LINK_WEIGHTS})`;
+/** What orders links of equal relevance: pinned by position, then the more recently used, then by id. */
+const TIE_BREAK = 'l.pin_position IS NULL, l.pin_position, l.last_used_at DESC, l.id';
+
+/**
  * One page of the user's links matching `match`, most relevant first (bm25,
  * title 10, tags and topic 5, summary 3, host, original URL and note 2,
  * reader text 1), then pinned by position, then the more recently used, then
@@ -119,13 +134,10 @@ export async function rankedLinks(
   limit: number,
   offset: number,
 ): Promise<RankedLink[]> {
-  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
   const ranked = await db
     .prepare(
-      `SELECT link_search.link_id AS id FROM link_search JOIN links l ON l.id = link_search.link_id
-       WHERE link_search MATCH ? AND l.user_id = ? ${conditions}
-       ORDER BY bm25(link_search, ${LINK_WEIGHTS}), l.pin_position IS NULL, l.pin_position,
-         l.last_used_at DESC, l.id
+      `SELECT link_search.link_id AS id ${matching(where)}
+       ORDER BY ${RELEVANCE}, ${TIE_BREAK}
        LIMIT ? OFFSET ?`,
     )
     .bind(match, userId, ...where.params, limit + 1, offset)
@@ -154,14 +166,11 @@ export async function keywordMatches(
   match: string,
   where: Conditions,
 ): Promise<KeywordMatch[]> {
-  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
   const rows = await db
     .prepare(
-      `SELECT link_search.link_id AS id, bm25(link_search, ${LINK_WEIGHTS}) AS score,
-         l.pin_position, l.last_used_at
-       FROM link_search JOIN links l ON l.id = link_search.link_id
-       WHERE link_search MATCH ? AND l.user_id = ? ${conditions}
-       ORDER BY score, l.pin_position IS NULL, l.pin_position, l.last_used_at DESC, l.id`,
+      `SELECT link_search.link_id AS id, ${RELEVANCE} AS score, l.pin_position, l.last_used_at
+       ${matching(where)}
+       ORDER BY score, ${TIE_BREAK}`,
     )
     .bind(match, userId, ...where.params)
     .all<KeywordMatch>();
@@ -181,12 +190,8 @@ export async function strongMatchIds(
 ): Promise<Set<string>> {
   const match = matchExpression(userId, words, 'title tags topic');
   if (!match) return new Set();
-  const conditions = where.sql.map((c) => `AND ${c}`).join(' ');
   const rows = await db
-    .prepare(
-      `SELECT link_search.link_id AS id FROM link_search JOIN links l ON l.id = link_search.link_id
-       WHERE link_search MATCH ? AND l.user_id = ? ${conditions}`,
-    )
+    .prepare(`SELECT link_search.link_id AS id ${matching(where)}`)
     .bind(match, userId, ...where.params)
     .all<{ id: string }>();
   return new Set(rows.results.map((r) => r.id));
