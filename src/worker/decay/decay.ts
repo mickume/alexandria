@@ -2,36 +2,14 @@ import { now } from '../clock';
 import type { Env } from '../env';
 import { readerKey, snapshotKey } from '../fetcher/snapshots';
 import { countStatement } from '../stats/daily';
+import { DAY_MS, IN_WORKSPACE, pointsSql } from './points';
 import { getThresholds } from './routes';
-
-const DAY_MS = 86_400_000;
 
 /** The most keys one R2 delete takes. */
 const R2_DELETE_KEYS = 1000;
 
 /** Test seams of the evaluation, as the clock is one. */
 export const decayHooks: { afterSelect?: (userId: string) => Promise<void> } = {};
-
-/** The SQL condition that a link `l` is in at least one workspace. */
-const MEMBER = 'EXISTS (SELECT 1 FROM workspace_links wl WHERE wl.link_id = l.id)';
-
-/**
- * The SQL expression of a stored timestamp `column` as milliseconds since the
- * epoch, in integers, so that whole days are counted exactly as pointsAt counts
- * them.
- */
-export function epochMs(column: string): string {
-  return `(CAST(strftime('%s', ${column}) AS INTEGER) * 1000 + CAST(substr(${column}, 21, 3) AS INTEGER))`;
-}
-
-/**
- * The SQL expression of the integer milliseconds `ms` since the epoch as a
- * stored timestamp, to the millisecond: the inverse of epochMs.
- */
-export function isoFromMs(ms: string): string {
-  return `(strftime('%Y-%m-%dT%H:%M:%S', (${ms}) / 1000, 'unixepoch')
-    || printf('.%03dZ', (${ms}) % 1000))`;
-}
 
 /** The time `days` before `t`, as stored. */
 function daysBefore(t: Date, days: number): string {
@@ -50,9 +28,8 @@ export function expiryStatement(db: D1Database, userId: string, t: Date): D1Prep
     .prepare(
       `UPDATE links AS l SET state = 'expired', expired_at = ?2, updated_at = ?2
        WHERE l.user_id = ?1 AND l.state IN ('active', 'pending', 'unreachable')
-         AND l.pin_position IS NULL AND NOT ${MEMBER}
-         AND ${epochMs('l.decay_from')} <=
-           ?3 - ((SELECT start_points FROM users WHERE id = ?1) + l.use_count) * ${DAY_MS}`,
+         AND l.pin_position IS NULL AND NOT ${IN_WORKSPACE}
+         AND ${pointsSql('l', '(SELECT start_points FROM users WHERE id = ?1)', '?3')} <= 0`,
     )
     .bind(userId, t.toISOString(), t.getTime());
 }
@@ -73,7 +50,7 @@ function removalStatements(
 ): D1PreparedStatement[] {
   // The cutoff is the parameter `cut`: ?2 in the removal, ?3 in its count.
   const removableAt = (cut: string) => `l.user_id = ?1 AND l.state = 'expired'
-    AND l.expired_at <= ${cut} AND l.pin_position IS NULL AND NOT ${MEMBER}`;
+    AND l.expired_at <= ${cut} AND l.pin_position IS NULL AND NOT ${IN_WORKSPACE}`;
   const removable = removableAt('?2');
   const removed = `SELECT l.id FROM links l WHERE ${removable}`;
   return [

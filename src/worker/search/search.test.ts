@@ -13,7 +13,7 @@ import {
   signIn,
   type TestUser,
 } from '../test/helpers';
-import { indexReaderText, indexReaderTextStatement } from './search';
+import { indexReaderTextStatement } from './search';
 
 /** The ids of the user's links whose index row holds `word` as a word prefix. */
 async function indexed(user: TestUser, word: string): Promise<string[]> {
@@ -45,7 +45,7 @@ async function setReaderText(user: TestUser, id: string, text: string) {
   )
     .bind(id, user.id, text)
     .run();
-  await indexReaderText(env, id, text);
+  await indexReaderTextStatement(env.DB, id, text).run();
 }
 
 async function search(user: TestUser, q: string, extra = '') {
@@ -266,7 +266,7 @@ describe('the search index', () => {
       const id = await add(user, 'https://long.example/');
       const text = 'filler '.repeat(78_572).slice(0, 550_000) + ' tailword ' + 'x'.repeat(49_990);
       expect(text.length).toBe(600_000);
-      await indexReaderText(env, id, `headword ${text}`);
+      await indexReaderTextStatement(env.DB, id, `headword ${text}`).run();
       expect(await indexed(user, 'headword')).toEqual([id]);
       expect(await indexed(user, 'tailword')).toEqual([]);
     });

@@ -211,7 +211,6 @@ export async function scrape(
       kind: 'html',
       body: truncated ? encoded.subarray(0, PAGE_LIMIT) : encoded,
       truncated,
-      tooLarge: false,
       via: 'firecrawl',
     },
   };

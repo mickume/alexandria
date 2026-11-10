@@ -4,6 +4,8 @@
  * that fails or is rolled back is never counted and a stored one always is.
  */
 
+import { DAY_MS } from '../decay/points';
+
 /** Test seams of the usage recorder, as the clock is one. */
 export const usageHooks: { beforeRecord?: () => void } = {};
 
@@ -65,8 +67,6 @@ export function countStatement(db: D1Database, c: Count): D1PreparedStatement {
 
 /** The size columns of the daily record, in the order the answer gives them. */
 export const SIZE_STATES = ['pending', 'active', 'unreachable', 'expired', 'archived'] as const;
-
-const DAY_MS = 86_400_000;
 
 /** Why a call to the owner's AI provider was made. */
 export type Purpose = 'enrich' | 'split' | 'ask' | 'key_test';

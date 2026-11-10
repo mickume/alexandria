@@ -1,5 +1,4 @@
 /** Search: the full-text index of the user's links, and the searches over it. */
-import type { Env } from '../env';
 import type { Conditions } from './query';
 
 /** The most reader-view text the index holds for a link, in characters. */
@@ -21,15 +20,6 @@ export function indexReaderTextStatement(
        WHERE rowid = (SELECT id FROM link_search_keys WHERE link_id = ?)`,
     )
     .bind((text ?? '').slice(0, INDEXED_TEXT_MAX), linkId);
-}
-
-/** Indexes `text` as the link's reader-view text, at most its first 500,000 characters. */
-export async function indexReaderText(
-  env: Env,
-  linkId: string,
-  text: string | null,
-): Promise<void> {
-  await indexReaderTextStatement(env.DB, linkId, text).run();
 }
 
 /** The term every index row of a user carries: 'u' and the user's id without hyphens. */

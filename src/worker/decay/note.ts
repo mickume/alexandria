@@ -1,27 +1,9 @@
 import { now } from '../clock';
 import type { LinkRow } from '../links/store';
-
-const DAY_MS = 86_400_000;
+import { DAY_MS, DEFAULT_THRESHOLDS, pointsAt } from './points';
 
 function isoDate(t: number): string {
   return new Date(t).toISOString().slice(0, 10);
-}
-
-/** The start points of a user who never changed them. */
-export const DEFAULT_START_POINTS = 60;
-
-/**
- * A link's points at time `at`: its user's start points plus its use count,
- * minus the whole 24-hour periods since its decay start (none for a decay start
- * after `at`). They can be negative.
- */
-export function pointsAt(
-  startPoints: number,
-  useCount: number,
-  decayFrom: string,
-  at: number,
-): number {
-  return startPoints + useCount - Math.max(0, Math.floor((at - Date.parse(decayFrom)) / DAY_MS));
 }
 
 /**
@@ -68,13 +50,13 @@ export function decayFields(row: LinkRow) {
       decay_note: `archived on ${isoDate(Date.parse(archivedAt))}: kept until deleted`,
     };
   }
-  const removeDays = row.user_remove_days ?? 180;
+  const removeDays = row.user_remove_days ?? DEFAULT_THRESHOLDS.remove_days;
   const expiredAt = row.state === 'expired' ? (row.expired_at ?? null) : null;
   const removalAt = expiredAt
     ? new Date(Date.parse(expiredAt) + removeDays * DAY_MS).toISOString()
     : null;
   const points = pointsAt(
-    row.user_start_points ?? DEFAULT_START_POINTS,
+    row.user_start_points ?? DEFAULT_THRESHOLDS.start_points,
     row.use_count,
     row.decay_from,
     now().getTime(),

@@ -5,10 +5,10 @@ import { now } from '../clock';
 import type { AppEnv, Env, LivenessMessage } from '../env';
 import { requestFollowing, statusReason } from '../fetcher/fetch';
 import { getLink, toFullView, type LinkRow } from '../links/store';
+import { DAY_MS } from './points';
 
 /** How long one liveness request may take. */
 export const CHECK_TIMEOUT_MS = 10_000;
-const DAY_MS = 86_400_000;
 /** A link is checked every this many days. */
 export const CHECK_INTERVAL_MS = 7 * DAY_MS;
 /** A link enqueued less than this long ago is not enqueued again. */
@@ -131,12 +131,6 @@ export async function handleLivenessBatch(
 }
 
 /**
- * Enqueues the weekly check of every link that is due: neither expired nor archived, and
- * active or pinned, last checked (or, never checked, added) 7 days ago or more, and
- * not enqueued in the last 6 hours. The enqueue time is recorded in the same
- * statement that selects the links.
- */
-/**
  * The SQL condition that the link `l` is due a weekly check: neither expired nor
  * archived, active or pinned, last checked (or, never checked, added) at or
  * before `checkedBefore`, and not enqueued after `enqueuedBefore`; both are SQL
@@ -157,6 +151,10 @@ export function checkDueTimes(t: number): [string, string] {
   ];
 }
 
+/**
+ * Enqueues the weekly check of every link that is due (checkDue). The enqueue
+ * time is recorded in the same statement that selects the links.
+ */
 export async function enqueueDueChecks(env: Env): Promise<void> {
   const t = now().getTime();
   const due = await env.DB.prepare(

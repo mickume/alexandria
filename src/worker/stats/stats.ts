@@ -1,4 +1,4 @@
-import { epochMs } from '../decay/decay';
+import { DAY_MS, epochMs, IN_WORKSPACE, pointsSql } from '../decay/points';
 import { checkDue, checkDueTimes } from '../decay/liveness';
 import { PROGRESS_COLUMNS } from '../imports/imports';
 import { LIBRARY_LIMIT } from '../links/store';
@@ -13,19 +13,13 @@ import { IS_STALE } from '../meaning/indexing';
 /** Test seams of the statistics, as the clock is one. */
 export const statsHooks: { beforeSection?: (name: string) => void } = {};
 
-/** The SQL condition that a link `l` is in at least one workspace. */
-export const IN_WORKSPACE = 'EXISTS (SELECT 1 FROM workspace_links wl WHERE wl.link_id = l.id)';
-
-const DAY_MS = 86_400_000;
-
 /**
  * The SQL expression of a link `l`'s points at the instant bound as `?2`, for
  * the user bound as `?1`: start points plus use count, minus the whole 24-hour
  * periods since the decay start (none for one after the instant), counted in
  * integer milliseconds as the decay expiry statement and pointsAt count them.
  */
-const POINTS = `((SELECT start_points FROM users WHERE id = ?1) + l.use_count
-  - MAX(0, (?2 - ${epochMs('l.decay_from')}) / ${DAY_MS}))`;
+const POINTS = pointsSql('l', '(SELECT start_points FROM users WHERE id = ?1)', '?2');
 
 /** The SQL condition that a link `l` is one decay can expire. */
 const UNPROTECTED = `l.state IN ('active', 'pending', 'unreachable') AND l.pin_position IS NULL

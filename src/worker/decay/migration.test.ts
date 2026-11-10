@@ -1,7 +1,7 @@
 import { applyD1Migrations } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { api, emptySchema, env, seedLinks, setNow, signIn } from '../test/helpers';
-import { pointsAt } from './note';
+import { pointsAt } from './points';
 
 const DAY = 86_400_000;
 

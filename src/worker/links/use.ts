@@ -1,5 +1,5 @@
 import { now } from '../clock';
-import { epochMs, isoFromMs } from '../decay/decay';
+import { epochMs, isoFromMs } from '../decay/points';
 
 /**
  * The SQL expression of a link's decay start after a use at the time bound as

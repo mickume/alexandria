@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { readJson, validationError } from '../api/errors';
 import type { AppEnv } from '../env';
+import { DEFAULT_THRESHOLDS } from './points';
 
 /** The bounds of the start points and the removal delay. */
 export const THRESHOLD_MIN = 7;
@@ -30,7 +31,7 @@ export async function getThresholds(db: D1Database, userId: string): Promise<Thr
     .prepare('SELECT start_points, remove_days, use_boost FROM users WHERE id = ?')
     .bind(userId)
     .first<Thresholds>();
-  return row ?? { start_points: 60, remove_days: 180, use_boost: 50 };
+  return row ?? { ...DEFAULT_THRESHOLDS };
 }
 
 /** The decay settings, under /api/v1/settings. */

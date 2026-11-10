@@ -28,8 +28,6 @@ export interface FetchOk {
   body: Uint8Array | null;
   /** A web page longer than PAGE_LIMIT, of which only the first PAGE_LIMIT bytes were read. */
   truncated: boolean;
-  /** A PDF longer than PDF_LIMIT, of which nothing is kept. */
-  tooLarge: boolean;
   /** Set when the page came through the owner's Firecrawl key instead of a direct fetch. */
   via?: 'firecrawl';
 }
@@ -269,7 +267,6 @@ async function readBody(response: Response, finalUrl: URL, signal: AbortSignal):
       kind: 'html',
       body: bytes,
       truncated: over,
-      tooLarge: false,
       ...(charset && { charset }),
     };
   }
@@ -277,17 +274,17 @@ async function readBody(response: Response, finalUrl: URL, signal: AbortSignal):
     const declared = Number(response.headers.get('Content-Length') ?? NaN);
     if (declared > PDF_LIMIT) {
       await response.body?.cancel();
-      return { ...base, kind: 'pdf', body: null, truncated: false, tooLarge: true };
+      return { ...base, kind: 'pdf', body: null, truncated: false };
     }
     const { bytes, over } = await readLimited(response.body, PDF_LIMIT, signal, declared);
-    if (over) return { ...base, kind: 'pdf', body: null, truncated: false, tooLarge: true };
+    if (over) return { ...base, kind: 'pdf', body: null, truncated: false };
     if (contentType === 'application/pdf' || startsWithPdfMagic(bytes)) {
-      return { ...base, kind: 'pdf', body: bytes, truncated: false, tooLarge: false };
+      return { ...base, kind: 'pdf', body: bytes, truncated: false };
     }
-    return { ...base, kind: 'other', body: null, truncated: false, tooLarge: false };
+    return { ...base, kind: 'other', body: null, truncated: false };
   }
   await response.body?.cancel();
-  return { ...base, kind: 'other', body: null, truncated: false, tooLarge: false };
+  return { ...base, kind: 'other', body: null, truncated: false };
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
+import { collapse, parsePage } from './html';
 
 /** The reader view of a page: its article alone, safe to show. */
 export interface ReaderView {
@@ -170,10 +171,6 @@ function sanitize(root: Element, base: string): void {
   }
 }
 
-function collapse(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
-
 /**
  * The deepest nesting of elements a page may have to be read. Readability's
  * time grows steeply with depth: a page nested thousands deep would use the
@@ -200,12 +197,13 @@ const EMPTY: ReaderView = { title: null, byline: null, html: null, text: '', emp
  * absolute against the page's final URL. Under 200 characters of article text
  * the view is empty.
  */
-export function extractReader(html: string, finalUrl: string): ReaderView {
-  const { document } = parseHTML(html);
-  if (nestedDeeperThan(document as unknown as Node, MAX_DEPTH)) {
+export function extractReader(page: string | Document, finalUrl: string): ReaderView {
+  // Readability takes the document apart: whatever else reads it reads it first.
+  const document = typeof page === 'string' ? parsePage(page) : page;
+  if (nestedDeeperThan(document, MAX_DEPTH)) {
     throw new Error(`the page nests its elements deeper than ${MAX_DEPTH} levels`);
   }
-  const article = new Readability(document as unknown as Document, { keepClasses: false }).parse();
+  const article = new Readability(document, { keepClasses: false }).parse();
   if (!article?.content) return EMPTY;
 
   const { document: out } = parseHTML(

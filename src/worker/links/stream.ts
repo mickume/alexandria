@@ -1,6 +1,5 @@
 import { now } from '../clock';
-import { epochMs } from '../decay/decay';
-import { DEFAULT_START_POINTS } from '../decay/note';
+import { DEFAULT_THRESHOLDS, pointsSql } from '../decay/points';
 import type { Conditions } from '../search/query';
 import type { LinkRow } from './store';
 
@@ -45,8 +44,11 @@ export const IN_STREAM: Conditions = {
  * The SQL expression of a link's points (link_views aliased l) at the time
  * bound in its place, counted as pointsAt counts them.
  */
-const POINTS_AT = `(COALESCE(l.user_start_points, ${DEFAULT_START_POINTS}) + l.use_count
-  - MAX(0, (CAST(? AS INTEGER) - ${epochMs('l.decay_from')}) / 86400000))`;
+const POINTS_AT = pointsSql(
+  'l',
+  `COALESCE(l.user_start_points, ${DEFAULT_THRESHOLDS.start_points})`,
+  'CAST(? AS INTEGER)',
+);
 
 /**
  * One page of the user's stream: the links that satisfy `where` (by default,

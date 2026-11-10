@@ -42,7 +42,7 @@ export default {
           : runScheduled(env);
     ctx.waitUntil(run);
   },
-  queue(batch, env, ctx) {
+  queue(batch, env, _ctx) {
     if (batch.queue === 'alexandria-liveness') {
       return handleLivenessBatch(batch as MessageBatch<LivenessMessage>, env);
     }
@@ -55,7 +55,7 @@ export default {
     if (batch.queue === 'alexandria-enrich') {
       return handleEnrichBatch(batch as MessageBatch<EnrichMessage>, env);
     }
-    return handleFetchBatch(batch as MessageBatch<FetchMessage>, env, ctx);
+    return handleFetchBatch(batch as MessageBatch<FetchMessage>, env);
   },
 } satisfies ExportedHandler<
   Env,

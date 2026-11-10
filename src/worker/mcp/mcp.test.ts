@@ -14,7 +14,7 @@ import {
   signIn,
   type TestUser,
 } from '../test/helpers';
-import { indexReaderText } from '../search/search';
+import { indexReaderTextStatement } from '../search/search';
 import { ARTICLES, meaning, seedArticle } from '../test/meaning';
 import { readerKey, snapshotKey } from '../fetcher/snapshots';
 
@@ -386,7 +386,7 @@ async function readerText(user: TestUser, id: string, text: string) {
   )
     .bind(id, user.id, text)
     .run();
-  await indexReaderText(env, id, text);
+  await indexReaderTextStatement(env.DB, id, text).run();
 }
 
 describe('search_links and list_recent', () => {

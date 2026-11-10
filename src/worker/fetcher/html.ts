@@ -8,12 +8,18 @@ export interface PageMetadata {
   language: string | null;
 }
 
-function collapse(text: string | null | undefined): string {
+/** Text with its runs of whitespace made one space each, and trimmed. */
+export function collapse(text: string | null | undefined): string {
   return (text ?? '').replace(/\s+/g, ' ').trim();
 }
 
 function metaContent(document: Document, selector: string): string {
   return collapse(document.querySelector(selector)?.getAttribute('content'));
+}
+
+/** The DOM of a page's HTML, to read its metadata and then its reader view from one parse. */
+export function parsePage(html: string): Document {
+  return (parseHTML(html) as unknown as { document: Document }).document;
 }
 
 /**
@@ -22,8 +28,8 @@ function metaContent(document: Document, selector: string): string {
  * favicon from the first link whose rel contains "icon", else /favicon.ico at
  * the origin; the language from <html lang>. Whitespace is collapsed.
  */
-export function extractMetadata(html: string, finalUrl: string): PageMetadata {
-  const { document } = parseHTML(html) as unknown as { document: Document };
+export function extractMetadata(page: string | Document, finalUrl: string): PageMetadata {
+  const document = typeof page === 'string' ? parsePage(page) : page;
   const url = new URL(finalUrl);
   const title =
     collapse(document.querySelector('title')?.textContent) ||

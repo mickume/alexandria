@@ -7,7 +7,7 @@ import { queueIndexing } from '../meaning/indexing';
 import { indexReaderTextStatement } from '../search/search';
 import { decodeHtml, fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
-import { extractMetadata, type PageMetadata } from './html';
+import { extractMetadata, parsePage, type PageMetadata } from './html';
 import { readPdf } from './pdf';
 import { capText, extractReader, type ReaderView } from './reader';
 import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
@@ -246,8 +246,10 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
   let reader: ReaderView = { title: null, byline: null, html: null, text: '', empty: true };
   let unreadable = false;
   try {
-    meta = extractMetadata(html, result.finalUrl);
-    reader = extractReader(html, result.finalUrl);
+    // One parse for both, the metadata first: the reader view takes the document apart.
+    const document = parsePage(html);
+    meta = extractMetadata(document, result.finalUrl);
+    reader = extractReader(document, result.finalUrl);
   } catch (err) {
     console.error('a fetched page could not be read', err);
     unreadable = true;
@@ -406,10 +408,6 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
  * The FETCH_QUEUE consumer. The messages of a batch are processed
  * concurrently, so that a wait at one host's gate does not hold up the others.
  */
-export async function handleFetchBatch(
-  batch: MessageBatch<FetchMessage>,
-  env: Env,
-  _ctx?: ExecutionContext,
-): Promise<void> {
+export async function handleFetchBatch(batch: MessageBatch<FetchMessage>, env: Env): Promise<void> {
   await Promise.all(batch.messages.map((m) => processFetch(env, m)));
 }
