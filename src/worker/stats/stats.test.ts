@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { FakeAi } from '../test/ai';
 import { api, createToken, env, seedLinks, setNow, signIn, type TestUser } from '../test/helpers';
 import { statsHooks } from './stats';
 
 const NOW = '2026-11-10T12:00:00.000Z';
+const DAY = 86_400_000;
+
+/** The stored time `days` before NOW. */
+function daysAgo(days: number): string {
+  return new Date(Date.parse(NOW) - days * DAY).toISOString();
+}
 
 afterEach(() => {
   statsHooks.beforeSection = undefined;
@@ -322,5 +329,204 @@ describe('the stats route', () => {
     const r = await stats(user);
     expect(r.status).toBe(500);
     expect(r.json).toEqual({ error: 'internal' });
+  });
+});
+
+/**
+ * Seeds one link of the user's at `points` (start points 60) in `state`;
+ * returns its id.
+ */
+async function atPoints(user: TestUser, points: number, state = 'active'): Promise<string> {
+  const useCount = Math.max(0, points - 60);
+  const [id = ''] = await seedLinks(user, [
+    {
+      url: `https://p${crypto.randomUUID()}.example/`,
+      state,
+      useCount,
+      lastUsedAt: daysAgo(60 + useCount - points),
+    },
+  ]);
+  return id;
+}
+
+describe('expiry outlook', () => {
+  it('buckets the unprotected links by points, as their decay notes say', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const table = [-1, 0, 1, 7, 8, 30, 31];
+    const ids = [];
+    for (const p of table) ids.push(await atPoints(user, p));
+    await setLink(await atPoints(user, 0), 'pin_position', 1);
+    await addWorkspace(user, 'Kept', [await atPoints(user, 0)]);
+    await atPoints(user, -20, 'archived');
+
+    const r = await stats(user);
+    expect(r.json.expiry.expiring).toEqual({ today: 2, within_7_days: 2, within_30_days: 2 });
+    for (const [i, id] of ids.entries()) {
+      const note = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json.decay_note;
+      const p = table[i]!;
+      if (p <= 0) expect(note).toContain('expires today');
+      else expect(note).toContain(`expires in ${p} ${p === 1 ? 'day' : 'days'}`);
+    }
+  });
+
+  it('gives every point range of the histogram, in order', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const empty = await stats(user);
+    expect(empty.json.expiry.points_histogram).toEqual(
+      ['≤0', '1–7', '8–30', '31–60', '61–90', '>90'].map((range) => ({ range, count: 0 })),
+    );
+    for (const p of [-1, 0, 1, 7, 8, 30, 31, 60, 61, 90, 91]) await atPoints(user, p);
+    await atPoints(user, 5, 'expired');
+    const r = await stats(user);
+    expect(r.json.expiry.points_histogram).toEqual([
+      { range: '≤0', count: 2 },
+      { range: '1–7', count: 2 },
+      { range: '8–30', count: 2 },
+      { range: '31–60', count: 2 },
+      { range: '61–90', count: 2 },
+      { range: '>90', count: 1 },
+    ]);
+  });
+
+  it('counts the protected links at 0 points or below', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    await setLink(await atPoints(user, -3), 'pin_position', 1);
+    await addWorkspace(user, 'Kept', [await atPoints(user, 0)]);
+    await setLink(await atPoints(user, 5), 'pin_position', 2);
+    await setLink(await atPoints(user, -3, 'expired'), 'pin_position', 3);
+    await setLink(await atPoints(user, -9, 'archived'), 'pin_position', 4);
+    const r = await stats(user);
+    expect(r.json.expiry.protected_at_risk).toBe(2);
+  });
+
+  it('counts the expired links awaiting removal, within 7 and 30 days cumulatively', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    for (const removalIn of [-1, 3, 20, 100]) {
+      const id = await atPoints(user, -5, 'expired');
+      await setLink(id, 'expired_at', daysAgo(180 - removalIn));
+    }
+    const pinned = await atPoints(user, -5, 'expired');
+    await setLink(pinned, 'expired_at', daysAgo(179));
+    await setLink(pinned, 'pin_position', 1);
+    const r = await stats(user);
+    expect(r.json.expiry.awaiting_removal).toEqual({
+      total: 4,
+      within_7_days: 2,
+      within_30_days: 3,
+    });
+  });
+
+  it('gives the owner’s decay settings', async () => {
+    const user = await signIn();
+    const put = await api('PUT', '/api/v1/settings/decay', {
+      as: user.session,
+      body: { start_points: 30, remove_days: 90 },
+    });
+    expect(put.status).toBe(200);
+    const r = await stats(user);
+    expect(r.json.expiry.settings).toEqual({ start_points: 30, remove_days: 90 });
+  });
+});
+
+describe('health', () => {
+  it('counts the unreachable links with their 5 most common reasons', async () => {
+    const user = await signIn();
+    const reasons = [
+      ...Array(3).fill('HTTP 503'),
+      ...Array(2).fill('timed out'),
+      'host not found',
+      'HTTP 404',
+      'blocked by a bot check',
+      'TLS failure',
+    ];
+    const ids = await seedMany(user, reasons.length, 'u', { state: 'unreachable' });
+    for (const [i, id] of ids.entries()) await setLink(id, 'state_reason', reasons[i]);
+    const r = await stats(user);
+    expect(r.json.health.unreachable).toEqual({
+      count: 9,
+      by_reason: [
+        { reason: 'HTTP 503', count: 3 },
+        { reason: 'timed out', count: 2 },
+        { reason: 'blocked by a bot check', count: 1 },
+        { reason: 'host not found', count: 1 },
+        { reason: 'HTTP 404', count: 1 },
+      ],
+    });
+  });
+
+  it('counts the links failing their liveness checks', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const [ok = '', recent = '', old = ''] = await seedMany(user, 3, 'd', { state: 'active' });
+    await setLink(ok, 'liveness_failures', 0);
+    await setLink(recent, 'liveness_failures', 1);
+    await setLink(recent, 'dead_since', daysAgo(2));
+    await setLink(old, 'liveness_failures', 3);
+    await setLink(old, 'dead_since', daysAgo(30));
+    const r = await stats(user);
+    expect(r.json.health.dead).toEqual({ count: 2, dead_over_30_days: 1 });
+  });
+
+  it('counts the links in every enrichment status, with the failures’ reasons', async () => {
+    const user = await signIn();
+    const statuses = [
+      'no_key',
+      'queued',
+      'enriched',
+      'failed',
+      'failed',
+      'failed',
+      'skipped',
+      'waiting_for_key',
+      null,
+    ];
+    const ids = await seedMany(user, statuses.length, 'e');
+    for (const [i, id] of ids.entries()) await setLink(id, 'enrichment_status', statuses[i]);
+    await setLink(ids[3]!, 'enrichment_reason', 'provider_failed');
+    await setLink(ids[4]!, 'enrichment_reason', 'provider_failed');
+    await setLink(ids[5]!, 'enrichment_reason', 'the result could not be used');
+    const r = await stats(user);
+    expect(r.json.health.enrichment).toEqual({
+      no_key: 1,
+      queued: 1,
+      enriched: 1,
+      failed: 3,
+      skipped: 1,
+      waiting_for_key: 1,
+      none: 1,
+      failed_by_reason: [
+        { reason: 'provider_failed', count: 2 },
+        { reason: 'the result could not be used', count: 1 },
+      ],
+    });
+  });
+
+  it.each([
+    ['none', 'no key'],
+    ['verified', 'a key the provider accepted'],
+    ['rejected', 'a key the provider later rejected'],
+  ])('gives the AI key status %s for %s', async (status) => {
+    new FakeAi();
+    const user = await signIn();
+    if (status !== 'none') {
+      const put = await api('PUT', '/api/v1/settings/ai', {
+        as: user.session,
+        body: { provider: 'anthropic', api_key: 'sk-ant-test-key-1234' },
+      });
+      expect(put.status).toBe(200);
+    }
+    if (status === 'rejected') {
+      await env.DB.prepare(
+        "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'invalid' WHERE id = ?",
+      )
+        .bind(user.id)
+        .run();
+    }
+    const r = await stats(user);
+    expect(r.json.health.ai_key).toBe(status);
   });
 });

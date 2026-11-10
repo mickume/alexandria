@@ -1173,7 +1173,36 @@ answers `500 {"error": "internal"}`, with no partial result.
     "top": [{ "id": "…", "name": "rust", "count": 2 }]
   },
   "workspaces": { "total": 1, "largest": [{ "id": "…", "name": "Trip", "count": 1 }] },
-  "hosts": { "distinct": 3, "top": [{ "host": "example.com", "count": 4 }] }
+  "hosts": { "distinct": 3, "top": [{ "host": "example.com", "count": 4 }] },
+  "expiry": {
+    "expiring": { "today": 2, "within_7_days": 2, "within_30_days": 2 },
+    "points_histogram": [
+      { "range": "≤0", "count": 2 },
+      { "range": "1–7", "count": 2 },
+      { "range": "8–30", "count": 2 },
+      { "range": "31–60", "count": 2 },
+      { "range": "61–90", "count": 2 },
+      { "range": ">90", "count": 1 }
+    ],
+    "protected_at_risk": 2,
+    "awaiting_removal": { "total": 4, "within_7_days": 2, "within_30_days": 3 },
+    "settings": { "start_points": 60, "remove_days": 180 }
+  },
+  "health": {
+    "unreachable": { "count": 9, "by_reason": [{ "reason": "HTTP 503", "count": 3 }] },
+    "dead": { "count": 2, "dead_over_30_days": 1 },
+    "enrichment": {
+      "no_key": 1,
+      "queued": 1,
+      "enriched": 1,
+      "failed": 3,
+      "skipped": 1,
+      "waiting_for_key": 1,
+      "none": 1,
+      "failed_by_reason": [{ "reason": "provider_failed", "count": 2 }]
+    },
+    "ai_key": "verified"
+  }
 }
 ```
 
@@ -1188,10 +1217,27 @@ answers `500 {"error": "internal"}`, with no partial result.
   tags on the most links.
 - `workspaces`: every workspace and the 10 with the most links.
 - `hosts`: the distinct hosts and the 10 with the most links.
+- `expiry`: points are computed at the time of the request, as for a link the
+  API returns. An *unprotected* link is `active`, `pending` or `unreachable`
+  and neither pinned nor in a workspace: one decay can expire. `expiring`
+  counts the unprotected links at 0 points or below (`today`: at the next
+  decay run), at 1 to 7 and at 8 to 30 points, matching their `decay_note`;
+  `points_histogram` counts them in six ranges, always all six, in order.
+  `protected_at_risk` counts the pinned or workspace links, neither expired
+  nor archived, at 0 points or below. `awaiting_removal` counts the expired
+  links decay will remove (neither pinned nor in a workspace), and of them
+  those whose `removal_at` is within 7 and within 30 days (cumulative; a
+  past `removal_at` counts in both). `settings` are the owner's
+  `start_points` and `remove_days`.
+- `health`: the unreachable links with the 5 most common `state_reason`s;
+  the links with a failed liveness check (`liveness_failures` above 0), and
+  those dead for 30 days or more; the links in each `enrichment_status`
+  (`none` for none yet) with the 5 most common reasons of the failed ones;
+  and the AI key's status, `none`, `verified` or `rejected`.
 
-Every list holds at most 10 entries, most first; ties are broken by name (or
-host), A to Z. An empty library answers every count 0 (`limit` aside) and
-every list `[]`.
+Every list holds at most 10 entries (5 for reasons), most first; ties are
+broken by name (or host, or reason), A to Z ignoring case. An empty library
+answers every count 0 (`limit` aside) and every list `[]`.
 
 ### Export
 

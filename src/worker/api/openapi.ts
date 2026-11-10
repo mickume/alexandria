@@ -285,6 +285,9 @@ const error = (description: string): ResponseSpec => ({ description, schema: Err
 
 const count = z.number().int();
 
+/** One of the 5 most common reasons, most first, ties by reason. */
+const Reason = z.strictObject({ reason: z.string(), count });
+
 /** The owner's library statistics, computed at the time of the request. */
 export const Stats = z.strictObject({
   library: z.strictObject({
@@ -339,6 +342,34 @@ export const Stats = z.strictObject({
     top: z
       .array(z.strictObject({ host: z.string(), count }))
       .describe('At most 10, most links first, ties by host'),
+  }),
+  expiry: z.strictObject({
+    expiring: z
+      .strictObject({ today: count, within_7_days: count, within_30_days: count })
+      .describe('Unprotected links at ≤0, 1–7 and 8–30 points; the buckets do not overlap'),
+    points_histogram: z
+      .array(z.strictObject({ range: z.string(), count }))
+      .describe('Unprotected links in the ranges ≤0, 1–7, 8–30, 31–60, 61–90 and >90, in order'),
+    protected_at_risk: count.describe('Pinned or workspace links at 0 points or below'),
+    awaiting_removal: z
+      .strictObject({ total: count, within_7_days: count, within_30_days: count })
+      .describe('Expired links decay will remove; the windows are cumulative'),
+    settings: z.strictObject({ start_points: count, remove_days: count }),
+  }),
+  health: z.strictObject({
+    unreachable: z.strictObject({ count, by_reason: z.array(Reason) }),
+    dead: z.strictObject({ count, dead_over_30_days: count }),
+    enrichment: z.strictObject({
+      no_key: count,
+      queued: count,
+      enriched: count,
+      failed: count,
+      skipped: count,
+      waiting_for_key: count,
+      none: count,
+      failed_by_reason: z.array(Reason),
+    }),
+    ai_key: z.enum(['none', 'verified', 'rejected']),
   }),
 });
 
