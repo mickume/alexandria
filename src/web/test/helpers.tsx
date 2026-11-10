@@ -168,6 +168,7 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     state: 'pending',
     added_at: '2026-03-04T10:00:00.000Z',
     last_used_at: '2026-03-05T10:00:00.000Z',
+    decay_from: '2026-03-05T10:00:00.000Z',
     use_count: 0,
     pinned: false,
     pin_position: null,

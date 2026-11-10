@@ -18,6 +18,8 @@ export interface LinkRow {
   state: string;
   added_at: string;
   last_used_at: string;
+  /** When the link's decay counts from. */
+  decay_from: string;
   use_count: number;
   pin_position: number | null;
   final_url: string | null;
@@ -76,7 +78,10 @@ export interface LinkView {
   title: string;
   state: string;
   added_at: string;
+  /** When the link was last used or boosted. */
   last_used_at: string;
+  /** When the link's decay counts from: its points lose one a day since then. */
+  decay_from: string;
   use_count: number;
   pinned: boolean;
   pin_position: number | null;
@@ -114,8 +119,8 @@ export interface LinkView {
   /** The whole note: only on the link read on its own. */
   note?: string;
   /**
-   * Start points plus the use count, minus the whole days since the last use
-   * or boost; null for an archived link, which decay leaves alone.
+   * Start points plus the use count, minus the whole days since the decay
+   * start; null for an archived link, which decay leaves alone.
    */
   points: number | null;
   /** When the link was archived, while it is archived. */
@@ -171,6 +176,7 @@ export function toView(row: LinkRow): LinkView {
     state: row.state,
     added_at: row.added_at,
     last_used_at: row.last_used_at,
+    decay_from: row.decay_from,
     use_count: row.use_count,
     pinned: row.pin_position !== null,
     pin_position: row.pin_position,
@@ -223,11 +229,12 @@ function addStatement(db: D1Database, userId: string, link: NewLink, at: string,
   return db
     .prepare(
       `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at,
-         updated_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6, ?6
+         decay_from, updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?6, ?6, ?6
        WHERE (SELECT COUNT(*) FROM links WHERE user_id = ?2) < ?7
           OR EXISTS (SELECT 1 FROM links WHERE user_id = ?2 AND url = ?3)
        ON CONFLICT (user_id, url) DO UPDATE SET last_used_at = excluded.last_used_at,
+         decay_from = excluded.decay_from,
          updated_at = excluded.updated_at,
          state = CASE WHEN links.state = 'expired' THEN 'active' ELSE links.state END,
          expired_at = NULL

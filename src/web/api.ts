@@ -66,6 +66,8 @@ export interface Link {
   state: string;
   added_at: string;
   last_used_at: string;
+  /** When the link's decay counts from. */
+  decay_from: string;
   use_count: number;
   pinned: boolean;
   pin_position: number | null;

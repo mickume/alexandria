@@ -62,7 +62,10 @@ export const Link = z.strictObject({
   title: z.string(),
   state: z.string().describe('pending until the link is fetched'),
   added_at: z.string(),
-  last_used_at: z.string(),
+  last_used_at: z.string().describe('When the link was last used or boosted'),
+  decay_from: z
+    .string()
+    .describe('When the link’s decay counts from: its points lose one a day since then'),
   use_count: z.number().int(),
   pinned: z.boolean(),
   pin_position: z.number().int().nullable(),
@@ -96,7 +99,7 @@ export const Link = z.strictObject({
     .int()
     .nullable()
     .describe(
-      'Start points plus the use count, minus whole days since the last use or boost; null for an archived link',
+      'Start points plus the use count, minus whole days since decay_from; null for an archived link',
     ),
   archived_at: z.string().nullable().describe('When the link was archived, while it is archived'),
   expired_at: z.string().nullable().describe('When the link expired, while it is expired'),

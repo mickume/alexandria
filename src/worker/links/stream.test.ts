@@ -36,7 +36,7 @@ describe('the stream', () => {
     setNow(T);
     const user = await signIn();
     const at = (ms: number) => new Date(T - ms).toISOString();
-    const [pinned2, pinned1, a, b, c, d, e, f] = await seedLinks(user, [
+    const [pinned2, pinned1, a, b, c, d, e, f, g, h, i, j] = await seedLinks(user, [
       { url: 'https://p2.example', lastUsedAt: at(0), pinPosition: 2, state: 'active' },
       { url: 'https://p1.example', lastUsedAt: at(400 * DAY), pinPosition: 1, state: 'active' },
       { url: 'https://a.example', lastUsedAt: at(5 * DAY), useCount: 10, state: 'active' },
@@ -45,13 +45,41 @@ describe('the stream', () => {
       { url: 'https://d.example', lastUsedAt: at(70 * DAY), state: 'active' },
       { url: 'https://e.example', lastUsedAt: at(10 * DAY), state: 'active' },
       { url: 'https://f.example', lastUsedAt: at(10 * DAY), state: 'active' },
+      // Used more recently than h, but decaying for longer: its points come from its decay start.
+      { url: 'https://g.example', lastUsedAt: at(HOUR), decayFrom: at(20 * DAY), state: 'active' },
+      {
+        url: 'https://h.example',
+        lastUsedAt: at(30 * DAY),
+        decayFrom: at(15 * DAY),
+        state: 'active',
+      },
+      // Equal points: the more recent last use comes first.
+      {
+        url: 'https://i.example',
+        lastUsedAt: at(2 * HOUR),
+        decayFrom: at(25 * DAY),
+        state: 'active',
+      },
+      { url: 'https://j.example', lastUsedAt: at(HOUR), decayFrom: at(25 * DAY), state: 'active' },
     ]);
     await intoWorkspace(user, d!);
     const r = await api('GET', '/api/v1/links', { as: user.session });
     expect(r.status).toBe(200);
-    expect(ids(r.json.items)).toEqual([pinned1, pinned2, a, b, c, ...[e, f].sort().reverse(), d]);
+    expect(ids(r.json.items)).toEqual([
+      pinned1,
+      pinned2,
+      a,
+      b,
+      c,
+      ...[e, f].sort().reverse(),
+      h,
+      g,
+      j,
+      i,
+      d,
+    ]);
     expect(r.json.items.map((l: { points: number }) => l.points)).toEqual([
-      -340, 60, 65, 61, 61, 50, 50, -10,
+      -340, 60, 65, 61, 61, 50, 50, 45, 40, 35, 35, -10,
     ]);
   });
 

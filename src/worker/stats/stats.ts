@@ -21,11 +21,11 @@ const DAY_MS = 86_400_000;
 /**
  * The SQL expression of a link `l`'s points at the instant bound as `?2`, for
  * the user bound as `?1`: start points plus use count, minus the whole 24-hour
- * periods since the last use (none for a use after the instant), counted in
+ * periods since the decay start (none for one after the instant), counted in
  * integer milliseconds as the decay expiry statement and pointsAt count them.
  */
 const POINTS = `((SELECT start_points FROM users WHERE id = ?1) + l.use_count
-  - MAX(0, (?2 - ${epochMs('l.last_used_at')}) / ${DAY_MS}))`;
+  - MAX(0, (?2 - ${epochMs('l.decay_from')}) / ${DAY_MS}))`;
 
 /** The SQL condition that a link `l` is one decay can expire. */
 const UNPROTECTED = `l.state IN ('active', 'pending', 'unreachable') AND l.pin_position IS NULL

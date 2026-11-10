@@ -64,7 +64,8 @@ test('a link reaches 0 points, decay expires it, and the owner follows the count
   await signIn(page);
   const [id = ''] = await addLinkIds(page, ['https://code.example/stats-expiring']);
   await waitFetched(page, [id]);
-  d1(`UPDATE links SET last_used_at = '${daysAgo(61)}' WHERE id = '${id}'`);
+  const past = daysAgo(61);
+  d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${id}'`);
   d1('UPDATE users SET last_decay_at = NULL');
   const before = await statsNow(page);
   expect(before.expiry.expiring.today).toBeGreaterThanOrEqual(1);
@@ -162,7 +163,8 @@ test('decay expires and removes a link, and Trends still counts it', async ({ pa
   const before = await todayRecord(page);
   const [id = ''] = await addLinkIds(page, ['https://code.example/stats-trend-gone']);
   await waitFetched(page, [id]);
-  d1(`UPDATE links SET last_used_at = '${daysAgo(61)}' WHERE id = '${id}'`);
+  const past = daysAgo(61);
+  d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${id}'`);
   d1('UPDATE users SET last_decay_at = NULL');
   await runScheduled(page);
   await expect

@@ -29,8 +29,8 @@ function daysBefore(t: Date, days: number): string {
 /**
  * The statement that expires, at time `t`, every link of the user whose
  * points are 0 or below, that is active, pending or unreachable, not pinned
- * and in no workspace. Points reach 0 once the whole days since the last use
- * reach the start points plus the use count. The statement carries its own
+ * and in no workspace. Points reach 0 once the whole days since the decay
+ * start reach the start points plus the use count. The statement carries its own
  * conditions, so a link used or re-pasted meanwhile is left as the use left it.
  */
 export function expiryStatement(db: D1Database, userId: string, t: Date): D1PreparedStatement {
@@ -39,7 +39,7 @@ export function expiryStatement(db: D1Database, userId: string, t: Date): D1Prep
       `UPDATE links AS l SET state = 'expired', expired_at = ?2, updated_at = ?2
        WHERE l.user_id = ?1 AND l.state IN ('active', 'pending', 'unreachable')
          AND l.pin_position IS NULL AND NOT ${MEMBER}
-         AND ${epochMs('l.last_used_at')} <=
+         AND ${epochMs('l.decay_from')} <=
            ?3 - ((SELECT start_points FROM users WHERE id = ?1) + l.use_count) * ${DAY_MS}`,
     )
     .bind(userId, t.toISOString(), t.getTime());

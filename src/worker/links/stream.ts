@@ -46,7 +46,7 @@ export const IN_STREAM: Conditions = {
  * bound in its place, counted as pointsAt counts them.
  */
 const POINTS_AT = `(COALESCE(l.user_start_points, ${DEFAULT_START_POINTS}) + l.use_count
-  - MAX(0, (CAST(? AS INTEGER) - ${epochMs('l.last_used_at')}) / 86400000))`;
+  - MAX(0, (CAST(? AS INTEGER) - ${epochMs('l.decay_from')}) / 86400000))`;
 
 /**
  * One page of the user's stream: the links that satisfy `where` (by default,

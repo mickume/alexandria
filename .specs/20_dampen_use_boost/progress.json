@@ -3,11 +3,11 @@
   "spec_id": "20",
   "spec_name": "dampen_use_boost",
   "schema_version": 3,
-  "updated_at": "",
+  "updated_at": "2026-11-10T13:56:09Z",
   "tasks": [
     {
       "id": 1,
-      "state": "pending"
+      "state": "done"
     },
     {
       "id": 2,

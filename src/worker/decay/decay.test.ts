@@ -130,30 +130,30 @@ describe('the decay settings', () => {
 
 describe('a link’s points', () => {
   it.each([
-    { uses: 0, unused: 0, points: 60 },
-    { uses: 0, unused: DAY - 60_000, points: 60 },
-    { uses: 0, unused: DAY, points: 59 },
-    { uses: 10, unused: 5 * DAY, points: 65 },
-    { uses: 0, unused: 61 * DAY, points: -1 },
-    { uses: 3, unused: 200 * DAY, points: -137 },
+    { state: 'active', uses: 0, decayed: 0, lastUsed: 0, points: 60 },
+    { state: 'active', uses: 0, decayed: DAY - 60_000, lastUsed: 0, points: 60 },
+    { state: 'active', uses: 0, decayed: DAY, lastUsed: 0, points: 59 },
+    { state: 'active', uses: 5, decayed: 62 * DAY, lastUsed: DAY, points: 3 },
+    { state: 'active', uses: 10, decayed: 5 * DAY, lastUsed: 5 * DAY, points: 65 },
+    { state: 'active', uses: 0, decayed: 61 * DAY, lastUsed: 0, points: -1 },
+    { state: 'active', uses: 3, decayed: 200 * DAY, lastUsed: 200 * DAY, points: -137 },
+    { state: 'archived', uses: 3, decayed: 20 * DAY, lastUsed: DAY, points: null },
   ])(
-    'are start points plus $uses uses minus whole days in $unused ms unused: $points',
-    async ({ uses, unused, points }) => {
+    'are start points plus $uses uses minus whole days in $decayed ms of decay, whatever the last use: $state $points',
+    async ({ state, uses, decayed, lastUsed, points }) => {
       const user = await signIn();
+      const decayFrom = new Date(T - decayed).toISOString();
+      const lastUsedAt = new Date(T - lastUsed).toISOString();
       const [id = ''] = await seedLinks(user, [
-        {
-          url: 'https://points.example/',
-          state: 'active',
-          useCount: uses,
-          lastUsedAt: new Date(T - unused).toISOString(),
-        },
+        { url: 'https://points.example/', state, useCount: uses, lastUsedAt, decayFrom },
       ]);
       setNow(T);
       const link = (await api('GET', `/api/v1/links/${id}`, await as(user))).json;
       expect(link.points).toBe(points);
+      expect(link.decay_from).toBe(decayFrom);
+      expect(link.last_used_at).toBe(lastUsedAt);
       expect(link.expired_at).toBeNull();
       expect('sticky' in link).toBe(false);
-      expect(link.archived_at).toBeNull();
     },
   );
 });
@@ -283,6 +283,32 @@ describe('expiry by decay', () => {
       expect(link.points).toBe(expected === 'archived' ? null : 60 + uses - unused);
     },
   );
+
+  it.each([
+    { label: 'last used today, decaying 61 days', lastUsed: 0, decayed: 61, expected: 'expired' },
+    {
+      label: 'last used 61 days ago, decaying today',
+      lastUsed: 61,
+      decayed: 0,
+      expected: 'active',
+    },
+  ])('counts from the decay start, not the last use: $label', async (row) => {
+    setNow(T);
+    const user = await signIn();
+    const [id = ''] = await seedLinks(user, [
+      {
+        url: 'https://decay-start.example/',
+        state: 'active',
+        lastUsedAt: new Date(T - row.lastUsed * DAY).toISOString(),
+        decayFrom: new Date(T - row.decayed * DAY).toISOString(),
+      },
+    ]);
+    await evaluateDecay(env, user.id);
+    expect(await linkRow(id)).toEqual({
+      state: row.expected,
+      expired_at: row.expected === 'expired' ? new Date(T).toISOString() : null,
+    });
+  });
 
   it('ignores how many days a link was used on: there is no stickiness', async () => {
     const user = await signIn();

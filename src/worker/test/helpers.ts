@@ -212,13 +212,19 @@ export async function createToken(
 export interface SeedLink {
   url: string;
   lastUsedAt?: string;
+  /** When the link's decay counts from; by default, its last use. */
+  decayFrom?: string;
   addedAt?: string;
   state?: string;
   pinPosition?: number | null;
   useCount?: number;
 }
 
-/** Stores links for `user` directly, bypassing the API, and returns their ids in order. */
+/**
+ * Stores links for `user` directly, bypassing the API, and returns their ids in
+ * order. A link seeded without a decay start gets its last use as one from the
+ * schema, so this also seeds a schema older than the decay start.
+ */
 export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<string[]> {
   const ids: string[] = [];
   const statements: D1PreparedStatement[] = [];
@@ -228,11 +234,12 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
     ids.push(id);
     const host = new URL(l.url).host;
     const at = l.lastUsedAt ?? new Date(base + i * 1000).toISOString();
+    const decay = l.decayFrom === undefined ? ['', ''] : [', decay_from', ', ?'];
     statements.push(
       env.DB.prepare(
         `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at,
-           last_used_at, use_count, pin_position, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           last_used_at, use_count, pin_position, updated_at${decay[0]})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${decay[1]})`,
       ).bind(
         id,
         user.id,
@@ -246,6 +253,7 @@ export async function seedLinks(user: TestUser, links: SeedLink[]): Promise<stri
         l.useCount ?? 0,
         l.pinPosition ?? null,
         at,
+        ...(l.decayFrom === undefined ? [] : [l.decayFrom]),
       ),
     );
   });

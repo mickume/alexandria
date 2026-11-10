@@ -99,7 +99,8 @@ async function plan(db: D1Database, userId: string, lines: ImportLine[]): Promis
 }
 
 /**
- * The statement that adds one new URL as a pending link, last used `at`:
+ * The statement that adds one new URL as a pending link, last used `at` and
+ * decaying from then:
  * nothing when the user already has the URL (it is then a duplicate, never
  * boosted) or the library is full.
  */
@@ -114,8 +115,8 @@ function insertStatement(
   return db
     .prepare(
       `INSERT INTO links (id, user_id, url, original_url, host, title, state, added_at, last_used_at,
-         updated_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?7, ?6
+         decay_from, updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?5, 'pending', ?6, ?7, ?7, ?6
        WHERE (SELECT COUNT(*) FROM links WHERE user_id = ?2) < ?8
        ON CONFLICT (user_id, url) DO NOTHING
        RETURNING id`,

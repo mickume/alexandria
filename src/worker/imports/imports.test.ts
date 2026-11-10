@@ -222,7 +222,9 @@ describe('POST /api/v1/imports adds', () => {
         state: 'pending',
         title: 'a.example',
       });
-      expect(await linkByUrl(user, 'https://b.example')).toMatchObject({ state: 'pending' });
+      const b = await linkByUrl(user, 'https://b.example');
+      expect(b).toMatchObject({ state: 'pending' });
+      for (const link of [a, b]) expect(link?.decay_from).toBe(link?.last_used_at);
       const again = await api('GET', `/api/v1/imports/${r.json.id}`, { as: user.session });
       expect(again.status).toBe(200);
       expect(again.json).toMatchObject({

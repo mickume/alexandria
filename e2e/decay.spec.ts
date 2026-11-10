@@ -13,7 +13,8 @@ test('a link unused for longer than its start points expires and the owner resto
     headers: { Origin: origin },
   });
   const id: string = (await added.json()).link.id;
-  d1(`UPDATE links SET last_used_at = '${daysAgo(61)}' WHERE id = '${id}'`);
+  const past = daysAgo(61);
+  d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${id}'`);
 
   await runScheduled(page);
   await expect
@@ -61,7 +62,8 @@ test('the stream lists a much-used link above a recently used one, each with its
     await page.request.get(`/api/v1/links/${used}/open`, { maxRedirects: 0 });
   }
   await page.request.get(`/api/v1/links/${recent}/open`, { maxRedirects: 0 });
-  d1(`UPDATE links SET last_used_at = '${daysAgo(5)}' WHERE id = '${used}'`);
+  const past = daysAgo(5);
+  d1(`UPDATE links SET last_used_at = '${past}', decay_from = '${past}' WHERE id = '${used}'`);
 
   await page.goto('/');
   await expect(cardOf(page, used).getByText('expires in 65 days')).toBeVisible();
