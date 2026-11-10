@@ -127,7 +127,7 @@ askRoutes.post('/', async (c) => {
   // The question is accepted and its answer starts: it counts, whatever the provider does.
   await countStatement(c.env.DB, { userId, at: now(), counter: 'asks' }).run();
   const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
-  const call = { provider: settings.provider, apiKey, model: settings.model };
+  const call = { provider: settings.provider, apiKey, model: settings.model, userId };
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { now } from '../clock';
 import type { Env } from '../env';
+import { recordUsage, type Purpose } from '../stats/daily';
 import type { Provider } from './keys';
 
 /** How long a provider call may take before it is abandoned. */
@@ -21,6 +23,59 @@ export interface ProviderCall {
   provider: Provider;
   apiKey: string;
   model: string;
+  /** The owner the call is made for: with it, the call's token usage is recorded. */
+  userId?: string;
+}
+
+/** The tokens an answer reported. */
+interface Tokens {
+  input: number;
+  output: number;
+}
+
+/** Anthropic's usage as tokens: the input with the prompt-cache tokens, and the output. */
+function anthropicTokens(usage: Anthropic.Usage | undefined | null): Tokens | null {
+  if (!usage) return null;
+  return {
+    input:
+      usage.input_tokens +
+      (usage.cache_creation_input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0),
+    output: usage.output_tokens,
+  };
+}
+
+/** OpenRouter's usage as tokens. */
+function openRouterTokens(usage: unknown): Tokens | null {
+  const u = usage as { prompt_tokens?: unknown; completion_tokens?: unknown } | null | undefined;
+  if (typeof u?.prompt_tokens !== 'number' || typeof u.completion_tokens !== 'number') return null;
+  return { input: u.prompt_tokens, output: u.completion_tokens };
+}
+
+/**
+ * Runs one provider call and, for an owner's call, records it under `purpose`
+ * with the tokens it reported (`seen`), whatever its outcome. A failed record
+ * is logged and changes nothing about the call.
+ */
+async function metered<T>(
+  env: Env,
+  call: ProviderCall,
+  purpose: Purpose,
+  run: (seen: (tokens: Tokens | null) => void) => Promise<ProviderOutcome<T>>,
+): Promise<ProviderOutcome<T>> {
+  let tokens: Tokens | null = null;
+  const outcome = await run((t) => {
+    tokens = t;
+  });
+  if (call.userId) {
+    const record = { userId: call.userId, purpose, model: call.model, at: now(), tokens };
+    try {
+      await recordUsage(env.DB, record);
+    } catch (err) {
+      console.error('recording the AI usage failed', err);
+    }
+  }
+  return outcome;
 }
 
 /** What a provider call came to. */
@@ -132,7 +187,7 @@ async function openRouterChat(
   apiKey: string,
   body: Record<string, unknown>,
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<{ content: string | null; tokens: Tokens | null }> {
   const response = await fetch(`${env.OPENROUTER_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -141,9 +196,15 @@ async function openRouterChat(
   });
   const text = await response.text();
   if (!response.ok) throw new OpenRouterHttpError(response.status, text);
-  const json = JSON.parse(text) as { choices?: { message?: { content?: unknown } }[] };
+  const json = JSON.parse(text) as {
+    choices?: { message?: { content?: unknown } }[];
+    usage?: unknown;
+  };
   const content = json.choices?.[0]?.message?.content;
-  return typeof content === 'string' ? content : null;
+  return {
+    content: typeof content === 'string' ? content : null,
+    tokens: openRouterTokens(json.usage),
+  };
 }
 
 /** Turns anything a client threw into an outcome. */
@@ -164,26 +225,30 @@ function fromError(err: unknown): ProviderOutcome<never> {
 /** Sends one minimal completion with the user's key and model, to see whether the provider accepts them. */
 export async function testKey(env: Env, call: ProviderCall): Promise<ProviderOutcome<void>> {
   const prompt = 'Reply with the single word: ok';
-  try {
-    await withTimeout(async (signal) => {
-      if (call.provider === 'anthropic') {
-        await anthropic(env, call.apiKey).messages.create(
-          { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
-          { signal },
-        );
-      } else {
-        await openRouterChat(
-          env,
-          call.apiKey,
-          { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
-          signal,
-        );
-      }
-    });
-    return { ok: true, value: undefined };
-  } catch (err) {
-    return fromError(err);
-  }
+  return metered(env, call, 'key_test', async (seen) => {
+    try {
+      await withTimeout(async (signal) => {
+        if (call.provider === 'anthropic') {
+          const message = await anthropic(env, call.apiKey).messages.create(
+            { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
+            { signal },
+          );
+          seen(anthropicTokens(message.usage));
+        } else {
+          const answer = await openRouterChat(
+            env,
+            call.apiKey,
+            { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
+            signal,
+          );
+          seen(answer.tokens);
+        }
+      });
+      return { ok: true, value: undefined };
+    } catch (err) {
+      return fromError(err);
+    }
+  });
 }
 
 /**
@@ -232,6 +297,7 @@ async function structuredWith(
   call: ProviderCall,
   prompt: string,
   { schema, name, maxTokens }: { schema: object; name: string; maxTokens: number },
+  seen: (tokens: Tokens | null) => void,
 ): Promise<ProviderOutcome<unknown>> {
   try {
     return await withTimeout(async (signal) => {
@@ -249,6 +315,7 @@ async function structuredWith(
           },
           { signal },
         );
+        seen(anthropicTokens(message.usage));
         if (message.stop_reason === 'refusal') {
           return { ok: false, kind: 'failed', message: 'the model declined' } as const;
         }
@@ -262,7 +329,7 @@ async function structuredWith(
           return { ok: false, kind: 'failed', message: 'the answer is not JSON' } as const;
         }
       }
-      const content = await openRouterChat(
+      const { content, tokens } = await openRouterChat(
         env,
         call.apiKey,
         {
@@ -274,6 +341,7 @@ async function structuredWith(
         },
         signal,
       );
+      seen(tokens);
       if (!content) {
         return { ok: false, kind: 'failed', message: 'the model declined' } as const;
       }
@@ -294,11 +362,15 @@ export function enrichWith(
   call: ProviderCall,
   prompt: string,
 ): Promise<ProviderOutcome<unknown>> {
-  return structuredWith(env, call, prompt, {
-    schema: RESULT_SCHEMA,
-    name: 'enrichment',
-    maxTokens: ENRICH_MAX_TOKENS,
-  });
+  return metered(env, call, 'enrich', (seen) =>
+    structuredWith(
+      env,
+      call,
+      prompt,
+      { schema: RESULT_SCHEMA, name: 'enrichment', maxTokens: ENRICH_MAX_TOKENS },
+      seen,
+    ),
+  );
 }
 
 /** Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA). */
@@ -307,11 +379,15 @@ export function splitWith(
   call: ProviderCall,
   prompt: string,
 ): Promise<ProviderOutcome<unknown>> {
-  return structuredWith(env, call, prompt, {
-    schema: SPLIT_SCHEMA,
-    name: 'split',
-    maxTokens: SPLIT_MAX_TOKENS,
-  });
+  return metered(env, call, 'split', (seen) =>
+    structuredWith(
+      env,
+      call,
+      prompt,
+      { schema: SPLIT_SCHEMA, name: 'split', maxTokens: SPLIT_MAX_TOKENS },
+      seen,
+    ),
+  );
 }
 
 /** What a streamed answer is asked: the instruction, and the passages and question. */
@@ -335,6 +411,7 @@ const NO_ANSWER = { ok: false, kind: 'failed', message: 'the model gave no answe
 async function readOpenRouterStream(
   body: ReadableStream<Uint8Array>,
   hand: (text: string) => Promise<void>,
+  seen: (tokens: Tokens | null) => void,
 ): Promise<ProviderOutcome<void>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -353,6 +430,7 @@ async function readOpenRouterStream(
       let chunk: {
         error?: unknown;
         choices?: { delta?: { content?: unknown }; finish_reason?: string | null }[];
+        usage?: unknown;
       };
       try {
         chunk = JSON.parse(data);
@@ -360,6 +438,9 @@ async function readOpenRouterStream(
         return { ok: false, kind: 'failed', message: 'the answer is not JSON' };
       }
       if (chunk.error) return { ok: false, kind: 'failed', message: messageOf(chunk, 'failed') };
+      // The usage comes in a last chunk, when OpenRouter sends it.
+      const tokens = openRouterTokens(chunk.usage);
+      if (tokens) seen(tokens);
       const choice = chunk.choices?.[0];
       if (typeof choice?.delta?.content === 'string') await hand(choice.delta.content);
       if (choice?.finish_reason === 'content_filter') declined = true;
@@ -379,6 +460,17 @@ export async function streamAnswer(
   call: ProviderCall,
   request: AnswerRequest,
   onText: (text: string) => void | Promise<void>,
+): Promise<ProviderOutcome<void>> {
+  return metered(env, call, 'ask', (seen) => streamWith(env, call, request, onText, seen));
+}
+
+/** streamAnswer's call, handing the tokens the answer reports to `seen`. */
+async function streamWith(
+  env: Env,
+  call: ProviderCall,
+  request: AnswerRequest,
+  onText: (text: string) => void | Promise<void>,
+  seen: (tokens: Tokens | null) => void,
 ): Promise<ProviderOutcome<void>> {
   let received = false;
   const hand = async (text: string) => {
@@ -404,6 +496,7 @@ export async function streamAnswer(
           }
         }
         const message = await stream.finalMessage();
+        seen(anthropicTokens(message.usage));
         if (message.stop_reason === 'refusal') return DECLINED;
         return received ? { ok: true, value: undefined } : NO_ANSWER;
       }
@@ -426,7 +519,7 @@ export async function streamAnswer(
       );
       if (!response.ok) throw new OpenRouterHttpError(response.status, await response.text());
       if (!response.body) return NO_ANSWER;
-      const outcome = await readOpenRouterStream(response.body, hand);
+      const outcome = await readOpenRouterStream(response.body, hand, seen);
       return outcome.ok && !received ? NO_ANSWER : outcome;
     });
   } catch (err) {

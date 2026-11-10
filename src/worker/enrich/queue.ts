@@ -127,7 +127,7 @@ async function processEnrichment(env: Env, message: Message<EnrichMessage>): Pro
   const apiKey = await decryptKey(env, settings.ciphertext, settings.iv, user_id);
   const outcome = await enrichWith(
     env,
-    { provider: settings.provider, apiKey, model: settings.model },
+    { provider: settings.provider, apiKey, model: settings.model, userId: user_id },
     await promptFor(env, link),
   );
   if (!outcome.ok && outcome.kind === 'rejected') {

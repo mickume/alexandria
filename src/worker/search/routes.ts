@@ -384,7 +384,7 @@ topicRoutes.post('/:id/split', async (c) => {
   const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
   const outcome = await splitWith(
     c.env,
-    { provider: settings.provider, apiKey, model: settings.model },
+    { provider: settings.provider, apiKey, model: settings.model, userId },
     buildSplitPrompt({
       topic: request.path.at(-1)!,
       children: request.children,

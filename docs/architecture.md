@@ -313,6 +313,23 @@ the topic's own path, and the links are moved in one batch. A link the owner
 moved while the provider answered stays where it is, and a sub-topic no link
 reached is deleted again.
 
+### Token usage
+
+Every call to the owner's provider (`enrich/providers.ts`: `testKey`,
+`enrichWith`, `splitWith`, `streamAnswer`, with the owner's id in the
+`ProviderCall`) is recorded when it ends, through `metered`, under its UTC
+day, purpose (`key_test`, `enrich`, `split`, `ask`) and model in
+`daily_ai_usage` (`stats/daily.ts`, `recordUsage`): one call, and the tokens
+the answer reported. From Anthropic the input is `usage.input_tokens` plus the
+prompt-cache tokens (`cache_creation_input_tokens`, `cache_read_input_tokens`)
+and the output `usage.output_tokens`, from the final message of a streamed
+answer; from OpenRouter `usage.prompt_tokens` and `usage.completion_tokens`,
+from the last chunk of a streamed answer when it carries one. A call whose
+answer reported none (a failure, a timeout, a stream without usage) counts in
+`calls_without_usage`. Recording never changes the call's outcome: a failed
+record is logged, and only that call's usage is lost. The embeddings of the
+account's Workers AI report no usage and are not recorded.
+
 ### The background throttle
 
 Background enrichment ("enrich all") goes through

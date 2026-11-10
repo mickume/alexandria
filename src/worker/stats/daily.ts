@@ -4,6 +4,9 @@
  * that fails or is rolled back is never counted and a stored one always is.
  */
 
+/** Test seams of the usage recorder, as the clock is one. */
+export const usageHooks: { beforeRecord?: () => void } = {};
+
 /** The events the daily record counts, one column each. */
 export const COUNTERS = [
   'added',
@@ -64,6 +67,41 @@ export function countStatement(db: D1Database, c: Count): D1PreparedStatement {
 export const SIZE_STATES = ['pending', 'active', 'unreachable', 'expired', 'archived'] as const;
 
 const DAY_MS = 86_400_000;
+
+/** Why a call to the owner's AI provider was made. */
+export type Purpose = 'enrich' | 'split' | 'ask' | 'key_test';
+
+/** One provider call to record: when it ended, and the tokens its answer reported, if any. */
+export interface UsageRecord {
+  userId: string;
+  purpose: Purpose;
+  model: string;
+  at: Date;
+  tokens: { input: number; output: number } | null;
+}
+
+/**
+ * Records one provider call under its UTC day, purpose and model: one more
+ * call, and its tokens added, or one more call without usage when its answer
+ * reported none (a failure, a timeout).
+ */
+export async function recordUsage(db: D1Database, u: UsageRecord): Promise<void> {
+  usageHooks.beforeRecord?.();
+  const input = u.tokens?.input ?? 0;
+  const output = u.tokens?.output ?? 0;
+  const without = u.tokens ? 0 : 1;
+  await db
+    .prepare(
+      `INSERT INTO daily_ai_usage
+         (user_id, day, purpose, model, calls, input_tokens, output_tokens, calls_without_usage)
+       VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7)
+       ON CONFLICT (user_id, day, purpose, model) DO UPDATE SET
+         calls = calls + 1, input_tokens = input_tokens + ?5, output_tokens = output_tokens + ?6,
+         calls_without_usage = calls_without_usage + ?7`,
+    )
+    .bind(u.userId, dayOf(u.at), u.purpose, u.model, input, output, without)
+    .run();
+}
 
 /**
  * Records, at an hourly run starting between 00:00 and 01:00 UTC, every

@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { runScheduled } from '../decay/cron';
 import { evaluateDecay } from '../decay/decay';
 import { blogArticle } from '../fetcher/fixtures/pages';
+import { setProviderTimeout } from '../enrich/providers';
 import { FakeAi } from '../test/ai';
 import { ARTICLES, seedArticle } from '../test/meaning';
 import { FakeOrigin } from '../test/origin';
+import { usageHooks } from './daily';
 import {
   api,
   addAndFetch,
@@ -458,5 +460,169 @@ describe('end-of-day size', () => {
     setNow('2026-11-11T12:00:00.000Z');
     expect(await sizeOn(user, '2026-11-09')).toBeNull();
     expect(await sizeOn(user, '2026-11-10')).toMatchObject({ total: 8 });
+  });
+});
+
+describe('AI usage', () => {
+  const MODEL = 'claude-opus-5-5';
+
+  /** Today's AI usage rows of the user. */
+  async function usageToday(user: TestUser) {
+    const r = await api('GET', '/api/v1/stats/history?days=1', { as: user.session });
+    return r.json.days[0].ai as Record<string, unknown>[];
+  }
+
+  /** Adds a fetched link and delivers its enrichment. */
+  async function enrichOne(user: TestUser, url: string) {
+    new FakeOrigin().page(url, blogArticle);
+    const enrich = recordEnrichQueue();
+    const { id } = await addAndFetch(user, url);
+    await deliverEnrichments(enrich.splice(0, enrich.length).map((m) => m.body));
+    return id;
+  }
+
+  /** Asks one question over one indexed article, reading the answer to its end. */
+  async function askOne(user: TestUser) {
+    const id = await seedArticle(user, ARTICLES.alarms);
+    await deliverIndexing([{ user_id: user.id, link_id: id }]);
+    const r = await api('POST', '/api/v1/ask', {
+      as: user.session,
+      body: { question: 'how do I schedule background work on cloudflare' },
+    });
+    await r.response.text();
+  }
+
+  /** Files 20 links directly under a new topic and splits it in two. */
+  async function splitOne(user: TestUser, ai: FakeAi) {
+    const topic = crypto.randomUUID();
+    await env.DB.prepare('INSERT INTO topics (id, user_id, name) VALUES (?, ?, ?)')
+      .bind(topic, user.id, 'Big topic')
+      .run();
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: 20 }, (_, i) => ({ url: `https://big${i}.example/`, state: 'active' })),
+    );
+    for (const id of ids) {
+      await env.DB.prepare("UPDATE links SET topic_id = ?, summary = 'About it.' WHERE id = ?")
+        .bind(topic, id)
+        .run();
+    }
+    ai.split((links) => ({
+      subtopics: [
+        { name: 'First half', links: links.slice(0, 10).map((l) => l.n) },
+        { name: 'Second half', links: links.slice(10).map((l) => l.n) },
+      ],
+    }));
+    const r = await api('POST', `/api/v1/topics/${topic}/split`, { as: user.session });
+    expect(r.status).toBe(200);
+  }
+
+  it.each([
+    ['key_test', async () => {}],
+    ['enrich', async (u: TestUser) => void (await enrichOne(u, 'https://used.example/a'))],
+    ['split', async (u: TestUser, ai: FakeAi) => splitOne(u, ai)],
+    ['ask', async (u: TestUser) => askOne(u)],
+  ])('records a %s call with the tokens the provider reported', async (purpose, act) => {
+    setNow(NOW);
+    const user = await signIn();
+    const ai = new FakeAi().usage({ input: 120, output: 30 });
+    await saveKey(user);
+    await act(user, ai);
+    expect(await usageToday(user)).toContainEqual({
+      purpose,
+      model: MODEL,
+      calls: 1,
+      input_tokens: 120,
+      output_tokens: 30,
+      calls_without_usage: 0,
+    });
+  });
+
+  it.each([
+    [
+      'Anthropic, with cache tokens',
+      'anthropic',
+      'enrich',
+      { input: 100, output: 10, cacheCreation: 20, cacheRead: 5 },
+      [125, 10, 0],
+    ],
+    ['Anthropic, streamed', 'anthropic', 'ask', { input: 50, output: 7 }, [50, 7, 0]],
+    ['OpenRouter', 'openrouter', 'enrich', { input: 40, output: 9 }, [40, 9, 0]],
+    ['OpenRouter, streamed with usage', 'openrouter', 'ask', { input: 33, output: 4 }, [33, 4, 0]],
+    ['OpenRouter, streamed without usage', 'openrouter', 'ask', null, [0, 0, 1]],
+  ] as const)(
+    'takes the tokens from %s',
+    async (_, provider, purpose, usage, [input, output, without]) => {
+      setNow(NOW);
+      const user = await signIn();
+      const ai = new FakeAi();
+      const r = await api('PUT', '/api/v1/settings/ai', {
+        as: user.session,
+        body: {
+          provider,
+          api_key: provider === 'anthropic' ? 'sk-ant-abcd1234' : 'sk-or-abcd1234',
+          ...(provider === 'openrouter' ? { model: 'openai/gpt-test' } : {}),
+        },
+      });
+      expect(r.status).toBe(200);
+      ai.usage(usage);
+      if (purpose === 'enrich') await enrichOne(user, 'https://tokens.example/a');
+      else await askOne(user);
+      const row = (await usageToday(user)).find((u) => u.purpose === purpose);
+      expect(row).toMatchObject({
+        calls: 1,
+        input_tokens: input,
+        output_tokens: output,
+        calls_without_usage: without,
+      });
+    },
+  );
+
+  it('records a failed or timed-out call without usage', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    new FakeOrigin().page('https://fails.example/a', blogArticle);
+    const enrich = recordEnrichQueue();
+    await addAndFetch(user, 'https://fails.example/a');
+    const [message] = enrich.splice(0, enrich.length).map((m) => m.body);
+    ai.status(503, 'overloaded', { testsToo: false });
+    await deliverEnrichments([message!]);
+    ai.stall();
+    setProviderTimeout(50);
+    try {
+      await deliverEnrichments([message!]);
+    } finally {
+      setProviderTimeout(null);
+    }
+    expect((await usageToday(user)).find((u) => u.purpose === 'enrich')).toEqual({
+      purpose: 'enrich',
+      model: MODEL,
+      calls: 2,
+      input_tokens: 0,
+      output_tokens: 0,
+      calls_without_usage: 2,
+    });
+  });
+
+  it('keeps the call’s result when its usage cannot be recorded', async () => {
+    setNow(NOW);
+    const user = await signIn();
+    new FakeAi();
+    await saveKey(user);
+    usageHooks.beforeRecord = () => {
+      throw new Error('the usage write failed');
+    };
+    try {
+      const id = await enrichOne(user, 'https://kept.example/a');
+      const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
+      expect(link.enrichment_status).toBe('enriched');
+      expect(link.summary).toBe('A short summary.');
+    } finally {
+      usageHooks.beforeRecord = undefined;
+    }
+    // The key's test was recorded before the recorder broke; the enrichment's usage is lost.
+    expect((await usageToday(user)).map((u) => u.purpose)).toEqual(['key_test']);
   });
 });

@@ -6,7 +6,13 @@
  */
 import { env } from 'cloudflare:test';
 import { onOutbound } from './outbound';
-import { anthropicStream, openRouterStream } from './streams';
+import {
+  anthropicStream,
+  anthropicUsage,
+  DEFAULT_USAGE,
+  openRouterStream,
+  type ReportedUsage,
+} from './streams';
 
 /** An enrichment result as a provider returns it. */
 export interface AiResult {
@@ -84,6 +90,7 @@ export class FakeAi {
   private keyAnswer: Answer | null = null;
   private pieces = DEFAULT_PIECES;
   private hangAfterPieces = false;
+  private reported: ReportedUsage | null = DEFAULT_USAGE;
 
   constructor() {
     onOutbound(new URL(env.ANTHROPIC_BASE_URL).origin, (r) => this.handle('anthropic', r));
@@ -99,6 +106,15 @@ export class FakeAi {
   /** The requests that asked for a topic's split. */
   get splits(): AiRequest[] {
     return this.requests.filter((r) => r.split);
+  }
+
+  /**
+   * Reports `usage` with every answer from now on; null reports none (a streamed
+   * Anthropic answer, whose events always carry usage, then reports zeros).
+   */
+  usage(usage: ReportedUsage | null): this {
+    this.reported = usage;
+    return this;
   }
 
   /** Answers enrichments with `result`. */
@@ -206,8 +222,14 @@ export class FakeAi {
       const refusal = answer.kind === 'refusal';
       const chunks =
         provider === 'anthropic'
-          ? anthropicStream(model, this.pieces, refusal, this.hangAfterPieces)
-          : openRouterStream(model, this.pieces, refusal, this.hangAfterPieces);
+          ? anthropicStream(
+              model,
+              this.pieces,
+              refusal,
+              this.hangAfterPieces,
+              this.reported ?? { input: 0, output: 0 },
+            )
+          : openRouterStream(model, this.pieces, refusal, this.hangAfterPieces, this.reported);
       return new Response(eventStream(chunks, this.hangAfterPieces), {
         headers: { 'Content-Type': 'text/event-stream' },
       });
@@ -247,7 +269,7 @@ export class FakeAi {
         content,
         stop_reason: answer.kind === 'refusal' ? 'refusal' : 'end_turn',
         stop_sequence: null,
-        usage: { input_tokens: 1, output_tokens: 1 },
+        ...(this.reported ? { usage: anthropicUsage(this.reported) } : {}),
       });
     }
     return Response.json({
@@ -272,7 +294,15 @@ export class FakeAi {
           },
         },
       ],
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      ...(this.reported
+        ? {
+            usage: {
+              prompt_tokens: this.reported.input,
+              completion_tokens: this.reported.output,
+              total_tokens: this.reported.input + this.reported.output,
+            },
+          }
+        : {}),
     });
   }
 }

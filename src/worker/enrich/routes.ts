@@ -98,7 +98,7 @@ settingsRoutes.put('/ai', async (c) => {
   if (!parsed.ok) return parsed.response;
   const input = parseSettings(c, parsed.body);
   if (input instanceof Response) return input;
-  const outcome = await testKey(c.env, input);
+  const outcome = await testKey(c.env, { ...input, userId: c.get('user').id });
   if (!outcome.ok) {
     if (outcome.kind === 'unavailable') {
       return refusal(
