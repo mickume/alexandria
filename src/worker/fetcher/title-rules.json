@@ -4,6 +4,27 @@
       "description": "GitHub titles its pages \"GitHub - owner/repo: description · GitHub\" and \"Issue title · Issue #1 · owner/repo · GitHub\"",
       "hosts": ["github.com"],
       "remove": ["^GitHub\\s+-\\s+", "\\s+·\\s+GitHub$"]
+    },
+    {
+      "description": "A repository's page: \"owner/repo: description\" reads \"repo: description\"",
+      "hosts": ["github.com"],
+      "paths": ["^/[^/]+/[^/]+/?$"],
+      "replace": [{ "pattern": "^[\\w.-]+/([\\w.-]+):\\s", "with": "$1: " }]
+    },
+    {
+      "description": "An issue's or pull request's page: \"Title · Issue #1 · owner/repo\" and \"Title by author · Pull Request #1 · owner/repo\" read \"Title · owner/repo#1\"",
+      "hosts": ["github.com"],
+      "paths": ["^/[^/]+/[^/]+/(issues|pull)/\\d+"],
+      "replace": [
+        {
+          "pattern": "^(.+) · Issue #(\\d+) · ([\\w.-]+/[\\w.-]+)$",
+          "with": "$1 · $3#$2"
+        },
+        {
+          "pattern": "^(.+) by [\\w-]+(?:\\[bot\\])? · Pull Request #(\\d+) · ([\\w.-]+/[\\w.-]+)$",
+          "with": "$1 · $3#$2"
+        }
+      ]
     }
   ]
 }

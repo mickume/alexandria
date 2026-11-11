@@ -69,8 +69,9 @@ The `scheduled` handler tells them apart by `controller.cron`.
 
 `src/worker/fetcher/title-rules.json` says, per host, which parts of a page's
 title are the site's name rather than the page's, such as GitHub's
-`GitHub - owner/repo: description · GitHub`. It is bundled with the Worker, so
-a change to it deploys like any change to the code:
+`GitHub - owner/repo: description · GitHub`, and how a long title is
+shortened. It is bundled with the Worker, so a change to it deploys like any
+change to the code:
 
 ```json
 {
@@ -78,20 +79,32 @@ a change to it deploys like any change to the code:
     {
       "description": "what the rule is for (optional)",
       "hosts": ["github.com"],
-      "remove": ["^GitHub\\s+-\\s+", "\\s+·\\s+GitHub$"]
+      "paths": ["^/[^/]+/[^/]+/(issues|pull)/\\d+"],
+      "remove": ["^GitHub\\s+-\\s+", "\\s+·\\s+GitHub$"],
+      "replace": [
+        { "pattern": "^(.+) · Issue #(\\d+) · ([\\w.-]+/[\\w.-]+)$", "with": "$1 · $3#$2" }
+      ]
     }
   ]
 }
 ```
 
 A rule applies to a page whose host is one of `hosts` or a subdomain of one,
-read from the address the fetch ended at. Each pattern of `remove` is a
-JavaScript regular expression (without delimiters or flags; it runs with `gu`),
-and every match of it is removed from the title, in order, by every rule that
-applies; whitespace is then collapsed and trimmed. A title the rules would leave
-empty is kept as it is. A rules file of another shape, or with an invalid
-pattern, stops the Worker from starting, so the deploy fails rather than the
-titles.
+and, when it has `paths`, whose path matches one of them, both read from the
+address the fetch ended at. Every pattern is a JavaScript regular expression
+(without delimiters or flags; `remove` and `replace` patterns run with `gu`,
+`paths` with `u`). Each rule that applies, in the file's order, removes every
+match of its `remove` patterns from the title and then replaces every match of
+its `replace` patterns with `with`, where `$1`, `$2`… are the pattern's groups;
+a rule needs at least one of the two. Whitespace is then collapsed and trimmed.
+A title the rules would leave empty is kept as it is. A rules file of another
+shape, or with an invalid pattern, stops the Worker from starting, so the deploy
+fails rather than the titles.
+
+The GitHub rules turn a repository's page into `repo: description`, an
+issue's into `Title · owner/repo#123` and a pull request's (without its
+author) into the same form; other GitHub pages only lose `GitHub - ` and
+` · GitHub`.
 
 The rules clean the title every fetch stores and the reader view's title as it
 is served. Titles stored before a change are cleaned once by the every-minute

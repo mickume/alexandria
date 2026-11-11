@@ -259,8 +259,11 @@ attempt is a `link_events` row.
 
 A fetched title is cleaned by the title rules (`fetcher/titles.ts`,
 `cleanTitle`) before it is stored: per host, `fetcher/title-rules.json`
-lists regular expressions whose matches are the site's name rather than the
-page's (GitHub's "GitHub - " and " · GitHub"), and removes them. The reader
+lists, optionally per path, regular expressions whose matches are the site's
+name rather than the page's (GitHub's "GitHub - " and " · GitHub"), which it
+removes, and rewrites that shorten a long title (a GitHub repository's
+"owner/repo: description" to "repo: description", an issue's or pull
+request's to "Title · owner/repo#123"), which it applies after. The reader
 view's title is cleaned the same way as it is served, so a stored
 `reader.json` needs no rewrite. The rules file is bundled with the Worker; the
 every-minute run (`applyTitleRules`) cleans every stored title once after the

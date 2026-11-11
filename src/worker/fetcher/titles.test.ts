@@ -8,15 +8,35 @@ const REPO_TITLE = 'GitHub - owner/repo: A tool for keeping links · GitHub';
 
 describe('cleaning a title', () => {
   it.each([
-    ['https://github.com/owner/repo', REPO_TITLE, 'owner/repo: A tool for keeping links'],
-    ['https://github.com/owner/repo', 'GitHub - owner/repo', 'owner/repo'],
+    ['https://github.com/owner/repo', REPO_TITLE, 'repo: A tool for keeping links'],
+    ['https://github.com/owner/repo/', 'GitHub - owner/repo', 'owner/repo'],
     [
       'https://github.com/owner/repo/issues/1',
       'Links vanish · Issue #1 · owner/repo · GitHub',
-      'Links vanish · Issue #1 · owner/repo',
+      'Links vanish · owner/repo#1',
+    ],
+    [
+      'https://github.com/owner/repo/issues/2',
+      'api/v1: Sort by date · Issue #2 · owner/repo · GitHub',
+      'api/v1: Sort by date · owner/repo#2',
+    ],
+    [
+      'https://github.com/owner/repo/pull/3/files',
+      'Sort by date by ada-writer · Pull Request #3 · owner/repo · GitHub',
+      'Sort by date · owner/repo#3',
+    ],
+    [
+      'https://github.com/owner/repo/pull/4',
+      'Bump hono by dependabot[bot] · Pull Request #4 · owner/repo · GitHub',
+      'Bump hono · owner/repo#4',
+    ],
+    [
+      'https://github.com/owner/repo/blob/main/README.md',
+      'repo/README.md at main · owner/repo · GitHub',
+      'repo/README.md at main · owner/repo',
     ],
     ['https://gist.github.com/owner/abc', 'notes.md · GitHub', 'notes.md'],
-    ['https://GitHub.com:443/owner/repo', REPO_TITLE, 'owner/repo: A tool for keeping links'],
+    ['https://GitHub.com:443/owner/repo', REPO_TITLE, 'repo: A tool for keeping links'],
     ['https://github.com/', 'GitHub', 'GitHub'],
     ['https://notgithub.com/x', REPO_TITLE, REPO_TITLE],
     ['https://example.com/x', REPO_TITLE, REPO_TITLE],
@@ -25,23 +45,34 @@ describe('cleaning a title', () => {
     expect(cleanTitle(title, url)).toBe(cleaned);
   });
 
-  it('applies every matching rule, removes every match and keeps a title it would empty', () => {
+  it('applies every matching rule, removes and then replaces every match and keeps a title it would empty', () => {
     const rules = compileTitleRules({
       rules: [
         { hosts: ['example.com'], remove: ['\\[ad\\]'] },
-        { hosts: ['example.com', 'example.org'], remove: ['^Example:\\s*'] },
+        {
+          hosts: ['example.com', 'example.org'],
+          remove: ['^Example:\\s*'],
+          replace: [{ pattern: '(\\w+) page', with: '$1 article' }],
+        },
+        { hosts: ['example.com'], paths: ['^/docs/'], remove: ['^a '] },
       ],
     });
-    expect(cleanTitle('Example: [ad] a  page [ad]', 'https://www.example.com/', rules)).toBe(
-      'a page',
+    expect(cleanTitle('Example: [ad] a page [ad]', 'https://www.example.com/', rules)).toBe(
+      'a article',
     );
+    expect(cleanTitle('Example: a page', 'https://example.com/docs/x', rules)).toBe('article');
     expect(cleanTitle('Example: ', 'https://example.org/', rules)).toBe('Example: ');
   });
 
   it.each([
     ['a missing hosts list', { rules: [{ remove: ['x'] }] }],
-    ['an empty remove list', { rules: [{ hosts: ['a.example'], remove: [] }] }],
+    ['neither removals nor replacements', { rules: [{ hosts: ['a.example'], remove: [] }] }],
     ['an invalid pattern', { rules: [{ hosts: ['a.example'], remove: ['('] }] }],
+    ['an invalid path', { rules: [{ hosts: ['a.example'], paths: ['('], remove: ['x'] }] }],
+    [
+      'a replacement without its text',
+      { rules: [{ hosts: ['a.example'], replace: [{ pattern: 'x' }] }] },
+    ],
   ])('refuses a rules file with %s', (_, file) => {
     expect(() => compileTitleRules(file)).toThrow();
   });
@@ -56,9 +87,9 @@ describe('a fetched page', () => {
     const user = await signIn();
     const { id } = await addAndFetch(user, 'https://github.com/owner/repo');
     const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
-    expect(link.title).toBe('owner/repo: A tool for keeping links');
+    expect(link.title).toBe('repo: A tool for keeping links');
     const reader = (await api('GET', `/api/v1/links/${id}/reader`, { as: user.session })).json;
-    expect(reader.title).toBe('owner/repo: A tool for keeping links');
+    expect(reader.title).toBe('repo: A tool for keeping links');
   });
 });
 
@@ -97,7 +128,7 @@ describe('cleaning the stored titles', () => {
     setNow('2026-11-10T12:00:00.000Z');
     await runEveryMinute();
     expect(await stored(repo)).toEqual({
-      title: 'owner/repo: A tool for keeping links',
+      title: 'repo: A tool for keeping links',
       updated_at: '2026-11-10T12:00:00.000Z',
     });
     expect((await stored(mine))?.title).toBe('GitHub - owner/mine · GitHub');
