@@ -156,9 +156,10 @@ then, once an attempt fails, words read from the address (unless the owner
 edited it). A fetch fills `final_url`, `http_status`, `title`,
 `description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
 (`html`, `pdf` or `other`); the fetched `title` (and the reader view's) has
-the site's own name removed for the hosts the
+the site's own name removed, and may be shortened, for the hosts the
 [title rules](configuration.md#title-rules) cover, such as GitHub's
-"GitHub - " and " · GitHub"; `notes` holds remarks such as "truncated", "page could not be read", "not a
+"GitHub - " and " · GitHub" (an issue reads "Title · owner/repo#123");
+`notes` holds remarks such as "truncated", "page could not be read", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
 limit)"; `has_snapshot` says whether Read and Snapshot are available.
 

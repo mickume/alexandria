@@ -4,17 +4,31 @@
 
 ### TitleRule
 
-One rule, ready to apply.
+One rule, ready to apply: its removals as replacements with nothing, first.
 
 #### Properties
+
+##### edits
+
+> **edits**: `object`[]
+
+###### pattern
+
+> **pattern**: `RegExp`
+
+###### replacement
+
+> **replacement**: `string`
 
 ##### hosts
 
 > **hosts**: `string`[]
 
-##### remove
+##### paths
 
-> **remove**: `RegExp`[]
+> **paths**: `RegExp`[] \| `null`
+
+The page's path must match one of these; null for any path.
 
 ## Functions
 
@@ -50,10 +64,12 @@ changed.
 
 > **cleanTitle**(`title`, `url`, `rules?`): `string`
 
-`title` cleaned by the rules whose hosts cover `url`'s host (the host
-itself or a subdomain of it): every match of their patterns removed, in
-order, then runs of whitespace made one space and the ends trimmed. A title
-the rules would leave empty is kept as it is.
+`title` cleaned by the rules that apply to `url`: those whose hosts cover
+its host (the host itself or a subdomain of it) and, for a rule with paths,
+one of whose paths matches its path. Each rule, in order, removes every
+match of its `remove` patterns and then replaces every match of its
+`replace` patterns; then runs of whitespace are made one space and the ends
+trimmed. A title the rules would leave empty is kept as it is.
 
 #### Parameters
 
