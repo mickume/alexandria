@@ -265,7 +265,7 @@ export function VocabularyList({ kind, title }: { kind: VocabularyKind; title: s
 
   return (
     <section className="vocabulary">
-      <h1>{title}</h1>
+      <h1 className="visually-hidden">{title}</h1>
       {error && (
         <p className="notice" role="alert">
           {error}

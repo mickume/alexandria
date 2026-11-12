@@ -94,7 +94,7 @@ export function Settings() {
 
   return (
     <section className="settings">
-      <h1>Settings</h1>
+      <h1 className="visually-hidden">Settings</h1>
       <h2>Personal access tokens</h2>
       <p className="muted">
         A token lets a script or an app use the API as you. Send it as{' '}

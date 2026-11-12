@@ -537,11 +537,6 @@
     color: var(--muted-foreground);
   }
 
-  /* The second, quieter half of a two-tone heading. */
-  .soft {
-    color: var(--muted-foreground);
-  }
-
   .lead {
     margin: 0;
     color: var(--muted-foreground);
@@ -591,11 +586,12 @@
     margin: 0 auto;
   }
 
-  /* Page headings: a light title over a hairline. */
+  /*
+   * Page headings: a section page's title is only for screen readers (its tab
+   * already says it); a link's or a workspace's name is a light title.
+   */
   .page h1 {
     margin: 0 0 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
     font-size: var(--text-2xl);
     font-weight: 400;
   }
@@ -614,15 +610,9 @@
     font-size: var(--text-xl);
   }
 
-  .page-head {
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .page .page-head h1 {
-    margin-bottom: 0.25rem;
-    padding: 0;
-    border: 0;
+  /* What comes first on a page has no gap above it. */
+  .page > * > .visually-hidden:first-child + * {
+    margin-top: 0;
   }
 
   /* ── Forms and small parts. ── */
@@ -1490,7 +1480,7 @@
   .stats-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 0.75rem;
   }
 

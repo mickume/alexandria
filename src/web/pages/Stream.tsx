@@ -235,12 +235,8 @@ export function Stream() {
 
   return (
     <section className="stream">
-      <header className="page-head">
-        <h1>
-          Your <span className="soft">library</span>
-        </h1>
-        <p className="lead">Paste a link to keep it. The ones you use most stay on top.</p>
-      </header>
+      <h1 className="visually-hidden">Your library</h1>
+      <p className="lead">Paste a link to keep it. The ones you use most stay on top.</p>
       <AddLinks onAdded={(fresh) => setItems((current) => withOnTop(current, fresh))} />
       <NoKeyBanner />
       {notice && (

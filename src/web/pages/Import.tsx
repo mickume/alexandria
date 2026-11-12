@@ -132,14 +132,14 @@ export function Import() {
 
   return (
     <section className="import" aria-labelledby="import-heading">
-      <header className="page-head">
-        <h1 id="import-heading">Import links</h1>
-        <p className="lead">
-          A text or Markdown file (.txt, .md), at most 5,000 URLs and 2 MB. Every line with an
-          http:// or https:// address is imported; other lines, and lines starting with #, are
-          ignored. The links are fetched in the background, 20 a minute.
-        </p>
-      </header>
+      <h1 id="import-heading" className="visually-hidden">
+        Import links
+      </h1>
+      <p className="lead">
+        A text or Markdown file (.txt, .md), at most 5,000 URLs and 2 MB. Every line with an http://
+        or https:// address is imported; other lines, and lines starting with #, are ignored. The
+        links are fetched in the background, 20 a minute.
+      </p>
       <form className="import-form" onSubmit={(e) => void start(e)}>
         <DropZone
           file={file}
