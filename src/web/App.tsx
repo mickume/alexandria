@@ -105,7 +105,7 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
-/** The section a path belongs to, for the breadcrumb and the current tab. */
+/** The section a path belongs to, for the current tab. */
 function sectionOf(path: string): string {
   if (path === '/search') return 'Search';
   if (path === '/import') return 'Import';
@@ -115,49 +115,34 @@ function sectionOf(path: string): string {
 }
 
 /**
- * The frame of every signed-in page: the header (where you are, the search
- * box and signing out, over a row of tabs, one per section, and the Import
- * button at its end) above the page.
+ * The frame of every signed-in page: the header (on one line, the mark, a tab
+ * per section, the search box, the Import button and signing out) above the
+ * page.
  */
 function Layout({ location, children }: { location: Location; children: ReactNode }) {
   const section = sectionOf(location.path);
   return (
     <div className="shell">
       <header className="site-header">
-        <div className="site-header-bar">
-          <p className="site-context">
-            <Link to="/" className="brand">
-              <Mark />
-              <span>Alexandria</span>
-            </Link>
-            <span className="site-context-separator" aria-hidden="true">
-              /
-            </span>
-            <span className="site-context-current">{section}</span>
-          </p>
-          <div className="site-header-actions">
-            <SearchBox location={location} />
-            <form method="post" action="/auth/signout">
-              <Button
-                type="submit"
-                variant="ghost"
-                size="icon"
-                aria-label="Sign out"
-                title="Sign out"
-              >
-                <Icon name="signout" />
-              </Button>
-            </form>
-          </div>
-        </div>
+        <Link to="/" className="brand" aria-label="Alexandria" title="Alexandria">
+          <Mark size={28} />
+        </Link>
         <nav className="site-nav" aria-label="Sections">
           {SECTIONS.map((s) => (
-            <Link key={s.to} to={s.to} className="site-nav-item" current={section === s.label}>
+            <Link
+              key={s.to}
+              to={s.to}
+              className="site-nav-item"
+              title={s.label}
+              current={section === s.label}
+            >
               <Icon name={s.icon} />
-              {s.label}
+              <span className="site-nav-label">{s.label}</span>
             </Link>
           ))}
-          <span className="site-nav-spacer" />
+        </nav>
+        <div className="site-header-actions">
+          <SearchBox location={location} />
           <Link
             to="/import"
             className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'nav-import')}
@@ -166,7 +151,18 @@ function Layout({ location, children }: { location: Location; children: ReactNod
             <Icon name="import" />
             Import
           </Link>
-        </nav>
+          <form method="post" action="/auth/signout">
+            <Button
+              type="submit"
+              variant="ghost"
+              size="icon"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <Icon name="signout" />
+            </Button>
+          </form>
+        </div>
       </header>
       <main className="page" tabIndex={-1}>
         {children}

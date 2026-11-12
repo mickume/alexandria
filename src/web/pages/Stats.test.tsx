@@ -122,7 +122,7 @@ function statsBody(overrides: Partial<Stats> = {}): Stats {
 }
 
 describe('the Stats page', () => {
-  it('has its own tab between Archive and Settings, and its breadcrumb', async () => {
+  it('has its own tab between Archive and Settings, marked current', async () => {
     renderPage(
       '/stats',
       new FakeApi().on('GET', '/api/v1/stats', { status: 200, body: statsBody() }),
@@ -134,7 +134,6 @@ describe('the Stats page', () => {
     expect(tabs.indexOf('Settings')).toBe(tabs.indexOf('Stats') + 1);
     expect(nav.getByRole('link', { name: 'Stats' }).getAttribute('aria-current')).toBe('page');
     expect(nav.getByRole('link', { name: 'Stats' }).getAttribute('href')).toBe('/stats');
-    expect(document.querySelector('.site-context-current')?.textContent).toBe('Stats');
   });
 
   it('loads once with a spinner, shows its sections in order, and reloads only on Refresh', async () => {

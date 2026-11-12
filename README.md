@@ -117,7 +117,7 @@ Agents get the passages instead, with the MCP tool `search_passages`.
 
 ## Import
 
-The **Import** button at the end of the header's tabs opens the import page.
+The **Import** button in the header, after the search box, opens the import page.
 Drop a text or Markdown file (`.txt`, `.md`) on it, or pick one (at most 5,000
 URLs and 2 MB), and choose a workspace to add the links to, or name a new one.
 Every line that holds an `http://` or `https://` address is imported (its
