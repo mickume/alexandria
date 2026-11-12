@@ -61,19 +61,19 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   );
 }
 
-/** Alexandria's mark: an open book cut out of a disc in the text colour. */
+/** Alexandria's mark: an open book cut out of a disc in the brand colour. */
 export function Mark({ size = 32 }: { size?: number }) {
   return (
     <svg className="mark" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <circle cx="16" cy="16" r="16" fill="var(--foreground)" />
+      <circle cx="16" cy="16" r="16" fill="var(--brand)" />
       <path
         d="M8 10.5c3-1.2 5.7-1 8 .8 2.3-1.8 5-2 8-.8v11c-3-1.2-5.7-1-8 .8-2.3-1.8-5-2-8-.8v-11Z"
         fill="none"
-        stroke="var(--background)"
+        stroke="var(--card)"
         strokeWidth="1.8"
         strokeLinejoin="round"
       />
-      <path d="M16 11.3v11" stroke="var(--background)" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16 11.3v11" stroke="var(--card)" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }

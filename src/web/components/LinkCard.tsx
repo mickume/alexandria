@@ -352,7 +352,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         <div className="card-head">
           {link.pinned ? (
             <span className="pin-mark" role="img" aria-label="Pinned">
-              📌
+              <Icon name="pin" size={14} />
             </span>
           ) : (
             link.favicon_url && (

@@ -84,15 +84,17 @@ account and checks the PKCE verifier as Google does.
   string. `api.ts` is the client of the API, `format.ts`
   formats dates. The look is shadcn/ui's, with GodUI's motion
   ([ADR 08](adr/08-adopt-shadcn-ui-with-godui.md)): `main.tsx` imports
-  `theme.css` (Tailwind CSS v4, shadcn/ui's neutral variables in light and
-  dark, and GodUI's motion tokens from `motion.css`) before `styles.css`,
+  `theme.css` (Tailwind CSS v4, shadcn/ui's variables in light and
+  dark, their neutrals warmed and one brand colour added
+  ([ADR 09](adr/09-warm-the-theme-and-add-one-brand-colour.md)), and GodUI's motion tokens from `motion.css`) before `styles.css`,
   which holds Alexandria's own layout and parts, written with the theme's
   variables. `components/ui/` holds the components as their registries publish
   them (Button, Input, Textarea, Dropdown Menu, Alert Dialog and Sonner from
   GodUI; Card, Badge, Alert, Label,
   NativeSelect and Spinner from shadcn/ui), `lib/utils.ts` the `cn` helper,
   and `@/` names `src/web` in imports. Every page
-  sits under a light header on one line: the mark (a link to the Stream), a
+  sits under a light header on one line, which stays at the top of the window
+  while the page scrolls (not on a phone): the mark (a link to the Stream), a
   row of underlined tabs (Stream, Workspaces, Topics, Tags, Ask, Expired,
   Archive, Stats, Settings), the search box, the Import button and a sign-out
   button. The search box narrows first when the window does; below 78rem the

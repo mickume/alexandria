@@ -1,6 +1,5 @@
 import { Mark } from '../components/Icon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -19,7 +18,7 @@ export function SignIn() {
   return (
     <main className="signin">
       <div className="signin-card">
-        <Mark size={48} />
+        <Mark size={56} />
         <h1>Alexandria</h1>
         <p className="lead">Your links, kept and found again.</p>
         {deleted && (
@@ -32,11 +31,11 @@ export function SignIn() {
             <AlertDescription>{message}</AlertDescription>
           </Alert>
         )}
-        <Card className="signin-box p-4 shadow-none">
-          <a className={cn(buttonVariants(), 'w-full')} href="/auth/google">
+        <div className="signin-box">
+          <a className={cn(buttonVariants({ size: 'lg' }), 'w-full')} href="/auth/google">
             Sign in with Google
           </a>
-        </Card>
+        </div>
       </div>
     </main>
   );
