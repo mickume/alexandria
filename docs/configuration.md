@@ -105,6 +105,8 @@ The GitHub rules turn a repository's page into `repo: description`, an
 issue's into `Title · owner/repo#123` and a pull request's (without its
 author) into the same form; other GitHub pages only lose `GitHub - ` and
 ` · GitHub`.
+The YouTube rule removes the trailing ` - YouTube` from the pages of
+`youtube.com` and its subdomains (a `youtu.be` link ends at `youtube.com`).
 
 The rules clean the title every fetch stores and the reader view's title as it
 is served. Titles stored before a change are cleaned once by the every-minute

@@ -25,6 +25,11 @@
           "with": "$1 · $3#$2"
         }
       ]
+    },
+    {
+      "description": "YouTube titles its pages \"Video title - YouTube\"",
+      "hosts": ["youtube.com"],
+      "remove": ["\\s+-\\s+YouTube$"]
     }
   ]
 }
