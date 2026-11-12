@@ -38,7 +38,7 @@ export function NoteEditor({
         <Button
           type="button"
           variant="link"
-          className="h-auto p-0"
+          className="h-auto p-0 text-xs font-normal text-muted-foreground not-italic hover:text-foreground"
           onClick={() => {
             setText(note);
             setEditing(true);

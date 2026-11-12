@@ -23,7 +23,11 @@
     margin: 0 0 0.5rem;
     font-weight: 600;
     line-height: 1.25;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--brand) 22%, transparent);
   }
 
   h1 {
@@ -137,7 +141,7 @@
   mark {
     padding: 0 0.1em;
     border-radius: var(--radius-sm);
-    background: color-mix(in oklab, var(--chart-4) 35%, transparent);
+    background: color-mix(in oklab, var(--brand) 20%, transparent);
     color: inherit;
   }
 
@@ -187,7 +191,16 @@
     gap: 0 0.75rem;
     padding: 0 1rem;
     border-bottom: 1px solid var(--border);
-    background: var(--background);
+    background: var(--card);
+  }
+
+  /* On a screen with room for it, the header stays in reach while the page scrolls. */
+  @media (min-width: 48.0625rem) and (min-height: 30rem) {
+    .site-header {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+    }
   }
 
   .brand {
@@ -310,7 +323,7 @@
     left: 0.625rem;
     height: 2px;
     border-radius: 1px;
-    background: var(--foreground);
+    background: var(--brand);
   }
 
   /* The page under the header. */
@@ -318,7 +331,7 @@
     width: 100%;
     max-width: 63.25rem;
     margin: 0 auto;
-    padding: 1.5rem 1rem 3rem;
+    padding: 2rem 1rem 4rem;
   }
 
   /* The search box: an input with its icon and the key that focuses it. */
@@ -330,9 +343,8 @@
     padding: 0 0.5rem 0 0.75rem;
     border: 1px solid var(--input);
     border-radius: var(--radius-md);
-    background: transparent;
+    background: var(--background);
     color: var(--muted-foreground);
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     transition: box-shadow var(--godui-duration-fast) var(--ease-out-expo);
   }
 
@@ -405,6 +417,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--card);
+    box-shadow: var(--shadow-surface);
     text-decoration: none;
   }
 
@@ -430,7 +443,7 @@
     flex-direction: column;
     align-items: center;
     gap: 0.5rem;
-    padding: 2rem;
+    padding: 3rem 2rem;
     text-align: center;
   }
 
@@ -441,6 +454,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     background: var(--card);
+    box-shadow: var(--shadow-surface);
     list-style: none;
   }
 
@@ -477,6 +491,7 @@
   .data-table thead th {
     border-top: 0;
     color: var(--muted-foreground);
+    font-size: var(--text-xs);
     font-weight: 500;
     white-space: nowrap;
   }
@@ -540,7 +555,6 @@
   .lead {
     margin: 0;
     color: var(--muted-foreground);
-    font-size: var(--text-base);
   }
 
   .notice {
@@ -591,9 +605,11 @@
    * already says it); a link's or a workspace's name is a light title.
    */
   .page h1 {
-    margin: 0 0 1rem;
+    margin: 0 0 1.25rem;
     font-size: var(--text-2xl);
-    font-weight: 400;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
   }
 
   .page h1 a {
@@ -607,7 +623,7 @@
 
   .page h2 {
     margin: 2rem 0 0.5rem;
-    font-size: var(--text-xl);
+    font-size: var(--text-lg);
   }
 
   /* What comes first on a page has no gap above it. */
@@ -655,28 +671,39 @@
     overflow-wrap: anywhere;
   }
 
-  /* ── The sign-in page: the mark, the name and one green button. ── */
+  /* ── The sign-in page: the mark, the name and one button, on a card. ── */
 
   .signin {
     display: flex;
+    align-items: center;
     justify-content: center;
     min-height: 100vh;
-    padding: 3rem 1rem;
+    padding: 3rem 1rem 22vh;
   }
 
   .signin-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
-    width: min(21rem, 100%);
+    gap: 0.75rem;
+    width: min(22rem, 100%);
+    padding: 2.5rem 2rem 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
     text-align: center;
   }
 
   .signin-card h1 {
     margin: 0.5rem 0 0;
     font-size: var(--text-2xl);
-    font-weight: 400;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .signin-box {
+    margin-top: 0.75rem;
   }
 
   .signin-box,
@@ -696,7 +723,8 @@
   .add-links {
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    background: var(--background);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
     transition:
       border-color var(--godui-duration-fast) var(--ease-out-expo),
       box-shadow var(--godui-duration-fast) var(--ease-out-expo);
@@ -704,19 +732,19 @@
 
   .add-links:focus-within {
     border-color: var(--ring);
-    box-shadow: inset 0 0 0 1px var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);
   }
 
   .page .add-links textarea {
     display: block;
     width: 100%;
-    min-height: 4.5rem;
-    padding: 0.75rem 1rem;
+    min-height: 4rem;
+    padding: 0.875rem 1rem;
     border: 0;
     border-radius: var(--radius-lg);
     background: transparent;
     box-shadow: none;
-    font-size: var(--text-base);
+    font-size: var(--text-sm);
     resize: vertical;
   }
 
@@ -736,7 +764,9 @@
    */
   .cards {
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
   }
 
   .cards:empty {
@@ -751,25 +781,25 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    padding: 0.75rem 1rem;
+    padding: 0.875rem 1rem;
     transition: background-color var(--godui-duration-fast) var(--ease-out-expo);
   }
 
   .card:hover,
   .card:focus-within {
-    background: var(--muted);
+    background: color-mix(in oklab, var(--muted) 60%, transparent);
   }
 
   .cards > :first-child,
   .cards > :first-child .card {
-    border-top-left-radius: var(--radius-md);
-    border-top-right-radius: var(--radius-md);
+    border-top-left-radius: calc(var(--radius-lg) - 1px);
+    border-top-right-radius: calc(var(--radius-lg) - 1px);
   }
 
   .cards > :last-child,
   .cards > :last-child .card {
-    border-bottom-right-radius: var(--radius-md);
-    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: calc(var(--radius-lg) - 1px);
+    border-bottom-left-radius: calc(var(--radius-lg) - 1px);
   }
 
   .card-top {
@@ -798,9 +828,11 @@
 
   .card-title {
     color: var(--foreground);
-    font-size: var(--text-base);
+    font-size: 0.9375rem;
     font-weight: 600;
-    line-height: 1.25;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    text-underline-offset: 0.2rem;
   }
 
   .card-title:hover {
@@ -824,7 +856,8 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.1rem 0;
-    margin: 0.25rem 0 0 -1rem;
+    margin: 0.125rem 0 0 -1rem;
+    color: var(--muted-foreground);
     font-size: var(--text-xs);
     clip-path: inset(-0.5rem -0.5rem -0.5rem 0.75rem);
   }
@@ -851,14 +884,15 @@
     display: flex;
     align-items: flex-end;
     gap: 0.5rem;
-    margin-top: 0.25rem;
+    margin-top: 0.375rem;
   }
 
+  /* The summary sits between the title and the facts in weight: softer than one, firmer than the other. */
   .summary-text {
     flex: 1 1 auto;
     min-width: 0;
     margin: 0;
-    color: var(--muted-foreground);
+    color: color-mix(in oklab, var(--foreground) 78%, var(--card));
   }
 
   .summary-text.clamped {
@@ -874,7 +908,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.25rem 0.5rem;
-    margin-top: 0.5rem;
+    margin-top: 0.625rem;
   }
 
   /* A topic or tag chip is a link that looks exactly as it would as a plain label. */
@@ -907,9 +941,10 @@
     margin: 0.75rem 0;
   }
 
+  /* A card's actions take no more height than its title's line, so the facts sit right under the title. */
   .card .card-actions {
     flex: none;
-    margin: calc(-1 * 0.25rem) calc(-1 * 0.5rem) 0 auto;
+    margin: calc(-1 * 0.375rem) calc(-1 * 0.5rem) calc(-1 * 0.375rem) auto;
   }
 
   @media (hover: hover) {
@@ -955,10 +990,10 @@
   }
 
   .pin-mark {
+    display: inline-flex;
     flex: none;
     align-self: center;
-    font-size: 0.875rem;
-    line-height: 1;
+    color: var(--brand);
   }
 
   .note-preview {
@@ -986,18 +1021,13 @@
 
   .empty,
   .nothing-found {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border: 1px dashed var(--input);
+    border-radius: var(--radius-lg);
   }
 
-  .empty {
-    margin: 0;
-    font-size: var(--text-base);
-  }
-
+  .empty,
   .nothing-found p {
     margin: 0;
-    font-size: var(--text-base);
   }
 
   .sentinel {
@@ -1014,7 +1044,7 @@
   .detail-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 16rem;
-    gap: 2rem;
+    gap: 2.5rem;
     align-items: start;
   }
 
@@ -1043,6 +1073,34 @@
     color: var(--muted-foreground);
     font-size: var(--text-xs);
     font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  /* The sections of a link's page: a smaller heading under each hairline. */
+  .detail-main h2 {
+    margin: 0 0 0.5rem;
+    font-size: var(--text-base);
+  }
+
+  .detail-main hr {
+    margin: 1.5rem 0;
+  }
+
+  .field-value {
+    margin-top: 0.125rem;
+  }
+
+  /* The note stands apart from the fields under it, as a quote does. */
+  .note:not(.note-editing):has(.markdown) {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem 1rem;
+    border-left: 2px solid var(--border);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    background: var(--muted);
+  }
+
+  .note p:last-of-type {
+    margin-bottom: 0.25rem;
   }
 
   .detail-workspaces {
@@ -1138,7 +1196,7 @@
     height: 75vh;
     margin-top: 1rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: #fff;
   }
 
@@ -1177,8 +1235,34 @@
 
   .vocabulary .data-table {
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
     overflow: hidden;
+  }
+
+  .vocabulary :is(th, td):first-child {
+    padding-left: 1rem;
+  }
+
+  .vocabulary :is(th, td):last-child {
+    padding-right: 1rem;
+  }
+
+  /* With room for it, the name takes the width, and the count and the actions line up at the right. */
+  @media (min-width: 40rem) {
+    .vocabulary :is(th, td):first-child {
+      width: 100%;
+    }
+
+    .vocabulary td.actions {
+      display: table-cell;
+      white-space: nowrap;
+    }
+  }
+
+  .vocabulary tr[data-level='1'] td:first-child {
+    font-weight: 500;
   }
 
   .vocabulary th:nth-child(2) {
@@ -1221,7 +1305,10 @@
     margin: 0;
     padding: 0;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
+    overflow: hidden;
     list-style: none;
   }
 
@@ -1229,15 +1316,16 @@
     display: none;
   }
 
-  .results li + li {
+  .results > li + li {
     border-top: 1px solid var(--border);
   }
 
-  .results li:hover,
-  .results li:focus-within {
-    background: var(--muted);
+  .results > li:hover,
+  .results > li:focus-within {
+    background: color-mix(in oklab, var(--muted) 60%, transparent);
   }
 
+  .results .card,
   .results .card:hover,
   .results .card:focus-within {
     background: none;
@@ -1275,6 +1363,34 @@
 
   /* ── Settings: sections one after another, the account's end in a red box. ── */
 
+  /* Each section of the settings starts under a hairline, with room above it. */
+  .settings h2 {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .settings > h1 + h2,
+  .settings .danger-zone h2 {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .settings h2 + p {
+    max-width: 40rem;
+  }
+
+  /* A label belongs to the field under it: more room above it than below. */
+  .stacked-form > label:not(:first-child),
+  .stacked-form > .field + .field {
+    margin-top: 0.5rem;
+  }
+
+  .stacked-form > button {
+    margin-top: 0.5rem;
+  }
+
   .decay-settings .field {
     display: flex;
     flex-direction: column;
@@ -1309,9 +1425,9 @@
     align-items: center;
     gap: 0.5rem;
     padding: 2rem 1rem;
-    border: 2px dashed var(--border);
+    border: 1.5px dashed var(--input);
     border-radius: var(--radius-lg);
-    background: var(--muted);
+    background: var(--card);
     text-align: center;
     transition:
       border-color var(--godui-duration-fast) var(--ease-out-expo),
@@ -1362,8 +1478,9 @@
     gap: 0.5rem;
     margin-top: 2.5rem;
     padding: 1rem;
-    border: 1px solid var(--destructive);
-    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in oklab, var(--destructive) 45%, var(--border));
+    border-radius: var(--radius-lg);
+    background: color-mix(in oklab, var(--destructive) 4%, var(--card));
   }
 
   .page .danger-zone h2 {
@@ -1395,9 +1512,11 @@
   }
 
   .ask-answer {
-    padding: 0.75rem 1rem;
+    padding: 1rem 1.25rem;
     border: 1px solid var(--border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-surface);
   }
 
   .ask-answer .markdown > :first-child {
