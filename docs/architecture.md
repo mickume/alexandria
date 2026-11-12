@@ -97,8 +97,10 @@ account and checks the PKCE verifier as Google does.
   Archive, Stats, Settings), the search box, the Import button and a sign-out
   button. The search box narrows first when the window does; below 78rem the
   tabs show only their icons, and on a phone they move, with their labels, to
-  a line of their own under the rest that scrolls sideways. Page titles are light headings
-  over a hairline. Links are the rows of one bordered box (title and actions,
+  a line of their own under the rest that scrolls sideways. A section page shows no title of
+  its own (its tab already names it; the heading is there for screen readers
+  only), so its content starts right under the header; a link's or a
+  workspace's name is a light heading. Links are the rows of one bordered box (title and actions,
   a line of facts, a two-line summary, the topic as an outlined badge and the
   tags as filled ones; no thumbnails, the actions showing on hover or focus).
   The main action of a screen is the dark primary button and destructive ones

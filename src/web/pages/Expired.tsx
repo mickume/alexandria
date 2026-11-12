@@ -33,7 +33,7 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
 
   return (
     <section className="expired">
-      <h1>Expired</h1>
+      <h1 className="visually-hidden">Expired</h1>
       <p className="muted">
         Links whose points ran out. Each is removed on the day shown; restore one, or use it, to put
         it back in the stream.

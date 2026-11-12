@@ -145,7 +145,7 @@ export function Ask() {
 
   return (
     <section className="ask">
-      <h1>Ask</h1>
+      <h1 className="visually-hidden">Ask</h1>
       <p className="muted">
         Ask your library a question. It is answered by your own AI provider from passages of your
         links, and each statement cites the links it came from.

@@ -48,7 +48,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
 
   return (
     <section className="archive">
-      <h1>Archive</h1>
+      <h1 className="visually-hidden">Archive</h1>
       <p className="muted">
         Links you chose to keep. They stay out of the stream and never expire; search and Ask still
         find them. Unarchive one to put it back in the stream.

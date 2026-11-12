@@ -127,7 +127,7 @@ export function Workspaces() {
 
   return (
     <section className="workspaces">
-      <h1>Workspaces</h1>
+      <h1 className="visually-hidden">Workspaces</h1>
       <form className="inline-form" onSubmit={create}>
         <Label htmlFor="workspace-name">Workspace name</Label>
         <Input

@@ -562,7 +562,7 @@ export function Stats() {
   return (
     <section className="stats">
       <div className="stats-head">
-        <h1>Stats</h1>
+        <h1 className="visually-hidden">Stats</h1>
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
           Refresh
         </Button>
