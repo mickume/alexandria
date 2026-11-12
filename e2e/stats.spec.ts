@@ -89,7 +89,7 @@ test('a link reaches 0 points, decay expires it, and the owner follows the count
   await page.getByRole('button', { name: 'Refresh' }).click();
   const expired = countOf(page, 'Expired', page.getByRole('region', { name: 'Library' }));
   await expect(expired).toContainText(num(after.library.by_state.expired));
-  await expired.getByRole('link').click();
+  await expired.getByRole('link', { name: 'Expired', exact: true }).click();
   await expect(page).toHaveURL(/\/expired$/);
   await expect(page.getByRole('article', { name: 'Code stats-expiring' })).toBeVisible();
 });

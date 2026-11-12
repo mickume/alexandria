@@ -27,8 +27,9 @@ function num(n: number): string {
 }
 
 /**
- * One row of a section's table: what is counted, and how many. `labelTo` links
- * the label, and `to` the count, to the page listing what it counts.
+ * One row of a section's table: what is counted, and how many. `to` links the
+ * label and the count, and `labelTo` the label only, to the page listing what
+ * it counts.
  */
 function Row({
   label,
@@ -42,9 +43,10 @@ function Row({
   to?: string;
 }) {
   const shown = typeof value === 'number' ? num(value) : value;
+  const labelLink = to ?? labelTo;
   return (
     <tr>
-      <th scope="row">{labelTo ? <Link to={labelTo}>{label}</Link> : label}</th>
+      <th scope="row">{labelLink ? <Link to={labelLink}>{label}</Link> : label}</th>
       <td className="number">{to ? <Link to={to}>{shown}</Link> : shown}</td>
     </tr>
   );
@@ -106,14 +108,22 @@ function LibrarySection({ s }: { s: StatsAnswer }) {
   return (
     <Section id="library" title="Library">
       <Counts caption="Links">
-        <Row label="All links" value={library.total} />
-        <Row label="Pending" value={library.by_state.pending} />
-        <Row label="Active" value={library.by_state.active} />
-        <Row label="Unreachable" value={library.by_state.unreachable} />
+        <Row label="All links" value={library.total} to={searchPath('state:any')} />
+        <Row label="Pending" value={library.by_state.pending} to={searchPath('state:pending')} />
+        <Row label="Active" value={library.by_state.active} to={searchPath('state:active')} />
+        <Row
+          label="Unreachable"
+          value={library.by_state.unreachable}
+          to={searchPath('state:unreachable')}
+        />
         <Row label="Expired" value={library.by_state.expired} to="/expired" />
         <Row label="Archived" value={library.by_state.archived} to="/archive" />
-        <Row label="Pinned" value={library.pinned} />
-        <Row label="In a workspace" value={library.in_workspace} />
+        <Row label="Pinned" value={library.pinned} to={searchPath('is:pinned state:any')} />
+        <Row
+          label="In a workspace"
+          value={library.in_workspace}
+          to={searchPath('is:in-workspace state:any')}
+        />
         <Row label="Library limit" value={library.limit} />
       </Counts>
       <Counts caption="Content">
@@ -335,40 +345,42 @@ function usageTotals(days: HistoryDay[]) {
   );
 }
 
-/** The range's AI usage by purpose and model, as a table. */
+/** The range's AI usage by purpose and model, as a table that scrolls sideways when it is too wide. */
 function UsageTable({ days }: { days: HistoryDay[] }) {
   const totals = usageTotals(days);
   return (
-    <table className="data-table stats-counts" aria-label="AI usage by purpose and model">
-      <caption>AI usage by purpose and model</caption>
-      <thead>
-        <tr>
-          <th scope="col">Purpose</th>
-          <th scope="col">Model</th>
-          <th scope="col" className="number">
-            Calls
-          </th>
-          <th scope="col" className="number">
-            Input tokens
-          </th>
-          <th scope="col" className="number">
-            Output tokens
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {totals.length === 0 && <Empty text="No AI calls recorded" />}
-        {totals.map((t) => (
-          <tr key={`${t.purpose}-${t.model}`}>
-            <td>{t.purpose}</td>
-            <td>{t.model}</td>
-            <td className="number">{num(t.calls)}</td>
-            <td className="number">{num(t.input)}</td>
-            <td className="number">{num(t.output)}</td>
+    <div className="stats-scroll">
+      <table className="data-table stats-counts" aria-label="AI usage by purpose and model">
+        <caption>AI usage by purpose and model</caption>
+        <thead>
+          <tr>
+            <th scope="col">Purpose</th>
+            <th scope="col">Model</th>
+            <th scope="col" className="number">
+              Calls
+            </th>
+            <th scope="col" className="number">
+              Input tokens
+            </th>
+            <th scope="col" className="number">
+              Output tokens
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {totals.length === 0 && <Empty text="No AI calls recorded" />}
+          {totals.map((t) => (
+            <tr key={`${t.purpose}-${t.model}`}>
+              <td>{t.purpose}</td>
+              <td>{t.model}</td>
+              <td className="number">{num(t.calls)}</td>
+              <td className="number">{num(t.input)}</td>
+              <td className="number">{num(t.output)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

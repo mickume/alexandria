@@ -200,11 +200,30 @@ function row(label: string, scope: HTMLElement = document.body): HTMLElement {
 }
 
 describe('the Stats page’s links, charts and captions', () => {
-  it('links each count to the page listing what it counts', async () => {
+  it.each([
+    ['All links', searchPath('state:any')],
+    ['Pending', searchPath('state:pending')],
+    ['Active', searchPath('state:active')],
+    ['Unreachable', searchPath('state:unreachable')],
+    ['Expired', '/expired'],
+    ['Archived', '/archive'],
+    ['Pinned', searchPath('is:pinned state:any')],
+    ['In a workspace', searchPath('is:in-workspace state:any')],
+  ])(
+    'links the Links row %s, its label and its count, to the list of those links',
+    async (label, to) => {
+      await show(statsBody());
+      const links = within(
+        row(label, screen.getByRole('region', { name: 'Library' })),
+      ).getAllByRole('link');
+      expect(links.map((l) => l.getAttribute('href'))).toEqual([to, to]);
+      expect(links[0]!.textContent).toBe(label);
+    },
+  );
+
+  it('links each other label to the page listing what it counts', async () => {
     await show(statsBody());
     const link = (r: HTMLElement) => within(r).getByRole('link').getAttribute('href');
-    expect(link(row('Expired'))).toBe('/expired');
-    expect(link(row('Archived'))).toBe('/archive');
     expect(link(row('Software › Testing'))).toBe(searchPath(filterQuery('topic', 'Testing')));
     expect(link(row('rust'))).toBe(searchPath(filterQuery('tag', 'rust')));
     expect(link(row('Trip'))).toBe('/workspaces/w1');

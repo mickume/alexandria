@@ -460,6 +460,7 @@ export const FILTER_TABLE: [string, (keyof FilterLinks)[]][] = [
   ['in:"no such workspace"', []],
   ['is:pinned', ['a']],
   ['is:dead', ['b']],
+  ['is:in-workspace', ['a']],
 ];
 
 /** A response of the MCP endpoint, with its parsed JSON body. */

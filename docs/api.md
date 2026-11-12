@@ -275,7 +275,7 @@ with the meaning of its prefix filter; repeated parameters all apply
 (`?tag=cloudflare&tag=queues`). Archived links stay out of the list unless a
 `state` parameter asks for them (`state=archived` or `state=any`). A `state`
 other than pending, active, unreachable, expired, archived or any, or an `is`
-other than pinned or dead,
+other than pinned, dead or in-workspace,
 is `400 {"error": "invalid_filter", "field": <the parameter>, "message"}`.
 
 With `changed_since=<ISO 8601 time>` instead, the answer is the change feed:
@@ -741,7 +741,7 @@ every filter given applies:
 | `topic:<name>` | with that topic or a topic beneath it, ignoring case (an alias matches nothing) |
 | `host:<host>` | on that host or a subdomain of it (`host:cloudflare.com` keeps `developers.cloudflare.com`) |
 | `in:<workspace>` | in the workspace with that name, ignoring case |
-| `is:pinned`, `is:dead` | pinned; dead (`dead_since` set) |
+| `is:pinned`, `is:dead`, `is:in-workspace` | pinned; dead (`dead_since` set); in at least one workspace |
 | `state:<state>` | in that state: `pending`, `active`, `unreachable` or `archived`; `expired` keeps only expired links, `any` every state |
 
 Without a `state:` filter expired links are left out and archived links are
