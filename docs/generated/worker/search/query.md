@@ -97,7 +97,8 @@ The conditions as SQL to append to a WHERE clause that already has a condition.
 The conditions that select the links satisfying every filter: a tag with
 that name, a topic with that name or a topic beneath it, and the workspace
 with that name, ignoring case; a
-host equal to the value or ending in '.' and the value; pinned; dead.
+host equal to the value or ending in '.' and the value; pinned; dead; in a
+workspace.
 Expired links are left out unless a `state:` filter is given: `expired`
 selects only them, `any` every state, another value that state.
 

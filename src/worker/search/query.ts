@@ -1,4 +1,5 @@
 /** The search query language: free words and prefix filters, and what the filters select. */
+import { IN_WORKSPACE } from '../decay/points';
 import { nameKey } from '../workspaces/store';
 
 /** The longest query, in characters. */
@@ -14,7 +15,14 @@ export type Filters = Partial<Record<FilterName, string[]>>;
 /** The values `state:` accepts. */
 export const STATE_VALUES = ['pending', 'active', 'unreachable', 'expired', 'archived', 'any'];
 /** The values `is:` accepts. */
-export const IS_VALUES = ['pinned', 'dead'];
+export const IS_VALUES = ['pinned', 'dead', 'in-workspace'];
+
+/** The SQL condition of each `is:` value, on a link `l`. */
+const IS_CONDITIONS: Record<string, string> = {
+  pinned: 'l.pin_position IS NOT NULL',
+  dead: 'l.dead_since IS NOT NULL',
+  'in-workspace': IN_WORKSPACE,
+};
 
 /**
  * Why a filter's value is refused, or null when it is accepted: `state:` and
@@ -116,7 +124,8 @@ export function inSubtree(d: string, root: string): string {
  * The conditions that select the links satisfying every filter: a tag with
  * that name, a topic with that name or a topic beneath it, and the workspace
  * with that name, ignoring case; a
- * host equal to the value or ending in '.' and the value; pinned; dead.
+ * host equal to the value or ending in '.' and the value; pinned; dead; in a
+ * workspace.
  * Expired links are left out unless a `state:` filter is given: `expired`
  * selects only them, `any` every state, another value that state.
  */
@@ -147,7 +156,7 @@ export function filterConditions(filters: Filters): Conditions {
     params.push(nameKey(name));
   }
   for (const value of filters.is ?? []) {
-    sql.push(value === 'pinned' ? 'l.pin_position IS NOT NULL' : 'l.dead_since IS NOT NULL');
+    sql.push(IS_CONDITIONS[value]!);
   }
   const states = filters.state ?? [];
   if (states.length === 0) sql.push("l.state <> 'expired'");

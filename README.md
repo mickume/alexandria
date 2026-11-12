@@ -58,7 +58,7 @@ Filters narrow a search, and can be combined with words or each other:
 | `topic:"web development"` | links with that topic or a topic beneath it (quote a name with spaces) |
 | `host:example.com` | links on that host or its subdomains |
 | `in:"Reading list"` | links in that workspace |
-| `is:pinned`, `is:dead` | pinned links; links whose page is gone |
+| `is:pinned`, `is:dead`, `is:in-workspace` | pinned links; links whose page is gone; links in any workspace |
 | `state:expired`, `state:any`, `state:active`, … | expired links only; every state; one state |
 
 Expired links are left out unless a `state:` filter asks for them. A search
@@ -139,8 +139,11 @@ hosts with the most links, how many links expire today and within 7 and 30
 days and how many await removal, the unreachable and dead links and the
 enrichment statuses, the background work still waiting (fetches,
 enrichments, imports, indexing, liveness checks), and the last 30 days of
-links added, uses and fetches. **Refresh** loads it again; the page never
-reloads by itself.
+links added, uses and fetches, in two columns (one on a phone). Each count
+of links by state, and the pinned links and those in a workspace, opens the
+list of those links: **Unreachable** searches `state:unreachable`,
+**Expired** and **Archived** open their own pages. **Refresh** loads it
+again; the page never reloads by itself.
 
 Its Trends section shows the daily record kept since the record began, over
 the last 7, 30, 90 or 365 days: links added against those removed, expired or

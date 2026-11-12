@@ -178,7 +178,7 @@ Settings then shows the token as just used.
 
 | Tool | What an agent uses it for |
 |---|---|
-| `search_links` | Find links by meaning as well as by words, with the search box's filters: `tag:`, `topic:`, `host:`, `in:` (a workspace), `is:pinned`, `is:dead`, `state:`. Each result says how it matched (`match`: `keyword`, `meaning` or `both`) |
+| `search_links` | Find links by meaning as well as by words, with the search box's filters: `tag:`, `topic:`, `host:`, `in:` (a workspace), `is:pinned`, `is:dead`, `is:in-workspace`, `state:`. Each result says how it matched (`match`: `keyword`, `meaning` or `both`) |
 | `search_passages` | Answer a question from the library: the passages of your links that best match it by meaning, each with its link's id, title and URL. Takes the same filters |
 | `list_recent` | The top of the stream: pinned links first, then the links with the most points (used most, and most recently) |
 | `get_link` | A link's metadata: addresses, title, summary, tags, topic, state and dates |
