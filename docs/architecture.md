@@ -77,7 +77,7 @@ account and checks the PKCE verifier as Google does.
   pinning by drag, deleting with undo), `pages/LinkDetail` and
   `pages/Settings` (tokens), `pages/Import` (the drop zone, the workspace to
   add the links to, which can be a new one, and the import's progress,
-  reached by the Import button at the end of the header's tabs), `pages/Search` (the results of the search box,
+  reached by the header's Import button), `pages/Search` (the results of the search box,
   `components/SearchBox`, which every page's header carries and which owns the
   `/` and Escape keys), and `pages/Topics` and `pages/Tags`
   (`components/VocabularyList`). `App.tsx` follows the path and the query
@@ -92,10 +92,12 @@ account and checks the PKCE verifier as Google does.
   GodUI; Card, Badge, Alert, Label,
   NativeSelect and Spinner from shadcn/ui), `lib/utils.ts` the `cn` helper,
   and `@/` names `src/web` in imports. Every page
-  sits under a light header: the mark and a breadcrumb (Alexandria / the
-  section), the search box and a sign-out button, over a row of underlined
-  tabs (Stream, Workspaces, Topics, Tags, Ask, Expired, Archive, Stats,
-  Settings) that scrolls sideways on a phone. Page titles are light headings
+  sits under a light header on one line: the mark (a link to the Stream), a
+  row of underlined tabs (Stream, Workspaces, Topics, Tags, Ask, Expired,
+  Archive, Stats, Settings), the search box, the Import button and a sign-out
+  button. The search box narrows first when the window does; below 78rem the
+  tabs show only their icons, and on a phone they move, with their labels, to
+  a line of their own under the rest that scrolls sideways. Page titles are light headings
   over a hairline. Links are the rows of one bordered box (title and actions,
   a line of facts, a two-line summary, the topic as an outlined badge and the
   tags as filled ones; no thumbnails, the actions showing on hover or focus).

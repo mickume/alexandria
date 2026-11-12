@@ -76,7 +76,6 @@ describe('the Ask page', () => {
       'Archive',
       'Stats',
       'Settings',
-      'Import',
     ]);
     await user.click(tabs.getByRole('link', { name: 'Ask' }));
 
