@@ -26,7 +26,7 @@ const trip = {
 
 type Progress = { waiting: number; in_progress: number; done: number; enriched: number };
 
-/** The API of the import page: the workspaces, the upload's answer and the progress polls. */
+/** The API of the import section: the workspaces, the upload's answer and the progress polls. */
 function importApi(
   answer: { status: number; body: unknown } = { status: 201, body: report },
   progress: Progress[] = [{ waiting: 0, in_progress: 0, done: 397, enriched: 0 }],
@@ -52,20 +52,7 @@ async function submit() {
   await act(async () => screen.getByRole('button', { name: 'Import' }).click());
 }
 
-describe('the Import button of the header', () => {
-  it('opens the import page and is marked current there', async () => {
-    renderPage('/', importApi());
-    const button = screen.getByRole('link', { name: 'Import' });
-    expect(button.getAttribute('href')).toBe('/import');
-    expect(button.hasAttribute('aria-current')).toBe(false);
-    await act(async () => fireEvent.click(button));
-    expect(window.location.pathname).toBe('/import');
-    expect(screen.getByRole('heading', { name: 'Import links' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Import' }).getAttribute('aria-current')).toBe('page');
-  });
-});
-
-describe('the import page', () => {
+describe('the import section of the settings page', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -76,7 +63,7 @@ describe('the import page', () => {
       { waiting: 377, in_progress: 20, done: 0, enriched: 0 },
       { waiting: 0, in_progress: 0, done: 397, enriched: 397 },
     ]);
-    renderPage('/import', api);
+    renderPage('/settings', api);
     await act(async () => vi.advanceTimersByTimeAsync(0));
     const file = linksFile();
     pick(file);
@@ -87,7 +74,7 @@ describe('the import page', () => {
     expect(sent).toHaveLength(1);
     expect((sent[0]!.body as FormData).get('file')).toBe(file);
     expect((sent[0]!.body as FormData).has('workspace_id')).toBe(false);
-    const view = screen.getByRole('region', { name: 'Import links' });
+    const view = screen.getByRole('region', { name: 'Import' });
     for (const text of ['added 397', 'duplicates 0', 'invalid 3']) {
       expect(within(view).getByText(text)).toBeTruthy();
     }
@@ -111,7 +98,7 @@ describe('the import page', () => {
 
   it('takes a file dropped on the drop zone, and shows it while dragging', async () => {
     const api = importApi();
-    renderPage('/import', api);
+    renderPage('/settings', api);
     const button = screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(screen.getByText('No file chosen')).toBeTruthy();
@@ -129,7 +116,7 @@ describe('the import page', () => {
   it('adds the links to the chosen workspace and links to it from the report', async () => {
     const into = { ...report, workspace: { id: 'w1', name: 'Trip', added: 397 } };
     const api = importApi({ status: 201, body: into });
-    renderPage('/import', api);
+    renderPage('/settings', api);
     const select = (await screen.findByRole('option', { name: 'Trip' })).closest('select')!;
     expect([...select.options].map((o) => o.text)).toEqual([
       'No workspace',
@@ -151,7 +138,7 @@ describe('the import page', () => {
       status: 201,
       body: { ...trip, id: 'w2', name: (req.body as { name: string }).name, note: '' },
     }));
-    renderPage('/import', api);
+    renderPage('/settings', api);
     const select = (await screen.findByRole('option', { name: 'Trip' })).closest('select')!;
     fireEvent.change(select, { target: { value: 'new' } });
     fireEvent.change(screen.getByLabelText('Name of the new workspace'), {
@@ -174,7 +161,7 @@ describe('the import page', () => {
       status: 409,
       body: { error: 'name_taken', message: 'a workspace with this name already exists' },
     });
-    renderPage('/import', api);
+    renderPage('/settings', api);
     const select = (await screen.findByRole('option', { name: 'Trip' })).closest('select')!;
     fireEvent.change(select, { target: { value: 'new' } });
     fireEvent.change(screen.getByLabelText('Name of the new workspace'), {
@@ -191,7 +178,7 @@ describe('the import page', () => {
     [409, 'import_too_large', 'too large: at most 5,000 URLs / 2 MB per import'],
     [400, 'no_urls', 'the file holds no URL: no line has an http:// or https:// address'],
   ])('shows a refusal (%s %s) and no progress', async (status, error, message) => {
-    renderPage('/import', importApi({ status, body: { error, field: 'file', message } }));
+    renderPage('/settings', importApi({ status, body: { error, field: 'file', message } }));
     pick(linksFile());
     await submit();
     expect(await screen.findByText(message)).toBeTruthy();
@@ -207,7 +194,7 @@ describe('the import page', () => {
       stopped_at_limit: { line: 4 },
     };
     renderPage(
-      '/import',
+      '/settings',
       importApi({ status: 201, body: stopped }, [
         { waiting: 0, in_progress: 0, done: 2, enriched: 0 },
       ]),

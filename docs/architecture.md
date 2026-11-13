@@ -75,9 +75,9 @@ account and checks the PKCE verifier as Google does.
   line as an import file is read, through `urlLines` of
   `src/worker/imports/parse.ts`; the cards, infinite scroll,
   pinning by drag, deleting with undo), `pages/LinkDetail` and
-  `pages/Settings` (tokens), `pages/Import` (the drop zone, the workspace to
-  add the links to, which can be a new one, and the import's progress,
-  reached by the header's Import button), `pages/Search` (the results of the search box,
+  `pages/Settings` (tokens, and among its sections `pages/ImportSection`: the
+  drop zone, the workspace to add the links to, which can be a new one, and
+  the import's progress), `pages/Search` (the results of the search box,
   `components/SearchBox`, which every page's header carries and which owns the
   `/` and Escape keys), and `pages/Topics` and `pages/Tags`
   (`components/VocabularyList`). `App.tsx` follows the path and the query
@@ -96,7 +96,7 @@ account and checks the PKCE verifier as Google does.
   sits under a light header on one line, which stays at the top of the window
   while the page scrolls (not on a phone): the mark (a link to the Stream), a
   row of underlined tabs (Stream, Workspaces, Topics, Tags, Ask, Expired,
-  Archive, Stats, Settings), the search box, the Import button and a sign-out
+  Archive, Stats, Settings), the search box and a sign-out
   button. The search box narrows first when the window does; below 78rem the
   tabs show only their icons, and on a phone they move, with their labels, to
   a line of their own under the rest that scrolls sideways. A section page shows no title of

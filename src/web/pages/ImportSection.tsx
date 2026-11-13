@@ -79,11 +79,12 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (file: File) =>
 }
 
 /**
- * The import page: a text or Markdown file of URLs, dropped or picked, imported
- * into the library and, when one is chosen, into a workspace, which can be a
- * new one named here. The import's report and progress follow.
+ * The import section of the settings page: a text or Markdown file of URLs,
+ * dropped or picked, imported into the library and, when one is chosen, into a
+ * workspace, which can be a new one named here. The import's report and
+ * progress follow.
  */
-export function Import() {
+export function ImportSection() {
   const [file, setFile] = useState<File | null>(null);
   const [list, setList] = useState<WorkspaceSummary[]>([]);
   const [choice, setChoice] = useState('');
@@ -132,10 +133,8 @@ export function Import() {
 
   return (
     <section className="import" aria-labelledby="import-heading">
-      <h1 id="import-heading" className="visually-hidden">
-        Import links
-      </h1>
-      <p className="lead">
+      <h2 id="import-heading">Import</h2>
+      <p className="muted">
         A text or Markdown file (.txt, .md), at most 5,000 URLs and 2 MB. Every line with an http://
         or https:// address is imported; other lines, and lines starting with #, are ignored. The
         links are fetched in the background, 20 a minute.
