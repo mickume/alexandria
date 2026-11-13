@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode, type ComponentProps } from 'react'
 import { Archive } from './pages/Archive';
 import { Expired } from './pages/Expired';
 import { Ask } from './pages/Ask';
-import { Import } from './pages/Import';
 import { LinkDetail } from './pages/LinkDetail';
 import { Icon, Mark, type IconName } from './components/Icon';
 import type { SearchMode } from './api';
@@ -18,8 +17,6 @@ import { Topics } from './pages/Topics';
 import { WorkspacePage } from './pages/Workspace';
 import { Workspaces } from './pages/Workspaces';
 import { Button } from '@/components/ui/button';
-import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { Toaster } from '@/components/ui/sonner';
 import { ConfirmProvider } from './confirm';
 
@@ -108,7 +105,6 @@ const SECTIONS: { to: string; label: string; icon: IconName }[] = [
 /** The section a path belongs to, for the current tab. */
 function sectionOf(path: string): string {
   if (path === '/search') return 'Search';
-  if (path === '/import') return 'Import';
   if (path.startsWith('/links/')) return 'Link';
   const match = SECTIONS.filter((s) => s.to !== '/' && path.startsWith(s.to));
   return match[0]?.label ?? 'Stream';
@@ -116,7 +112,7 @@ function sectionOf(path: string): string {
 
 /**
  * The frame of every signed-in page: the header (on one line, the mark, a tab
- * per section, the search box, the Import button and signing out) above the
+ * per section, the search box and signing out) above the
  * page.
  */
 function Layout({ location, children }: { location: Location; children: ReactNode }) {
@@ -143,14 +139,6 @@ function Layout({ location, children }: { location: Location; children: ReactNod
         </nav>
         <div className="site-header-actions">
           <SearchBox location={location} />
-          <Link
-            to="/import"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'nav-import')}
-            current={section === 'Import'}
-          >
-            <Icon name="import" />
-            Import
-          </Link>
           <form method="post" action="/auth/signout">
             <Button
               type="submit"
@@ -199,7 +187,6 @@ export function App() {
   else if (path === '/stats') page = <Stats />;
   else if (path === '/topics') page = <Topics />;
   else if (path === '/tags') page = <Tags />;
-  else if (path === '/import') page = <Import />;
   else if (path.startsWith('/workspaces/')) {
     const id = decodeURIComponent(path.slice('/workspaces/'.length));
     page = <WorkspacePage key={id} id={id} />;

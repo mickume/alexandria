@@ -184,7 +184,7 @@
     flex: none;
   }
 
-  /* The header, on one line: the mark, the tabs, then the search box, Import and signing out. */
+  /* The header, on one line: the mark, the tabs, then the search box and signing out. */
   .site-header {
     display: flex;
     align-items: center;
@@ -217,10 +217,13 @@
     align-items: center;
     gap: 0.5rem;
     margin-left: auto;
+    /* Room for the search box at its narrowest and the sign-out button. */
+    min-width: 12.75rem;
   }
 
   .site-header-actions > .search {
-    flex: 0 1 20rem;
+    flex: 0 1 28rem;
+    width: 28rem;
     min-width: 10rem;
   }
 
@@ -269,6 +272,7 @@
 
     .site-header-actions > .search {
       flex: 1 1 auto;
+      width: auto;
       min-width: 0;
     }
 
@@ -1406,7 +1410,7 @@
     font-size: var(--text-xs);
   }
 
-  /* The import page: the drop zone, the workspace choice, then the report. */
+  /* Importing, on the settings page: the drop zone, the workspace choice, then the report. */
   .import-form {
     display: flex;
     flex-direction: column;
@@ -1451,15 +1455,6 @@
   .dropzone input:focus-visible + label {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
-  }
-
-  /* The Import button of the header, between the search box and signing out. */
-  .nav-import {
-    flex: none;
-  }
-
-  .nav-import[aria-current='page'] {
-    border-color: var(--ring);
   }
 
   .import-counts,

@@ -27,8 +27,7 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
   await saveAiKey(page);
   const { text, urls } = importFile();
 
-  await page.goto('/');
-  await page.getByRole('link', { name: 'Import' }).click();
+  await page.goto('/settings');
   await page.getByLabel('File of URLs').setInputFiles({
     name: 'links.txt',
     mimeType: 'text/plain',
@@ -50,7 +49,7 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
     not_imported: 0,
   });
   expect(report.invalid.map((l) => l.line)).toEqual([57, 211, 399]);
-  const view = page.getByRole('region', { name: 'Import links' });
+  const view = page.getByRole('region', { name: 'Import', exact: true });
   await expect(view.getByText('added 397')).toBeVisible();
   await expect(view.getByText('invalid 3')).toBeVisible();
   for (const [line, value] of Object.entries(MALFORMED)) {
@@ -108,7 +107,7 @@ test('the owner imports a 400-line file and the stream fills in', async ({ page 
 
 test('the owner imports a file into a new workspace', async ({ page }) => {
   await signIn(page);
-  await page.goto('/import');
+  await page.goto('/settings');
   await page.getByLabel('Add the links to a workspace').selectOption({ label: 'New workspace…' });
   await page.getByLabel('Name of the new workspace').fill('Reading list');
   await page.getByLabel('File of URLs').setInputFiles({
@@ -117,7 +116,7 @@ test('the owner imports a file into a new workspace', async ({ page }) => {
     buffer: Buffer.from('https://code.example/ws-1\nhttps://code.example/ws-2\n'),
   });
   await page.getByRole('button', { name: 'Import' }).click();
-  const view = page.getByRole('region', { name: 'Import links' });
+  const view = page.getByRole('region', { name: 'Import', exact: true });
   await expect(view.getByText('added 2')).toBeVisible();
   await view.getByRole('link', { name: 'Reading list' }).click();
   await expect(page.getByRole('article')).toHaveCount(2);

@@ -36,7 +36,7 @@ A decorative icon: hidden from assistive technology, which reads the label besid
 
 > **Mark**(`__namedParameters`): `Element`
 
-Alexandria's mark: an open book cut out of a disc in the text colour.
+Alexandria's mark: an open book cut out of a disc in the brand colour.
 
 #### Parameters
 

@@ -30,7 +30,7 @@
 - [web/pages/DeleteAccountSection](web/pages/DeleteAccountSection.md)
 - [web/pages/Expired](web/pages/Expired.md)
 - [web/pages/FirecrawlSection](web/pages/FirecrawlSection.md)
-- [web/pages/Import](web/pages/Import.md)
+- [web/pages/ImportSection](web/pages/ImportSection.md)
 - [web/pages/LinkDetail](web/pages/LinkDetail.md)
 - [web/pages/Read](web/pages/Read.md)
 - [web/pages/Search](web/pages/Search.md)

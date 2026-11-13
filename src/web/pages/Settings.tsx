@@ -1,3 +1,4 @@
+import { ImportSection } from './ImportSection';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
@@ -137,6 +138,7 @@ export function Settings() {
       <AiKeySection />
       <FirecrawlSection />
       <DecaySection />
+      <ImportSection />
       <ExportSection />
       <DeleteAccountSection />
     </section>
