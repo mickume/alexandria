@@ -37,7 +37,8 @@ settings and secrets, copy `.env.example` to `.env`, fill it in and run
 
 The search box is in the header of every page. Type a query and press
 **Enter**: it searches each link's title, summary, tags, topic, host, address,
-page text and note, every word matching as the start of a word, and lists the
+page text and note, every word matching a whole word or another form of it
+("queue" finds "queues"; "cloud" does not find "Cloudflare"), and lists the
 matching workspaces above the links. On the Expired page it searches the
 expired links, and on the Archive page the archived links. Nothing is searched
 while you type.
