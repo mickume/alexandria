@@ -16,6 +16,19 @@ export const EMBEDDING_MODEL = '@cf/baai/bge-m3';
  */
 export const SIMILARITY_THRESHOLD = 0.5;
 
+/** The reranker: reads the query and a passage together and scores how well the passage answers it. */
+export const RERANKER_MODEL = '@cf/baai/bge-reranker-base';
+
+/**
+ * The relevance (the reranker's score, 0 to 1) a passage must reach to be
+ * returned. Provisional, as the similarity threshold is: there is no set of
+ * test questions to tune it against (ADR 10).
+ */
+export const RELEVANCE_THRESHOLD = 0.2;
+
+/** The most passages one reranker call reads. */
+const RERANK_BATCH = 100;
+
 /** The most vectors a query asks the index for. */
 export const QUERY_TOP_K = 100;
 
@@ -64,6 +77,19 @@ export interface MeaningBackend {
   ): Promise<VectorMatch[]>;
   /** Removes the vectors with these ids, in whatever namespace. */
   deleteByIds(ids: string[]): Promise<void>;
+  /** The relevance of each text to `query`, from 0 to 1, in the order of `texts`. */
+  rerank(query: string, texts: string[]): Promise<number[]>;
+}
+
+/**
+ * The scores as relevances from 0 to 1. Workers AI's typing does not say
+ * whether the reranker answers probabilities or raw scores (ADR 10): scores
+ * that are not all within 0 and 1 are raw, and are squashed with the logistic
+ * function, which keeps their order.
+ */
+export function asRelevances(scores: number[]): number[] {
+  if (scores.every((s) => s >= 0 && s <= 1)) return scores;
+  return scores.map((s) => 1 / (1 + Math.exp(-s)));
 }
 
 /** Calls `fn` with `items` in slices of at most `size`. */
@@ -108,6 +134,30 @@ function bindingBackend(env: Env): MeaningBackend {
         await env.VECTORIZE.deleteByIds(slice);
       });
     },
+    async rerank(query, texts) {
+      const scores = new Array<number>(texts.length).fill(0);
+      const batches: { from: number; slice: string[] }[] = [];
+      for (let from = 0; from < texts.length; from += RERANK_BATCH) {
+        batches.push({ from, slice: texts.slice(from, from + RERANK_BATCH) });
+      }
+      await Promise.all(
+        batches.map(async ({ from, slice }) => {
+          // The typing declares no `query`; the model takes one.
+          const inputs = { query, contexts: slice.map((text) => ({ text })), top_k: slice.length };
+          const answer = (await env.AI.run(RERANKER_MODEL, inputs as never)) as {
+            response?: { id?: number; score?: number }[];
+          };
+          if (!Array.isArray(answer.response)) {
+            throw new Error('Workers AI answered without the relevances asked for');
+          }
+          for (const r of answer.response) {
+            if (typeof r.id === 'number' && typeof r.score === 'number')
+              scores[from + r.id] = r.score;
+          }
+        }),
+      );
+      return asRelevances(scores);
+    },
   };
 }
 
@@ -135,6 +185,9 @@ function httpBackend(base: string): MeaningBackend {
     },
     async deleteByIds(ids) {
       await post('/delete', { ids });
+    },
+    async rerank(query, texts) {
+      return (await post<{ scores: number[] }>('/rerank', { query, texts })).scores;
     },
   };
 }

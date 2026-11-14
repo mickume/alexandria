@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { api, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
+import { api, deliverIndexing, env, setNow, signIn, type TestUser } from '../test/helpers';
 import { embedText } from '../test/embedder';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
+import { sweepRankings } from './routes';
 
 /** GET /api/v1/search as the user. */
 function search(user: TestUser, query: string, extra = '') {
@@ -344,19 +345,22 @@ describe('a search by meaning', () => {
   });
 });
 
+/** A link found by keyword only (it is not indexed), one by meaning only and one by both, in that order. */
+const matchLibrary = (user: TestUser) =>
+  seed(user, [
+    { url: 'https://clocks.example/', title: 'Alarm clocks', text: null, indexed: false },
+    {
+      url: 'https://reading.example/',
+      title: 'Reading list',
+      text: ['schedule', 'a', 'task', ...Array.from({ length: 47 }, (_, i) => `filler${i}`)].join(
+        ' ',
+      ),
+    },
+    ARTICLES.alarms,
+  ]);
+
 describe('how a hybrid result matched', () => {
-  const library = (user: TestUser) =>
-    seed(user, [
-      { url: 'https://clocks.example/', title: 'Alarm clocks', text: null, indexed: false },
-      {
-        url: 'https://reading.example/',
-        title: 'Reading list',
-        text: ['schedule', 'a', 'task', ...Array.from({ length: 47 }, (_, i) => `filler${i}`)].join(
-          ' ',
-        ),
-      },
-      ARTICLES.alarms,
-    ]);
+  const library = matchLibrary;
 
   it('says keyword, meaning or both for each link', async () => {
     const user = await signIn();
@@ -416,7 +420,8 @@ describe('a search by meaning while meaning is unavailable', () => {
 
     const r = await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
 
-    expect(Date.now() - start).toBeLessThan(1_500);
+    // The index has three fifths of the search's three seconds.
+    expect(Date.now() - start).toBeLessThan(3_000);
     expect(r.status).toBe(200);
     expect(r.json.meaning).toBe('unavailable');
     expect(idsOf(r.json.items)).toEqual(idsOf(keyword.json.items));
@@ -435,6 +440,165 @@ describe('a search by meaning while meaning is unavailable', () => {
     expect(next.status).toBe(200);
     expect(idsOf(next.json.items)).toHaveLength(1);
     expect(next.json.meaning).toBe('unavailable');
+  });
+});
+
+describe('a search by meaning without the reranker', () => {
+  it.each([
+    { name: 'fails', arrange: () => meaning.fail('rerank') },
+    { name: 'does not answer', arrange: () => meaning.stall('rerank') },
+  ])(
+    'keeps the links the index vouches for and says the order is not by relevance when it $name',
+    { timeout: 20_000 },
+    async ({ arrange }) => {
+      const user = await signIn();
+      const [keywordOnly, meaningOnly, both] = await matchLibrary(user);
+      arrange();
+      const start = Date.now();
+
+      const r = await search(user, 'alarm', '&mode=hybrid');
+
+      expect(Date.now() - start).toBeLessThan(5_000);
+      expect(r.status).toBe(200);
+      expect(r.json.meaning).toBe('unranked');
+      const matches = Object.fromEntries((r.json.items as Item[]).map((i) => [i.link.id, i.match]));
+      expect(matches).toEqual({
+        [keywordOnly!]: 'keyword',
+        [meaningOnly!]: 'meaning',
+        [both!]: 'both',
+      });
+      // Without the reranker a meaning match shows the start of its passage.
+      const snippet = (r.json.items as Item[]).find((i) => i.link.id === meaningOnly)!.snippet;
+      expect(snippet).toHaveLength(1);
+      expect(snippet[0]!.match).toBe(false);
+    },
+  );
+});
+
+describe('the snippet of a meaning match', () => {
+  it('is the run of 32 words of its best passage that answers the query, its words marked', async () => {
+    const user = await signIn();
+    const filler = Array.from({ length: 40 }, (_, i) => `filler${i}`).join(' ');
+    const id = await seedArticle(user, {
+      url: 'https://late.example/',
+      title: 'Notes',
+      text: `${filler} then the timer fires and the delay is over ${filler}`,
+    });
+    await index(user, [id]);
+
+    const r = await search(user, 'timer cron', '&mode=hybrid');
+
+    const [item] = r.json.items as Item[];
+    expect(item).toMatchObject({ match: 'meaning' });
+    const text = item!.snippet.map((s) => s.text).join('');
+    expect(text.split(/\s+/).length).toBeLessThanOrEqual(32);
+    expect(text).toContain('the timer fires');
+    expect(item!.snippet.filter((s) => s.match).map((s) => s.text)).toEqual(['timer']);
+  });
+});
+
+describe('the pages of one search by meaning', () => {
+  async function many(user: TestUser) {
+    await seed(
+      user,
+      Array.from({ length: 5 }, (_, n) => ({
+        url: `https://queues${n}.example/`,
+        title: `Cloudflare Queues explained ${n}`,
+        text: 'Queues deliver messages.',
+      })),
+    );
+  }
+
+  it('all come from the ranking of the first page, whatever happens to meaning meanwhile', async () => {
+    const user = await signIn();
+    await many(user);
+    const whole = idsOf((await search(user, 'cloudflare queues', '&mode=hybrid')).json.items);
+    expect(whole).toHaveLength(5);
+
+    const first = await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
+    meaning.fail('embed');
+    meaning.fail('rerank');
+    const calls = meaning.calls.length;
+    const second = await search(
+      user,
+      'cloudflare queues',
+      `&mode=hybrid&limit=2&cursor=${encodeURIComponent(first.json.next_cursor)}`,
+    );
+    const third = await search(
+      user,
+      'cloudflare queues',
+      `&mode=hybrid&limit=2&cursor=${encodeURIComponent(second.json.next_cursor)}`,
+    );
+
+    expect([second.json.meaning, third.json.meaning]).toEqual(['used', 'used']);
+    expect([
+      ...idsOf(first.json.items),
+      ...idsOf(second.json.items),
+      ...idsOf(third.json.items),
+    ]).toEqual(whole);
+    expect(third.json.next_cursor).toBeNull();
+    // No later page embeds or queries again.
+    expect(meaning.calls.slice(calls).filter((c) => c.call !== 'rerank')).toEqual([]);
+  });
+
+  it('leaves a link deleted between pages out of the later ones', async () => {
+    const user = await signIn();
+    await many(user);
+    const first = await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
+    const whole = idsOf((await search(user, 'cloudflare queues', '&mode=hybrid')).json.items);
+    const gone = whole[2]!;
+    await api('DELETE', `/api/v1/links/${gone}`, { as: user.session });
+
+    const second = await search(
+      user,
+      'cloudflare queues',
+      `&mode=hybrid&limit=2&cursor=${encodeURIComponent(first.json.next_cursor)}`,
+    );
+
+    expect(second.status).toBe(200);
+    expect(idsOf(second.json.items)).toEqual([whole[3]]);
+  });
+
+  it('refuses a cursor 15 minutes after its first page, and another user’s', async () => {
+    const user = await signIn();
+    const other = await signIn('other@example.test', 'Other');
+    await many(user);
+    setNow('2026-06-01T10:00:00.000Z');
+    const first = await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
+    const page = `&mode=hybrid&limit=2&cursor=${encodeURIComponent(first.json.next_cursor)}`;
+    const refused = {
+      error: 'invalid_cursor',
+      field: 'cursor',
+      message: 'the search is too old: search again',
+    };
+
+    expect((await search(other, 'cloudflare queues', page)).json).toEqual(refused);
+    setNow('2026-06-01T10:14:59.000Z');
+    expect((await search(user, 'cloudflare queues', page)).status).toBe(200);
+    setNow('2026-06-01T10:15:00.000Z');
+    const late = await search(user, 'cloudflare queues', page);
+    expect(late.status).toBe(400);
+    expect(late.json).toEqual(refused);
+  });
+
+  it('keeps no ranking for a search that fits one page, and the every-minute run removes the old ones', async () => {
+    const user = await signIn();
+    await many(user);
+    const kept = async () =>
+      (await env.DB.prepare('SELECT COUNT(*) AS n FROM search_rankings').first<{ n: number }>())!.n;
+    setNow('2026-06-01T10:00:00.000Z');
+
+    await search(user, 'cloudflare queues', '&mode=hybrid');
+    expect(await kept()).toBe(0);
+    await search(user, 'cloudflare queues', '&mode=hybrid&limit=2');
+    expect(await kept()).toBe(1);
+
+    setNow('2026-06-01T10:14:00.000Z');
+    await sweepRankings(env.DB);
+    expect(await kept()).toBe(1);
+    setNow('2026-06-01T10:15:00.000Z');
+    await sweepRankings(env.DB);
+    expect(await kept()).toBe(0);
   });
 });
 

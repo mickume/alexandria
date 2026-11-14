@@ -5,18 +5,21 @@
  * (src/worker/test/embedder.ts) and keeps vectors in memory by namespace.
  *
  * POST /embed {texts} -> {vectors}, POST /upsert {namespace, vectors},
- * POST /query {namespace, vector, topK, filter} -> {matches}, POST /delete {ids};
+ * POST /query {namespace, vector, topK, filter} -> {matches}, POST /delete {ids},
+ * POST /rerank {query, texts} -> {scores} (503 after POST /__fail_rerank);
  * control: GET /__vectors?namespace= lists {id, namespace}, POST /__fail makes
  * /embed and /query answer 503 until POST /__recover, GET /health.
  * Run with: node e2e/fake-meaning.ts <port>
  */
 import { createServer, type IncomingMessage } from 'node:http';
-import { embedText, VectorIndex } from '../src/worker/test/embedder.ts';
+import { embedText, relevance, VectorIndex } from '../src/worker/test/embedder.ts';
 
 const port = Number(process.argv[2] ?? 8793);
 const index = new VectorIndex();
 /** Whether embedding and querying fail, as when Workers AI is unreachable. */
 let failing = false;
+/** Whether reranking fails. */
+let failingRerank = false;
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -42,7 +45,15 @@ const server = createServer((req, res) => {
   if (req.method !== 'POST') return send(404, { error: 'not found' });
   if (url.pathname === '/__fail' || url.pathname === '/__recover') {
     failing = url.pathname === '/__fail';
+    if (!failing) failingRerank = false;
     return send(200, { failing });
+  }
+  if (url.pathname === '/__fail_rerank') {
+    failingRerank = true;
+    return send(200, { failingRerank });
+  }
+  if ((failing || failingRerank) && url.pathname === '/rerank') {
+    return send(503, { error: 'unavailable' });
   }
   if (failing && (url.pathname === '/embed' || url.pathname === '/query')) {
     return send(503, { error: 'unavailable' });
@@ -72,6 +83,10 @@ const server = createServer((req, res) => {
           )
           .map(({ id, score }) => ({ id, score }));
         return send(200, { matches });
+      }
+      if (url.pathname === '/rerank') {
+        const query = body.query as string;
+        return send(200, { scores: (body.texts as string[]).map((t) => relevance(query, t)) });
       }
       if (url.pathname === '/delete') {
         index.deleteByIds(body.ids as string[]);

@@ -4,7 +4,7 @@ import { now } from '../clock';
 import type { Env, IndexMessage } from '../env';
 import { getLink, parseStrings } from '../links/store';
 import { meaningBackend } from './backend';
-import { cutPassages, READER_TEXT_MAX } from './cut';
+import { cutPassages, embeddedText, READER_TEXT_MAX, type LinkText } from './cut';
 
 /** The text version of a link: 0 for a link whose indexed text never changed. */
 async function textVersion(db: D1Database, linkId: string): Promise<number> {
@@ -139,19 +139,17 @@ export async function indexLink(env: Env, message: IndexMessage): Promise<void> 
   )
     .bind(READER_TEXT_MAX, linkId, userId)
     .first<{ text: string }>();
-  const passages = cutPassages(
-    {
-      title: link.title,
-      summary: link.summary,
-      topic: parseStrings(link.topic_path_json).join(' > ') || null,
-      tags: parseStrings(link.tags_json),
-      note: link.note,
-    },
-    reader?.text ?? null,
-  );
+  const text: LinkText = {
+    title: link.title,
+    summary: link.summary,
+    topic: parseStrings(link.topic_path_json).join(' > ') || null,
+    tags: parseStrings(link.tags_json),
+    note: link.note,
+  };
+  const passages = cutPassages(text, reader?.text ?? null);
 
   const backend = meaningBackend(env);
-  const embeddings = await backend.embed(passages.map((p) => p.text));
+  const embeddings = await backend.embed(passages.map((p) => embeddedText(text, p)));
   const ids = passages.map((_, n) => `${linkId}:${version}:${n}`);
   await backend.upsert(
     userId,

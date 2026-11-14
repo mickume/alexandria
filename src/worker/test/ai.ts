@@ -52,6 +52,8 @@ export interface AiRequest {
   split: boolean;
   /** Whether it asked for a streamed answer to a question. */
   ask: boolean;
+  /** Whether it asked for the phrasings of a question. */
+  phrasing: boolean;
   at: number;
 }
 
@@ -88,6 +90,7 @@ export class FakeAi {
   private enrichAnswer: Answer = { kind: 'result', result: DEFAULT_RESULT };
   private splitPlan: SplitPlan = () => ({ subtopics: [] });
   private keyAnswer: Answer | null = null;
+  private phrasingAnswer: Answer | { kind: 'list'; list: unknown } = { kind: 'list', list: [] };
   private pieces = DEFAULT_PIECES;
   private hangAfterPieces = false;
   private reported: ReportedUsage | null = DEFAULT_USAGE;
@@ -102,6 +105,29 @@ export class FakeAi {
   split(plan: SplitPlan): this {
     this.splitPlan = plan;
     return this;
+  }
+
+  /** Answers a question's phrasings with `list` (none unless a test scripts some). */
+  phrase(list: unknown): this {
+    this.phrasingAnswer = { kind: 'list', list };
+    return this;
+  }
+
+  /** Answers a question's phrasings with an error status. */
+  failPhrasings(status: number, message: string): this {
+    this.phrasingAnswer = { kind: 'status', status, message };
+    return this;
+  }
+
+  /** Never answers a question's phrasings. */
+  stallPhrasings(): this {
+    this.phrasingAnswer = { kind: 'stall' };
+    return this;
+  }
+
+  /** The requests that asked for the phrasings of a question. */
+  get phrasings(): AiRequest[] {
+    return this.requests.filter((r) => r.phrasing);
   }
 
   /** The requests that asked for a topic's split. */
@@ -199,7 +225,8 @@ export class FakeAi {
               { json_schema?: { schema?: { properties?: object } } } | undefined
           )?.json_schema?.schema;
     const split = structured && 'subtopics' in (schema?.properties ?? {});
-    const enrichment = structured && !split;
+    const phrasing = structured && 'phrasings' in (schema?.properties ?? {});
+    const enrichment = structured && !split && !phrasing;
     const ask = body.stream === true;
     this.requests.push({
       provider,
@@ -209,13 +236,24 @@ export class FakeAi {
       enrichment,
       split,
       ask,
+      phrasing,
       at: Date.now(),
     });
     if (enrichment) await this.duringEnrichment?.();
-    const answer =
-      structured || ask
+    const scripted = phrasing
+      ? this.phrasingAnswer
+      : structured || ask
         ? this.enrichAnswer
         : (this.keyAnswer ?? { kind: 'result', result: DEFAULT_RESULT });
+    // The phrasings of a question are answered apart from everything else.
+    const structuredValue = (result: AiResult) =>
+      scripted.kind === 'list'
+        ? { phrasings: scripted.list }
+        : split
+          ? this.splitPlan(splitLinks(body))
+          : result;
+    const answer: Answer =
+      scripted.kind === 'list' ? { kind: 'result', result: DEFAULT_RESULT } : scripted;
     if (answer.kind === 'stall') return new Promise<Response>(() => undefined);
     if (answer.kind === 'refuse') throw new Error('connect ECONNREFUSED');
     if (answer.kind === 'status') {
@@ -265,7 +303,7 @@ export class FakeAi {
             ? [
                 {
                   type: 'text',
-                  text: JSON.stringify(split ? this.splitPlan(splitLinks(body)) : answer.result),
+                  text: JSON.stringify(structuredValue(answer.result)),
                 },
               ]
             : [{ type: 'text', text: 'ok' }];
@@ -296,7 +334,7 @@ export class FakeAi {
               answer.kind === 'refusal'
                 ? null
                 : structured
-                  ? JSON.stringify(split ? this.splitPlan(splitLinks(body)) : answer.result)
+                  ? JSON.stringify(structuredValue(answer.result))
                   : 'ok',
             refusal: answer.kind === 'refusal' ? 'I cannot help with that.' : null,
           },

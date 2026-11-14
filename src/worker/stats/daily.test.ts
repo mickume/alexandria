@@ -534,12 +534,14 @@ describe('AI usage', () => {
     const ai = new FakeAi().usage({ input: 120, output: 30 });
     await saveKey(user);
     await act(user, ai);
+    // An ask is two calls: the question's phrasings, then the answer.
+    const calls = purpose === 'ask' ? 2 : 1;
     expect(await usageToday(user)).toContainEqual({
       purpose,
       model: MODEL,
-      calls: 1,
-      input_tokens: 120,
-      output_tokens: 30,
+      calls,
+      input_tokens: 120 * calls,
+      output_tokens: 30 * calls,
       calls_without_usage: 0,
     });
   });
@@ -552,10 +554,10 @@ describe('AI usage', () => {
       { input: 100, output: 10, cacheCreation: 20, cacheRead: 5 },
       [125, 10, 0],
     ],
-    ['Anthropic, streamed', 'anthropic', 'ask', { input: 50, output: 7 }, [50, 7, 0]],
+    ['Anthropic, streamed', 'anthropic', 'ask', { input: 50, output: 7 }, [100, 14, 0]],
     ['OpenRouter', 'openrouter', 'enrich', { input: 40, output: 9 }, [40, 9, 0]],
-    ['OpenRouter, streamed with usage', 'openrouter', 'ask', { input: 33, output: 4 }, [33, 4, 0]],
-    ['OpenRouter, streamed without usage', 'openrouter', 'ask', null, [0, 0, 1]],
+    ['OpenRouter, streamed with usage', 'openrouter', 'ask', { input: 33, output: 4 }, [66, 8, 0]],
+    ['OpenRouter, streamed without usage', 'openrouter', 'ask', null, [0, 0, 2]],
   ] as const)(
     'takes the tokens from %s',
     async (_, provider, purpose, usage, [input, output, without]) => {
@@ -575,8 +577,9 @@ describe('AI usage', () => {
       if (purpose === 'enrich') await enrichOne(user, 'https://tokens.example/a');
       else await askOne(user);
       const row = (await usageToday(user)).find((u) => u.purpose === purpose);
+      // An ask is two calls, each reporting its usage: the question's phrasings and the answer.
       expect(row).toMatchObject({
-        calls: 1,
+        calls: purpose === 'ask' ? 2 : 1,
         input_tokens: input,
         output_tokens: output,
         calls_without_usage: without,

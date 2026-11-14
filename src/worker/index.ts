@@ -17,6 +17,7 @@ import { applyTitleRules } from './fetcher/titles';
 import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
 import { maintainIndex } from './meaning/backfill';
 import { handleIndexBatch } from './meaning/indexing';
+import { sweepRankings } from './search/routes';
 
 export { HostGate } from './fetcher/hostgate';
 
@@ -25,6 +26,7 @@ async function everyMinute(env: Env): Promise<void> {
   const jobs = await Promise.allSettled([
     dispatchAllImports(env),
     maintainIndex(env),
+    sweepRankings(env.DB),
     applyTitleRules(env),
   ]);
   for (const job of jobs) {
@@ -37,7 +39,7 @@ export default {
     return app.fetch(request, env, ctx);
   },
   scheduled(controller, env, ctx) {
-    // Every minute: imported links, the index and the title rules; every 5 minutes: account deletions; every hour:
+    // Every minute: imported links, the index, the kept search rankings and the title rules; every 5 minutes: account deletions; every hour:
     // decay and liveness.
     const run =
       controller.cron === DISPATCH_CRON

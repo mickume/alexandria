@@ -140,10 +140,13 @@ function byStatus(status: number, message: string): ProviderOutcome<never> {
   return { ok: false, kind: 'failed', message };
 }
 
-/** Runs `call`, abandoning it after the provider timeout. */
-async function withTimeout<T>(call: (signal: AbortSignal) => Promise<T>): Promise<T> {
+/** Runs `call`, abandoning it after the provider timeout, or after `ms` when that is sooner. */
+async function withTimeout<T>(
+  call: (signal: AbortSignal) => Promise<T>,
+  ms = Infinity,
+): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs());
+  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs(), ms));
   try {
     return await Promise.race([
       call(controller.signal),
@@ -296,7 +299,12 @@ async function structuredWith(
   env: Env,
   call: ProviderCall,
   prompt: string,
-  { schema, name, maxTokens }: { schema: object; name: string; maxTokens: number },
+  {
+    schema,
+    name,
+    maxTokens,
+    timeout,
+  }: { schema: object; name: string; maxTokens: number; timeout?: number },
   seen: (tokens: Tokens | null) => void,
 ): Promise<ProviderOutcome<unknown>> {
   try {
@@ -350,7 +358,7 @@ async function structuredWith(
       } catch {
         return { ok: false, kind: 'failed', message: 'the answer is not JSON' } as const;
       }
-    });
+    }, timeout);
   } catch (err) {
     return fromError(err);
   }
@@ -385,6 +393,50 @@ export function splitWith(
       call,
       prompt,
       { schema: SPLIT_SCHEMA, name: 'split', maxTokens: SPLIT_MAX_TOKENS },
+      seen,
+    ),
+  );
+}
+
+/**
+ * The result of rephrasing a question: the question restated as a search
+ * query, then other ways of asking it.
+ */
+export const PHRASINGS_SCHEMA = {
+  type: 'object',
+  properties: {
+    phrasings: {
+      type: 'array',
+      description:
+        'First the question restated as a search query, then at most two other ways of asking it.',
+      items: { type: 'string' },
+    },
+  },
+  required: ['phrasings'],
+  additionalProperties: false,
+} as const;
+
+const PHRASINGS_MAX_TOKENS = 512;
+/** How long rephrasing a question may take before the question is used as typed, in milliseconds. */
+export const PHRASINGS_TIMEOUT_MS = 10_000;
+
+/** Asks the user's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA). */
+export function phrasingsWith(
+  env: Env,
+  call: ProviderCall,
+  prompt: string,
+): Promise<ProviderOutcome<unknown>> {
+  return metered(env, call, 'ask', (seen) =>
+    structuredWith(
+      env,
+      call,
+      prompt,
+      {
+        schema: PHRASINGS_SCHEMA,
+        name: 'phrasings',
+        maxTokens: PHRASINGS_MAX_TOKENS,
+        timeout: PHRASINGS_TIMEOUT_MS,
+      },
       seen,
     ),
   );
