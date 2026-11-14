@@ -695,9 +695,9 @@ an archived link, likewise:
 Searches the library: `?q=<query>`, at most 200 characters, with `limit` (1
 to 100, default 50) and `cursor` as every list takes them.
 
-A query is free words and prefix filters. Every free word must match, as the
-start of a word, case- and accent-insensitively (`cloud` finds "Cloudflare",
-`cafe` finds "Café"), in the link's title, summary, tags, topic (any name of
+A query is free words and prefix filters. Every free word must match a whole
+word, case- and accent-insensitively and in any of its English forms (`queue`
+finds "Queues", `cafe` finds "Café"; `cloud` does not find "Cloudflare"), in the link's title, summary, tags, topic (any name of
 its topic path), host, original URL, note or reader-view text. Quotes and the full-text engine's
 operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
 plain text. Expired links are left out.

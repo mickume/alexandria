@@ -41,12 +41,14 @@ function searchable(word: string): boolean {
 
 /**
  * The FTS5 match expression that finds the user's rows holding every free
- * word as the prefix of a word, or null when no word has anything to match.
- * Each word is a quoted string, so the engine's operators and punctuation are
- * text, never syntax.
+ * word as a whole word, or null when no word has anything to match. The index
+ * stems its words, so a word also finds its other forms ("queue" finds
+ * "queues"); a free word of several words ("durable objects", or one joined
+ * by punctuation) finds them side by side. Each word is a quoted string, so
+ * the engine's operators and punctuation are text, never syntax.
  */
 export function matchExpression(userId: string, words: string[], columns: string): string | null {
-  const phrases = words.filter(searchable).map((w) => `"${w.replace(/"/g, '""')}"*`);
+  const phrases = words.filter(searchable).map((w) => `"${w.replace(/"/g, '""')}"`);
   if (phrases.length === 0) return null;
   return `owner : "${ownerTerm(userId)}" AND {${columns}} : (${phrases.join(' AND ')})`;
 }
@@ -179,7 +181,7 @@ export async function keywordMatches(
 
 /**
  * The ids of the user's links whose title, tags and topic together hold every
- * free word as the start of a word: the keyword matches that are not left to
+ * free word: the keyword matches that are not left to
  * the note, the summary, the address or the page's text alone.
  */
 export async function strongMatchIds(
