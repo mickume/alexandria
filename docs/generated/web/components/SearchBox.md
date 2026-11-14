@@ -8,26 +8,18 @@
 
 The longest query.
 
-***
-
-### SEARCH\_DELAY\_MS
-
-> `const` **SEARCH\_DELAY\_MS**: `200` = `200`
-
-How long the box waits after the last keystroke before it searches.
-
 ## Functions
 
 ### SearchBox()
 
 > **SearchBox**(`__namedParameters`): `Element`
 
-The search box in the header of every page. It searches by keyword 200 ms
-after the last keystroke, at /search?q= (on the Expired and Archive pages,
-within their links); Enter searches the same query by meaning as well, at
-/search?q=&mode=hybrid; an emptied box returns to the stream. '/' typed outside a text field
-focuses it; Escape in it clears it, returns from a search to the page it
-started from and focuses the page's main region. No other key is a shortcut.
+The search box in the header of every page. Typing searches nothing: Enter
+searches the query by words and by meaning, at /search?q=&mode=hybrid (on
+the Expired and Archive pages, within their links). '/' typed outside a
+text field focuses it; Escape in it clears it, returns from a search to the
+page it started from and focuses the page's main region. No other key is a
+shortcut.
 
 #### Parameters
 

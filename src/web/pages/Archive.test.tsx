@@ -118,12 +118,12 @@ describe('the Archive page', () => {
     renderPage('/archive', api);
     await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole('article', { name: 'Other' })).toBeTruthy();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
-      target: { value: 'kiwi' },
-    });
-    await act(async () => vi.advanceTimersByTimeAsync(200));
+    const box = screen.getByRole('searchbox', { name: 'Search' }) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: 'kiwi' } });
+    fireEvent.submit(box.form!);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(api.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
-      '/api/v1/search?q=kiwi%20state%3Aarchived',
+      '/api/v1/search?q=kiwi%20state%3Aarchived&mode=hybrid',
     ]);
     expect(window.location.pathname).toBe('/archive');
     await act(async () => vi.advanceTimersByTimeAsync(0));

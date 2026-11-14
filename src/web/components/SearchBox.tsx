@@ -3,8 +3,6 @@ import { navigate, queryOf, type Location } from '../App';
 import { searchPath, type SearchMode } from '../api';
 import { Icon } from './Icon';
 
-/** How long the box waits after the last keystroke before it searches. */
-export const SEARCH_DELAY_MS = 200;
 /** The longest query. */
 export const QUERY_MAX = 200;
 
@@ -22,16 +20,18 @@ function isTextField(target: EventTarget | null): boolean {
 /** The pages that search within their own links: the Expired page and the Archive page. */
 const OWN_SEARCH = ['/expired', '/archive'];
 
+/** How the box searches: by meaning as well as by words. */
+const MODE: SearchMode = 'hybrid';
+
 /**
  * The address a query leads to from `location`: the Expired and Archive pages
- * keep their own search. With `mode` the search is by meaning as well as by words.
+ * keep their own search.
  */
-function addressOf(location: Location, query: string, mode?: SearchMode): string {
+function addressOf(location: Location, query: string): string {
   if (OWN_SEARCH.includes(location.path)) {
-    if (!query) return location.path;
-    return `${location.path}?q=${encodeURIComponent(query)}${mode ? `&mode=${mode}` : ''}`;
+    return `${location.path}?q=${encodeURIComponent(query)}&mode=${MODE}`;
   }
-  return query ? searchPath(query, mode) : '/';
+  return searchPath(query, MODE);
 }
 
 /** The page a location's search box shows the query of: the results page and the pages with their own search. */
@@ -40,17 +40,16 @@ function showsQuery(location: Location): boolean {
 }
 
 /**
- * The search box in the header of every page. It searches by keyword 200 ms
- * after the last keystroke, at /search?q= (on the Expired and Archive pages,
- * within their links); Enter searches the same query by meaning as well, at
- * /search?q=&mode=hybrid; an emptied box returns to the stream. '/' typed outside a text field
- * focuses it; Escape in it clears it, returns from a search to the page it
- * started from and focuses the page's main region. No other key is a shortcut.
+ * The search box in the header of every page. Typing searches nothing: Enter
+ * searches the query by words and by meaning, at /search?q=&mode=hybrid (on
+ * the Expired and Archive pages, within their links). '/' typed outside a
+ * text field focuses it; Escape in it clears it, returns from a search to the
+ * page it started from and focuses the page's main region. No other key is a
+ * shortcut.
  */
 export function SearchBox({ location }: { location: Location }) {
   const [value, setValue] = useState(() => (showsQuery(location) ? queryOf(location) : ''));
   const input = useRef<HTMLInputElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The page the current search started from. */
   const origin = useRef<string | null>(null);
 
@@ -71,36 +70,18 @@ export function SearchBox({ location }: { location: Location }) {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
-
-  function search(query: string, mode?: SearchMode) {
+  /** Enter: the query, by meaning as well as by words; nothing for an empty box. */
+  function onSubmit() {
+    if (!value.trim()) return;
     const here = window.location.pathname + window.location.search;
-    const target = addressOf(location, query.trim() ? query : '', mode);
+    const target = addressOf(location, value);
     if (target === here) return;
     if (!showsQuery(location)) origin.current = here;
-    // Typing on the results page refines the search rather than adding history.
-    navigate(target, { replace: location.path === '/search' && target.startsWith('/search') });
-  }
-
-  function onChange(query: string) {
-    setValue(query);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => search(query), SEARCH_DELAY_MS);
-  }
-
-  /** Enter: the same query, now by meaning as well as by words. */
-  function onSubmit() {
-    if (timer.current) clearTimeout(timer.current);
-    if (value.trim()) search(value, 'hybrid');
+    // Another search on the results page refines the search rather than adding history.
+    navigate(target, { replace: location.path === '/search' });
   }
 
   function onEscape() {
-    if (timer.current) clearTimeout(timer.current);
     setValue('');
     // Only a search leaves its page: with none started, Escape stays where it is.
     const back = OWN_SEARCH.includes(location.path)
@@ -132,7 +113,7 @@ export function SearchBox({ location }: { location: Location }) {
         placeholder="Search"
         maxLength={QUERY_MAX}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();

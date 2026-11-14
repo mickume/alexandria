@@ -35,17 +35,17 @@ settings and secrets, copy `.env.example` to `.env`, fill it in and run
 
 ## Search
 
-The search box is in the header of every page. It searches as you type (200
-ms after the last keystroke) over each link's title, summary, tags, topic,
-host, address, page text and note, every word matching as the start of a
-word, and lists the matching workspaces above the links. On the Expired page
-it searches the expired links, and on the Archive page the archived links.
+The search box is in the header of every page. Type a query and press
+**Enter**: it searches each link's title, summary, tags, topic, host, address,
+page text and note, every word matching as the start of a word, and lists the
+matching workspaces above the links. On the Expired page it searches the
+expired links, and on the Archive page the archived links. Nothing is searched
+while you type.
 
-Press **Enter** to search the same query by meaning as well: it also finds
-links that share no word with it, such as a page saved as "Durable Objects
-alarms" for "scheduling work in the background on Cloudflare". The address
-becomes `/search?q=…&mode=hybrid`, so a reload or a shared address repeats the
-search by meaning; typing again goes back to searching as you type. A link
+The search is by meaning as well as by words: it also finds links that share
+no word with the query, such as a page saved as "Durable Objects alarms" for
+"scheduling work in the background on Cloudflare". The address becomes
+`/search?q=…&mode=hybrid`, so a reload or a shared address repeats the search. A link
 found only by meaning is marked "by meaning" beside the start of the passage
 that matched; if the index could not be used, the line "Showing keyword matches
 only." says that the results are the keyword ones.
