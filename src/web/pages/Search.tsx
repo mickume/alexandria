@@ -16,7 +16,7 @@ import {
   type Segment,
   type TopicItem,
 } from '../api';
-import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
+import { ByMeaning, MeaningNotice } from '../components/ByMeaning';
 import { LinkCard, TopicPath, type CardActions } from '../components/LinkCard';
 import { Snippet } from '../components/Snippet';
 import { useUndoableDelete } from '../undo';
@@ -129,7 +129,7 @@ interface Found {
   matches: Map<string, MatchKind | undefined>;
   workspaces: SearchResults['workspaces'];
   next: string | null;
-  /** Whether a search by meaning could use meaning. */
+  /** Whether meaning took part in a search by meaning. */
   meaning: SearchResults['meaning'];
 }
 
@@ -144,6 +144,8 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
   /** Counts the searches, so that a page asked for one is not added to the next. */
   const searches = useRef(0);
   const loadingMore = useRef(false);
+  /** Counts Try again, which searches the same query once more. */
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -170,7 +172,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
     return () => {
       live = false;
     };
-  }, [query, mode]);
+  }, [query, mode, attempt]);
 
   async function more() {
     if (!found?.next || loadingMore.current) return;
@@ -226,7 +228,7 @@ export function Search({ query, mode }: { query: string; mode?: SearchMode }) {
           {error}
         </p>
       )}
-      {found?.meaning === 'unavailable' && <KeywordOnlyNotice />}
+      <MeaningNotice meaning={found?.meaning} onRetry={() => setAttempt((n) => n + 1)} />
       {found && <WorkspaceResults workspaces={found.workspaces} />}
       {found && deletes.shown.length === 0 && found.workspaces.length === 0 && (
         <NothingFound query={query} />

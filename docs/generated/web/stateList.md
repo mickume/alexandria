@@ -9,6 +9,7 @@
 The links of the Expired or the Archive page: every link in `state`, most
 recent first, or with a query (from the search box) those matching it.
 `failed` says that the last load failed; a later load that works clears it.
+`retry` loads again, as Try again does after a search without meaning.
 
 #### Parameters
 
@@ -40,13 +41,21 @@ recent first, or with a query (from the search box) those matching it.
 
 > **items**: [`Link`](api.md#link-1)[]
 
-##### keywordOnly
-
-> **keywordOnly**: `boolean`
-
 ##### loaded
 
 > **loaded**: `boolean`
+
+##### meaning
+
+> **meaning**: [`Meaning`](api.md#meaning-1) \| `undefined`
+
+##### retry
+
+> **retry**: () => `void`
+
+###### Returns
+
+`void`
 
 ##### setItems
 

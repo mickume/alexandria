@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { links, type Link, type SearchMode } from '../api';
-import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
+import { ByMeaning, MeaningNotice } from '../components/ByMeaning';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { useStateList } from '../stateList';
 import { useUndoableDelete } from '../undo';
@@ -12,7 +12,7 @@ import { useUndoableDelete } from '../undo';
  * the archived links matching it.
  */
 export function Archive({ query = '', mode }: { query?: string; mode?: SearchMode }) {
-  const { items, setItems, loaded, failed, byMeaning, keywordOnly } = useStateList(
+  const { items, setItems, loaded, failed, byMeaning, meaning, retry } = useStateList(
     'archived',
     query,
     mode,
@@ -58,7 +58,7 @@ export function Archive({ query = '', mode }: { query?: string; mode?: SearchMod
           {error}
         </p>
       )}
-      {keywordOnly && <KeywordOnlyNotice />}
+      <MeaningNotice meaning={meaning} onRetry={retry} />
       <div className="cards">
         {deletes.shown.map((link) => (
           <div key={link.id}>

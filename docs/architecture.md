@@ -145,6 +145,8 @@ account and checks the PKCE verifier as Google does.
 | `link_passages` | per link: the passages it is cut into for search by meaning, each with its vector id and the text version it was made from (see Search by meaning) |
 | `link_index_state` | per link: the text version, which triggers move whenever the indexed text changes, and when the link was last queued for indexing |
 | `vector_deletions` | the ids of vectors to delete from the Vectorize index, filled by a trigger on every deleted passage |
+| `passage_search`, `passage_search_keys` | the FTS5 index of the passages' words, by which a passage is found beside its meaning |
+| `search_rankings` | the ranking of a hybrid search with more than one page, kept 15 minutes so that its pages agree |
 | `topics`, `tags` | per user: the names a link is filed under; a topic's `parent_id` places it in the topic tree (at most three levels) |
 | `topic_aliases`, `tag_aliases` | per user: the former names of renamed and merged topics and tags, each with its survivor |
 | `link_tags` | the tags of each link, at positions |
@@ -564,18 +566,31 @@ before it.
 ## Search by meaning
 
 `GET /api/v1/search?mode=hybrid` (`search/hybrid.ts`, `search/routes.ts`)
-merges the keyword ranking with the links whose best passage matches by
-meaning. `hybridRanking` runs `findPassages` (up to 100 links, one passage
-each, 600 ms) beside the full keyword ranking (`keywordMatches`) and the set of
-strong keyword matches (`strongMatchIds`: every free word in title, tags and
-topic together), then orders the links in two tiers, strong matches first, each
-by reciprocal rank fusion with k = 60 over competition ranks (links of equal
-bm25 or equal similarity share a rank, so equal scores fall to the pin, last-use
-and id tie-breaks of keyword search). Past the first 1,000 keyword matches the
-keyword order is kept below the fused links of the tier. The route pages the
-whole ranking with a `{s: 'h', o}` cursor and reads snippets for the page's
-keyword matches only. If meaning is unavailable the ranking is the keyword
-matches, `meaning: "unavailable"`.
+merges the keyword ranking with the links whose best passage answers the
+query. `hybridRanking` runs `findPassages` (up to 50 links, one passage each,
+3 seconds for the embedding, the index and the reranker together) beside the
+full keyword ranking (`keywordMatches`) and the set of strong keyword matches
+(`strongMatchIds`: every free word in title, tags and topic together), then
+orders the links in two tiers, strong matches first, each by reciprocal rank
+fusion with k = 60 over competition ranks (links of equal bm25 or equal
+relevance share a rank, so equal scores fall to the pin, last-use and id
+tie-breaks of keyword search). Past the first 1,000 keyword matches the
+keyword order is kept below the fused links of the tier. A link that is no
+keyword match is listed for a passage the reranker scores at or over the
+relevance threshold, or, without the reranker (`meaning: "unranked"`), one
+the index scores at or over the similarity threshold; without the index the
+ranking is the keyword matches, `meaning: "unavailable"`.
+
+The ranking is computed for the first page only. When it has more than one
+page the route keeps it in `search_rankings` (its entries as JSON, with what
+`meaning` it answered) and the cursor `{s: 'h', k, o}` names it, so every later
+page reads the kept ranking and never embeds, queries or fuses again. A
+ranking is read for 15 minutes (`RANKING_KEPT_MS`; older, or another user's,
+is `invalid_cursor`) and the every-minute run deletes the older ones
+(`sweepRankings`). Each page reads its keyword matches' snippets from the word
+index and asks the reranker for its meaning matches' (`passageSnippets`: each
+passage in runs of 32 words, the best run of each, the query's words marked),
+falling back on the start of the passage after 1.5 seconds.
 
 Keyword search is unchanged. Beside it, every link is indexed by what it means
 ([ADR 05](adr/05-index-links-by-meaning-with-vectorize-and-workers-ai.md)):
@@ -584,11 +599,18 @@ one namespace per user.
 
 - **Passages** (`meaning/cut.ts`). A link is cut into passages of at most 1,500
   characters: its title, summary, topic, tags and note first, then the first
-  50,000 characters of its reader text. They are rows of `link_passages`, with
-  the id of the vector made from each: `{link_id}:{version}:{position}`. Each
-  vector carries the metadata `kind`, `metadata` or `reader`, after what its
-  passage was cut from; the Vectorize index has a metadata index on `kind`
-  (`scripts/provision.sh`), so a query can be filtered on it.
+  200,000 characters of its reader text, each reader passage starting with the
+  last sentence of the one before it (at most 200 characters of it). They are
+  rows of `link_passages`, with the id of the vector made from each:
+  `{link_id}:{version}:{position}`. A reader passage is embedded as its text
+  after its link's title and topic path (`embeddedText`); the row holds the
+  passage alone. Each vector carries the metadata `kind`, `metadata` or
+  `reader`, after what its passage was cut from; the Vectorize index has a
+  metadata index on `kind` (`scripts/provision.sh`), so a query can be
+  filtered on it. Triggers keep `passage_search`, an FTS5 index of the
+  passages' words with the tokenizer of `link_search`
+  (`migrations/0023_retrieval_pipeline.sql`), which also moved every link's
+  text version so that the backfill re-indexed the library.
 - **The text version.** Triggers (`migrations/0011_meaning_index.sql`) move
   `link_index_state.text_version` whenever the title, summary, topic, tags, note
   or reader text changes, or a topic or tag the link carries is renamed — for a
@@ -615,17 +637,28 @@ one namespace per user.
   thousand ids to a call, 20 calls a run, a failed call leaves its ids queued)
   and then queues, for each user not marked for deletion, up to 60 stale links
   not queued in the last 10 minutes, the most recently used first.
-- **Passages for a question** (`meaning/passages.ts`). `GET /api/v1/passages`
-  embeds the question's free words, takes the 100 nearest vectors in the user's
-  namespace, keeps those scoring at least 0.5 (`SIMILARITY_THRESHOLD`,
-  `meaning/backend.ts`), reads them from the user's own `link_passages` joined
-  with their links under the query filters, and returns at most 3 a link and
-  `limit` in all. The embedding and the query together have 5 seconds; a failure
-  or the timeout is `503 search_unavailable`. `findPassages` is the function
-  other features call. The `search_passages` MCP tool is this route.
+- **Finding passages** (`meaning/passages.ts`, `findPassages`,
+  [ADR 10](adr/10-find-passages-by-words-and-meaning-and-rerank-them.md)) is
+  the one procedure hybrid search, `GET /api/v1/passages` (and so the
+  `search_passages` MCP tool) and Ask use. It takes the query as its author
+  wrote it and any other phrasings of it. For each it reads the 100 nearest
+  vectors of the user's namespace and the 100 passages of `passage_search`
+  that best match its words (any of them, bm25), fuses all the lists by
+  reciprocal rank, and gives the best 50, each as its link's title and its
+  text, to the reranker (`@cf/baai/bge-reranker-base` through
+  `MeaningBackend.rerank`) with the first query. Passages at or over
+  `RELEVANCE_THRESHOLD` are returned in the reranker's order, at most 3 a link.
+  The embedding and the index have three fifths of the deadline (5 seconds;
+  3 for a search) and the reranker the rest. Without the reranker the fused
+  order stands and a passage found by meaning must reach
+  `SIMILARITY_THRESHOLD` (`unranked`); without the embedding or the index the
+  passages are those found by their words (`unavailable`). Every passage is
+  read from the user's own `link_passages` joined with their links under the
+  query filters, so the index is only ever a guide.
 - **Related links** (`meaning/related.ts`). `GET /api/v1/links/{id}/related`
   takes the link's newest first passage (its title, summary, topic, tags and
-  note) as the question to `findPassages` with one passage a link, no filters,
+  note) as the text to `nearestPassages`, the vector-only lookup, with one
+  passage a link, no filters,
   only vectors of `kind` `metadata` and the stricter threshold 0.7
   (`RELATED_SIMILARITY_THRESHOLD`), drops the link itself and returns the 5 best
   other links, worked out on each request; nothing is stored
@@ -651,24 +684,38 @@ one namespace per user.
 
 `POST /api/v1/ask` (`meaning/ask.ts`) answers a question from the owner's own
 links with the owner's own AI provider. It refuses in this order: the body, the
-question (`parseQuery` with a cap of 500 characters), the owner's key
-(`getAiSettings`: none, or marked rejected), and the index (`findPassages`
-for the 8 best passages, at most 3 a link; 16 for a detailed ask). Then it numbers the sources from 1
-in the order of their best passage, reads each as `toView` shows it, and
-answers with a `ReadableStream` of server-sent events: `sources` first, a
-`delta` for each piece `streamAnswer` (`enrich/providers.ts`) hands on, and
-`done`. `streamAnswer` streams Anthropic through the SDK's `messages.stream` and
+question (`parseQuery` with a cap of 500 characters) and the owner's key
+(`getAiSettings`: none, or marked rejected). It then asks the provider for the
+question's phrasings (`phrasingsWith`, a structured request with 10 seconds:
+the question restated as a search query and at most two other ways of asking
+it; `usablePhrasings` keeps at most three of at most 200 characters). A key
+rejected there is a 409 and marks the key; any other failure leaves the
+question as typed. `findPassages` takes the question and the phrasings, and
+reranks against the question, for the 8 best passages, at most 3 a link (16
+for a detailed ask).
+
+The sources are numbered from 1 in the order of their best passage and read as
+`toView` shows them. `withNeighbours` reads the passage before and after each
+found one, and `sourceTexts` joins each source's passages in the order of the
+page, dropping what consecutive passages share (`withoutOverlap`) and marking
+gaps, within 40,000 characters (80,000 detailed): over that, neighbours go
+from the last source up. The answer is a `ReadableStream` of server-sent
+events: `sources` first (with `queries` and `meaning`), a `delta` for each
+piece `streamAnswer` (`enrich/providers.ts`) hands on, and `done`.
+`streamAnswer` streams Anthropic through the SDK's `messages.stream` and
 OpenRouter through `POST /chat/completions` with `stream: true`, and bounds the
-whole answer by the provider timeout. The prompt gives the provider each passage
-headed by its source's number and title and the free words of the question
-(the filters only narrow the passages); a detailed ask (`detailed: true`, the
-Ask page's Tell me more) adds an instruction to answer thoroughly and allows
-4,096 tokens instead of 1,024. Both are told to write plain text without
-formatting, since an answer is often passed on to another agent. The Ask page
-shows the detailed answer under the first and renders each with
-`renderAnswer` (`components/Markdown.tsx`), the note sanitiser that also keeps
-links to `/links/{id}`, which each citation `[n]` becomes. Nothing about a
-question or an answer is stored, and no use of any link is recorded.
+whole answer by the provider timeout. The prompt gives the provider each
+source's number, title, topic path, host, day added and summary over its
+passages, then the free words of the question (the filters only narrow the
+passages); a detailed ask (`detailed: true`, the Ask page's Tell me more) adds
+an instruction to answer thoroughly and allows 4,096 tokens instead of 1,024.
+Both are told to write plain text without formatting, since an answer is often
+passed on to another agent. The Ask page shows the detailed answer under the
+first, renders each with `renderAnswer` (`components/Markdown.tsx`), the note
+sanitiser that also keeps links to `/links/{id}`, which each citation `[n]`
+becomes, and lists the other phrasings under the sources ("Also searched for").
+Nothing about a question or an answer is stored, and no use of any link is
+recorded. Both provider calls of an ask are recorded as `ask` usage.
 
 ## MCP server
 

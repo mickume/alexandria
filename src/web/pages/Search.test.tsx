@@ -146,7 +146,7 @@ describe('the Search page', () => {
     const found = makeLink({ id: 'm1', title: 'Durable Object alarms' });
     const both = makeLink({ id: 'b1', title: 'Alarm clocks' });
     const words = makeLink({ id: 'k1', title: 'Alarm bells' });
-    const hybrid = (meaningState?: 'used' | 'unavailable') => ({
+    const hybrid = (meaningState?: 'used' | 'unranked' | 'unavailable') => ({
       items: [
         {
           link: found,
@@ -200,6 +200,27 @@ describe('the Search page', () => {
         }
       },
     );
+
+    it.each([
+      { state: 'unavailable' as const, line: 'Showing keyword matches only.' },
+      { state: 'unranked' as const, line: 'Results are not ordered by relevance.' },
+    ])('says “$line” with a Try again button that searches again', async ({ state, line }) => {
+      let answer = hybrid(state);
+      const fake = api().on('GET', '/api/v1/search', () => ({ status: 200, body: answer }));
+      renderPage('/search?q=later&mode=hybrid', fake);
+      expect(await screen.findByText(line)).toBeTruthy();
+
+      answer = hybrid('used');
+      await act(async () => screen.getByRole('button', { name: 'Try again' }).click());
+      await act(async () => undefined);
+
+      expect(fake.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([
+        '/api/v1/search?q=later&mode=hybrid',
+        '/api/v1/search?q=later&mode=hybrid',
+      ]);
+      expect(screen.queryByText(line)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    });
   });
 });
 

@@ -47,9 +47,11 @@ The search is by meaning as well as by words: it also finds links that share
 no word with the query, such as a page saved as "Durable Objects alarms" for
 "scheduling work in the background on Cloudflare". The address becomes
 `/search?q=…&mode=hybrid`, so a reload or a shared address repeats the search. A link
-found only by meaning is marked "by meaning" beside the start of the passage
-that matched; if the index could not be used, the line "Showing keyword matches
-only." says that the results are the keyword ones.
+found only by meaning is marked "by meaning" beside the part of its text that
+answers the query. A search waits up to three seconds for meaning; if the
+index could not be used the line "Showing keyword matches only." says so, and
+if the results could not be ordered by relevance, "Results are not ordered by
+relevance.", each with a Try again button.
 
 Filters narrow a search, and can be combined with words or each other:
 
@@ -101,10 +103,14 @@ The **Ask** tab, between Tags and Expired, answers a question from your own
 links. Type it (at most 500 characters, with the same filters as the search
 box if you like) and press **Ask**: the answer streams in, with a spinner until it is done, written by your own
 AI provider with the key saved under Settings, from the passages of your links
-that best match the question. Each `[1]`, `[2]`… in the answer opens the detail
+that best answer the question. Your provider first rewrites the question as
+two or three search queries, so that pages worded differently from it are
+found too; the queries are shown under the sources as "Also searched for".
+The passages are found by their words and by meaning and ordered by relevance
+to the question as you typed it. Each `[1]`, `[2]`… in the answer opens the detail
 page of the link it came from, and the links are listed under the answer; a
 title there opens the site in a new tab, as everywhere in Alexandria. If nothing in your
-library answers, it says so without calling the provider. Once the answer has
+library answers, it says so without asking the provider for an answer. Once the answer has
 arrived, **Tell me more** asks the same question again for a longer, detailed
 answer from more passages, which streams in under the first with a spinner
 until it is done, and **Copy** puts the

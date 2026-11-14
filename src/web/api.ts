@@ -323,6 +323,12 @@ export interface Segment {
   match: boolean;
 }
 
+/**
+ * Whether meaning took part in an answer: `unranked` when the results could
+ * not be ordered by relevance, `unavailable` when they are the keyword matches.
+ */
+export type Meaning = 'used' | 'unranked' | 'unavailable';
+
 /** How a link of a search by meaning was found. */
 export type MatchKind = 'keyword' | 'meaning' | 'both';
 
@@ -331,8 +337,8 @@ export interface SearchResults {
   items: { link: Link; snippet: Segment[]; match?: MatchKind }[];
   workspaces: { id: string; name: string; snippet: Segment[] }[];
   next_cursor: string | null;
-  /** Only in a search by meaning: whether meaning could be added to the results. */
-  meaning?: 'used' | 'unavailable';
+  /** Only in a search by meaning: whether meaning took part in the results. */
+  meaning?: Meaning;
 }
 
 /**
@@ -558,7 +564,7 @@ export interface AskSource {
 
 /** One event of an answer: the sources first, then pieces of the answer, then done or an error. */
 export type AskEvent =
-  | { event: 'sources'; data: { sources: AskSource[] } }
+  | { event: 'sources'; data: { sources: AskSource[]; queries?: string[]; meaning?: Meaning } }
   | { event: 'delta'; data: { text: string } }
   | { event: 'done'; data: Record<string, never> }
   | { event: 'error'; data: { error: string; message: string } };

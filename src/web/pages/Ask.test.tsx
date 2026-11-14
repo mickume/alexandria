@@ -126,6 +126,33 @@ describe('the Ask page', () => {
     expect(site.closest('li')!.classList.contains('archived')).toBe(false);
   });
 
+  it('lists the other phrasings the question was searched with, and none when there are none', async () => {
+    const withPhrasings = {
+      status: 200,
+      headers: sseHeaders,
+      text:
+        event('sources', {
+          sources: [{ n: 1, link: alarms }],
+          queries: ['how do I run something later', 'schedule a task', 'background jobs'],
+          meaning: 'used',
+        }) +
+        event('delta', { text: 'Use an alarm [1].' }) +
+        event('done', {}),
+    };
+    const fake = api(withPhrasings);
+    renderPage('/ask', fake);
+    await ask('how do I run something later');
+
+    expect(
+      await screen.findByText('Also searched for: schedule a task; background jobs'),
+    ).toBeTruthy();
+
+    fake.on('POST', '/api/v1/ask', answered([{ n: 1, link: alarms }], 'Use an alarm [1].'));
+    await ask('how do I run something later');
+    await screen.findByRole('list', { name: 'Sources' });
+    expect(screen.queryByText(/Also searched for/)).toBeNull();
+  });
+
   it('dims a source whose link is archived', async () => {
     const kept = { ...queues, state: 'archived', points: null };
     renderPage(

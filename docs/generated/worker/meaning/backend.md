@@ -69,6 +69,26 @@ among those matching `filter`.
 
 `Promise`\<[`VectorMatch`](#vectormatch)[]\>
 
+##### rerank()
+
+> **rerank**(`query`, `texts`): `Promise`\<`number`[]\>
+
+The relevance of each text to `query`, from 0 to 1, in the order of `texts`.
+
+###### Parameters
+
+###### query
+
+`string`
+
+###### texts
+
+`string`[]
+
+###### Returns
+
+`Promise`\<`number`[]\>
+
 ##### upsert()
 
 > **upsert**(`namespace`, `vectors`): `Promise`\<`void`\>
@@ -169,6 +189,24 @@ The most vectors a query asks the index for.
 
 ***
 
+### RELEVANCE\_THRESHOLD
+
+> `const` **RELEVANCE\_THRESHOLD**: `0.2` = `0.2`
+
+The relevance (the reranker's score, 0 to 1) a passage must reach to be
+returned. Provisional, as the similarity threshold is: there is no set of
+test questions to tune it against (ADR 10).
+
+***
+
+### RERANKER\_MODEL
+
+> `const` **RERANKER\_MODEL**: `"@cf/baai/bge-reranker-base"` = `'@cf/baai/bge-reranker-base'`
+
+The reranker: reads the query and a passage together and scores how well the passage answers it.
+
+***
+
 ### SIMILARITY\_THRESHOLD
 
 > `const` **SIMILARITY\_THRESHOLD**: `0.5` = `0.5`
@@ -177,6 +215,27 @@ The similarity (cosine) a passage must reach to be returned. One constant for
 every use of the index, provisional until it is tuned against a real library.
 
 ## Functions
+
+### asRelevances()
+
+> **asRelevances**(`scores`): `number`[]
+
+The scores as relevances from 0 to 1. Workers AI's typing does not say
+whether the reranker answers probabilities or raw scores (ADR 10): scores
+that are not all within 0 and 1 are raw, and are squashed with the logistic
+function, which keeps their order.
+
+#### Parameters
+
+##### scores
+
+`number`[]
+
+#### Returns
+
+`number`[]
+
+***
 
 ### meaningBackend()
 

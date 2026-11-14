@@ -765,12 +765,13 @@ nothing embedded.
 #### Searching by meaning
 
 `mode=hybrid` with at least one free word returns the links that match the
-free words by keyword, by meaning, or both, in one ranking, so that a page
-saved as "Durable Objects alarms" is found by "scheduling work in the
-background". Meaning uses the same index as `GET /api/v1/passages`: a link is
-found by meaning when its best passage scores at least 0.5 against the free
-words, and meaning adds at most the 100 nearest such links to a query. The
-filters apply to those links as to keyword matches.
+free words by keyword, the links one of whose passages answers the query, or
+both, in one ranking, so that a page saved as "Durable Objects alarms" is
+found by "scheduling work in the background". The passages are found as
+`GET /api/v1/passages` finds them (by their words and by meaning, then ordered
+by the reranker): a link that is no keyword match is listed when one of its
+passages reaches the relevance threshold, and passages add at most 50 such
+links to a query. The filters apply to those links as to keyword matches.
 
 ```json
 {
@@ -785,36 +786,50 @@ filters apply to those links as to keyword matches.
 
 - **`match`** says how the link was found: `keyword`, `meaning` or `both`. A
   keyword or both match has the snippet keyword search gives (at most 32 words,
-  the matched words marked); a meaning match has the first at most 32 words of
-  its best passage as one segment, nothing marked.
+  the matched words marked); a meaning match has the run of at most 32 words of
+  its best passage that the reranker scores highest against the query, with the
+  query's words marked where they occur, or the passage's first 32 words,
+  nothing marked, when the reranker could not be used.
 - **The ranking** has two tiers. First the links whose title, tags and topic
   together hold every free word; then every other match. Within a tier links
   are ordered by reciprocal rank fusion of their place in the keyword ranking
-  (the first 1,000 keyword matches take part) and in the meaning ranking, so a
-  strong keyword match is never below a link found by meaning alone, and a link
-  found both ways comes before one found a single way. Links of equal score are
-  ordered as keyword search orders its ties: pinned (by position), then the more
-  recently used, then by id. Every link keyword search finds is returned.
+  (the first 1,000 keyword matches take part) and the place of their best
+  passage, so a strong keyword match is never below a link found by meaning
+  alone, and a link found both ways comes before one found a single way. Links
+  of equal score are ordered as keyword search orders its ties: pinned (by
+  position), then the more recently used, then by id. Every link keyword search
+  finds is returned.
 - **Paging** is by a signed `next_cursor` of its own kind: for a query with free
   words, a cursor of one mode is `400 invalid_cursor` in the other (a query of
-  filters only is answered alike in both modes, with the stream's cursor). Every result appears once across the
-  pages, and the first page lists the matching workspaces, as in keyword mode.
-- **`meaning`** is `used`, or `unavailable` when Workers AI or Vectorize
-  failed or had not answered within 600 ms: the answer is then the keyword
-  results of the query, each `match: "keyword"`. A hybrid search never answers
-  5xx because of the index.
+  filters only is answered alike in both modes, with the stream's cursor). The
+  ranking is computed for the first page and kept for 15 minutes, and every
+  later page continues it: every result appears once across the pages, in one
+  order, whatever happens to Workers AI meanwhile, and a link deleted between
+  pages is left out. A cursor used more than 15 minutes after its first page
+  is `400 {"error": "invalid_cursor", "field": "cursor", "message": "the search
+  is too old: search again"}`. The first page lists the matching workspaces,
+  as in keyword mode.
+- **`meaning`** says whether meaning took part, and is the same on every page
+  of a search. The search waits at most 3 seconds for the embedding, the index
+  and the reranker together:
+  - `used`: the passages were found by meaning and ordered by the reranker;
+  - `unranked`: the reranker failed or was late. The links listed for their
+    passages are those whose best passage is similar enough to the query (0.5
+    or more), in the fused order;
+  - `unavailable`: Workers AI (the embedding) or Vectorize failed or was late.
+    The answer is the keyword results of the query, each `match: "keyword"`.
+
+  A hybrid search never answers 5xx because of the index or the reranker.
 
 ### Passages
 
 #### `GET /api/v1/passages`
 
-The pieces of the owner's links that best answer a question, found by what
-they mean and not by the words they share with it. `?q=<question>`, at most
-200 characters, with `limit` (1 to 20, default 8). The question is written in
-the search query language: its free words are the question (they are joined by
-single spaces and embedded), and the prefix filters narrow the links exactly
-as in `GET /api/v1/search`, with expired links left out unless a `state:`
-filter says otherwise.
+The pieces of the owner's links that best answer a question. `?q=<question>`,
+at most 200 characters, with `limit` (1 to 20, default 8). The question is
+written in the search query language: its free words are the question, and the
+prefix filters narrow the links exactly as in `GET /api/v1/search`, with
+expired links left out unless a `state:` filter says otherwise.
 
 ```json
 {
@@ -824,7 +839,8 @@ filter says otherwise.
       "title": "Durable Object alarms",
       "url": "https://example.com/durable-object-alarms",
       "passage": "An alarm lets a Durable Object schedule a task to run later…",
-      "score": 0.7071
+      "score": 0.93,
+      "match": "both"
     }
   ],
   "meaning": "used"
@@ -832,29 +848,61 @@ filter says otherwise.
 ```
 
 Each link is cut into passages of at most 1,500 characters: its title,
-summary, topic path (its names joined with ` > `), tags and note together, then its reader-view text up to the
-first 50,000 characters (a link with no reader-view text has only the first).
-Items are the best-matching passages, best first by `score`, the passage's
-similarity to the question; only a score of 0.5 or more is returned, so a
-question unrelated to anything in the library answers `{"items": [], "meaning":
-"used"}`. At most 3 passages of one link are returned and the rest of the
-limit goes to other links. `url` is the link's original URL. The request
-records no use of any link.
+summary, topic path (its names joined with ` > `), tags and note together, then
+the first 200,000 characters of its reader-view text (a link with no
+reader-view text has only the first). Consecutive passages of the reader text
+overlap: each starts with the last sentence of the one before it, when that is
+at most 200 characters. Reader text past 200,000 characters is found by
+`GET /api/v1/search` only.
 
-A link is found by meaning once it is indexed: within about a minute of its
-reader text, title, summary, topic, tags or note being stored or changed (a
-topic's rename changes the links beneath it too), and
-for links that existed before the index, once the backfill has reached them
-(60 links a minute per user). Nothing shows whether a link is indexed yet. A
-deleted link's passages are gone at once.
+Passages are found in three steps, the same for this request, for a search with
+`mode=hybrid` and for `POST /api/v1/ask`:
+
+1. **Candidates.** The 100 passages nearest the question by meaning (a reader
+   passage is compared as its text after its link's title and topic path), and
+   the 100 passages that best match its free words: a passage holding at least
+   one of them, whole and in any of its English forms, more of them and rarer
+   ones ranking higher.
+2. **Fusion.** The two lists become one by reciprocal rank fusion, and the best
+   50 go on.
+3. **Reranking.** A reranker reads the question with each of the 50 and gives
+   each a relevance from 0 to 1, which orders them. Only a passage whose
+   relevance reaches the relevance threshold (0.2, provisional) is returned, so
+   a question unrelated to anything in the library answers `{"items": [],
+   "meaning": "used"}`.
+
+`score` is the passage's relevance, and `match` says how it was found:
+`keyword` (by its words), `meaning` or `both`. At most 3 passages of one link
+are returned and the rest of the limit goes to other links. `url` is the link's
+original URL. The request records no use of any link.
+
+`meaning` says whether meaning took part; the request waits at most 5 seconds
+for the embedding, the index and the reranker together:
+
+- `used`: as above;
+- `unranked`: the reranker failed or was late. The fused order stands; a
+  passage found by meaning is returned when its similarity to the question is
+  0.5 or more, with that similarity as its `score`, and a passage found by its
+  words alone is returned with `score: null`;
+- `unavailable`: Workers AI (the embedding) or Vectorize failed or was late.
+  The passages are those found by their words, ordered by the reranker when it
+  answers, each with `score: null`.
+
+A link is found once it is indexed: within about a minute of its reader text,
+title, summary, topic, tags or note being stored or changed (a topic's rename
+changes the links beneath it too), and for links that existed before the
+index, or before a change to how links are indexed, once the backfill has
+reached them (60 links a minute per user); until then such a link is found by
+the passages it had. Nothing shows whether a link is indexed yet. A deleted
+link's passages are gone at once.
 
 Errors: `400 {"error": "invalid_question", "field": "q", "message": "ask with
 at least one word"}` for a `q` that is absent, blank or only filters;
 `query_too_long` and `invalid_filter` (field `q`) as in search;
 `400 {"error": "invalid_limit", "field": "limit", "message": "limit must be an
-integer from 1 to 20"}`. When Workers AI or Vectorize fails or has not answered
-within 5 seconds: `503 {"error": "search_unavailable", "message": "search by
-meaning is unavailable, try again"}`.
+integer from 1 to 20"}`. `503 {"error": "search_unavailable", "message":
+"search by meaning is unavailable, try again"}` only when the passages cannot
+be read at all; Workers AI or Vectorize failing does not refuse the request.
 
 #### `GET /api/v1/links/{id}/related`
 
@@ -896,9 +944,8 @@ with the owner's key and model; nothing about the question or the answer is
 stored. An ask counts once against the 600 requests a minute and records no use
 of the links it cites.
 
-Every refusal that can be known before the provider is called is answered as
-JSON, in this order, and calls neither the provider nor (from the key check on)
-the index:
+Every refusal is answered as JSON before any stream starts, in this order;
+those down to the key marked rejected call neither the provider nor the index:
 
 - `400 {"error": "invalid_json", …}` for a body that is not a JSON object;
 - `400 {"error": "invalid_question", "field": "question", "message": "ask with
@@ -914,33 +961,53 @@ the index:
 - `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`;
 - `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
   while the saved key is marked rejected;
+- `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
+  when the provider rejects the key (401, 402, 403) while it is asked for the
+  question's phrasings (below); the key is marked rejected;
 - `503 {"error": "search_unavailable", "message": "search by meaning is
-  unavailable, try again"}` when Workers AI or Vectorize fails or takes over 5
-  seconds.
+  unavailable, try again"}` when the passages cannot be read at all. Workers AI
+  or Vectorize failing does not refuse the question: see `meaning` below.
 
 Otherwise the answer is `200` with `Content-Type: text/event-stream`, a stream
 of events, each an `event:` line and a JSON `data:` line:
 
-1. one `sources`: `{"sources": [{"n": 1, "link": <the link as the stream lists it>}]}`,
-   one entry per link the passages came from, numbered from 1 in the order of
-   their best passage;
+1. one `sources`: `{"sources": [{"n": 1, "link": <the link as the stream lists it>}],
+   "queries": ["<the question>", "<a phrasing>"], "meaning": "used"}`: one
+   entry per link the passages came from, numbered from 1 in the order of
+   their best passage; `queries`, what the passages were searched with, the
+   question as typed first; and `meaning`, as `GET /api/v1/passages` gives it;
 2. `delta` events `{"text": "<next part of the answer>"}`, the answer citing its
    sources as `[n]`;
 3. one `done`: `{}`.
 
-Alexandria retrieves the 8 best passages (at most 3 of one link, at most 1,500
-characters each, as `GET /api/v1/passages` would return them under the same
-filters) and sends them, each headed by its source's number and title, with the
-free words of the question to the provider. The provider is instructed to
-answer from the passages only, to cite every statement as `[n]`, to write plain
-text in short paragraphs without Markdown or other formatting, and to answer
-"Nothing in your library answers this." when they do not. A detailed ask
-retrieves the 16 best passages instead (their sources start with the 8 best
-passages' sources, numbered alike), adds an instruction to write a detailed,
-thorough answer, and lets the answer run to
-4,096 tokens instead of 1,024. When no passage
-reaches the similarity threshold the provider is not called and the answer is
-`sources` with an empty list, that one `delta`, and `done`.
+Before retrieving, Alexandria asks the provider for the question as search
+queries: the question restated, then at most two other ways of asking it, each
+at most 200 characters. The passages are found with the question as typed and
+with every phrasing (at most four queries): each gives its candidates, all are
+fused, and the reranker reads them against the question as typed, so a
+phrasing can add passages but never changes what counts as an answer. The
+question's filters apply to every phrasing. When that call fails otherwise
+than by rejecting the key, answers nothing usable or takes over 10 seconds,
+the question as typed is used alone; a phrasing over 200 characters, a
+repeated one and those past the third are dropped.
+
+Alexandria then takes the 8 best passages (at most 3 of one link, as
+`GET /api/v1/passages` would return them under the same filters) and sends the
+provider one block per source: its number and title, its topic path, host, the
+day it was added and its summary, then its passages in the order of the page,
+each with the passage before it and the one after it. Passages that follow one
+another are joined and what they share appears once; a gap is marked `[…]`.
+The passages sent hold at most 40,000 characters; over that, the neighbouring
+passages are left out, from the last source up. The free words of the question
+follow. The provider is instructed to answer from the passages only, to cite
+every statement as `[n]`, to write plain text in short paragraphs without
+Markdown or other formatting, and to answer "Nothing in your library answers
+this." when they do not. A detailed ask takes the 16 best passages instead,
+sends at most 80,000 characters, adds an instruction to write a detailed,
+thorough answer, and lets the answer run to 4,096 tokens instead of 1,024; its
+phrasings are asked for again. When no passage is found the answering call is
+not made and the answer is `sources` with an empty list, that one `delta`, and
+`done`.
 
 Once the stream has started, a failure ends it with one `error` event
 `{"error", "message"}` and no `done`, after whatever `delta` events arrived:
@@ -1500,7 +1567,7 @@ unexpected failure is
 |---|---|---|
 | `add_link` | `url`, `tags?`, `workspace?` | adds or boosts as `POST /api/v1/links` (`{status, link}`); applies `tags` as a manual tag edit; files the link at the bottom of `workspace` unless it is a member |
 | `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included, and `mode=hybrid`: links found by meaning as well as by words, each with `match`, and `meaning` in the body; no use |
-| `search_passages` | `query`, `limit?` (1 to 20, default 8) | `GET /api/v1/passages` with the query as given as `q`: the passages that best match it by meaning, each with its link's id, title and URL; no use. A `search_unavailable` (503) is a tool error with that envelope, not `internal_error` |
+| `search_passages` | `query`, `limit?` (1 to 20, default 8) | `GET /api/v1/passages` with the query as given as `q`: the passages that best answer it, by their words and by meaning, each with its link's id, title and URL; no use. A `search_unavailable` (503) is a tool error with that envelope, not `internal_error` |
 | `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
 | `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |
 | `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |
