@@ -128,6 +128,10 @@ export const fakeAi = {
       body: JSON.stringify({ status, message }),
     });
   },
+  /** Answers the phrasings of every question with `phrasings`; none restores the default. */
+  async phrasings(phrasings: string[] = []): Promise<void> {
+    await fetch(`${this.url}/__phrasings`, { method: 'POST', body: JSON.stringify({ phrasings }) });
+  },
   /** Answers a topic's split with `subtopics`, filing the links it is sent round-robin under them. */
   async splitInto(subtopics: string[]): Promise<void> {
     await fetch(`${this.url}/__split`, { method: 'POST', body: JSON.stringify({ subtopics }) });
@@ -159,7 +163,11 @@ export const fakeMeaning = {
   async fail(): Promise<void> {
     await fetch(`${this.url}/__fail`, { method: 'POST' });
   },
-  /** Undoes fail. */
+  /** Makes reranking fail, the embedding and the index still answering. */
+  async failRerank(): Promise<void> {
+    await fetch(`${this.url}/__fail_rerank`, { method: 'POST' });
+  },
+  /** Undoes fail and failRerank. */
   async recover(): Promise<void> {
     await fetch(`${this.url}/__recover`, { method: 'POST' });
   },

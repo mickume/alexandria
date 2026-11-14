@@ -73,6 +73,27 @@ test.describe.serial('the owner searches by meaning', () => {
     );
   });
 
+  test('says the results are not ordered by relevance without the reranker, until Try again', async ({
+    page,
+  }) => {
+    await signIn(page);
+    await fakeMeaning.failRerank();
+    try {
+      await page.goto('/');
+      await searchByMeaning(page, QUESTION);
+
+      await expect(page.getByText('Results are not ordered by relevance.')).toBeVisible();
+      await expect(results(page).getByRole('article').first()).toBeVisible();
+
+      await fakeMeaning.recover();
+      await page.getByRole('button', { name: 'Try again' }).click();
+      await expect(page.getByText('Results are not ordered by relevance.')).toHaveCount(0);
+      await expect(results(page).getByRole('article').first()).toBeVisible();
+    } finally {
+      await fakeMeaning.recover();
+    }
+  });
+
   test('falls back to the keyword results when Workers AI is unreachable', async ({ page }) => {
     await signIn(page);
     await fakeMeaning.fail();

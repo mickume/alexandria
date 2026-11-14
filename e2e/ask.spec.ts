@@ -39,11 +39,14 @@ test.describe.serial('the owner asks the library', () => {
       )
       .toBe(true);
 
+    await fakeAi.phrasings(['schedule a task for later']);
     await page.goto('/');
     await ask(page, QUESTION);
 
     const answer = page.getByRole('region', { name: 'Answer' });
     await expect(answer).toContainText('Durable Object alarm');
+    await expect(page.getByText('Also searched for: schedule a task for later')).toBeVisible();
+    await fakeAi.phrasings();
     const sources = page.getByRole('list', { name: 'Sources' });
     await expect(sources).toContainText('Alarms for agents');
     await expect(sources).toContainText('example.com');
