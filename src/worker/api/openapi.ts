@@ -251,6 +251,13 @@ export const SearchResults = z.strictObject({
   next_cursor: z.string().nullable(),
 });
 
+/** Whether meaning took part in an answer. */
+const Meaning = z
+  .enum(['used', 'unranked', 'unavailable'])
+  .describe(
+    'used; unranked when the reranker could not be used and the order is the fused one; unavailable when Workers AI or Vectorize could not be used',
+  );
+
 /** The answer of a search with mode=hybrid: SearchResults, each item saying how it matched, and whether meaning was added. */
 export const HybridResults = z.strictObject({
   items: z.array(
@@ -265,9 +272,7 @@ export const HybridResults = z.strictObject({
   ),
   workspaces: z.array(z.strictObject({ id: z.string(), name: z.string(), snippet: Snippet })),
   next_cursor: z.string().nullable(),
-  meaning: z
-    .enum(['used', 'unavailable'])
-    .describe('unavailable when Workers AI or Vectorize could not be used'),
+  meaning: Meaning,
 });
 
 /** The answer of a request for passages. */
@@ -278,10 +283,18 @@ export const PassageResults = z.strictObject({
       title: z.string(),
       url: z.string().describe('The link’s original URL'),
       passage: z.string().describe('At most 1,500 characters of the link’s indexed text'),
-      score: z.number().describe('The similarity to the question, from 0.5 up to 1'),
+      score: z
+        .number()
+        .nullable()
+        .describe(
+          'The reranker’s relevance to the question, 0 to 1; with meaning unranked, the similarity of a passage found by meaning and null for one found by its words alone; with unavailable, null',
+        ),
+      match: z
+        .enum(['keyword', 'meaning', 'both'])
+        .describe('Whether the passage was found by its words, by meaning or by both'),
     }),
   ),
-  meaning: z.literal('used'),
+  meaning: Meaning,
 });
 
 const error = (description: string): ResponseSpec => ({ description, schema: ErrorBody });
@@ -816,7 +829,8 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/passages',
     operationId: 'passages',
-    summary: 'The passages of the links that best match a question by meaning, best first',
+    summary:
+      'The passages of the links that best answer a question, found by their words and by meaning and ordered by a reranker',
     query: {
       q: {
         description:
@@ -828,13 +842,13 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'The passages scoring at least the similarity threshold, at most three of one link; none when nothing matches',
+          'The passages whose relevance reaches the relevance threshold, at most three of one link; none when nothing matches',
         schema: PassageResults,
       },
       400: error(
         'invalid_question (no free word), query_too_long, invalid_filter (field q) or invalid_limit',
       ),
-      503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
+      503: error('search_unavailable: the passages could not be read'),
     },
   },
   {
@@ -859,14 +873,14 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'A stream of server-sent events: one sources {sources: [{n, link}]}, then delta {text} events citing sources as [n], then done {}; or, once started, one error {error, message} (ai_key_rejected, provider_unavailable or provider_failed) and no done',
+          'A stream of server-sent events: one sources {sources: [{n, link}], queries, meaning}, then delta {text} events citing sources as [n], then done {}; or, once started, one error {error, message} (ai_key_rejected, provider_unavailable or provider_failed) and no done',
         mediaType: 'text/event-stream',
       },
       400: error(
         'invalid_json, invalid_question (field question), question_too_long (field question) or invalid_detailed (field detailed)',
       ),
       409: error('no_ai_key, or ai_key_rejected with the provider’s message'),
-      503: error('search_unavailable: Workers AI or Vectorize failed or took over 5 seconds'),
+      503: error('search_unavailable: the passages could not be read'),
     },
   },
   ...(['topics', 'tags'] as const).map((kind): Operation => ({

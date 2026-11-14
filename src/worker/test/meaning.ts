@@ -4,11 +4,11 @@
  * namespace, record every call and fail or stall a call on request.
  */
 import { env } from 'cloudflare:test';
-import { DIMENSIONS, embedText, VectorIndex, type MetadataFilter } from './embedder';
+import { DIMENSIONS, embedText, relevance, VectorIndex, type MetadataFilter } from './embedder';
 import { api, seedLinks, type TestUser } from './helpers';
 
 /** The calls the Worker makes to the index and the model. */
-export type MeaningCall = 'embed' | 'query' | 'upsert' | 'deleteByIds';
+export type MeaningCall = 'embed' | 'query' | 'upsert' | 'deleteByIds' | 'rerank';
 
 /** One call the fakes received. */
 export interface RecordedCall {
@@ -17,8 +17,10 @@ export interface RecordedCall {
   namespace?: string;
   /** The ids upserted or deleted. */
   ids?: string[];
-  /** The texts embedded. */
+  /** The texts embedded or reranked. */
   texts?: string[];
+  /** The query passages were reranked for. */
+  query?: string;
 }
 
 class FakeMeaning {
@@ -75,8 +77,17 @@ class FakeMeaning {
   }
 
   private ai = {
-    run: async (_model: string, inputs: { text: string | string[] }) => {
-      const texts = Array.isArray(inputs.text) ? inputs.text : [inputs.text];
+    run: async (
+      _model: string,
+      inputs: { text?: string | string[]; query?: string; contexts?: { text: string }[] },
+    ) => {
+      if (inputs.contexts) {
+        const texts = inputs.contexts.map((c) => c.text);
+        const query = inputs.query ?? '';
+        await this.enter({ call: 'rerank', query, texts });
+        return { response: texts.map((text, id) => ({ id, score: relevance(query, text) })) };
+      }
+      const texts = Array.isArray(inputs.text) ? inputs.text : [inputs.text ?? ''];
       await this.enter({ call: 'embed', texts });
       await this.onEmbed?.();
       return { shape: [texts.length, DIMENSIONS], data: texts.map(embedText), pooling: 'cls' };

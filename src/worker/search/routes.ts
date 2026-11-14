@@ -9,8 +9,9 @@ import { splitWith } from '../enrich/providers';
 import { buildSplitPrompt } from '../enrich/enrich';
 import { isStreamCursor, listStream } from '../links/stream';
 import { filterConditions, parseQuery, type Filters } from './query';
-import { hybridRanking, passageSnippet } from './hybrid';
-import { linkMatch, matchingWorkspaces, rankedLinks, snippetsFor } from './search';
+import { now } from '../clock';
+import { hybridRanking, passageSnippets, type HybridEntry, type HybridRanking } from './hybrid';
+import { linkMatch, matchingWorkspaces, rankedLinks, snippetsFor, type Segment } from './search';
 import {
   carrierIds,
   isVocabularyCursor,
@@ -31,14 +32,14 @@ export const searchRoutes = new Hono<AppEnv>();
 
 /** Where a page of ranked results ends: the number of results before the next page. */
 interface RankCursor {
-  /** 'r' for a keyword ranking, 'h' for a hybrid one: a cursor is refused in the other mode. */
-  s: 'r' | 'h';
+  /** 'r' marks a keyword ranking: a hybrid search has its own cursor, refused here. */
+  s: 'r';
   o: number;
 }
 
-function isRankCursor(value: unknown, kind: RankCursor['s'] = 'r'): value is RankCursor {
+function isRankCursor(value: unknown): value is RankCursor {
   const c = value as RankCursor | null;
-  return typeof c === 'object' && c !== null && c.s === kind && Number.isInteger(c.o) && c.o > 0;
+  return typeof c === 'object' && c !== null && c.s === 'r' && Number.isInteger(c.o) && c.o > 0;
 }
 
 /** The user's links with these ids, in the order of `ids`. */
@@ -70,50 +71,122 @@ async function streamPage(c: Context<AppEnv>, filters: Filters, limit: number, h
   });
 }
 
+/** How long a hybrid search's ranking is kept for its later pages, in milliseconds. */
+export const RANKING_KEPT_MS = 15 * 60_000;
+
+/** Where a page of a hybrid search ends: its kept ranking and the number of results before the next page. */
+interface HybridCursor {
+  s: 'h';
+  /** The id of the kept ranking. */
+  k: string;
+  o: number;
+}
+
+function isHybridCursor(value: unknown): value is HybridCursor {
+  const c = value as HybridCursor | null;
+  return (
+    typeof c === 'object' &&
+    c !== null &&
+    c.s === 'h' &&
+    typeof c.k === 'string' &&
+    Number.isInteger(c.o) &&
+    c.o > 0
+  );
+}
+
+/** The ranking a cursor continues, or null when it is gone or older than RANKING_KEPT_MS. */
+async function keptRanking(
+  db: D1Database,
+  userId: string,
+  id: string,
+): Promise<HybridRanking | null> {
+  const row = await db
+    .prepare(
+      'SELECT meaning, entries FROM search_rankings WHERE id = ? AND user_id = ? AND created_at > ?',
+    )
+    .bind(id, userId, new Date(now().getTime() - RANKING_KEPT_MS).toISOString())
+    .first<{ meaning: HybridRanking['meaning']; entries: string }>();
+  return row ? { meaning: row.meaning, entries: JSON.parse(row.entries) as HybridEntry[] } : null;
+}
+
+/** Keeps a ranking for its later pages and returns its id. */
+async function keepRanking(
+  db: D1Database,
+  userId: string,
+  ranking: HybridRanking,
+): Promise<string> {
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      'INSERT INTO search_rankings (id, user_id, created_at, meaning, entries) VALUES (?, ?, ?, ?, ?)',
+    )
+    .bind(id, userId, now().toISOString(), ranking.meaning, JSON.stringify(ranking.entries))
+    .run();
+  return id;
+}
+
+/** Removes the rankings kept longer than RANKING_KEPT_MS; the every-minute run calls it. */
+export async function sweepRankings(db: D1Database): Promise<void> {
+  await db
+    .prepare('DELETE FROM search_rankings WHERE created_at <= ?')
+    .bind(new Date(now().getTime() - RANKING_KEPT_MS).toISOString())
+    .run();
+}
+
 /**
- * A hybrid query with free words: the keyword matches and the links found by
- * meaning in one ranking, paged by offset, each saying how it matched, and on
- * the first page the matching workspaces.
+ * A hybrid query with free words: the keyword matches and the links whose
+ * passages answer the query in one ranking, each saying how it matched, and on
+ * the first page the matching workspaces. The ranking is computed for the
+ * first page and kept, so that every later page continues that same order.
  */
 async function hybridPage(
   c: Context<AppEnv>,
   { words, filters }: { words: string[]; filters: Filters },
   limit: number,
 ) {
-  const cursor = await readCursor(c, (v): v is RankCursor => isRankCursor(v, 'h'));
+  const cursor = await readCursor(c, isHybridCursor);
   if (cursor instanceof Response) return cursor;
   const offset = cursor?.o ?? 0;
   const userId = c.get('user').id;
-  const ranking = await hybridRanking(c.env, userId, words, filters);
+  const ranking = cursor
+    ? await keptRanking(c.env.DB, userId, cursor.k)
+    : await hybridRanking(c.env, userId, words, filters);
+  if (!ranking) {
+    return validationError(c, 'invalid_cursor', 'cursor', 'the search is too old: search again');
+  }
+  const more = offset + limit < ranking.entries.length;
+  const kept = more ? (cursor?.k ?? (await keepRanking(c.env.DB, userId, ranking))) : null;
   const page = ranking.entries.slice(offset, offset + limit);
   const match = linkMatch(userId, words);
-  const snippets = match
-    ? await snippetsFor(
-        c.env.DB,
-        match,
-        page.filter((e) => e.match !== 'meaning').map((e) => e.id),
-      )
-    : new Map();
-  const rows = await linksInOrder(
-    c.env.DB,
-    userId,
-    page.map((e) => e.id),
-  );
+  const [snippets, passages, rows] = await Promise.all([
+    match
+      ? snippetsFor(
+          c.env.DB,
+          match,
+          page.filter((e) => e.match !== 'meaning').map((e) => e.id),
+        )
+      : new Map<string, Segment[]>(),
+    passageSnippets(
+      c.env,
+      words,
+      page.flatMap((e) => (e.match === 'meaning' ? [{ id: e.id, passage: e.passage ?? '' }] : [])),
+    ),
+    linksInOrder(
+      c.env.DB,
+      userId,
+      page.map((e) => e.id),
+    ),
+  ]);
   const entries = new Map(page.map((e) => [e.id, e]));
   return c.json({
     items: rows.map((row) => {
       const entry = entries.get(row.id)!;
       const snippet =
-        entry.match === 'meaning'
-          ? [{ text: passageSnippet(entry.passage ?? ''), match: false }]
-          : (snippets.get(row.id) ?? []);
+        entry.match === 'meaning' ? (passages.get(row.id) ?? []) : (snippets.get(row.id) ?? []);
       return { link: toView(row), snippet, match: entry.match };
     }),
     workspaces: offset === 0 ? await matchingWorkspaces(c.env.DB, userId, words) : [],
-    next_cursor:
-      offset + limit < ranking.entries.length
-        ? await encodeCursor(c.env, { s: 'h', o: offset + limit })
-        : null,
+    next_cursor: kept ? await encodeCursor(c.env, { s: 'h', k: kept, o: offset + limit }) : null,
     meaning: ranking.meaning,
   });
 }
@@ -124,7 +197,7 @@ async function rankedPage(
   { words, filters }: { words: string[]; filters: Filters },
   limit: number,
 ) {
-  const cursor = await readCursor(c, (v): v is RankCursor => isRankCursor(v));
+  const cursor = await readCursor(c, isRankCursor);
   if (cursor instanceof Response) return cursor;
   const offset = cursor?.o ?? 0;
   const userId = c.get('user').id;

@@ -102,6 +102,61 @@ The most tokens an answer to a question may hold, unless its request says otherw
 
 ***
 
+### PHRASINGS\_SCHEMA
+
+> `const` **PHRASINGS\_SCHEMA**: `object`
+
+The result of rephrasing a question: the question restated as a search
+query, then other ways of asking it.
+
+#### Type Declaration
+
+##### additionalProperties
+
+> `readonly` **additionalProperties**: `false` = `false`
+
+##### properties
+
+> `readonly` **properties**: `object`
+
+###### properties.phrasings
+
+> `readonly` **phrasings**: `object`
+
+###### properties.phrasings.description
+
+> `readonly` **description**: `"First the question restated as a search query, then at most two other ways of asking it."` = `'First the question restated as a search query, then at most two other ways of asking it.'`
+
+###### properties.phrasings.items
+
+> `readonly` **items**: `object`
+
+###### properties.phrasings.items.type
+
+> `readonly` **type**: `"string"` = `'string'`
+
+###### properties.phrasings.type
+
+> `readonly` **type**: `"array"` = `'array'`
+
+##### required
+
+> `readonly` **required**: readonly \[`"phrasings"`\]
+
+##### type
+
+> `readonly` **type**: `"object"` = `'object'`
+
+***
+
+### PHRASINGS\_TIMEOUT\_MS
+
+> `const` **PHRASINGS\_TIMEOUT\_MS**: `10000` = `10_000`
+
+How long rephrasing a question may take before the question is used as typed, in milliseconds.
+
+***
+
 ### PROVIDER\_TIMEOUT\_MS
 
 > `const` **PROVIDER\_TIMEOUT\_MS**: `60000` = `60_000`
@@ -278,6 +333,32 @@ that the answer for 500 links stays a few thousand tokens.
 > **enrichWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
 Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA).
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### call
+
+[`ProviderCall`](#providercall)
+
+##### prompt
+
+`string`
+
+#### Returns
+
+`Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
+
+***
+
+### phrasingsWith()
+
+> **phrasingsWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
+
+Asks the user's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA).
 
 #### Parameters
 

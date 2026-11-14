@@ -67,7 +67,8 @@ function Writing({ children }: { children: string }) {
 /**
  * The Ask page: a question to the library, answered by the owner's own AI
  * provider from passages of their links. The answer streams in, with a spinner
- * until it is done and each [n] a link to its source, the sources listed under it, and a refusal or a failure
+ * until it is done and each [n] a link to its source, the sources listed under it, then the other
+ * phrasings of the question its passages were searched with, and a refusal or a failure
  * of the stream shown under whatever part of the answer arrived. Once it has
  * arrived, Tell me more asks the same question again for a detailed answer,
  * which streams in under the first with a spinner until it is done and adds
@@ -83,6 +84,8 @@ export function Ask() {
   /** The detailed answer and the sources it cites, which start with the first answer's. */
   const [detail, setDetail] = useState('');
   const [detailSources, setDetailSources] = useState<AskSource[] | null>(null);
+  /** The other phrasings of the question the last answer's passages were searched with. */
+  const [also, setAlso] = useState<string[]>([]);
   const [asking, setAsking] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   /** The question the answers shown answer, and whether the detailed answer was asked for. */
@@ -117,14 +120,17 @@ export function Ask() {
     }
     setDetail('');
     setDetailSources(null);
+    setAlso([]);
     setFailure(null);
     setCopied(null);
     setAsked({ question, detailed });
     setAsking(true);
     const onEvent = (e: AskEvent) => {
       if (mine !== current.current) return;
-      if (e.event === 'sources') (detailed ? setDetailSources : setSources)(e.data.sources);
-      else if (e.event === 'delta') (detailed ? setDetail : setAnswer)((t) => t + e.data.text);
+      if (e.event === 'sources') {
+        (detailed ? setDetailSources : setSources)(e.data.sources);
+        setAlso((e.data.queries ?? []).slice(1));
+      } else if (e.event === 'delta') (detailed ? setDetail : setAnswer)((t) => t + e.data.text);
       else if (e.event === 'error') setFailure(e.data.message);
     };
     try {
@@ -190,6 +196,7 @@ export function Ask() {
           ))}
         </ol>
       )}
+      {also.length > 0 && <p className="muted ask-also">Also searched for: {also.join('; ')}</p>}
       {!asking && (text !== '' || moreable) && (
         <div className="ask-actions">
           {text !== '' && (

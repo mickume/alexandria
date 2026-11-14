@@ -17,7 +17,8 @@
  * request lists (by number) filed round-robin under them.
  *
  * Control: POST /__answer {summary, tags, topic}, POST /__answer_when
- * {contains, result}, POST /__split {subtopics}, POST /__answer_text,
+ * {contains, result}, POST /__split {subtopics}, POST /__phrasings {phrasings}
+ * (what a question's phrasings are answered with), POST /__answer_text,
  * POST /__reject_answers, GET /__log, GET /health.
  * Run with: node e2e/fake-ai.ts <port>
  */
@@ -49,15 +50,20 @@ function answerFor(body: string): Result {
 /** The sub-topics a split is answered with. */
 let splitInto: string[] = ['First', 'Second'];
 
-/** Whether a request asks for a topic's split: its structured result has subtopics. */
-function isSplit(parsed: Record<string, unknown>): boolean {
+/** Whether a request asks for a structured result with this property. */
+function asksFor(parsed: Record<string, unknown>, property: string): boolean {
   const format = parsed.output_config as
     { format?: { schema?: { properties?: object } } } | undefined;
   const response = parsed.response_format as
     { json_schema?: { schema?: { properties?: object } } } | undefined;
   const properties =
     format?.format?.schema?.properties ?? response?.json_schema?.schema?.properties;
-  return 'subtopics' in (properties ?? {});
+  return property in (properties ?? {});
+}
+
+/** Whether a request asks for a topic's split: its structured result has subtopics. */
+function isSplit(parsed: Record<string, unknown>): boolean {
+  return asksFor(parsed, 'subtopics');
 }
 
 /** The split of the links a request lists (one JSON object per line), round-robin by number. */
@@ -75,8 +81,12 @@ function splitFor(parsed: Record<string, unknown>) {
   };
 }
 
-/** The structured answer to a request: a split or an enrichment. */
+/** The phrasings a question is given; none unless a test sets some. */
+let phrasings: string[] = [];
+
+/** The structured answer to a request: a question's phrasings, a split or an enrichment. */
 function structuredFor(parsed: Record<string, unknown>, body: string): string {
+  if (asksFor(parsed, 'phrasings')) return JSON.stringify({ phrasings });
   return JSON.stringify(isSplit(parsed) ? splitFor(parsed) : answerFor(body));
 }
 
@@ -126,6 +136,10 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/__split' && req.method === 'POST') {
     splitInto = (JSON.parse(await readBody(req)) as { subtopics: string[] }).subtopics;
     return send(200, { subtopics: splitInto });
+  }
+  if (url.pathname === '/__phrasings' && req.method === 'POST') {
+    phrasings = (JSON.parse(await readBody(req)) as { phrasings: string[] }).phrasings;
+    return send(200, { phrasings });
   }
   if (url.pathname === '/__answer_when' && req.method === 'POST') {
     const rule = JSON.parse(await readBody(req)) as { contains: string; result: Result };

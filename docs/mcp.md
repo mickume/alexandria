@@ -179,7 +179,7 @@ Settings then shows the token as just used.
 | Tool | What an agent uses it for |
 |---|---|
 | `search_links` | Find links by meaning as well as by words, with the search box's filters: `tag:`, `topic:`, `host:`, `in:` (a workspace), `is:pinned`, `is:dead`, `is:in-workspace`, `state:`. Each result says how it matched (`match`: `keyword`, `meaning` or `both`) |
-| `search_passages` | Answer a question from the library: the passages of your links that best match it by meaning, each with its link's id, title and URL. Takes the same filters |
+| `search_passages` | Answer a question from the library: the passages of your links that best answer it, found by their words and by meaning and ordered by relevance, each with its link's id, title and URL. Takes the same filters |
 | `list_recent` | The top of the stream: pinned links first, then the links with the most points (used most, and most recently) |
 | `get_link` | A link's metadata: addresses, title, summary, tags, topic, state and dates |
 | `get_link_content` | The stored text of a page or PDF (`format: "text"`), or the page's snapshot HTML (`format: "html"`) |
@@ -201,17 +201,19 @@ Two behaviours are worth knowing when you direct an agent:
   tags and workspace you gave). New links are fetched, summarised, tagged and
   given a topic in the background, so a link just added has no summary yet.
 
-- **`search_passages` finds by meaning, not by words.** A question such as
+- **`search_passages` finds by meaning and by words.** A question such as
   "how do I schedule background work on Cloudflare?" finds the passages of
-  links about Durable Object alarms even though they share no word with it.
+  links about Durable Object alarms even though they share no word with it,
+  and an exact term such as an error code finds the passage that holds it.
   Each item is a piece of one link's text of at most 1,500 characters, with
-  the link's `link_id`, `title` and `url` and a `score`; at most three items
-  come from one link, and a question that nothing in the library answers
-  returns no items. A link is found once it has been indexed, which takes
-  about a minute after it is saved or changed and a few hours for a large
-  library that existed before the index. If the index is unavailable the tool
-  answers `search_unavailable`: try again later, or fall back on
-  `search_links`.
+  the link's `link_id`, `title` and `url`, a `score` (its relevance to the
+  question, 0 to 1) and `match` (`keyword`, `meaning` or `both`); at most
+  three items come from one link, and a question that nothing in the library
+  answers returns no items. A link is found once it has been indexed, which
+  takes about a minute after it is saved or changed and a few hours for a
+  large library that existed before the index. The answer's `meaning` is
+  `used`, or `unranked` or `unavailable` when part of the index could not be
+  used: the items are then less well chosen, and some have `score: null`.
 
 Tools never create workspaces or delete links; a workspace that does not
 exist is refused, and deleting stays on the website.

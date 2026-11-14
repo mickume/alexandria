@@ -157,23 +157,135 @@ describe('a question that is refused before the answer streams', () => {
     },
   );
 
+  it('answers 409 and marks the key when the provider rejects it while rephrasing the question', async () => {
+    const user = await signIn();
+    const ai = new FakeAi().failPhrasings(401, 'invalid x-api-key');
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+
+    const r = await ask(user, { question: QUESTION });
+
+    expect(r.status).toBe(409);
+    expect(r.json).toEqual({ error: 'ai_key_rejected', message: 'invalid x-api-key' });
+    expect(ai.asks).toEqual([]);
+    expect((await api('GET', '/api/v1/settings/ai', { as: user.session })).json).toMatchObject({
+      status: 'rejected',
+      rejected_message: 'invalid x-api-key',
+    });
+  });
+});
+
+describe('the passages an answer is written from', () => {
+  afterEach(() => setProviderTimeout(null));
+
   it.each([
-    { name: 'the embedding fails', arrange: () => meaning.fail('embed') },
-    { name: 'the index fails', arrange: () => meaning.fail('query') },
-  ])('answers 503 when $name, without calling the provider', async ({ arrange }) => {
+    { name: 'the embedding fails', arrange: () => meaning.fail('embed'), meaning: 'unavailable' },
+    { name: 'the index fails', arrange: () => meaning.fail('query'), meaning: 'unavailable' },
+    { name: 'the reranker fails', arrange: () => meaning.fail('rerank'), meaning: 'unranked' },
+  ])('are found by their words when $name, and the answer says so', async (the) => {
     const user = await signIn();
     const ai = new FakeAi();
     await saveKey(user);
-    arrange();
+    const [alarms] = await indexed(user, [ARTICLES.alarms, ARTICLES.tomatoes]);
+    the.arrange();
 
-    const r = await ask(user, { question: 'how do I schedule background work?' });
+    const r = await ask(user, { question: 'alarm schedule task' });
 
-    expect(r.status).toBe(503);
-    expect(r.json).toEqual({
-      error: 'search_unavailable',
-      message: 'search by meaning is unavailable, try again',
-    });
-    expect(ai.asks).toEqual([]);
+    expect(r.status).toBe(200);
+    const [sources] = events(await r.response.text());
+    expect(sources!.data.meaning).toBe(the.meaning);
+    expect((sources!.data.sources as { link: { id: string } }[]).map((s) => s.link.id)).toEqual([
+      alarms,
+    ]);
+    expect(ai.asks).toHaveLength(1);
+  });
+
+  it('are found with the question and the phrasings the provider writes of it', async () => {
+    const user = await signIn();
+    const ai = new FakeAi().phrase([
+      'growing tomatoes',
+      'x'.repeat(201),
+      'Growing  Tomatoes',
+      'compost for pots',
+      'soil for a balcony',
+      'a fourth phrasing',
+    ]);
+    await saveKey(user);
+    const [tomatoes] = await indexed(user, [ARTICLES.tomatoes, ARTICLES.queues]);
+
+    const question = 'what do I plant tag:none-such';
+    const refused = events(await (await ask(user, { question })).response.text());
+    // The question's filter applies to every phrasing.
+    expect(refused[0]!.data.sources).toEqual([]);
+
+    const sent = events(await (await ask(user, { question: 'what do I plant' })).response.text());
+
+    expect(sent[0]!.data.queries).toEqual([
+      'what do I plant',
+      'growing tomatoes',
+      'compost for pots',
+      'soil for a balcony',
+    ]);
+    expect((sent[0]!.data.sources as { link: { id: string } }[]).map((s) => s.link.id)).toEqual([
+      tomatoes,
+    ]);
+    expect(promptOf(ai.phrasings[0]!.body)).toContain('what do I plant');
+    // Every phrasing is searched; the reranker reads the passages against the question as typed.
+    expect(meaning.callsOf('embed').at(-1)!.texts).toEqual(sent[0]!.data.queries);
+    expect(meaning.callsOf('rerank').at(-1)!.query).toBe('what do I plant');
+  });
+
+  it.each([
+    { name: 'answers 503', arrange: (ai: FakeAi) => ai.failPhrasings(503, 'overloaded') },
+    { name: 'answers something else', arrange: (ai: FakeAi) => ai.phrase('not a list') },
+    {
+      name: 'does not answer',
+      arrange: (ai: FakeAi) => {
+        setProviderTimeout(200);
+        ai.stallPhrasings();
+      },
+    },
+  ])('are found with the question as typed when the provider $name', async ({ arrange }) => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    arrange(ai);
+    await saveKey(user);
+    await indexed(user, [ARTICLES.alarms]);
+
+    const sent = events(await (await ask(user, { question: QUESTION })).response.text());
+
+    expect(sent[0]!.data.queries).toEqual([QUESTION]);
+    expect(sent.map((e) => e.event)).toEqual(['sources', 'delta', 'delta', 'done']);
+  });
+
+  it('go to the provider with their neighbours, joined, under what is known of their link', async () => {
+    const user = await signIn();
+    const ai = new FakeAi();
+    await saveKey(user);
+    const filler = (n: number) => `Filler sentence number ${n} about nothing at all. `.repeat(28);
+    await indexed(user, [
+      {
+        url: 'https://guide.example/long',
+        title: 'A long guide',
+        summary: 'Everything in one page.',
+        topic: 'Platform > Guides',
+        text: `${filler(1)}\n\n${filler(2)}\n\nThe error E1101 means the alarm was set twice. ${filler(3)}\n\n${filler(4)}\n\n${filler(5)}`,
+      },
+    ]);
+
+    await (await ask(user, { question: 'E1101' })).response.text();
+
+    const prompt = promptOf(ai.asks[0]!.body);
+    expect(prompt).toContain(
+      '[1] A long guide\nTopic: Platform > Guides\nHost: guide.example\nAdded: ',
+    );
+    expect(prompt).toContain('Summary: Everything in one page.');
+    expect(prompt).toContain('E1101');
+    // The passage before it and the one after it, each once, in the order of the page.
+    expect(prompt.indexOf('number 2')).toBeLessThan(prompt.indexOf('E1101'));
+    expect(prompt.indexOf('E1101')).toBeLessThan(prompt.indexOf('number 4'));
+    expect(prompt).not.toContain('number 5');
+    expect(prompt.split('The error E1101 means')).toHaveLength(2);
   });
 });
 
@@ -258,12 +370,10 @@ describe('an answer to a question', () => {
       const [request] = ai.asks;
       expect(request!.body.model).toBe(model);
       expect(request!.headers.get('authorization')).toContain(key);
+      // Each source is headed once; the big link’s 3 passages and 5 of the 6 others make the 8.
       const headings = promptOf(request!.body).match(/^\[\d+\] /gm) ?? [];
-      expect(headings).toHaveLength(8);
-      const perSource = new Map<string, number>();
-      for (const h of headings) perSource.set(h, (perSource.get(h) ?? 0) + 1);
-      expect(Math.max(...perSource.values())).toBeLessThanOrEqual(3);
-      // The big link’s 3 passages and 5 of the 6 others make the 8.
+      expect(headings).toHaveLength(6);
+      expect(new Set(headings).size).toBe(6);
       expect((sent[0]!.data.sources as unknown[]).length).toBe(6);
     },
   );
@@ -287,7 +397,10 @@ describe('an answer to a question', () => {
       await (await ask(user, { question: 'schedule a task', detailed })).response.text();
 
       const [request] = ai.asks;
-      expect(promptOf(request!.body).match(/^\[\d+\] /gm)).toHaveLength(passages);
+      // At most 3 passages of a link, so the passages come from at least a third as many sources.
+      const sources = promptOf(request!.body).match(/^\[\d+\] /gm) ?? [];
+      expect(sources.length).toBeGreaterThanOrEqual(Math.ceil(passages / 3));
+      expect(sources.length).toBeLessThanOrEqual(Math.min(passages, articles.length));
       expect(request!.body.max_tokens).toBe(maxTokens);
       expect(String(request!.body.system).includes('detailed, thorough')).toBe(thorough);
       expect(String(request!.body.system)).toContain('Nothing in your library answers this.');
@@ -403,7 +516,10 @@ describe('an answer to a question', () => {
 
     expect(r.status).toBe(200);
     expect(events(await r.response.text())).toEqual([
-      { event: 'sources', data: { sources: [] } },
+      {
+        event: 'sources',
+        data: { sources: [], queries: ['quarterly tax return'], meaning: 'used' },
+      },
       { event: 'delta', data: { text: 'Nothing in your library answers this.' } },
       { event: 'done', data: {} },
     ]);

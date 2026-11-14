@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { notFound, refusal } from '../api/errors';
 import type { AppEnv, Env } from '../env';
 import { getLink, toView, type LinkRow } from '../links/store';
-import { findPassages, MeaningUnavailable } from './passages';
+import { MeaningUnavailable, nearestPassages } from './passages';
 
 /** The most related links returned. */
 export const RELATED_LINKS = 5;
@@ -46,7 +46,7 @@ export async function findRelated(
     .first<{ text: string }>();
   if (!first) return [];
   // One passage per link; the link itself is among them, so ask for one more.
-  const passages = await findPassages(env, userId, [first.text], {}, RELATED_LINKS + 1, {
+  const passages = await nearestPassages(env, userId, first.text, {}, RELATED_LINKS + 1, {
     perLink: 1,
     threshold: RELATED_SIMILARITY_THRESHOLD,
     kind: 'metadata',

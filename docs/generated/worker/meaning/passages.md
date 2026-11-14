@@ -200,9 +200,29 @@ https://v8.dev/docs/stack-trace-api#customizing-stack-traces
 
 ## Interfaces
 
-### Passage
+### Found
 
-A passage of a link, as GET /api/v1/passages returns it.
+The passages found for a query, best first, and whether meaning took part.
+
+#### Properties
+
+##### meaning
+
+> **meaning**: [`Meaning`](#meaning-1)
+
+##### passages
+
+> **passages**: [`FoundPassage`](#foundpassage)[]
+
+***
+
+### FoundPassage
+
+A passage found, with where it sits in its link.
+
+#### Extends
+
+- [`Passage`](#passage-1)
 
 #### Properties
 
@@ -210,15 +230,99 @@ A passage of a link, as GET /api/v1/passages returns it.
 
 > **link\_id**: `string`
 
+###### Inherited from
+
+[`Passage`](#passage-1).[`link_id`](#link_id-1)
+
+##### match
+
+> **match**: [`MatchKind`](#matchkind)
+
+###### Inherited from
+
+[`Passage`](#passage-1).[`match`](#match-1)
+
+##### passage
+
+> **passage**: `string`
+
+###### Inherited from
+
+[`Passage`](#passage-1).[`passage`](#passage-2)
+
+##### position
+
+> **position**: `number`
+
+##### score
+
+> **score**: `number` \| `null`
+
+The reranker's relevance, 0 to 1; with `unranked`, the similarity of a
+passage found by meaning and null for one found by words alone; with
+`unavailable`, null.
+
+###### Inherited from
+
+[`Passage`](#passage-1).[`score`](#score-1)
+
+##### title
+
+> **title**: `string`
+
+###### Inherited from
+
+[`Passage`](#passage-1).[`title`](#title-1)
+
+##### url
+
+> **url**: `string`
+
+The link's original URL.
+
+###### Inherited from
+
+[`Passage`](#passage-1).[`url`](#url-1)
+
+##### vector\_id
+
+> **vector\_id**: `string`
+
+##### version
+
+> **version**: `number`
+
+***
+
+### Passage
+
+A passage of a link, as GET /api/v1/passages returns it.
+
+#### Extended by
+
+- [`FoundPassage`](#foundpassage)
+
+#### Properties
+
+##### link\_id
+
+> **link\_id**: `string`
+
+##### match
+
+> **match**: [`MatchKind`](#matchkind)
+
 ##### passage
 
 > **passage**: `string`
 
 ##### score
 
-> **score**: `number`
+> **score**: `number` \| `null`
 
-The passage's similarity to the question, from the similarity threshold up to 1.
+The reranker's relevance, 0 to 1; with `unranked`, the similarity of a
+passage found by meaning and null for one found by words alone; with
+`unavailable`, null.
 
 ##### title
 
@@ -229,6 +333,23 @@ The passage's similarity to the question, from the similarity threshold up to 1.
 > **url**: `string`
 
 The link's original URL.
+
+## Type Aliases
+
+### MatchKind
+
+> **MatchKind** = `"keyword"` \| `"meaning"` \| `"both"`
+
+How a passage or a link was found.
+
+***
+
+### Meaning
+
+> **Meaning** = `"used"` \| `"unranked"` \| `"unavailable"`
+
+Whether meaning took part in an answer: `used`; `unranked` when the index
+answered and the reranker did not; `unavailable` when the index did not.
 
 ## Variables
 
@@ -252,7 +373,7 @@ The most passages a request may ask for.
 
 > `const` **MEANING\_TIMEOUT\_MS**: `5000` = `5_000`
 
-How long the embedding and the query may take together, in milliseconds.
+How long finding passages may wait for the embedding, the index and the reranker, in milliseconds.
 
 ***
 
@@ -270,20 +391,45 @@ GET /api/v1/passages.
 
 The most passages of one link a request returns.
 
+***
+
+### RERANK\_CANDIDATES
+
+> `const` **RERANK\_CANDIDATES**: `50` = `50`
+
+How many fused candidates the reranker reads.
+
+***
+
+### WORD\_CANDIDATES
+
+> `const` **WORD\_CANDIDATES**: `100` = `100`
+
+How many passages a query's words find at most.
+
 ## Functions
 
 ### findPassages()
 
-> **findPassages**(`env`, `userId`, `words`, `filters`, `limit`, `__namedParameters?`): `Promise`\<[`Passage`](#passage)[]\>
+> **findPassages**(`env`, `userId`, `queries`, `filters`, `limit`, `__namedParameters?`): `Promise`\<[`Found`](#found)\>
 
-The passages of the user's links that best match the free words by meaning,
-best first: those scoring at least `threshold` (the similarity threshold),
-of links satisfying the filters, at most `perLink` (three) of a link and at
-most `limit` in all, with `deadlineMs` (five seconds) for the embedding and
-the query together. `kind` keeps only the passages cut from a link's
-metadata, or only those cut from its reader text; by default both. The index is only a guide to which passages to look at: every passage
-returned is read from the user's own rows, so the vector of a deleted link
-or of another user's link is never returned. Throws MeaningUnavailable.
+The passages of the user's links that best answer a query, best first.
+`queries` holds the query as its author wrote it, then any other phrasings
+of it (asking the library adds them), each as its words. For each phrasing
+the candidates are the 100 passages nearest by meaning and the 100 that
+best match its words; all the lists are fused by reciprocal rank and the
+best 50 are read by the reranker against the first query, whose relevance
+orders them. A passage is returned when its relevance reaches the relevance
+threshold; at most `perLink` of a link and `limit` in all, of links
+satisfying the filters.
+
+`deadlineMs` bounds the embedding, the index and the reranker together.
+When the reranker fails or is late the fused order stands (`unranked`):
+passages found by meaning must then reach the similarity threshold, and
+those found by words are kept. When the embedding or the index fails, the
+passages found by words are used, reranked if the reranker answers
+(`unavailable`). The index is only a guide: every passage returned is read
+from the user's own rows. A failure of D1 throws.
 
 #### Parameters
 
@@ -295,9 +441,58 @@ or of another user's link is never returned. Throws MeaningUnavailable.
 
 `string`
 
-##### words
+##### queries
 
-`string`[]
+`string`[][]
+
+##### filters
+
+[`Filters`](../search/query.md#filters)
+
+##### limit
+
+`number`
+
+##### \_\_namedParameters?
+
+###### deadlineMs?
+
+`number` = `MEANING_TIMEOUT_MS`
+
+###### perLink?
+
+`number` = `PASSAGES_PER_LINK`
+
+#### Returns
+
+`Promise`\<[`Found`](#found)\>
+
+***
+
+### nearestPassages()
+
+> **nearestPassages**(`env`, `userId`, `text`, `filters`, `limit`, `__namedParameters?`): `Promise`\<`object`[]\>
+
+The passages of the user's links nearest to the text by meaning alone, best
+first: those whose similarity reaches `threshold`, of links satisfying the
+filters, at most `perLink` of a link and `limit` in all, optionally of one
+`kind`. Related links use it (ADR 06); finding passages for a query goes
+through findPassages. Every passage returned is read from the user's own
+rows. Throws MeaningUnavailable.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### userId
+
+`string`
+
+##### text
+
+`string`
 
 ##### filters
 
@@ -327,4 +522,4 @@ or of another user's link is never returned. Throws MeaningUnavailable.
 
 #### Returns
 
-`Promise`\<[`Passage`](#passage)[]\>
+`Promise`\<`object`[]\>

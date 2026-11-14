@@ -942,9 +942,9 @@ One page of a search's results.
 
 ##### meaning?
 
-> `optional` **meaning?**: `"used"` \| `"unavailable"`
+> `optional` **meaning?**: [`Meaning`](#meaning-1)
 
-Only in a search by meaning: whether meaning could be added to the results.
+Only in a search by meaning: whether meaning took part in the results.
 
 ##### next\_cursor
 
@@ -1438,7 +1438,7 @@ The owner's AI settings, never with the key beyond its last 4 characters.
 
 ### AskEvent
 
-> **AskEvent** = \{ `data`: \{ `sources`: [`AskSource`](#asksource)[]; \}; `event`: `"sources"`; \} \| \{ `data`: \{ `text`: `string`; \}; `event`: `"delta"`; \} \| \{ `data`: `Record`\<`string`, `never`\>; `event`: `"done"`; \} \| \{ `data`: \{ `error`: `string`; `message`: `string`; \}; `event`: `"error"`; \}
+> **AskEvent** = \{ `data`: \{ `meaning?`: [`Meaning`](#meaning-1); `queries?`: `string`[]; `sources`: [`AskSource`](#asksource)[]; \}; `event`: `"sources"`; \} \| \{ `data`: \{ `text`: `string`; \}; `event`: `"delta"`; \} \| \{ `data`: `Record`\<`string`, `never`\>; `event`: `"done"`; \} \| \{ `data`: \{ `error`: `string`; `message`: `string`; \}; `event`: `"error"`; \}
 
 One event of an answer: the sources first, then pieces of the answer, then done or an error.
 
@@ -1457,6 +1457,15 @@ The owner's Firecrawl key, never beyond its last 4 characters.
 > **MatchKind** = `"keyword"` \| `"meaning"` \| `"both"`
 
 How a link of a search by meaning was found.
+
+***
+
+### Meaning
+
+> **Meaning** = `"used"` \| `"unranked"` \| `"unavailable"`
+
+Whether meaning took part in an answer: `unranked` when the results could
+not be ordered by relevance, `unavailable` when they are the keyword matches.
 
 ***
 

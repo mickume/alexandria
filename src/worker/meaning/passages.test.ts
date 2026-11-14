@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { api, count, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
+import { RELEVANCE_THRESHOLD } from './backend';
 
 interface Item {
   link_id: string;
   title: string;
   url: string;
   passage: string;
-  score: number;
+  score: number | null;
+  match: 'keyword' | 'meaning' | 'both';
 }
 
 /** Indexes the links as the queue consumer would. */
@@ -68,9 +70,9 @@ describe('GET /api/v1/passages', () => {
       expect(items[0]!.passage.length).toBeLessThanOrEqual(1_500);
       expect(items.every((i) => i.link_id === ids[first])).toBe(true);
     }
-    const scores = items.map((i) => i.score);
+    const scores = items.map((i) => i.score!);
     expect(scores).toEqual([...scores].sort((a, b) => b - a));
-    expect(scores.every((s) => s >= 0.5)).toBe(true);
+    expect(scores.every((s) => s >= RELEVANCE_THRESHOLD && s <= 1)).toBe(true);
     expect(await count('link_uses')).toBe(usesBefore);
     expect(await uses()).toEqual(linksBefore);
   });
@@ -250,26 +252,98 @@ describe('a passage request it refuses', () => {
       expect(meaning.calls).toEqual([]);
     },
   );
+});
+
+describe('passages found by their words', () => {
+  const GUIDE: Article = {
+    url: 'https://guide.example/errors',
+    title: 'Error codes',
+    text: 'The code E1101 means the request was sent twice.',
+  };
+
+  it('returns a passage that holds an exact term and shares no meaning with the question', async () => {
+    const user = await signIn();
+    const [guide] = await indexed(user, [GUIDE, ARTICLES.tomatoes]);
+
+    const r = await passages(user, ask('E1101'));
+
+    expect(r.status).toBe(200);
+    expect(r.json.meaning).toBe('used');
+    expect(r.json.items).toEqual([
+      {
+        link_id: guide,
+        title: GUIDE.title,
+        url: GUIDE.url,
+        passage: GUIDE.text,
+        score: 1,
+        match: 'keyword',
+      },
+    ]);
+  });
+
+  it('says how each passage was found', async () => {
+    const user = await signIn();
+    await indexed(user, [ARTICLES.alarms]);
+
+    const both: Item[] = (await passages(user, ask('alarm'))).json.items;
+    const byMeaning: Item[] = (await passages(user, ask('timer delay'))).json.items;
+
+    expect(both.map((i) => i.match)).toContain('both');
+    expect(byMeaning.length).toBeGreaterThan(0);
+    expect(byMeaning.every((i) => i.match === 'meaning')).toBe(true);
+  });
 
   it.each([
     { name: 'the embedding fails', arrange: () => meaning.fail('embed') },
     { name: 'the index fails', arrange: () => meaning.fail('query') },
     { name: 'the embedding does not answer', arrange: () => meaning.stall('embed') },
-  ])('answers 503 when $name', { timeout: 20_000 }, async ({ arrange }) => {
-    const user = await signIn();
-    await indexed(user, [ARTICLES.alarms]);
-    arrange();
-    const start = Date.now();
+  ])(
+    'answers with them alone, without scores, when $name',
+    { timeout: 20_000 },
+    async ({ arrange }) => {
+      const user = await signIn();
+      const [alarms] = await indexed(user, [ARTICLES.alarms, ARTICLES.tomatoes]);
+      arrange();
+      const start = Date.now();
 
-    const r = await passages(user, ask('alarms'));
+      const r = await passages(user, ask('alarm'));
 
-    expect(r.status).toBe(503);
-    expect(r.json).toEqual({
-      error: 'search_unavailable',
-      message: 'search by meaning is unavailable, try again',
-    });
-    expect(Date.now() - start).toBeLessThan(7_000);
-  });
+      expect(r.status).toBe(200);
+      expect(r.json.meaning).toBe('unavailable');
+      const items: Item[] = r.json.items;
+      expect(items.length).toBeGreaterThan(0);
+      expect(items.every((i) => i.link_id === alarms && i.score === null)).toBe(true);
+      expect(items.every((i) => i.match === 'keyword')).toBe(true);
+      expect(Date.now() - start).toBeLessThan(7_000);
+    },
+  );
+
+  it.each([
+    { name: 'fails', arrange: () => meaning.fail('rerank') },
+    { name: 'does not answer', arrange: () => meaning.stall('rerank') },
+  ])(
+    'answers in the fused order, scored by similarity, when the reranker $name',
+    { timeout: 20_000 },
+    async ({ arrange }) => {
+      const user = await signIn();
+      const [guide, alarms] = await indexed(user, [GUIDE, ARTICLES.alarms, ARTICLES.tomatoes]);
+      arrange();
+      const start = Date.now();
+
+      const r = await passages(user, ask('E1101 alarm'));
+
+      expect(r.status).toBe(200);
+      expect(r.json.meaning).toBe('unranked');
+      const items: Item[] = r.json.items;
+      // The guide holds a word and is near nothing; the alarms article is near by meaning.
+      expect(new Set(items.map((i) => i.link_id))).toEqual(new Set([guide, alarms]));
+      for (const item of items) {
+        if (item.link_id === guide) expect(item).toMatchObject({ score: null, match: 'keyword' });
+        else expect(item.score).toBeGreaterThanOrEqual(0.5);
+      }
+      expect(Date.now() - start).toBeLessThan(7_000);
+    },
+  );
 });
 
 describe('passages and the users’ separation', () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { links, type Link, type SearchMode } from '../api';
-import { ByMeaning, KeywordOnlyNotice } from '../components/ByMeaning';
+import { ByMeaning, MeaningNotice } from '../components/ByMeaning';
 import { useStateList } from '../stateList';
 import { useUndoableDelete } from '../undo';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
  * box), the expired links matching it.
  */
 export function Expired({ query = '', mode }: { query?: string; mode?: SearchMode }) {
-  const { items, setItems, loaded, failed, byMeaning, keywordOnly } = useStateList(
+  const { items, setItems, loaded, failed, byMeaning, meaning, retry } = useStateList(
     'expired',
     query,
     mode,
@@ -43,7 +43,7 @@ export function Expired({ query = '', mode }: { query?: string; mode?: SearchMod
           {error}
         </p>
       )}
-      {keywordOnly && <KeywordOnlyNotice />}
+      <MeaningNotice meaning={meaning} onRetry={retry} />
       <div className="cards">
         {deletes.shown.map((link) => (
           <article key={link.id} className="card" aria-label={link.title}>

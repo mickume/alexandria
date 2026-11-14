@@ -45,6 +45,25 @@ export function cosine(a: number[], b: number[]): number {
   return sizeA === 0 || sizeB === 0 ? 0 : dot / Math.sqrt(sizeA * sizeB);
 }
 
+/**
+ * The fake reranker's relevance of `text` to `query`: the similarity of their
+ * embeddings, or the share of the query's words that the text holds, whichever
+ * is greater (words of one or two letters do not count). So a text near in
+ * meaning scores as the index scores it, and a text that holds the query's
+ * words scores by how many of them it holds.
+ */
+export function relevance(query: string, text: string): number {
+  const words = (s: string) =>
+    s
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 2);
+  const asked = [...new Set(words(query))];
+  const held = new Set(words(text));
+  const share = asked.length === 0 ? 0 : asked.filter((w) => held.has(w)).length / asked.length;
+  return Math.max(cosine(embedText(query), embedText(text)), share);
+}
+
 /** A vector held by the fake index. */
 export interface StoredVector {
   id: string;

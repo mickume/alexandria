@@ -239,7 +239,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'search_passages',
     description:
-      'Answer a question from the library: the passages of the owner’s links that best match it by meaning, best first, each with its link’s id, title and URL. Takes the prefix filters of search_links. Use get_link_content to read a whole link. Counts as no use.',
+      'Answer a question from the library: the passages of the owner’s links that best answer it, found by their words (exact terms such as names and error codes included) and by meaning, most relevant first, each with its link’s id, title and URL. Takes the prefix filters of search_links. Use get_link_content to read a whole link. Counts as no use.',
     input: z.object({
       query: z.string().min(1).describe('The question, in words'),
       limit: z

@@ -14,7 +14,7 @@ A link of the ranking, with how it matched and, for a meaning match, its best pa
 
 ##### match
 
-> **match**: [`MatchKind`](#matchkind)
+> **match**: [`MatchKind`](../meaning/passages.md#matchkind)
 
 ##### passage?
 
@@ -26,7 +26,7 @@ The text of the best passage; set when the link matched by meaning.
 
 ### HybridRanking
 
-The whole ranking of a hybrid search, and whether meaning could be added to it.
+The whole ranking of a hybrid search, and whether meaning took part in it.
 
 #### Properties
 
@@ -36,15 +36,7 @@ The whole ranking of a hybrid search, and whether meaning could be added to it.
 
 ##### meaning
 
-> **meaning**: `"used"` \| `"unavailable"`
-
-## Type Aliases
-
-### MatchKind
-
-> **MatchKind** = `"keyword"` \| `"meaning"` \| `"both"`
-
-How a link matched a hybrid search.
+> **meaning**: [`Meaning`](../meaning/passages.md#meaning-1)
 
 ## Variables
 
@@ -58,17 +50,25 @@ How many keyword matches, best first, take part in the fusion; the rest follow i
 
 ### MEANING\_CANDIDATES
 
-> `const` **MEANING\_CANDIDATES**: `100` = `100`
+> `const` **MEANING\_CANDIDATES**: `50` = `50`
 
-How many links meaning adds at most, each with its best passage.
+How many links their passages add at most, each with its best passage.
 
 ***
 
 ### MEANING\_DEADLINE\_MS
 
-> `const` **MEANING\_DEADLINE\_MS**: `600` = `600`
+> `const` **MEANING\_DEADLINE\_MS**: `3000` = `3_000`
 
-How long the embedding and the query may take, in milliseconds, before meaning is given up.
+How long a search waits for meaning and reranking together, in milliseconds.
+
+***
+
+### SNIPPET\_DEADLINE\_MS
+
+> `const` **SNIPPET\_DEADLINE\_MS**: `1500` = `1_500`
+
+How long a page waits for the reranker to choose its snippets, in milliseconds.
 
 ## Functions
 
@@ -77,9 +77,10 @@ How long the embedding and the query may take, in milliseconds, before meaning i
 > **hybridRanking**(`env`, `userId`, `words`, `filters`): `Promise`\<[`HybridRanking`](#hybridranking)\>
 
 The ranking of a search with at least one free word: the keyword matches
-(all of them), and the links whose best passage reaches the similarity
-threshold, in one order. When Workers AI or Vectorize fails or is too slow
-the ranking is the keyword matches alone, each `keyword`, `unavailable`.
+(all of them), and the links one of whose passages answers the query, in
+one order. The search waits MEANING_DEADLINE_MS for meaning and reranking:
+without the reranker the passages are those the index vouches for
+(`unranked`); without the index, the keyword matches alone (`unavailable`).
 
 #### Parameters
 
@@ -105,18 +106,35 @@ the ranking is the keyword matches alone, each `keyword`, `unavailable`.
 
 ***
 
-### passageSnippet()
+### passageSnippets()
 
-> **passageSnippet**(`passage`): `string`
+> **passageSnippets**(`env`, `words`, `passages`): `Promise`\<`Map`\<`string`, [`Segment`](search.md#segment)[]\>\>
 
-The first `SNIPPET_WORDS` words of a passage, as one unmarked segment's text.
+The snippet of each meaning match: the run of at most SNIPPET_WORDS words
+of its best passage that the reranker scores highest against the query,
+with the query's words marked in it. When the reranker fails or is late,
+the start of each passage, unmarked.
 
 #### Parameters
 
-##### passage
+##### env
 
-`string`
+[`Env`](../env.md#env)
+
+##### words
+
+`string`[]
+
+##### passages
+
+`object`[]
 
 #### Returns
 
-`string`
+`Promise`\<`Map`\<`string`, [`Segment`](search.md#segment)[]\>\>
+
+## References
+
+### MatchKind
+
+Re-exports [MatchKind](../meaning/passages.md#matchkind)
