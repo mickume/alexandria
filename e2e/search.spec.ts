@@ -33,8 +33,9 @@ test('the owner searches with a filter and clears the search', async ({ page }) 
   await expect(box).toBeFocused();
   const searched = page.waitForResponse((r) => r.url().includes('/api/v1/search?q='));
   await page.keyboard.type('queues tag:cloudflare');
+  await page.keyboard.press('Enter');
   expect(new URL((await searched).url()).searchParams.get('q')).toBe('queues tag:cloudflare');
-  await expect(page).toHaveURL('/search?q=queues%20tag%3Acloudflare');
+  await expect(page).toHaveURL('/search?q=queues%20tag%3Acloudflare&mode=hybrid');
 
   const results = page.getByRole('list', { name: 'Results' });
   await expect(results.getByRole('article')).toHaveCount(1);

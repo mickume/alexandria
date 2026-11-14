@@ -58,8 +58,9 @@ describe('the search box', () => {
     fireEvent.keyDown(document.body, { key: '/' });
     expect(document.activeElement).toBe(searchBox());
     fireEvent.change(searchBox(), { target: { value: 'queues' } });
-    await act(async () => vi.advanceTimersByTimeAsync(200));
-    expect(window.location.pathname + window.location.search).toBe('/search?q=queues');
+    fireEvent.submit(searchBox().form!);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    expect(window.location.pathname + window.location.search).toBe('/search?q=queues&mode=hybrid');
     fireEvent.keyDown(searchBox(), { key: 'Escape' });
     expect(searchBox().value).toBe('');
     expect(window.location.pathname + window.location.search).toBe('/');
@@ -86,7 +87,8 @@ describe('the search box', () => {
     renderPage('/topics', pagesApi());
     await act(async () => vi.advanceTimersByTimeAsync(0));
     fireEvent.change(searchBox(), { target: { value: 'kiwi' } });
-    await act(async () => vi.advanceTimersByTimeAsync(200));
+    fireEvent.submit(searchBox().form!);
+    await act(async () => vi.advanceTimersByTimeAsync(0));
     expect(window.location.pathname).toBe('/search');
     fireEvent.keyDown(searchBox(), { key: 'Escape' });
     expect(window.location.pathname).toBe('/topics');
@@ -129,7 +131,20 @@ describe('the search box', () => {
   });
 });
 
-describe('searching by meaning on Enter', () => {
+describe('searching on Enter', () => {
+  it('searches nothing while the owner types', async () => {
+    const user = userEvent.setup();
+    const fake = pagesApi();
+    renderPage('/', fake);
+    await act(async () => undefined);
+
+    await user.type(searchBox(), 'queues');
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+
+    expect(window.location.pathname + window.location.search).toBe('/');
+    expect(fake.sent('GET', '/api/v1/search')).toEqual([]);
+  });
+
   it.each([
     {
       page: '/',
@@ -150,8 +165,7 @@ describe('searching by meaning on Enter', () => {
       await act(async () => undefined);
 
       await user.type(searchBox(), 'run a task later{Enter}');
-      // Longer than the pause after a keystroke, which Enter must have cancelled.
-      await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+      await act(async () => undefined);
 
       expect(window.location.pathname + window.location.search).toBe(address);
       expect(fake.sent('GET', '/api/v1/search').map((r) => r.path)).toEqual([request]);
@@ -165,7 +179,7 @@ describe('searching by meaning on Enter', () => {
     await act(async () => undefined);
 
     await user.type(searchBox(), '   {Enter}');
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+    await act(async () => undefined);
 
     expect(window.location.pathname + window.location.search).toBe('/');
     expect(fake.sent('GET', '/api/v1/search')).toEqual([]);
