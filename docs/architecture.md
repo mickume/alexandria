@@ -521,7 +521,11 @@ retried and nothing on the link changes.
 ## Search
 
 `link_search` (`migrations/0006_search_index.sql`) is an FTS5 table with the
-`unicode61` tokenizer removing diacritics. It holds one row per link with the
+`unicode61` tokenizer removing diacritics, under the `porter` stemmer
+(`migrations/0022_stemmed_search_index.sql`, which dropped and rebuilt both
+indexes): a word is indexed and searched by its English stem, so "queue",
+"queues" and "queued" are one word, and a free word matches whole words only,
+never the start of one. It holds one row per link with the
 columns `title`, `tags` (the tag names, space-separated), `topic`, `summary`,
 `host`, `original_url`, `note` and `reader_text`, then `owner`, the term `u`
 followed by the user's id without hyphens, and the link's id, unindexed.
