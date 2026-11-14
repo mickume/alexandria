@@ -15,13 +15,13 @@ import {
 } from '../test/helpers';
 import { indexReaderTextStatement } from './search';
 
-/** The ids of the user's links whose index row holds `word`. */
+/** The ids of the user's links whose index row holds `word` as a word prefix. */
 async function indexed(user: TestUser, word: string): Promise<string[]> {
   const rows = await env.DB.prepare(
     `SELECT link_id FROM link_search WHERE link_search MATCH ? ORDER BY link_id`,
   )
     .bind(
-      `owner : "u${user.id.replace(/-/g, '')}" AND {title tags topic summary host original_url note reader_text} : "${word}"`,
+      `owner : "u${user.id.replace(/-/g, '')}" AND {title tags topic summary host original_url note reader_text} : "${word}"*`,
     )
     .all<{ link_id: string }>();
   return rows.results.map((r) => r.link_id);
@@ -341,11 +341,8 @@ describe('GET /api/v1/search', () => {
       const id = await seed(user);
       const other = await add(user, 'https://other.example/');
       await patch(user, other, { title: 'Kafka streams', note: 'nothing else' });
-      // Another form of the word finds it; the start of a word does not.
-      expect(await foundIds(user, 'queue')).toEqual([id]);
-      expect(await foundIds(user, 'QUEUES cloudflare')).toEqual([id]);
-      expect(await foundIds(user, 'queu')).toEqual([]);
-      expect(await foundIds(user, 'queues cloud')).toEqual([]);
+      expect(await foundIds(user, 'queu')).toEqual([id]);
+      expect(await foundIds(user, 'QUEUES cloud')).toEqual([id]);
       expect(await foundIds(user, 'queues kafka')).toEqual([]);
     });
   });

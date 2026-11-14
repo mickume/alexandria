@@ -182,11 +182,9 @@ The match expression of a link search for the user's free words.
 > **matchExpression**(`userId`, `words`, `columns`): `string` \| `null`
 
 The FTS5 match expression that finds the user's rows holding every free
-word as a whole word, or null when no word has anything to match. The index
-stems its words, so a word also finds its other forms ("queue" finds
-"queues"); a free word of several words ("durable objects", or one joined
-by punctuation) finds them side by side. Each word is a quoted string, so
-the engine's operators and punctuation are text, never syntax.
+word as the prefix of a word, or null when no word has anything to match.
+Each word is a quoted string, so the engine's operators and punctuation are
+text, never syntax.
 
 #### Parameters
 
@@ -343,7 +341,7 @@ The snippets of the links `ids` for the search `match`, by link id.
 > **strongMatchIds**(`db`, `userId`, `words`, `where`): `Promise`\<`Set`\<`string`\>\>
 
 The ids of the user's links whose title, tags and topic together hold every
-free word: the keyword matches that are not left to
+free word as the start of a word: the keyword matches that are not left to
 the note, the summary, the address or the page's text alone.
 
 #### Parameters
