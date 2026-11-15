@@ -8,36 +8,21 @@ import {
   seedLinks,
   setNow,
   signIn,
+  storeSnapshot,
   type TestUser,
 } from '../test/helpers';
 import { ARTICLES, seedArticle } from '../test/meaning';
 import { SELF } from 'cloudflare:test';
-import { readerKey, snapshotKey } from '../fetcher/snapshots';
 
 const PUBLIC_ORIGIN = 'https://alexandria.test';
 
-/** Gives a link stored copies, as the fetch worker leaves them. */
+/** Gives a link a stored snapshot (with one image, for a web page) and its text. */
 async function storeCopies(user: TestUser, id: string, kind: 'html' | 'pdf') {
-  await env.DB.prepare(
-    "UPDATE links SET state = 'active', content_kind = ?, has_snapshot = 1, reader_empty = 0 WHERE id = ?",
-  )
-    .bind(kind, id)
-    .run();
-  await env.SNAPSHOTS.put(
-    snapshotKey(user.id, id),
-    kind === 'pdf' ? '%PDF-1.4 bytes' : '<html><body><p>Kept page</p></body></html>',
-  );
-  if (kind === 'html') {
-    await env.SNAPSHOTS.put(
-      readerKey(user.id, id),
-      JSON.stringify({ title: 'T', byline: null, html: '<p>Kept page</p>' }),
-    );
-  }
-  await env.DB.prepare(
-    'INSERT OR REPLACE INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)',
-  )
-    .bind(id, user.id, 'Kept page')
-    .run();
+  const html = `<p>Kept page</p><img src="/api/v1/links/${id}/snapshot/images/a-1.png" alt="A">`;
+  const folder = await storeSnapshot(user, id, { kind, html });
+  await env.SNAPSHOTS.put(`${folder}img/a-1.png`, new Uint8Array([137, 80, 78, 71]), {
+    httpMetadata: { contentType: 'image/png' },
+  });
 }
 
 async function exportOf(user: TestUser) {
@@ -164,14 +149,14 @@ describe('GET /api/v1/export', () => {
     for (const [i, id] of ids.entries()) {
       const entries = body.links.filter((l: { id: string }) => l.id === id);
       expect(entries).toHaveLength(1);
-      const { snapshot_url, reader_url, ...entry } = entries[0];
+      const { snapshot_url, text_url, ...entry } = entries[0];
       const direct = await api('GET', `/api/v1/links/${id}`, { as: user.session });
       expect(entry).toEqual(direct.json);
       const stored = i === 1 || i === 2;
       expect(snapshot_url).toBe(
         stored ? `${PUBLIC_ORIGIN}/api/v1/export/links/${id}/snapshot` : null,
       );
-      expect(reader_url).toBe(stored ? `${PUBLIC_ORIGIN}/api/v1/export/links/${id}/reader` : null);
+      expect(text_url).toBe(stored ? `${PUBLIC_ORIGIN}/api/v1/export/links/${id}/text` : null);
     }
   });
 
@@ -406,13 +391,20 @@ async function usesOf(id: string) {
 }
 
 describe('the export’s content URLs', () => {
+  /** An export address read as the link route it mirrors. */
+  const asLinkRoute = (text: string) =>
+    text.split(`${PUBLIC_ORIGIN}/api/v1/export/links/`).join('/api/v1/links/');
+
   it.each([
     ['snapshot', 'an HTML link', 'html', false],
     ['snapshot', 'a PDF link', 'pdf', false],
     ['snapshot', 'an expired HTML link', 'html', true],
-    ['reader', 'an HTML link', 'html', false],
-    ['reader', 'a PDF link', 'pdf', false],
-    ['reader', 'an expired link', 'html', true],
+    ['snapshot/file', 'a PDF link', 'pdf', false],
+    ['snapshot/file?download=1', 'a PDF link', 'pdf', false],
+    ['snapshot/images/a-1.png', 'an HTML link', 'html', false],
+    ['text', 'an HTML link', 'html', false],
+    ['text', 'a PDF link', 'pdf', false],
+    ['text', 'an expired link', 'html', true],
   ] as const)(
     'serve the %s of %s as the link routes do, recording no use',
     async (kind, _case, type, expired) => {
@@ -432,16 +424,22 @@ describe('the export’s content URLs', () => {
         bearer: token.secret,
       });
       expect(exported.status).toBe(200);
-      const exportedBody = await exported.response.arrayBuffer();
+      const exportedBody = new Uint8Array(await exported.response.arrayBuffer());
       expect(await usesOf(id!)).toEqual(before);
       const direct = await api('GET', `/api/v1/links/${id}/${kind}`, { bearer: token.secret });
-      expect(exported.headers.get('Content-Type')).toBe(direct.headers.get('Content-Type'));
-      expect(exported.headers.get('Content-Security-Policy')).toBe(
-        direct.headers.get('Content-Security-Policy'),
-      );
-      expect(new Uint8Array(exportedBody)).toEqual(
-        new Uint8Array(await direct.response.arrayBuffer()),
-      );
+      for (const header of ['Content-Type', 'Content-Disposition', 'Content-Security-Policy']) {
+        expect(exported.headers.get(header)).toBe(direct.headers.get(header));
+      }
+      const directBody = new Uint8Array(await direct.response.arrayBuffer());
+      if (kind === 'snapshot') {
+        const text = new TextDecoder().decode(exportedBody);
+        if (type === 'html') expect(text).toContain(`${PUBLIC_ORIGIN}/api/v1/export/links/${id}/`);
+        expect(JSON.parse(asLinkRoute(text))).toEqual(
+          JSON.parse(new TextDecoder().decode(directBody)),
+        );
+      } else {
+        expect(exportedBody).toEqual(directBody);
+      }
     },
   );
 
@@ -450,10 +448,12 @@ describe('the export’s content URLs', () => {
     ['snapshot', "own 'not a web page' link", 'no_content'],
     ['snapshot', "another user's link", 'not_found'],
     ['snapshot', 'an unknown id', 'not_found'],
-    ['reader', 'own pending link', 'no_content'],
-    ['reader', "own 'not a web page' link", 'no_content'],
-    ['reader', "another user's link", 'not_found'],
-    ['reader', 'an unknown id', 'not_found'],
+    ['snapshot/file', 'own pending link', 'no_content'],
+    ['snapshot/images/a-1.png', 'own pending link', 'not_found'],
+    ['text', 'own pending link', 'no_content'],
+    ['text', "own 'not a web page' link", 'no_content'],
+    ['text', "another user's link", 'not_found'],
+    ['text', 'an unknown id', 'not_found'],
   ] as const)('answer 404 for the %s of %s', async (kind, target, error) => {
     const user = await signIn();
     const other = await signIn('other@example.test');

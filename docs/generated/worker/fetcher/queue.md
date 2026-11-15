@@ -10,11 +10,27 @@ Failed attempts of a link's first fetch before it is given up as unreachable.
 
 ***
 
+### NO\_ARTICLE\_REASON
+
+> `const` **NO\_ARTICLE\_REASON**: `"no readable content"` = `'no readable content'`
+
+The reason a snapshot of a page without an article fails.
+
+***
+
+### PDF\_TOO\_LARGE
+
+> `const` **PDF\_TOO\_LARGE**: `"PDF too large to store (50 MB limit)"` = `'PDF too large to store (50 MB limit)'`
+
+The note on, and the reason a snapshot fails for, a PDF too large to store.
+
+***
+
 ### UNREADABLE\_NOTE
 
 > `const` **UNREADABLE\_NOTE**: `"page could not be read"` = `'page could not be read'`
 
-The note on a page stored without metadata or reader view, because it could not be parsed.
+The note on a page stored without metadata or article text, because it could not be parsed.
 
 ## Functions
 

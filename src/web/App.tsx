@@ -6,7 +6,7 @@ import { LinkDetail } from './pages/LinkDetail';
 import { Icon, Mark, type IconName } from './components/Icon';
 import type { SearchMode } from './api';
 import { SearchBox } from './components/SearchBox';
-import { Read, Snapshot } from './pages/Read';
+import { Read } from './pages/Read';
 import { Search } from './pages/Search';
 import { Settings } from './pages/Settings';
 import { SignIn } from './pages/SignIn';
@@ -193,8 +193,8 @@ export function App() {
   } else if (path.startsWith('/links/')) {
     const [rawId = '', view] = path.slice('/links/'.length).split('/');
     const id = decodeURIComponent(rawId);
-    if (view === 'read') page = <Read key={id} id={id} />;
-    else if (view === 'snapshot') page = <Snapshot key={id} id={id} />;
+    // The snapshot is read on the Read page; its old address opens it there.
+    if (view === 'read' || view === 'snapshot') page = <Read key={id} id={id} />;
     else page = <LinkDetail key={id} id={id} />;
   }
   return (

@@ -6,7 +6,6 @@ import {
   d1,
   fakeAi,
   fakeMeaning,
-  fakeOrigin,
   r2Object,
   runMinute,
   saveAiKey,
@@ -23,9 +22,24 @@ async function createToken(page: Page, name: string): Promise<string> {
   return secret;
 }
 
-/** Adds the pages and waits until the fetch worker has stored them. */
+/** Adds the pages, takes a snapshot of each and waits until the fetch worker has stored them. */
 async function addFetched(page: Page, urls: string[]): Promise<string[]> {
   const ids = await addLinkIds(page, urls);
+  const origin = new URL(page.url()).origin;
+  for (const id of ids) {
+    await expect
+      .poll(
+        async () =>
+          ((await (await page.request.get(`/api/v1/links/${id}`)).json()) as { state: string })
+            .state,
+        { timeout: 30_000 },
+      )
+      .toBe('active');
+    const asked = await page.request.post(`/api/v1/links/${id}/snapshot`, {
+      headers: { Origin: origin },
+    });
+    expect(asked.status()).toBe(202);
+  }
   await page.goto('/');
   for (const id of ids) {
     await expect(cardOf(page, id).getByRole('link', { name: 'Read', exact: true })).toBeVisible({
@@ -84,10 +98,10 @@ test.describe.serial('the owner’s account', () => {
     const secret = await createToken(page, 'leaving script');
     const [user] = d1<{ id: string }>("SELECT id FROM users WHERE email = 'owner@example.test'");
     const userId = user!.id;
-    const objects = ids.flatMap((id) => [
-      `u/${userId}/l/${id}/snapshot`,
-      `u/${userId}/l/${id}/reader.json`,
-    ]);
+    const objects = d1<{ id: string; snapshot_id: string }>(
+      `SELECT id, snapshot_id FROM links WHERE user_id = '${userId}' AND snapshot_id IS NOT NULL`,
+    ).map((l) => `u/${userId}/l/${l.id}/s/${l.snapshot_id}/article.json`);
+    expect(objects).toHaveLength(2);
     expect(objects.some((key) => r2Object(key) !== null)).toBe(true);
     // The index has the account's links by now, passages and vectors both.
     const indexed = () =>
@@ -168,10 +182,9 @@ test.describe.serial('the owner’s account', () => {
       headers: { Authorization: `Bearer ${secret}` },
     });
     expect(snapshot.status()).toBe(200);
-    const served = await fetch(fakeOrigin.url, {
-      headers: { 'X-Alexandria-Target': 'https://backup.example/one' },
-    });
-    expect(await snapshot.text()).toBe(await served.text());
+    const exported = (await snapshot.json()) as { content_kind: string; html: string };
+    expect(exported.content_kind).toBe('html');
+    expect(exported.html).toContain('The first page of the library that the owner backs up.');
     const link = await (await page.request.get(`/api/v1/links/${first.id}`)).json();
     expect(link.use_count).toBe(before);
   });

@@ -78,7 +78,17 @@ export const Link = z.strictObject({
   state_reason: z.string().nullable().describe('Why the link is pending or unreachable'),
   notes: z.array(z.string()).describe('Such as "truncated" or "not a web page (image/png)"'),
   content_kind: z.enum(['html', 'pdf', 'other']).nullable(),
-  has_snapshot: z.boolean(),
+  has_snapshot: z.boolean().describe('Whether a snapshot is stored, so that it can be read'),
+  snapshot_at: z.string().nullable().describe('When the stored snapshot was taken'),
+  snapshot_kind: z.enum(['html', 'pdf']).nullable().describe('What the stored snapshot is'),
+  snapshot_requested_at: z
+    .string()
+    .nullable()
+    .describe('Set while a snapshot asked for is being taken (for at most 15 minutes)'),
+  snapshot_error: z
+    .string()
+    .nullable()
+    .describe('Why the last snapshot asked for failed; cleared by the next request'),
   updated_at: z.string().describe('When the link last changed in any way'),
   summary: z.string().nullable(),
   tags: z.array(z.string()),
@@ -162,15 +172,24 @@ const FILTER_PARAMETERS: Operation['query'] = {
 /** A snippet: the passage of the best-matching text, matched words marked. */
 const Snippet = z.array(z.strictObject({ text: z.string(), match: z.boolean() }));
 
-/** A link's stored reader view; for a PDF, its text. */
-const ReaderView = z.strictObject({
+/** A link's stored snapshot: a web page's article with its stored images, or a PDF. */
+const SnapshotView = z.strictObject({
   content_kind: z.enum(['html', 'pdf']),
   title: z.string().nullable(),
   byline: z.string().nullable(),
-  html: z.string().nullable(),
-  text: z.string(),
-  empty: z.boolean(),
+  html: z
+    .string()
+    .nullable()
+    .describe(
+      'The sanitised article, its stored images at their snapshot/images addresses; null for a PDF',
+    ),
+  taken_at: z.string(),
+  notes: z.array(z.string()).describe('Such as "2 images could not be saved"'),
+  file_url: z.string().optional().describe('A PDF snapshot’s file'),
 });
+
+/** A link's stored article text. */
+const TextView = z.strictObject({ id: z.string(), text: z.string() });
 
 /** A tag in the export. */
 const ExportedLabel = z.strictObject({
@@ -371,7 +390,7 @@ export const Stats = z.strictObject({
   content: z.strictObject({
     by_kind: z.strictObject({ html: count, pdf: count, other: count, unfetched: count }),
     with_snapshot: count,
-    reader_empty: count.describe('Links whose reader view has no text'),
+    reader_empty: count.describe('Fetched links with no article text'),
   }),
   topics: z.strictObject({
     total: count,
@@ -746,7 +765,7 @@ export const operations: Operation[] = [
     responses: {
       200: {
         description:
-          'attachment alexandria-export-<YYYY-MM-DD>.json: the user, links (each its GET /links/{id} body with snapshot_url and reader_url), workspaces, topics and tags',
+          'attachment alexandria-export-<YYYY-MM-DD>.json: the user, links (each its GET /links/{id} body with snapshot_url and text_url), workspaces, topics and tags',
         schema: z.strictObject({
           format: z.literal('alexandria-export'),
           version: z.literal(1),
@@ -755,7 +774,7 @@ export const operations: Operation[] = [
           links: z.array(
             LinkWithNote.extend({
               snapshot_url: z.string().nullable(),
-              reader_url: z.string().nullable(),
+              text_url: z.string().nullable(),
             }),
           ),
           workspaces: z.array(
@@ -778,19 +797,43 @@ export const operations: Operation[] = [
     method: 'get',
     path: '/export/links/{id}/snapshot',
     operationId: 'exportSnapshot',
-    summary: 'A link’s stored snapshot as the snapshot route serves it, recording no use',
+    summary:
+      'A link’s stored snapshot as the snapshot route serves it, with export addresses, recording no use',
     responses: {
-      200: { description: 'The stored HTML (sandboxed) or PDF', mediaType: 'text/html' },
+      200: { description: 'The snapshot', schema: SnapshotView },
       404: error('not_found, or no_content: nothing of this kind is stored for the link'),
     },
   },
   {
     method: 'get',
-    path: '/export/links/{id}/reader',
-    operationId: 'exportReader',
-    summary: 'A link’s reader view as the reader route serves it, recording no use',
+    path: '/export/links/{id}/snapshot/file',
+    operationId: 'exportSnapshotFile',
+    summary: 'A link’s stored PDF as the snapshot file route serves it, recording no use',
+    query: {
+      download: { description: '1 to download it as an attachment', schema: z.string() },
+    },
     responses: {
-      200: { description: 'The reader view', schema: ReaderView },
+      200: { description: 'application/pdf', mediaType: 'application/pdf' },
+      404: error('not_found, or no_content: nothing of this kind is stored for the link'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/snapshot/images/{name}',
+    operationId: 'exportSnapshotImage',
+    summary: 'One stored image of a link’s snapshot, as the snapshot image route serves it',
+    responses: {
+      200: { description: 'The image, with its stored type', mediaType: 'image/*' },
+      404: error('not_found'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/export/links/{id}/text',
+    operationId: 'exportText',
+    summary: 'A link’s stored article text as the text route serves it, recording no use',
+    responses: {
+      200: { description: 'The text', schema: TextView },
       404: error('not_found, or no_content: nothing of this kind is stored for the link'),
     },
   },
@@ -1268,32 +1311,66 @@ export const operations: Operation[] = [
   },
   {
     method: 'get',
-    path: '/links/{id}/reader',
-    operationId: 'readLink',
-    summary: 'Record a use and return the stored reader view',
+    path: '/links/{id}/snapshot',
+    operationId: 'getSnapshot',
+    summary: 'Record a use and return the stored snapshot',
     responses: {
-      200: {
-        description: 'The reader view; for a PDF, its text',
-        schema: ReaderView,
+      200: { description: 'The snapshot', schema: SnapshotView },
+      404: NO_SNAPSHOT,
+    },
+  },
+  {
+    method: 'post',
+    path: '/links/{id}/snapshot',
+    operationId: 'takeSnapshot',
+    summary:
+      'Take a snapshot in the background: fetch the page again and keep its article with its images, or the PDF; at most once per 10 minutes',
+    responses: {
+      202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
+      429: {
+        ...error('snapshot_recent: "a snapshot was taken recently", or rate_limited'),
+        headers: {
+          'Retry-After': {
+            description: 'Seconds until a snapshot is allowed',
+            schema: { type: 'integer' },
+          },
+        },
       },
+      503: error('unavailable: "the snapshot could not be queued"'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}/snapshot/file',
+    operationId: 'getSnapshotFile',
+    summary: 'The stored PDF of a PDF snapshot, inline (attachment with download=1)',
+    query: {
+      download: { description: '1 to download it as an attachment', schema: z.string() },
+    },
+    responses: {
+      200: { description: 'application/pdf', mediaType: 'application/pdf' },
       404: NO_SNAPSHOT,
     },
   },
   {
     method: 'get',
-    path: '/links/{id}/snapshot',
-    operationId: 'getSnapshot',
-    summary: 'Record a use and return the stored snapshot: HTML under a sandbox policy, or the PDF',
-    query: {
-      download: { description: '1 to download a PDF as an attachment', schema: z.string() },
-    },
+    path: '/links/{id}/snapshot/images/{name}',
+    operationId: 'getSnapshotImage',
+    summary:
+      'One stored image of the link’s snapshot, with its stored type; an SVG under a sandbox policy',
     responses: {
-      200: {
-        description:
-          'text/html with Content-Security-Policy sandbox, or application/pdf inline (attachment with download=1)',
-        mediaType: 'text/html',
-      },
-      404: NO_SNAPSHOT,
+      200: { description: 'The image', mediaType: 'image/*' },
+      404: error('not_found'),
+    },
+  },
+  {
+    method: 'get',
+    path: '/links/{id}/text',
+    operationId: 'getText',
+    summary: 'Record a use and return the stored article text (a PDF’s text)',
+    responses: {
+      200: { description: 'The text', schema: TextView },
+      404: error('not_found, or no_text: "no text stored for this link"'),
     },
   },
   {
@@ -1311,7 +1388,7 @@ export const operations: Operation[] = [
     path: '/links/{id}/archive',
     operationId: 'archiveLink',
     summary:
-      'Archive a link: kept for good, out of the stream and out of decay, unpinned, in its workspaces still; a refresh of its page is queued',
+      'Archive a link: kept for good, out of the stream and out of decay, unpinned, in its workspaces still; a link without a snapshot gets one taken',
     responses: {
       200: {
         description:
@@ -1373,7 +1450,8 @@ export const operations: Operation[] = [
     method: 'post',
     path: '/links/{id}/refresh',
     operationId: 'refreshLink',
-    summary: 'Fetch the link again, replacing its stored copy; at most once per 10 minutes',
+    summary:
+      'Fetch the link again, updating its metadata and text but never its snapshot; at most once per 10 minutes',
     responses: {
       202: { description: 'Queued', schema: z.strictObject({ status: z.literal('queued') }) },
       429: {
@@ -1466,7 +1544,7 @@ export const operations: Operation[] = [
             z.union([
               z.strictObject({ kind: z.literal('use'), at: z.string() }),
               z.strictObject({
-                kind: z.literal('fetch'),
+                kind: z.enum(['fetch', 'snapshot']),
                 at: z.string(),
                 outcome: z.enum(['ok', 'failed']),
                 http_status: z.number().int().nullable(),

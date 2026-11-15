@@ -18,6 +18,12 @@ test('a site goes offline, is marked dead after three weekly checks, and its cop
   const link = async () =>
     (await (await page.request.get(`/api/v1/links/${id}`)).json()) as Record<string, unknown>;
   await expect.poll(async () => (await link()).state, { timeout: 60_000 }).toBe('active');
+  // The copy kept is the snapshot the owner takes.
+  const asked = await page.request.post(`/api/v1/links/${id}/snapshot`, {
+    headers: { Origin: origin },
+  });
+  expect(asked.status()).toBe(202);
+  await expect.poll(async () => (await link()).has_snapshot, { timeout: 60_000 }).toBe(true);
 
   await fakeOrigin.goOffline();
   for (let week = 1; week <= 3; week++) {

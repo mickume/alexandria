@@ -1,6 +1,6 @@
 import { now } from '../clock';
 import type { Env } from '../env';
-import { readerKey, snapshotKey } from '../fetcher/snapshots';
+import { deleteFolder, legacyPdfKey, snapshotFolder } from '../fetcher/snapshots';
 import { countStatement } from '../stats/daily';
 import { DAY_MS, IN_WORKSPACE, pointsSql } from './points';
 import { getThresholds } from './routes';
@@ -67,7 +67,9 @@ function removalStatements(
     db.prepare(`DELETE FROM link_passages WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_events WHERE link_id IN (${removed})`).bind(userId, cutoff),
     db.prepare(`DELETE FROM link_tags WHERE link_id IN (${removed})`).bind(userId, cutoff),
-    db.prepare(`DELETE FROM links AS l WHERE ${removable} RETURNING id`).bind(userId, cutoff),
+    db
+      .prepare(`DELETE FROM links AS l WHERE ${removable} RETURNING id, snapshot_id`)
+      .bind(userId, cutoff),
   ];
 }
 
@@ -86,14 +88,22 @@ export async function evaluateDecay(env: Env, userId: string): Promise<void> {
     env.DB.prepare('UPDATE users SET last_decay_at = ? WHERE id = ?').bind(t.toISOString(), userId),
   ];
   await decayHooks.afterSelect?.(userId);
-  const results = await env.DB.batch<{ id: string }>(statements);
+  const results = await env.DB.batch<{ id: string; snapshot_id: string | null }>(statements);
   const removed = results.at(-2)?.results ?? [];
-  // A link stores its objects under two known keys, so the objects of many
-  // links go in a few calls: a removal of thousands stays within one run.
-  const keys = removed.flatMap(({ id }) => [snapshotKey(userId, id), readerKey(userId, id)]);
+  // A link without a snapshot folder stores at most one object, under a known
+  // key, so the objects of many links go in a few calls: a removal of
+  // thousands stays within one run. Only a link with a snapshot folder needs
+  // its folder listed.
+  const keys = removed.map(({ id }) => legacyPdfKey(userId, id));
   for (let i = 0; i < keys.length; i += R2_DELETE_KEYS) {
     await env.SNAPSHOTS.delete(keys.slice(i, i + R2_DELETE_KEYS)).catch((err) =>
       console.error('removing stored objects failed', err),
+    );
+  }
+  for (const { id, snapshot_id } of removed) {
+    if (!snapshot_id) continue;
+    await deleteFolder(env, snapshotFolder(userId, id, snapshot_id)).catch((err) =>
+      console.error('removing a snapshot failed', err),
     );
   }
 }

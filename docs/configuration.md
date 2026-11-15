@@ -38,7 +38,7 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | -------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | `DB`     | D1 database   | Every user's data. The schema is in `migrations/`; apply it with `wrangler d1 migrations apply alexandria`. |
 | `ASSETS` | static assets | The website, built by `make build` into `dist/client/`.                                                     |
-| `SNAPSHOTS` | R2 bucket | Snapshots and reader views, under `u/{user_id}/l/{link_id}/`. |
+| `SNAPSHOTS` | R2 bucket | Snapshots (a page's article with its images, or a PDF), under `u/{user_id}/l/{link_id}/`. |
 | `HOST_GATE` | Durable Object | One per host: spaces Alexandria's requests to a host a second apart. |
 | `FETCH_QUEUE` | Queue `alexandria-fetch` | One message per link to fetch. |
 | `ENRICH_QUEUE` | Queue `alexandria-enrich` | One message per link to enrich. |
@@ -108,8 +108,8 @@ author) into the same form; other GitHub pages only lose `GitHub - ` and
 The YouTube rule removes the trailing ` - YouTube` from the pages of
 `youtube.com` and its subdomains (a `youtu.be` link ends at `youtube.com`).
 
-The rules clean the title every fetch stores and the reader view's title as it
-is served. Titles stored before a change are cleaned once by the every-minute
+The rules clean the title every fetch stores and a snapshot's title as it is
+served. Titles stored before a change are cleaned once by the every-minute
 run: it compares the hash of the rules file with the one recorded in
 `title_rules_state`, and when they differ, cleans the title of every link (in
 pages of 500), records the new hash, and is done until the rules change again.

@@ -1,8 +1,9 @@
 import createDOMPurify from 'dompurify';
 import { useEffect, useState } from 'react';
 import { Link as PageLink } from '../App';
-import { links, snapshotUrl, type Link, type ReaderView } from '../api';
+import { links, snapshotFileUrl, type SnapshotView } from '../api';
 import { openWebLinksInNewTab } from '../components/Markdown';
+import { formatDate } from '../format';
 import { buttonVariants } from '@/components/ui/button';
 
 /** Loads one value for a page, and whether it failed. */
@@ -25,11 +26,11 @@ function useLoad<T>(load: () => Promise<T>, key: string): { value: T | null; fai
   return state;
 }
 
-/** The reader view's own sanitiser, whose web links open in a new tab. */
+/** The snapshot's own sanitiser, whose web links open in a new tab. */
 const purifier = createDOMPurify(window);
 openWebLinksInNewTab(purifier);
 
-/** The reader view's HTML, sanitised again in the browser before it is shown. */
+/** The snapshot's article, sanitised again in the browser before it is shown. */
 function SafeHtml({ html }: { html: string }) {
   const clean = purifier.sanitize(html, {
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed'],
@@ -38,73 +39,57 @@ function SafeHtml({ html }: { html: string }) {
   return <div className="reader-body" dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
-function ReaderContent({ id, reader }: { id: string; reader: ReaderView }) {
-  if (reader.empty) {
+/**
+ * The Read page: the link's snapshot, its article with the images stored with
+ * it, or its PDF in the browser's viewer. Opening it counts as a use.
+ */
+export function Read({ id }: { id: string }) {
+  const { value: snapshot, failed } = useLoad(() => links.snapshot(id), id);
+  if (failed) {
     return (
-      <>
-        <p className="muted">no readable content extracted</p>
-        <p>
-          <PageLink to={`/links/${id}/snapshot`}>Snapshot</PageLink>
-        </p>
-      </>
+      <p className="muted">
+        No snapshot is stored for this link. <PageLink to={`/links/${id}`}>Details</PageLink>
+      </p>
     );
   }
-  if (reader.content_kind === 'pdf' || reader.html === null) {
-    return (
-      <div className="reader-body">
-        {reader.text
-          .split(/\n\s*\n/)
-          .map((block) => block.trim())
-          .filter(Boolean)
-          .map((block, i) => (
-            <p key={i}>{block}</p>
-          ))}
-      </div>
-    );
-  }
-  return <SafeHtml html={reader.html} />;
+  if (!snapshot) return null;
+  return <SnapshotContent id={id} snapshot={snapshot} />;
 }
 
-/** The Read page: the link's stored reader view. Opening it counts as a use. */
-export function Read({ id }: { id: string }) {
-  const { value: reader, failed } = useLoad(() => links.reader(id), id);
-  if (failed) return <p className="muted">Nothing is stored to read for this link.</p>;
-  if (!reader) return null;
+function SnapshotContent({ id, snapshot }: { id: string; snapshot: SnapshotView }) {
+  const taken = (
+    <p className="muted snapshot-taken">
+      Snapshot taken {formatDate(snapshot.taken_at)}
+      {snapshot.notes.map((note) => (
+        <span key={note} className="note">
+          {note}
+        </span>
+      ))}
+    </p>
+  );
+  if (snapshot.content_kind === 'pdf') {
+    return (
+      <section className="snapshot">
+        <h1>{snapshot.title}</h1>
+        {taken}
+        <a
+          className={buttonVariants({ variant: 'outline' })}
+          href={snapshotFileUrl(id, { download: true })}
+        >
+          Download
+        </a>
+        <object className="snapshot-frame" data={snapshotFileUrl(id)} type="application/pdf">
+          <a href={snapshotFileUrl(id)}>Open the PDF</a>
+        </object>
+      </section>
+    );
+  }
   return (
     <article className="reader">
-      <h1>{reader.title}</h1>
-      {reader.byline && <p className="muted">{reader.byline}</p>}
-      <ReaderContent id={id} reader={reader} />
+      <h1>{snapshot.title}</h1>
+      {snapshot.byline && <p className="muted">{snapshot.byline}</p>}
+      {taken}
+      <SafeHtml html={snapshot.html ?? ''} />
     </article>
-  );
-}
-
-/**
- * The Snapshot page: a web page's stored HTML in a frame that may do nothing
- * (no scripts, no forms, no access to the site), or a PDF in the browser's viewer.
- */
-export function Snapshot({ id }: { id: string }) {
-  const { value: link, failed } = useLoad<Link>(() => links.get(id), id);
-  if (failed) return <p className="muted">This link is not in your library.</p>;
-  if (!link) return null;
-  return (
-    <section className="snapshot">
-      <h1>{link.title}</h1>
-      {link.content_kind === 'pdf' ? (
-        <>
-          <a
-            className={buttonVariants({ variant: 'outline' })}
-            href={snapshotUrl(id, { download: true })}
-          >
-            Download
-          </a>
-          <object className="snapshot-frame" data={snapshotUrl(id)} type="application/pdf">
-            <a href={snapshotUrl(id)}>Open the PDF</a>
-          </object>
-        </>
-      ) : (
-        <iframe className="snapshot-frame" sandbox="" src={snapshotUrl(id)} title={link.title} />
-      )}
-    </section>
   );
 }

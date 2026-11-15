@@ -9,22 +9,23 @@ import { toFullView, type LinkRow } from '../links/store';
 /** Links read per query while exporting. */
 const PAGE = 100;
 
-/** The address of an export content route of a link. */
-function contentUrl(origin: string, id: string, kind: 'snapshot' | 'reader'): string {
-  return `${origin}/api/v1/export/links/${encodeURIComponent(id)}/${kind}`;
+/** The address of a link under the export, the base of its content routes. */
+export function exportLinkBase(origin: string, id: string): string {
+  return `${origin}/api/v1/export/links/${encodeURIComponent(id)}`;
 }
 
-/** Whether a link has a reader view to serve: a PDF's text, or a page's non-empty reader view. */
-export function hasReader(row: LinkRow): boolean {
-  return Boolean(row.has_snapshot) && (row.content_kind === 'pdf' || !row.reader_empty);
+/** Whether a link has article text stored: a web page with an article, or a PDF with text. */
+export function hasText(row: LinkRow): boolean {
+  return (row.content_kind === 'html' || row.content_kind === 'pdf') && !row.reader_empty;
 }
 
 /** A link's export entry: its API representation and the URLs of its stored content. */
 function linkEntry(origin: string, row: LinkRow): Record<string, unknown> {
+  const base = exportLinkBase(origin, row.id);
   return {
     ...toFullView(row),
-    snapshot_url: row.has_snapshot ? contentUrl(origin, row.id, 'snapshot') : null,
-    reader_url: hasReader(row) ? contentUrl(origin, row.id, 'reader') : null,
+    snapshot_url: row.has_snapshot ? `${base}/snapshot` : null,
+    text_url: hasText(row) ? `${base}/text` : null,
   };
 }
 

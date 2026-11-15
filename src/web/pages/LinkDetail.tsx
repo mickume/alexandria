@@ -5,7 +5,15 @@ import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { Icon } from '../components/Icon';
 import { NoteEditor } from '../components/NoteEditor';
-import { RefreshButton, SiteLink, TagChips, TopicPath } from '../components/LinkCard';
+import {
+  RefreshButton,
+  SiteLink,
+  SnapshotButton,
+  SnapshotStatus,
+  TagChips,
+  TopicPath,
+  useSnapshotWatch,
+} from '../components/LinkCard';
 import { WorkspacePicker } from '../components/WorkspacePicker';
 import { byName, formatDate } from '../format';
 import { Button } from '@/components/ui/button';
@@ -20,14 +28,21 @@ const CONFIRM_DELETE = {
   action: 'Delete link',
 };
 
-/** How one history event reads: "Opened", "Fetched", or "Fetch failed: HTTP 503". */
+/**
+ * How one history event reads: "Opened", "Fetched", "Fetch failed: HTTP 503",
+ * "Snapshot taken" or "Snapshot failed: no readable content".
+ */
 function eventLabel(event: LinkEvent): string {
   if (event.kind === 'use') return 'Opened';
-  if (event.outcome === 'ok') return 'Fetched';
-  return `Fetch failed: ${event.reason ?? 'unknown error'}`;
+  const what = event.kind === 'snapshot' ? 'Snapshot' : 'Fetch';
+  if (event.outcome === 'ok') return event.kind === 'snapshot' ? 'Snapshot taken' : 'Fetched';
+  return `${what} failed: ${event.reason ?? 'unknown error'}`;
 }
 
 const DAY_MS = 86_400_000;
+
+/** Stands in for the link while it loads, so that hooks run in the same order. */
+const PLACEHOLDER = { id: '', snapshot_requested_at: null } as unknown as Link;
 
 /**
  * How long the link has left, as the API's decay note reckons it: a pinned
@@ -222,6 +237,18 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
         )}
       </section>
       <div className="detail-actions" role="group" aria-label="Actions">
+        {link.has_snapshot && (
+          <PageLink to={`/links/${link.id}/read`} className="action-item">
+            <Icon name="read" />
+            Read
+          </PageLink>
+        )}
+        <SnapshotButton
+          link={link}
+          look="action"
+          icon={<Icon name="snapshot" />}
+          onRequested={onChange}
+        />
         <RefreshButton link={link} look="action" icon={<Icon name="refresh" />} />
         <CheckButton link={link} onChecked={onChange} look="action" icon={<Icon name="pulse" />} />
         {archived ? (
@@ -261,6 +288,7 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
           Delete
         </button>
       </div>
+      <SnapshotStatus link={link} />
       {failure && (
         <p className="notice" role="alert">
           {failure}
@@ -295,6 +323,16 @@ export function LinkDetail({ id }: { id: string }) {
       live = false;
     };
   }, [id]);
+
+  // Once a snapshot asked for ends, the page shows the link and its history as they now are.
+  const snapshotEnded = (fresh: Link) => {
+    setLink(fresh);
+    links
+      .history(id)
+      .then((page) => setHistory(page.items))
+      .catch(() => undefined);
+  };
+  useSnapshotWatch(link ?? PLACEHOLDER, link ? snapshotEnded : undefined);
 
   if (missing) return <p className="muted">This link is not in your library.</p>;
   if (!link) return null;

@@ -91,3 +91,17 @@ export function longArticle(chars: number): string {
   }
   return `<!doctype html><html><head><title>Long</title></head><body><article><h1>Long</h1>${paragraphs.join('')}</article></body></html>`;
 }
+
+/**
+ * A blog article with an image after each paragraph: `images` are the
+ * <img> tags' src attributes, each with the alt text "Figure n".
+ */
+export function illustratedArticle(images: string[], extra = ''): string {
+  const figures = images
+    .map((src, i) => `<p>${lorem(3)}</p><figure><img src="${src}" alt="Figure ${i + 1}"></figure>`)
+    .join('\n');
+  return blogArticle.replace(
+    '<h2>The first reason</h2>',
+    `${figures}${extra}\n<h2>The first reason</h2>`,
+  );
+}

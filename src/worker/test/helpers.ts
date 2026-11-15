@@ -21,6 +21,7 @@ import type {
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
+import { snapshotFolder } from '../fetcher/snapshots';
 
 export { sha256Hex };
 
@@ -522,4 +523,63 @@ export interface ToolResult {
 export async function mcpTool(bearer: string, name: string, args: unknown): Promise<ToolResult> {
   const response = await mcp(bearer, 'tools/call', { name, arguments: args });
   return { ...(response.json?.result ?? {}), response };
+}
+
+/** What storeSnapshot stores. */
+export interface SeedSnapshot {
+  kind: 'html' | 'pdf';
+  /** The article's HTML, for a web page. */
+  html?: string;
+  /** The PDF's bytes, for a PDF. */
+  pdf?: string | Uint8Array;
+  /** The article text stored for the link; none when null. */
+  text?: string | null;
+  /** When the snapshot was taken. */
+  at?: string;
+}
+
+/**
+ * Gives a link a stored snapshot and article text, as the fetch worker leaves
+ * them after a snapshot was taken; returns the snapshot's folder.
+ */
+export async function storeSnapshot(
+  user: TestUser,
+  id: string,
+  {
+    kind,
+    html = '<p>Kept page</p>',
+    pdf = '%PDF-1.4 bytes',
+    text = 'Kept page',
+    at = '2026-01-02T00:00:00.000Z',
+  }: SeedSnapshot,
+): Promise<string> {
+  const snapshotId = crypto.randomUUID();
+  const folder = snapshotFolder(user.id, id, snapshotId);
+  if (kind === 'pdf') {
+    await env.SNAPSHOTS.put(`${folder}file.pdf`, pdf, {
+      httpMetadata: { contentType: 'application/pdf' },
+    });
+  } else {
+    await env.SNAPSHOTS.put(
+      `${folder}article.json`,
+      JSON.stringify({ title: 'T', byline: null, html, notes: [] }),
+      { httpMetadata: { contentType: 'application/json' } },
+    );
+  }
+  await env.DB.prepare(
+    `UPDATE links SET state = CASE WHEN state = 'pending' THEN 'active' ELSE state END,
+       content_kind = ?1, has_snapshot = 1, reader_empty = ?2, fetched_at = COALESCE(fetched_at, ?3),
+       snapshot_id = ?4, snapshot_kind = ?1, snapshot_at = ?3
+     WHERE id = ?5`,
+  )
+    .bind(kind, text === null ? 1 : 0, at, snapshotId, id)
+    .run();
+  if (text !== null) {
+    await env.DB.prepare(
+      'INSERT OR REPLACE INTO link_texts (link_id, user_id, text) VALUES (?, ?, ?)',
+    )
+      .bind(id, user.id, text)
+      .run();
+  }
+  return folder;
 }

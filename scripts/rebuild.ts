@@ -1,6 +1,6 @@
 /**
- * Rebuilds what Alexandria derives from every link of one library: the page,
- * its snapshot and reader text, its fetched metadata, its enrichment (summary,
+ * Rebuilds what Alexandria derives from every link of one library: the page's
+ * article text, its fetched metadata (never its snapshot), its enrichment (summary,
  * topic, tags) and its passages for search by meaning. The links themselves
  * stay as they are: their uses and points, pins, workspaces, notes, archive
  * and the fields the owner edited by hand.

@@ -268,7 +268,7 @@ The site's own origin, such as https://alexandria.example.com; unset, the origin
 
 > **SNAPSHOTS**: `R2Bucket`
 
-Snapshots and reader views.
+Snapshots: each link's article with its images, or its PDF.
 
 ##### VECTORIZE
 
@@ -293,6 +293,12 @@ A request to fetch one link's page.
 > `optional` **refresh?**: `boolean`
 
 Set for a refresh the owner asked for; a failed refresh is not retried.
+
+##### snapshot?
+
+> `optional` **snapshot?**: `boolean`
+
+Set when the fetch also takes a snapshot: the page's article with its images, or the PDF.
 
 ##### user\_id
 

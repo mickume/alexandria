@@ -2,6 +2,28 @@
 
 ## Functions
 
+### exportLinkBase()
+
+> **exportLinkBase**(`origin`, `id`): `string`
+
+The address of a link under the export, the base of its content routes.
+
+#### Parameters
+
+##### origin
+
+`string`
+
+##### id
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
 ### exportResponse()
 
 > **exportResponse**(`env`, `user`, `origin`): `Response`
@@ -32,11 +54,11 @@ Nothing else of the user is in it: no settings, key, token, session or import.
 
 ***
 
-### hasReader()
+### hasText()
 
-> **hasReader**(`row`): `boolean`
+> **hasText**(`row`): `boolean`
 
-Whether a link has a reader view to serve: a PDF's text, or a page's non-empty reader view.
+Whether a link has article text stored: a web page with an article, or a PDF with text.
 
 #### Parameters
 

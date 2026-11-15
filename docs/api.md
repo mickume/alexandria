@@ -134,6 +134,10 @@ A link is shown as:
   "notes": [],
   "content_kind": null,
   "has_snapshot": false,
+  "snapshot_at": null,
+  "snapshot_kind": null,
+  "snapshot_requested_at": null,
+  "snapshot_error": null,
   "updated_at": "2026-06-01T08:00:00.000Z",
   "summary": null,
   "tags": [],
@@ -155,13 +159,18 @@ succeeds, `title` is the host,
 then, once an attempt fails, words read from the address (unless the owner
 edited it). A fetch fills `final_url`, `http_status`, `title`,
 `description`, `favicon_url`, `language`, `fetched_at` and `content_kind`
-(`html`, `pdf` or `other`); the fetched `title` (and the reader view's) has
+(`html`, `pdf` or `other`); the fetched `title` (and the snapshot's) has
 the site's own name removed, and may be shortened, for the hosts the
 [title rules](configuration.md#title-rules) cover, such as GitHub's
 "GitHub - " and " · GitHub" (an issue reads "Title · owner/repo#123");
 `notes` holds remarks such as "truncated", "page could not be read", "not a
 web page (image/png)", "no text in this PDF" or "PDF too large to store (50 MB
-limit)"; `has_snapshot` says whether Read and Snapshot are available.
+limit)". `has_snapshot` says whether a [snapshot](#snapshots) is stored, so
+that it can be read; `snapshot_at` is when it was taken and `snapshot_kind`
+what it is (`html` or `pdf`). `snapshot_requested_at` is set while a snapshot
+asked for is being taken (it reads null once it is 15 minutes old, so that a
+snapshot lost on the way never keeps a page waiting), and `snapshot_error`
+says why the last one asked for failed, until another is asked for.
 
 Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
 hyphenated) and `topic`. Enrichment files the link under a topic path of up
@@ -304,10 +313,10 @@ open links, so that every use is counted. Concurrent opens are each counted.
 
 #### `GET /api/v1/links/{id}/history`
 
-The link's uses and fetch attempts, newest first:
+The link's uses, fetch attempts and snapshots, newest first:
 `200 {"items": [<event>], "next_cursor"}`, where an event is
 `{"kind": "use", "at"}` or
-`{"kind": "fetch", "at", "outcome": "ok" | "failed", "http_status": <number or null>, "reason": <string or null>}`.
+`{"kind": "fetch" | "snapshot", "at", "outcome": "ok" | "failed", "http_status": <number or null>, "reason": <string or null>}`.
 Query: `limit` (1 to 100, default 100), `cursor`.
 
 #### `POST /api/v1/links/{id}/pin`
@@ -337,42 +346,114 @@ link's place in the pinned section closes up. Adding the same URL again
 creates a new link. (The website holds a delete for 10 seconds so that it can
 be undone; the API does not.)
 
-### Stored copies: Read and Snapshot
+### Snapshots
 
-Every fetched web page keeps a snapshot (its raw HTML) and a reader view (its
-article alone, sanitised); a fetched PDF keeps the whole file and its text.
-Both are served from storage alone, never from the origin, so they work when
-the site is down or gone, and only to the link's owner. Reading either
-records a use of the link. A link with nothing stored (pending, unreachable,
-not a web page, a PDF over 50 MB) answers
+A link's snapshot is the copy of its page Alexandria keeps, readable whatever
+happens to the site, as a reading service keeps one. For a web page it is the
+page's article alone (the title, byline, headings, paragraphs, lists, code,
+tables, figures and links; no navigation, sidebars, comments, styles or
+scripts), sanitised, with the article's images downloaded and stored with
+it. For a PDF it is the whole file. A link has at most one.
+
+A snapshot is taken when the owner asks for one (`POST
+/api/v1/links/{id}/snapshot`, the MCP tool `take_snapshot`), or when a link
+without one is [archived](#archive). The first successful fetch of a PDF stores
+it as the link's snapshot. Nothing else takes or changes one: a fetch of a web
+page stores its metadata and its article text (for search, Ask, enrichment and
+the meaning index) but no copy of the page, and a refresh never changes the
+snapshot, a PDF's included.
+
+A snapshot is served from storage alone, never from the origin, and only to
+the link's owner. A link without one answers
 `404 {"error": "no_snapshot", "message": "no snapshot stored for this link"}`
 and records no use.
 
-#### `GET /api/v1/links/{id}/reader`
+#### `POST /api/v1/links/{id}/snapshot`
 
-`200 {"content_kind": "html" | "pdf", "title", "byline", "html": <string or null>, "text", "empty": <boolean>}`.
-For a web page, `html` is the sanitised article; when fewer than 200
-characters of text were extracted the view is `empty` (`html` null, `text`
-''), and the snapshot is still there. For a PDF, `html` is null and `text` is
-its text.
+Takes a snapshot in the background: `202 {"status": "queued"}`, and the link's
+`snapshot_requested_at` is now. Taking a snapshot is a refresh that also
+stores the copy: the page is fetched again as every fetch is (the host gate,
+the redirect checks, the limits, Firecrawl behind a bot check), the link's
+metadata, text and enrichment are updated as a refresh updates them, and then:
+
+- for a web page, its article is extracted and each of its images is
+  downloaded and stored, through the host gate and the same checks, 15
+  seconds each, never through Firecrawl. Only JPEG, PNG, GIF, WebP, AVIF and
+  SVG are stored, at most 100 images of 10 MB each and 50 MB in all, in the
+  order they appear. For an image with a `srcset` (or in a `<picture>`), the
+  widest candidate at most 2000 pixels wide is saved (else the highest density
+  at most 2x, else its `src`). An image that is not stored becomes a
+  placeholder with its alt text and a link to its original address, and the
+  snapshot notes "N images could not be saved"; it does not make the snapshot
+  fail.
+- for a PDF of at most 50 MB, the file is stored.
+
+The new snapshot replaces the previous one, whose objects, images included,
+are deleted; `snapshot_requested_at` becomes null and the link's history gains
+a `snapshot` event with outcome `ok`. A snapshot that fails leaves the
+previous one exactly as it was, is not retried, sets `snapshot_error` to its
+reason and adds a failed `snapshot` event: the fetch's own reason ("timed
+out", "HTTP 404", …, changing nothing else of the link), "no readable content"
+(less than 200 characters of article text; the metadata and text are still
+updated), "not a web page (image/png)" or "PDF too large to store (50 MB
+limit)".
+
+At most one snapshot per link per 10 minutes, apart from refreshes: another
+is `429 {"error": "snapshot_recent", "message": "a snapshot was taken recently"}`
+with `Retry-After` in seconds. When the fetch cannot be queued:
+`503 {"error": "unavailable", "message": "the snapshot could not be queued"}`,
+and the window is not used up.
 
 #### `GET /api/v1/links/{id}/snapshot`
 
-For a web page: the stored HTML, `Content-Type: text/html; charset=utf-8`,
-with `Content-Security-Policy: sandbox; default-src 'none'; img-src * data:; style-src * 'unsafe-inline'; font-src * data:`,
-`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`, so that
-its scripts never run. For a PDF: the stored file, `application/pdf`,
-`Content-Disposition: inline; filename="<title>.pdf"`, or `attachment` with
-`?download=1`.
+Records a use and returns the snapshot:
 
-Deleting a link (`DELETE /api/v1/links/{id}`) also deletes its stored copies,
-its text and its fetch events.
+```json
+{
+  "content_kind": "html",
+  "title": "An Article",
+  "byline": "By Ada Writer",
+  "html": "<h1>An Article</h1><p>…</p><img src=\"/api/v1/links/…/snapshot/images/…-1.png\" alt=\"Figure 1\">",
+  "taken_at": "2026-10-01T09:00:00.000Z",
+  "notes": ["1 images could not be saved"]
+}
+```
+
+For a PDF, `html` and `byline` are null and `file_url` is
+`/api/v1/links/{id}/snapshot/file`. The `title` is cleaned by the
+[title rules](configuration.md#title-rules) as the link's own is.
+
+#### `GET /api/v1/links/{id}/snapshot/file`
+
+A PDF snapshot's file, `application/pdf`,
+`Content-Disposition: inline; filename="<title>.pdf"`, or `attachment` with
+`?download=1`. It records no use (reading the snapshot did). A link whose
+snapshot is not a PDF answers `404 no_snapshot`.
+
+#### `GET /api/v1/links/{id}/snapshot/images/{name}`
+
+One stored image of the snapshot, with its stored type,
+`X-Content-Type-Options: nosniff` and `Cache-Control: private,
+max-age=31536000, immutable` (a new snapshot's images never take an earlier
+one's names). An SVG is served with
+`Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'`,
+so that its scripts never run. It records no use. A name the link's current
+snapshot does not hold answers `404 {"error": "not_found"}`.
+
+#### `GET /api/v1/links/{id}/text`
+
+Records a use and returns the link's stored article text (a PDF's extracted
+text, at most 500,000 characters): `200 {"id", "text"}`, or
+`404 {"error": "no_text", "message": "no text stored for this link"}`.
+
+Deleting a link (`DELETE /api/v1/links/{id}`) also deletes its snapshot, its
+images, its text and its fetch events.
 
 #### `POST /api/v1/links/{id}/refresh`
 
 Fetches the link again in the background: `202 {"status": "queued"}`. When
-the fetch succeeds it replaces the snapshot, reader view and fetched
-metadata, sets the link `active` and clears its reason and notes; when it
+the fetch succeeds it replaces the fetched metadata and the article text (never
+the snapshot), sets the link `active` and clears its reason and notes; when it
 fails, the link keeps everything it had and its history gains a failed fetch
 event (a refresh is not retried). At most one refresh per link per 10
 minutes: a second one is
@@ -629,7 +710,7 @@ nothing changes. Another user's link, or one that does not exist: `404`.
 ### Archive
 
 The owner archives a link to keep it for good: it leaves the stream and decay,
-and is refreshed once.
+with its [snapshot](#snapshots), which is taken when it has none.
 
 #### `GET /api/v1/archive`
 
@@ -644,17 +725,19 @@ cursor this route did not issue (one of the expired list among them)
 
 Archives a link in any state but `archived`, at once: `state` `archived`,
 `archived_at` now, `expired_at` cleared; the link is unpinned and the pin
-positions after it close up; its workspaces are kept. A fetch of its page is
-then queued as a refresh, outside the 10-minute refresh window (which it
-neither waits for nor starts). `200 <link>`, without waiting for the fetch.
-That fetch is a refresh like any other: on success it replaces the snapshot
-and the reader text and enriches the link again, keeping the fields the owner
-edited, and the link stays `archived`; on failure the link keeps what it had
-and its history records the failure.
-When the fetch cannot be queued the link stays archived and its history gets a
-failed fetch event with the reason "refresh before archiving could not be
-queued". A link already archived: `200 <link>`, unchanged, and nothing is
-queued. Another user's link, or one that does not exist: `404`.
+positions after it close up; its workspaces are kept. `200 <link>`.
+
+A link with a snapshot keeps it, and nothing is fetched. A link without one
+gets a [snapshot](#snapshots) taken, as `POST /api/v1/links/{id}/snapshot`
+takes one, outside the 10-minute snapshot and refresh windows (which it neither
+waits for nor starts); the answer comes without waiting for it, with
+`snapshot_requested_at` set. The link stays `archived` whatever the snapshot
+does; when it fails the link stays without one and its history records the
+failure. When the snapshot cannot be queued the link stays archived,
+`snapshot_error` and its history's failed `snapshot` event say "snapshot before
+archiving could not be queued". A link already archived: `200 <link>`,
+unchanged, and nothing is queued. Another user's link, or one that does not
+exist: `404`.
 
 #### `POST /api/v1/links/{id}/unarchive`
 
@@ -673,7 +756,7 @@ redirects, never more than one request per second to one host. A final 2xx
 passes. Three failed weekly checks in a row set `dead_since`; a later pass
 clears it. `last_checked_at` and `last_check_result` ("HTTP 200", "could not
 connect", "timed out", …) say how the last check went. A dead link keeps its
-snapshot and reader view and decays like any other.
+snapshot and decays like any other.
 
 #### `POST /api/v1/links/{id}/check`
 
@@ -698,7 +781,7 @@ to 100, default 50) and `cursor` as every list takes them.
 A query is free words and prefix filters. Every free word must match a whole
 word, case- and accent-insensitively and in any of its English forms (`queue`
 finds "Queues", `cafe` finds "Café"; `cloud` does not find "Cloudflare"), in the link's title, summary, tags, topic (any name of
-its topic path), host, original URL, note or reader-view text. Quotes and the full-text engine's
+its topic path), host, original URL, note or article text. Quotes and the full-text engine's
 operators (`AND`, `OR`, `NOT`, `NEAR`, `*`, `(`, `)`, `:`, `-`, `^`) are
 plain text. Expired links are left out.
 
@@ -1358,7 +1441,7 @@ answers `500 {"error": "internal"}`, with no partial result.
 - `library`: every link (`total`), in each state (every state present, adding
   up to `total`), pinned, in at least one workspace, and the 20,000-link limit.
 - `content`: links by `content_kind` (`unfetched` for none yet), with a
-  snapshot, and with an empty reader view.
+  snapshot, and fetched with no article text (`reader_empty`).
 - `topics`: every topic, by level, links with no topic, and the 10 topics with
   the most links filed directly under them, each with its path from the top
   level down.
@@ -1476,7 +1559,7 @@ The whole library as one JSON document, sent as a download
       "id": "…",
       "…": "every field GET /api/v1/links/{id} returns, the whole note included",
       "snapshot_url": "https://alexandria.example.com/api/v1/export/links/…/snapshot",
-      "reader_url": "https://alexandria.example.com/api/v1/export/links/…/reader"
+      "text_url": "https://alexandria.example.com/api/v1/export/links/…/text"
     }
   ],
   "workspaces": [
@@ -1489,7 +1572,7 @@ The whole library as one JSON document, sent as a download
 ```
 
 Every link is there, in every state (expired included), as
-`GET /api/v1/links/{id}` returns it, with `snapshot_url` and `reader_url`
+`GET /api/v1/links/{id}` returns it, with `snapshot_url` and `text_url`
 (`null` when nothing of that kind is stored). A workspace's `link_ids` are in
 its manual order. The document is sent as it is read: when reading fails
 part-way the download breaks off, so a file that does not end with
@@ -1497,15 +1580,19 @@ part-way the download breaks off, so a file that does not end with
 nothing else: no settings, no part of the AI key, no tokens, sessions or import
 reports.
 
-#### `GET /api/v1/export/links/{id}/snapshot` and `GET /api/v1/export/links/{id}/reader`
+#### `GET /api/v1/export/links/{id}/snapshot` and `GET /api/v1/export/links/{id}/text`
 
-The `snapshot_url` and `reader_url` of an export entry: the link's stored
-snapshot and reader view exactly as `GET /api/v1/links/{id}/snapshot` and
-`GET /api/v1/links/{id}/reader` serve them (same status, headers and body),
-expired links included, with the same credentials, but **recording no use**,
-so that fetching a backup does not reset the library's decay. A link of the
-user with nothing of that kind stored answers `404 {"error": "no_content"}`;
-another user's link and an unknown id answer `404 {"error": "not_found"}`.
+The `snapshot_url` and `text_url` of an export entry: the link's snapshot and
+article text exactly as `GET /api/v1/links/{id}/snapshot` and
+`GET /api/v1/links/{id}/text` serve them, expired links included, with the
+same credentials, but **recording no use**, so that fetching a backup does not
+reset the library's decay. In the exported snapshot, the images' addresses and
+a PDF's `file_url` are the export's own:
+`GET /api/v1/export/links/{id}/snapshot/images/{name}` and
+`GET /api/v1/export/links/{id}/snapshot/file`, which serve exactly what the
+link's own routes serve. A link of the user with nothing of that kind stored
+answers `404 {"error": "no_content"}`; another user's link and an unknown id
+answer `404 {"error": "not_found"}`.
 
 ### Deleting the account
 
@@ -1569,7 +1656,8 @@ unexpected failure is
 | `search_links` | `query`, `limit?` (1 to 100, default 10) | `GET /api/v1/search` with the query as given, prefix filters included, and `mode=hybrid`: links found by meaning as well as by words, each with `match`, and `meaning` in the body; no use |
 | `search_passages` | `query`, `limit?` (1 to 20, default 8) | `GET /api/v1/passages` with the query as given as `q`: the passages that best answer it, by their words and by meaning, each with its link's id, title and URL; no use. A `search_unavailable` (503) is a tool error with that envelope, not `internal_error` |
 | `get_link` | `id` | `GET /api/v1/links/{id}`: metadata and summary; no use |
-| `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the reader-view text (a PDF's extracted text) from `GET /api/v1/links/{id}/reader`, or the snapshot HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record |
+| `get_link_content` | `id`, `format` (`text` or `html`) | `{id, format, content}`: the article text (a PDF's extracted text) from `GET /api/v1/links/{id}/text`, or the snapshot's article HTML from `GET /api/v1/links/{id}/snapshot`; one use, as those endpoints record. `no_content` when the link has no text, or no snapshot for `html`; `not_html` for `html` of a PDF snapshot |
+| `take_snapshot` | `link_id` | `POST /api/v1/links/{id}/snapshot`: `{status: "queued"}`; `snapshot_recent` within 10 minutes of the last |
 | `list_workspaces` | none | `{items}`: every page of `GET /api/v1/workspaces` |
 | `add_to_workspace` | `link_id`, `workspace` | `POST /api/v1/workspaces/{id}/links` with `{link_id}`: at the bottom |
 | `pin_link` | `link_id` | `POST /api/v1/links/{id}/pin` without a position (`pin_limit` at 30) |

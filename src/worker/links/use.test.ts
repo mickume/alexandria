@@ -1,6 +1,5 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { readerKey, snapshotKey } from '../fetcher/snapshots';
 import {
   api,
   count,
@@ -9,6 +8,7 @@ import {
   seedLinks,
   setNow,
   signIn,
+  storeSnapshot,
   type TestUser,
 } from '../test/helpers';
 
@@ -106,11 +106,11 @@ describe('opening a link', () => {
 describe('using an expired link', () => {
   it.each([
     { label: 'an open', method: 'GET', path: (id: string) => `/api/v1/links/${id}/open` },
-    { label: 'a read', method: 'GET', path: (id: string) => `/api/v1/links/${id}/reader` },
+    { label: 'a read', method: 'GET', path: (id: string) => `/api/v1/links/${id}/snapshot` },
     {
-      label: 'a snapshot view',
+      label: 'a read of its text',
       method: 'GET',
-      path: (id: string) => `/api/v1/links/${id}/snapshot`,
+      path: (id: string) => `/api/v1/links/${id}/text`,
     },
     { label: 'a re-paste', method: 'POST', path: () => '/api/v1/links' },
   ])('makes it active again by $label, its decay starting afresh', async ({ method, path }) => {
@@ -127,16 +127,10 @@ describe('using an expired link', () => {
         decayFrom: iso(T - 200 * DAY),
       },
     ]);
-    await env.DB.prepare(
-      "UPDATE links SET expired_at = ?, content_kind = 'html', has_snapshot = 1 WHERE id = ?",
-    )
+    await env.DB.prepare('UPDATE links SET expired_at = ? WHERE id = ?')
       .bind('2026-01-01T00:00:00.000Z', id)
       .run();
-    await env.SNAPSHOTS.put(snapshotKey(user.id, id), '<html><body>kept</body></html>');
-    await env.SNAPSHOTS.put(
-      readerKey(user.id, id),
-      JSON.stringify({ title: 'T', byline: null, html: '<p>kept</p>' }),
-    );
+    await storeSnapshot(user, id, { kind: 'html' });
     setNow(T);
     const r = await api(method, path(id), {
       as: user.session,
@@ -155,11 +149,16 @@ describe('using an expired link', () => {
 describe('using an archived link', () => {
   it.each([
     { label: 'an open', method: 'GET', path: (id: string) => `/api/v1/links/${id}/open`, uses: 4 },
-    { label: 'a read', method: 'GET', path: (id: string) => `/api/v1/links/${id}/reader`, uses: 4 },
     {
-      label: 'a snapshot view',
+      label: 'a read',
       method: 'GET',
       path: (id: string) => `/api/v1/links/${id}/snapshot`,
+      uses: 4,
+    },
+    {
+      label: 'a read of its text',
+      method: 'GET',
+      path: (id: string) => `/api/v1/links/${id}/text`,
       uses: 4,
     },
     { label: 'a re-paste', method: 'POST', path: () => '/api/v1/links', uses: 3 },
@@ -168,16 +167,10 @@ describe('using an archived link', () => {
     const url = 'https://kept.example';
     const [id = ''] = await seedLinks(user, [{ url, state: 'archived', useCount: 3 }]);
     const archivedAt = '2026-01-01T00:00:00.000Z';
-    await env.DB.prepare(
-      "UPDATE links SET archived_at = ?, content_kind = 'html', has_snapshot = 1 WHERE id = ?",
-    )
+    await env.DB.prepare('UPDATE links SET archived_at = ? WHERE id = ?')
       .bind(archivedAt, id)
       .run();
-    await env.SNAPSHOTS.put(snapshotKey(user.id, id), '<html><body>kept</body></html>');
-    await env.SNAPSHOTS.put(
-      readerKey(user.id, id),
-      JSON.stringify({ title: 'T', byline: null, html: '<p>kept</p>' }),
-    );
+    await storeSnapshot(user, id, { kind: 'html' });
     const t = '2026-06-01T08:00:00.000Z';
     setNow(t);
     const r = await api(method, path(id), {

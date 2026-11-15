@@ -10,7 +10,9 @@
  * https://example.com/, a paper at https://example.net/paper, two pages each
  * at https://leaving.example/ and https://backup.example/, and at
  * https://code.example/<slug> a page whose
- * text holds 'marker-<slug>'. It logs every request, and can be taken
+ * text holds 'marker-<slug>', and at https://illustrated.example/article an
+ * article with three images: two served (one on its own host, one on
+ * https://img.example/) and one that answers 404. It logs every request, and can be taken
  * offline, after which it refuses every connection. POST /__page sets the
  * page one address serves, so a test can change it between two fetches.
  *
@@ -58,6 +60,32 @@ function articlePage(title: string, text: string): string {
 }
 
 const HTML = 'text/html; charset=utf-8';
+
+/** A PNG of one red pixel, which a browser draws. */
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** The headline and first paragraph of the illustrated article. */
+export const ILLUSTRATED_TITLE = 'An Illustrated Article';
+const illustrated = `<!doctype html>
+<html lang="en">
+<head><title>${ILLUSTRATED_TITLE}</title></head>
+<body>
+  <nav>Home · About</nav>
+  <article>
+    <h1>${ILLUSTRATED_TITLE}</h1>
+    <p>The first paragraph of the illustrated article explains what the figures below show.</p>
+    <figure><img src="/img/one.png" alt="Figure one"><figcaption>The first figure.</figcaption></figure>
+    <p>${'A paragraph between the figures, so that the article reads as one. '.repeat(4)}</p>
+    <figure><img src="https://img.example/two.png" alt="Figure two"></figure>
+    <figure><img src="https://img.example/missing.png" alt="Figure three"></figure>
+    <p>${'A closing paragraph with more words about the figures and what they mean. '.repeat(4)}</p>
+  </article>
+  <aside>Sidebar</aside>
+</body>
+</html>`;
 
 const pages: Record<string, { type: string; body: string | Uint8Array }> = {
   'https://news.example/article': { type: HTML, body: article },
@@ -137,6 +165,9 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
     ),
   },
   'https://papers.example/on-links.pdf': { type: 'application/pdf', body: paperPdf('On Links') },
+  'https://illustrated.example/article': { type: HTML, body: illustrated },
+  'https://illustrated.example/img/one.png': { type: 'image/png', body: PIXEL },
+  'https://img.example/two.png': { type: 'image/png', body: PIXEL },
 };
 
 const log: { target: string; at: number }[] = [];

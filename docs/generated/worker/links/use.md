@@ -26,9 +26,43 @@ Where a page of a link's history ends: the last event's time, source and id.
 
 ### LinkEvent
 
-> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
+> **LinkEvent** = \{ `at`: `string`; `kind`: `"use"`; \} \| \{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"` \| `"snapshot"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
 
 One event in a link's history: a use, or a fetch attempt with its outcome.
+
+#### Union Members
+
+##### Type Literal
+
+\{ `at`: `string`; `kind`: `"use"`; \}
+
+***
+
+##### Type Literal
+
+\{ `at`: `string`; `http_status`: `number` \| `null`; `kind`: `"fetch"` \| `"snapshot"`; `outcome`: `"ok"` \| `"failed"`; `reason`: `string` \| `null`; \}
+
+###### at
+
+> **at**: `string`
+
+###### http\_status
+
+> **http\_status**: `number` \| `null`
+
+###### kind
+
+> **kind**: `"fetch"` \| `"snapshot"`
+
+A fetch of the page, or a snapshot taken of it.
+
+###### outcome
+
+> **outcome**: `"ok"` \| `"failed"`
+
+###### reason
+
+> **reason**: `string` \| `null`
 
 ## Functions
 

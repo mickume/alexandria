@@ -9,8 +9,8 @@ One maintenance script runs from a checkout against a deployed site.
 ## Rebuilding a library: `npm run rebuild`
 
 `scripts/rebuild.ts` rebuilds everything Alexandria derives from the links of
-one library: each page is fetched again (its snapshot, reader text and fetched
-metadata), enriched again (summary, topic and tags) and indexed again (its
+one library: each page is fetched again (its article text and fetched
+metadata; a snapshot is never replaced by a refresh), enriched again (summary, topic and tags) and indexed again (its
 passages and their vectors for search by meaning). The links themselves are
 kept as they are: their uses and points, pins, workspaces, notes, archive and
 every field the owner edited by hand.
@@ -49,7 +49,7 @@ The steps:
    to enrich every such link).
 1. **Refresh** (`POST /api/v1/links/{id}/refresh`) every active, unreachable
    and archived link, at the chosen pace. A successful refresh replaces the
-   snapshot and reader text and enriches the link again, and the new reader
+   article text (never the snapshot) and enriches the link again, and the new
    text makes the link stale for the index, so the Worker does the rest by
    itself; an archived link stays archived. Each refresh enriches at once,
    outside the background throttle, with the owner's AI key, so the pace is

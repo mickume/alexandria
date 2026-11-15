@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { FakeOrigin } from '../test/origin';
-import { addAndFetch, api, env, runEveryMinute, seedLinks, setNow, signIn } from '../test/helpers';
+import {
+  addAndFetch,
+  api,
+  deliverFetches,
+  env,
+  runEveryMinute,
+  seedLinks,
+  setNow,
+  signIn,
+} from '../test/helpers';
 import { blogArticle } from './fixtures/pages';
 import { applyTitleRules, cleanTitle, compileTitleRules } from './titles';
 
@@ -87,7 +96,7 @@ describe('cleaning a title', () => {
 });
 
 describe('a fetched page', () => {
-  it('stores its title and serves its reader title cleaned by the rules', async () => {
+  it('stores its title and serves its snapshot title cleaned by the rules', async () => {
     const page = blogArticle
       .replace(/<title>[^<]*<\/title>/, `<title>${REPO_TITLE}</title>`)
       .replace('content="Why We Keep Links"', `content="${REPO_TITLE}"`);
@@ -96,8 +105,9 @@ describe('a fetched page', () => {
     const { id } = await addAndFetch(user, 'https://github.com/owner/repo');
     const link = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
     expect(link.title).toBe('repo: A tool for keeping links');
-    const reader = (await api('GET', `/api/v1/links/${id}/reader`, { as: user.session })).json;
-    expect(reader.title).toBe('repo: A tool for keeping links');
+    await deliverFetches([{ user_id: user.id, link_id: id, refresh: true, snapshot: true }]);
+    const read = (await api('GET', `/api/v1/links/${id}/snapshot`, { as: user.session })).json;
+    expect(read.title).toBe('repo: A tool for keeping links');
   });
 });
 

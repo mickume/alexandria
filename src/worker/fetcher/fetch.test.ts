@@ -181,7 +181,7 @@ async function objectsUnder(prefix: string): Promise<string[]> {
 }
 
 describe('storing a fetched web page', () => {
-  it('stores the metadata, the snapshot and the reader view, and makes the link active', async () => {
+  it('stores the metadata and the article text, and no copy of the page', async () => {
     new FakeOrigin()
       .redirect('https://news.example/a', 'https://news.example/articles/a')
       .page('https://news.example/articles/a', blogArticle);
@@ -197,11 +197,11 @@ describe('storing a fetched web page', () => {
       favicon_url: 'https://news.example/static/icon.png',
       language: 'en',
       content_kind: 'html',
-      has_snapshot: true,
+      has_snapshot: false,
+      snapshot_at: null,
       fetched_at: expect.any(String),
     });
-    const snapshot = await env.SNAPSHOTS.get(`${prefix}snapshot`);
-    expect(await snapshot?.text()).toBe(blogArticle);
+    expect(await objectsUnder(prefix)).toEqual([]);
     const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
       .bind(id)
       .first<{ text: string }>();
@@ -217,8 +217,7 @@ describe('storing a fetched web page', () => {
     const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
     expect(l.state).toBe('active');
     expect(l.notes).toContain('truncated');
-    const head = await env.SNAPSHOTS.head(`${prefix}snapshot`);
-    expect(head?.size).toBe(5_242_880);
+    expect(await objectsUnder(prefix)).toEqual([]);
   });
 
   it.each([
@@ -247,7 +246,7 @@ describe('storing a fetched web page', () => {
   it.each([
     { label: 'its Content-Type', type: 'text/html; charset=windows-1252', meta: '' },
     { label: 'its <meta charset>', type: 'text/html', meta: '<meta charset="windows-1252">' },
-  ])('reads a page in the encoding $label declares, and stores it as UTF-8', async (c) => {
+  ])('reads a page in the encoding $label declares', async (c) => {
     // "Café" in windows-1252: é is the single byte 0xE9.
     const bytes = Uint8Array.from(
       `<!doctype html><html><head>${c.meta}<title>Caf\u00e9</title></head><body><p>Hi</p></body></html>`,
@@ -258,11 +257,9 @@ describe('storing a fetched web page', () => {
       () => new Response(bytes, { headers: { 'Content-Type': c.type } }),
     );
     const user = await signIn();
-    const { id, prefix } = await addAndFetch(user, 'https://latin.example/');
+    const { id } = await addAndFetch(user, 'https://latin.example/');
     const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
     expect(l.title).toBe('Caf\u00e9');
-    const snapshot = await env.SNAPSHOTS.get(`${prefix}snapshot`);
-    expect(await snapshot?.text()).toContain('<title>Caf\u00e9</title>');
   });
 
   it('keeps a page nested too deep to read, with a note and without retrying', async () => {
@@ -275,11 +272,10 @@ describe('storing a fetched web page', () => {
     expect(l).toMatchObject({
       state: 'active',
       title: 'Deep',
-      has_snapshot: true,
       enrichment_status: 'skipped',
     });
     expect(l.notes).toContain('page could not be read');
-    expect(await objectsUnder(prefix)).toEqual([`${prefix}snapshot`]);
+    expect(await objectsUnder(prefix)).toEqual([]);
   });
 
   it.each(['before delivery', 'while the origin holds the response'])(
@@ -311,9 +307,9 @@ describe('storing a fetched web page', () => {
     },
   );
 
-  it.each(['the snapshot write', 'the database write'])(
+  it.each(['the database write'])(
     'leaves the link as it was and retries when %s fails',
-    async (failing) => {
+    async () => {
       new FakeOrigin().page('https://flaky.example/', blogArticle);
       const user = await signIn();
       const sent = recordFetchQueue();
@@ -323,13 +319,9 @@ describe('storing a fetched web page', () => {
       });
       const id: string = r.json.link.id;
       const before = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
-      const bindings: Partial<Cloudflare.Env> =
-        failing === 'the snapshot write'
-          ? { SNAPSHOTS: failingBucket(env.SNAPSHOTS) }
-          : { DB: failingDatabase(env.DB) };
       const { acked, retried } = await deliverFetches(
         sent.map((m) => m.body),
-        bindings,
+        { DB: failingDatabase(env.DB) },
       );
       expect(retried).toEqual(['m0']);
       expect(acked).toEqual([]);
@@ -340,24 +332,6 @@ describe('storing a fetched web page', () => {
     },
   );
 });
-
-/** A bucket whose second put fails, after the first was written. */
-function failingBucket(bucket: R2Bucket): R2Bucket {
-  let puts = 0;
-  return new Proxy(bucket, {
-    get(target, prop) {
-      if (prop === 'put') {
-        return (...args: Parameters<R2Bucket['put']>) => {
-          puts += 1;
-          if (puts > 1) throw new Error('R2 put failed');
-          return target.put(...args);
-        };
-      }
-      const value = Reflect.get(target, prop);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
-}
 
 /** A database whose batches fail, as an unavailable D1 would. */
 function failingDatabase(db: D1Database): D1Database {
@@ -566,30 +540,20 @@ describe('a fetch that fails for a link changed meanwhile', () => {
     expect(await count('link_events', "link_id = ? AND outcome = 'failed'", id)).toBe(1);
   });
 
-  it('keeps the copy a link has when the write of a refresh fails', async () => {
+  it('keeps the article text a link has when the write of a refresh fails', async () => {
     const url = 'https://kept.example/';
     const origin = new FakeOrigin().page(url, blogArticle);
     const user = await signIn();
-    const { id, prefix } = await addAndFetch(user, url);
+    const { id } = await addAndFetch(user, url);
     origin.page(url, blogArticle.replace('The first reason', 'A newer reason'));
     const { retried } = await deliverFetches([{ user_id: user.id, link_id: id, refresh: true }], {
       DB: failingDatabase(env.DB),
     });
     expect(retried).toEqual(['m0']);
-    expect((await objectsUnder(prefix)).sort()).toEqual([
-      `${prefix}reader.json`,
-      `${prefix}snapshot`,
-    ]);
-  });
-
-  it('drops the reader view of an earlier fetch when the page has no article any more', async () => {
-    const url = 'https://thinned.example/';
-    const origin = new FakeOrigin().page(url, blogArticle);
-    const user = await signIn();
-    const { id, prefix } = await addAndFetch(user, url);
-    origin.page(url, ARTICLE);
-    await deliverFetches([{ user_id: user.id, link_id: id, refresh: true }]);
-    expect(await objectsUnder(prefix)).toEqual([`${prefix}snapshot`]);
+    const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
+      .bind(id)
+      .first<{ text: string }>();
+    expect(text?.text).toContain('The first reason');
   });
 });
 
@@ -655,8 +619,10 @@ describe('refreshing a link', () => {
       await deliverFetches([sent[0]!.body]);
       const l = (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
       expect(l).toMatchObject({ state: 'active', state_reason: null, fetched_at: t });
-      const snapshot = await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`);
-      expect(await snapshot?.text()).toBe(changed);
+      const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
+        .bind(id)
+        .first<{ text: string }>();
+      expect(text?.text).toContain('A newer reason');
     },
   );
 
@@ -681,7 +647,7 @@ describe('refreshing a link', () => {
     );
   });
 
-  it('takes a new copy of an archived link, enriches it again and keeps it archived', async () => {
+  it('takes a snapshot of an archived link without one, enriches it again and keeps it archived', async () => {
     const url = 'https://kept.example/';
     const origin = new FakeOrigin().page(url, blogArticle);
     const user = await signIn();
@@ -703,9 +669,9 @@ describe('refreshing a link', () => {
       title: 'My title',
       enrichment_status: 'no_key',
     });
-    expect(l.has_snapshot).toBe(true);
-    const snapshot = await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`);
-    expect(await snapshot?.text()).toBe(changed);
+    expect(l).toMatchObject({ has_snapshot: true, snapshot_at: t, snapshot_requested_at: null });
+    const read = await api('GET', `/api/v1/links/${id}/snapshot`, { as: user.session });
+    expect(read.json.html).toContain('A newer reason');
     const text = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ?')
       .bind(id)
       .first<{ text: string }>();
@@ -730,17 +696,20 @@ describe('refreshing a link', () => {
       }
       await deliverFetches([sent[0]!.body]);
       const after = await env.DB.prepare('SELECT * FROM links WHERE id = ?').bind(id).first();
-      expect({ ...after, refresh_requested_at: null, updated_at: null }).toEqual({
-        ...before,
+      // A failed snapshot leaves its reason; nothing else the link had changes.
+      const unchanged = {
         refresh_requested_at: null,
         updated_at: null,
+        snapshot_requested_at: null,
+      };
+      expect({ ...after, ...unchanged, snapshot_error: null }).toEqual({
+        ...before,
+        ...unchanged,
+        snapshot_error: null,
       });
-      expect(await (await env.SNAPSHOTS.get(`u/${user.id}/l/${id}/snapshot`))?.text()).toBe(
-        blogArticle,
-      );
       const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
       expect(history.json.items[0]).toMatchObject({
-        kind: 'fetch',
+        kind: label === 'an archived link' ? 'snapshot' : 'fetch',
         outcome: 'failed',
         reason: 'HTTP 500',
       });

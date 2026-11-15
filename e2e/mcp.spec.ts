@@ -160,6 +160,36 @@ test.describe.serial('an agent with the MCP server', () => {
     await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
   });
 
+  test('takes a snapshot with take_snapshot, and the owner reads it', async ({ page }) => {
+    await signIn(page);
+    const origin = new URL(page.url()).origin;
+    const [id = ''] = await addLinkIds(page, ['https://code.example/snapshot-by-agent']);
+    await expect
+      .poll(
+        async () =>
+          ((await (await page.request.get(`/api/v1/links/${id}`)).json()) as { state: string })
+            .state,
+        { timeout: 30_000 },
+      )
+      .toBe('active');
+    const secret = await createToken(page, 'snapshot agent');
+    const client = await agent(page, secret);
+    const taken = await call(client, 'take_snapshot', { link_id: id });
+    await client.close();
+    expect(taken.isError).toBeFalsy();
+    expect(taken.structuredContent).toEqual({ status: 'queued' });
+
+    await page.goto('/');
+    const card = page.locator('article', { hasText: 'code.example' }).first();
+    await expect(card.getByRole('link', { name: 'Read', exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    await card.getByRole('link', { name: 'Read', exact: true }).click();
+    await expect(page.getByText('marker-snapshot-by-agent')).toBeVisible();
+
+    await page.request.delete(`/api/v1/links/${id}`, { headers: { Origin: origin } });
+  });
+
   test('files a new link into the owner’s workspace and pins it', async ({ page }) => {
     await signIn(page);
     await page.goto('/workspaces');

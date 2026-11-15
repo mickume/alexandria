@@ -242,6 +242,47 @@ A link to the site itself, through the open route so the visit counts as a use, 
 
 ***
 
+### SnapshotButton()
+
+> **SnapshotButton**(`__namedParameters`): `Element`
+
+Take snapshot (Retake snapshot, when the link has one): asks the API to
+fetch the page again and keep its article with its images, and says in a
+toast that it is being taken, or why it was refused. `onRequested` hears of
+the link as it is while the snapshot is taken.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+[`ButtonLook`](CheckButton.md#buttonlook) & `object`
+
+#### Returns
+
+`Element`
+
+***
+
+### SnapshotStatus()
+
+> **SnapshotStatus**(`__namedParameters`): `Element` \| `null`
+
+That a snapshot is being taken, or why the last one failed.
+
+#### Parameters
+
+##### \_\_namedParameters
+
+###### link
+
+[`Link`](../api.md#link-1)
+
+#### Returns
+
+`Element` \| `null`
+
+***
+
 ### TagChips()
 
 > **TagChips**(`__namedParameters`): `Element`
@@ -284,6 +325,29 @@ with `current`, the last name is the page's own topic and opens nothing.
 #### Returns
 
 `Element`
+
+***
+
+### useSnapshotWatch()
+
+> **useSnapshotWatch**(`link`, `onChanged?`): `void`
+
+While a snapshot of `link` is being taken, asks for the link every 5
+seconds and hands it to `onChanged` once the snapshot is stored or failed.
+
+#### Parameters
+
+##### link
+
+[`Link`](../api.md#link-1)
+
+##### onChanged?
+
+(`link`) => `void`
+
+#### Returns
+
+`void`
 
 ***
 

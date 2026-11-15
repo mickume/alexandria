@@ -8,9 +8,18 @@ import { indexReaderTextStatement } from '../search/search';
 import { decodeHtml, fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
 import { extractMetadata, parsePage, type PageMetadata } from './html';
+import { missingImagesNote, saveImages, type StoredObject } from './images';
 import { readPdf } from './pdf';
 import { capText, extractReader, type ReaderView } from './reader';
-import { deleteLinkObjects, readerKey, snapshotKey, type StoredReader } from './snapshots';
+import {
+  ARTICLE_OBJECT,
+  PDF_OBJECT,
+  deleteFolder,
+  deleteLinkObjects,
+  imageAddressPrefix,
+  snapshotFolder,
+  type StoredArticle,
+} from './snapshots';
 import { cleanTitle } from './titles';
 
 /** Failed attempts of a link's first fetch before it is given up as unreachable. */
@@ -18,7 +27,12 @@ export const MAX_ATTEMPTS = 3;
 /** The delays before the second and the third attempt. */
 const RETRY_DELAYS_SECONDS = [600, 7200];
 
-/** The statement that records one fetch attempt in the link's history. */
+/** The reason a snapshot of a page without an article fails. */
+export const NO_ARTICLE_REASON = 'no readable content';
+/** The note on, and the reason a snapshot fails for, a PDF too large to store. */
+export const PDF_TOO_LARGE = 'PDF too large to store (50 MB limit)';
+
+/** The statement that records one fetch or snapshot attempt in the link's history. */
 function eventStatement(
   env: Env,
   link: LinkRow,
@@ -26,11 +40,29 @@ function eventStatement(
   outcome: 'ok' | 'failed',
   httpStatus: number | null,
   reason: string | null,
+  kind: 'fetch' | 'snapshot' = 'fetch',
 ): D1PreparedStatement {
   return env.DB.prepare(
     `INSERT INTO link_events (link_id, user_id, kind, at, outcome, http_status, reason)
-     SELECT id, user_id, 'fetch', ?1, ?2, ?3, ?4 FROM links WHERE id = ?5 AND user_id = ?6`,
-  ).bind(at, outcome, httpStatus, reason, link.id, link.user_id);
+     SELECT id, user_id, ?7, ?1, ?2, ?3, ?4 FROM links WHERE id = ?5 AND user_id = ?6`,
+  ).bind(at, outcome, httpStatus, reason, link.id, link.user_id, kind);
+}
+
+/** The statements that end a snapshot asked for that failed: the reason on the link and in its history. */
+function snapshotFailedStatements(
+  env: Env,
+  link: LinkRow,
+  at: string,
+  reason: string,
+  httpStatus: number | null = null,
+): D1PreparedStatement[] {
+  return [
+    env.DB.prepare(
+      `UPDATE links SET snapshot_requested_at = NULL, snapshot_error = ?1, updated_at = ?2
+       WHERE id = ?3 AND user_id = ?4`,
+    ).bind(reason, at, link.id, link.user_id),
+    eventStatement(env, link, at, 'failed', httpStatus, reason, 'snapshot'),
+  ];
 }
 
 /**
@@ -39,7 +71,8 @@ function eventStatement(
  * third failure, or at once when trying again will not help, it is
  * unreachable. Its title, unless edited, is read from its address, which
  * says more than the host it shows until then. Any other link (a refresh)
- * only gets the event: what it had stays.
+ * only gets the event: what it had stays. A snapshot that could not fetch
+ * its page changes nothing but the snapshot's own state and history.
  */
 async function recordFailure(
   env: Env,
@@ -48,6 +81,12 @@ async function recordFailure(
   failure: FetchFailed,
 ): Promise<void> {
   const at = now().toISOString();
+  if (message.snapshot) {
+    await env.DB.batch(
+      snapshotFailedStatements(env, link, at, failure.reason, failure.status ?? null),
+    );
+    return;
+  }
   const event = eventStatement(env, link, at, 'failed', failure.status ?? null, failure.reason);
   if (message.refresh || link.state !== 'pending') {
     // The link keeps what it had; only its history and its change time move.
@@ -90,13 +129,6 @@ async function recordFailure(
   }
 }
 
-/** An object a fetch writes to SNAPSHOTS. */
-interface StoredObject {
-  key: string;
-  body: Uint8Array | string;
-  contentType: string;
-}
-
 /** What a successful fetch stores on the link's row. */
 interface Fetched {
   title: string;
@@ -104,12 +136,27 @@ interface Fetched {
   faviconUrl: string | null;
   language: string | null;
   contentKind: 'html' | 'pdf' | 'other';
-  hasSnapshot: boolean;
   readerEmpty: boolean;
   notes: string[];
-  /** The reader-view text to store, or null to store none. */
+  /** The article text to store, or null to store none. */
   text: string | null;
 }
+
+/** A snapshot to store with the fetch: its folder and the objects in it. */
+interface NewSnapshot {
+  id: string;
+  kind: 'html' | 'pdf';
+  objects: StoredObject[];
+  /** Set when the owner (or archiving) asked for it: it replaces any snapshot. */
+  requested: boolean;
+}
+
+/** What the fetch does about the link's snapshot. */
+type SnapshotOutcome =
+  | { store: NewSnapshot }
+  | { failed: string }
+  /** Nothing: a fetch that takes no snapshot leaves the stored one alone. */
+  | null;
 
 /** The last path segment of `url`, decoded, or undefined when the path has none. */
 function lastSegment(url: URL): string | undefined {
@@ -151,27 +198,57 @@ export function titleFromUrl(url: string): string {
 }
 
 /**
- * Writes a successful fetch: the objects first, then the link's row and its
- * text in one D1 batch. The title is cleaned by the title rules. The link becomes active, unless it is archived, which
- * it stays: the refresh that archiving queues must not undo it. Returns false when the link was deleted meanwhile, in
- * which case nothing is left behind. When a write fails, the objects this
- * attempt wrote are removed and the error is thrown, leaving the row as it was.
+ * The statements that store a new snapshot: the link points at its folder,
+ * unless it is not asked for and the link has a snapshot already (a PDF's
+ * refresh). Returns the id of the snapshot in place after the write.
+ */
+function snapshotStatements(
+  env: Env,
+  link: LinkRow,
+  at: string,
+  snapshot: NewSnapshot,
+): D1PreparedStatement[] {
+  const statements = [
+    env.DB.prepare(
+      `UPDATE links SET snapshot_id = ?1, snapshot_kind = ?2, snapshot_at = ?3, has_snapshot = 1,
+         snapshot_requested_at = CASE WHEN ?4 THEN NULL ELSE snapshot_requested_at END,
+         snapshot_error = CASE WHEN ?4 THEN NULL ELSE snapshot_error END,
+         updated_at = ?3
+       WHERE id = ?5 AND user_id = ?6 AND (?4 OR snapshot_at IS NULL)
+       RETURNING snapshot_id`,
+    ).bind(snapshot.id, snapshot.kind, at, snapshot.requested ? 1 : 0, link.id, link.user_id),
+  ];
+  if (snapshot.requested) {
+    statements.push(eventStatement(env, link, at, 'ok', null, null, 'snapshot'));
+  }
+  return statements;
+}
+
+/**
+ * Writes a successful fetch: a new snapshot's objects first, then the link's
+ * row, its text and its snapshot in one D1 batch. The title is cleaned by the
+ * title rules. The link becomes active, unless it is archived, which it stays.
+ * Returns false when the link was deleted meanwhile, in which case nothing is
+ * left behind. A new snapshot replaces the old one only once the batch has
+ * pointed the link at it; when a write fails, the new snapshot's objects are
+ * removed and the error is thrown, leaving the row and the old snapshot as
+ * they were.
  */
 async function writeFetched(
   env: Env,
   link: LinkRow,
   result: FetchOk,
   fetched: Fetched,
-  objects: StoredObject[],
+  snapshot: SnapshotOutcome,
 ): Promise<boolean> {
-  const written: string[] = [];
+  const store = snapshot && 'store' in snapshot ? snapshot.store : null;
+  const folder = store ? snapshotFolder(link.user_id, link.id, store.id) : null;
   try {
-    for (const o of objects) {
+    for (const o of store?.objects ?? []) {
       await env.SNAPSHOTS.put(o.key, o.body, { httpMetadata: { contentType: o.contentType } });
-      written.push(o.key);
     }
     const at = now().toISOString();
-    const [update] = await env.DB.batch([
+    const statements = [
       env.DB.prepare(
         `UPDATE links SET state = CASE WHEN state = 'archived' THEN 'archived' ELSE 'active' END,
            state_reason = NULL, fetch_attempts = 0,
@@ -179,8 +256,8 @@ async function writeFetched(
                    THEN title ELSE ?1 END,
            final_url = ?2,
            http_status = ?3, description = ?4, favicon_url = ?5, language = ?6, fetched_at = ?7,
-           content_kind = ?8, has_snapshot = ?9, reader_empty = ?10, notes = ?11, updated_at = ?7
-         WHERE id = ?12 AND user_id = ?13`,
+           content_kind = ?8, reader_empty = ?9, notes = ?10, updated_at = ?7
+         WHERE id = ?11 AND user_id = ?12`,
       ).bind(
         cleanTitle(fetched.title, result.finalUrl),
         result.finalUrl,
@@ -190,7 +267,6 @@ async function writeFetched(
         fetched.language,
         at,
         fetched.contentKind,
-        fetched.hasSnapshot ? 1 : 0,
         fetched.readerEmpty ? 1 : 0,
         JSON.stringify(fetched.notes),
         link.id,
@@ -206,38 +282,87 @@ async function writeFetched(
       ).bind(fetched.text, link.id, link.user_id),
       indexReaderTextStatement(env.DB, link.id, fetched.text),
       eventStatement(env, link, at, 'ok', result.status, null),
-    ]);
-    if (!update?.meta.changes) {
+    ];
+    if (store) statements.push(...snapshotStatements(env, link, at, store));
+    else if (snapshot && 'failed' in snapshot) {
+      statements.push(...snapshotFailedStatements(env, link, at, snapshot.failed));
+    }
+    const results = await env.DB.batch<{ snapshot_id: string }>(statements);
+    if (!results[0]?.meta.changes) {
       await deleteLinkObjects(env, link.user_id, link.id);
       return false;
     }
-    if (!fetched.hasSnapshot) {
-      // A fetch that keeps no snapshot replaces whatever an earlier fetch stored.
-      await deleteLinkObjects(env, link.user_id, link.id);
-    } else if (fetched.readerEmpty) {
-      // Nor does the reader view of an earlier fetch outlive a page without one.
-      await env.SNAPSHOTS.delete(readerKey(link.user_id, link.id));
+    if (store && folder) {
+      const applied = results[5]?.results[0]?.snapshot_id === store.id;
+      // The new snapshot replaces every object stored before it; one not applied is removed.
+      if (applied) await deleteLinkObjects(env, link.user_id, link.id, folder);
+      else await deleteFolder(env, folder);
     }
     return true;
   } catch (err) {
-    // A link that had a copy keeps what is there: the objects written took the
-    // place of that copy, and deleting them would leave it with none.
-    if (written.length > 0 && !link.has_snapshot) {
-      await env.SNAPSHOTS.delete(written).catch(() => undefined);
-    }
+    if (folder) await deleteFolder(env, folder).catch(() => undefined);
     throw err;
   }
 }
 
-/** The note on a page stored without metadata or reader view, because it could not be parsed. */
+/** The note on a page stored without metadata or article text, because it could not be parsed. */
 export const UNREADABLE_NOTE = 'page could not be read';
 
-/** Stores a fetched web page: its metadata, the snapshot and the reader view. */
-async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint8Array }) {
-  const { html, utf8 } = decodeHtml(result.body, result.charset);
+/** A new snapshot's id and folder. */
+function newSnapshotFolder(link: LinkRow): { id: string; folder: string } {
+  const id = crypto.randomUUID();
+  return { id, folder: snapshotFolder(link.user_id, link.id, id) };
+}
+
+/**
+ * The snapshot of a web page: its article, with the article's images stored;
+ * a failure when the page has no article.
+ */
+async function articleSnapshot(
+  env: Env,
+  link: LinkRow,
+  reader: ReaderView,
+): Promise<SnapshotOutcome> {
+  if (reader.empty || reader.html === null) return { failed: NO_ARTICLE_REASON };
+  const { id, folder } = newSnapshotFolder(link);
+  const saved = await saveImages(env, reader.html, {
+    folder,
+    addressPrefix: imageAddressPrefix(link.id),
+    snapshotId: id,
+  });
+  const article: StoredArticle = {
+    title: reader.title,
+    byline: reader.byline,
+    html: saved.html,
+    notes: saved.missing > 0 ? [missingImagesNote(saved.missing)] : [],
+  };
+  return {
+    store: {
+      id,
+      kind: 'html',
+      requested: true,
+      objects: [
+        ...saved.objects,
+        {
+          key: `${folder}${ARTICLE_OBJECT}`,
+          body: JSON.stringify(article),
+          contentType: 'application/json',
+        },
+      ],
+    },
+  };
+}
+
+/** Stores a fetched web page: its metadata and its article text, and the snapshot when one is asked for. */
+async function storeHtml(
+  env: Env,
+  link: LinkRow,
+  result: FetchOk & { body: Uint8Array },
+  takeSnapshot: boolean,
+) {
+  const { html } = decodeHtml(result.body, result.charset);
   // A page that cannot be parsed, or is nested too deep to read, is still a
-  // page: it keeps its snapshot, with a note, and trying again would end the
-  // same way.
+  // page: it is stored with a note, and trying again would end the same way.
   let meta: PageMetadata = {
     title: titleFromUrl(result.finalUrl),
     description: null,
@@ -255,22 +380,7 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
     console.error('a fetched page could not be read', err);
     unreadable = true;
   }
-  const stored: StoredReader = { title: reader.title, byline: reader.byline, html: reader.html };
-  const objects: StoredObject[] = [
-    {
-      key: snapshotKey(link.user_id, link.id),
-      // Stored as UTF-8, as it is served: the bytes when they are UTF-8 already.
-      body: utf8 ? result.body : html,
-      contentType: 'text/html; charset=utf-8',
-    },
-  ];
-  if (!reader.empty) {
-    objects.push({
-      key: readerKey(link.user_id, link.id),
-      body: JSON.stringify(stored),
-      contentType: 'application/json',
-    });
-  }
+  const snapshot = takeSnapshot ? await articleSnapshot(env, link, reader) : null;
   return writeFetched(
     env,
     link,
@@ -281,7 +391,6 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
       faviconUrl: meta.faviconUrl,
       language: meta.language,
       contentKind: 'html',
-      hasSnapshot: true,
       readerEmpty: reader.empty,
       notes: [
         ...(result.via === 'firecrawl' ? [FIRECRAWL_NOTE] : []),
@@ -290,12 +399,13 @@ async function storeHtml(env: Env, link: LinkRow, result: FetchOk & { body: Uint
       ],
       text: reader.empty ? null : capText(reader.text),
     },
-    objects,
+    snapshot,
   );
 }
 
-/** Stores a fetched resource that is neither a web page nor a PDF: no snapshot, a note. */
-function storeOther(env: Env, link: LinkRow, result: FetchOk) {
+/** Stores a fetched resource that is neither a web page nor a PDF: a note, and no snapshot. */
+function storeOther(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: boolean) {
+  const note = `not a web page (${result.contentType || 'unknown type'})`;
   return writeFetched(
     env,
     link,
@@ -306,17 +416,20 @@ function storeOther(env: Env, link: LinkRow, result: FetchOk) {
       faviconUrl: null,
       language: null,
       contentKind: 'other',
-      hasSnapshot: false,
       readerEmpty: true,
-      notes: [`not a web page (${result.contentType || 'unknown type'})`],
+      notes: [note],
       text: null,
     },
-    [],
+    takeSnapshot ? { failed: note } : null,
   );
 }
 
-/** Stores a fetched PDF whole, with its title and text; a PDF over 50 MB is not stored. */
-async function storePdf(env: Env, link: LinkRow, result: FetchOk) {
+/**
+ * Stores a fetched PDF's title and text. The file is the link's snapshot: the
+ * first successful fetch stores it, and later only a snapshot asked for
+ * replaces it. A PDF over 50 MB is not stored.
+ */
+async function storePdf(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: boolean) {
   const name = lastSegmentOrHost(result.finalUrl);
   const base = { description: null, faviconUrl: null, language: null, contentKind: 'pdf' as const };
   if (!result.body) {
@@ -327,15 +440,28 @@ async function storePdf(env: Env, link: LinkRow, result: FetchOk) {
       {
         ...base,
         title: name,
-        hasSnapshot: false,
         readerEmpty: true,
-        notes: ['PDF too large to store (50 MB limit)'],
+        notes: [PDF_TOO_LARGE],
         text: null,
       },
-      [],
+      takeSnapshot ? { failed: PDF_TOO_LARGE } : null,
     );
   }
   const { title, text } = await readPdf(result.body);
+  let snapshot: SnapshotOutcome = null;
+  if (takeSnapshot || !link.has_snapshot) {
+    const { id, folder } = newSnapshotFolder(link);
+    snapshot = {
+      store: {
+        id,
+        kind: 'pdf',
+        requested: takeSnapshot,
+        objects: [
+          { key: `${folder}${PDF_OBJECT}`, body: result.body, contentType: 'application/pdf' },
+        ],
+      },
+    };
+  }
   return writeFetched(
     env,
     link,
@@ -343,33 +469,32 @@ async function storePdf(env: Env, link: LinkRow, result: FetchOk) {
     {
       ...base,
       title: title ?? name,
-      hasSnapshot: true,
       readerEmpty: text === '',
       notes: text === '' ? ['no text in this PDF'] : [],
       text: text === '' ? null : capText(text),
     },
-    [
-      {
-        key: snapshotKey(link.user_id, link.id),
-        body: result.body,
-        contentType: 'application/pdf',
-      },
-    ],
+    snapshot,
   );
 }
 
 /** Stores what a successful fetch returned; false when the link was deleted meanwhile. */
-async function storeResult(env: Env, link: LinkRow, result: FetchOk): Promise<boolean> {
+async function storeResult(
+  env: Env,
+  link: LinkRow,
+  result: FetchOk,
+  takeSnapshot: boolean,
+): Promise<boolean> {
   if (result.kind === 'html' && result.body) {
-    return storeHtml(env, link, { ...result, body: result.body });
+    return storeHtml(env, link, { ...result, body: result.body }, takeSnapshot);
   }
-  if (result.kind === 'pdf') return storePdf(env, link, result);
-  return storeOther(env, link, result);
+  if (result.kind === 'pdf') return storePdf(env, link, result, takeSnapshot);
+  return storeOther(env, link, result, takeSnapshot);
 }
 
 /**
- * Fetches one link's page and stores the result. A page behind a bot check is
- * fetched again through the owner's Firecrawl key, when they stored one.
+ * Fetches one link's page and stores the result, with a snapshot when the
+ * message asks for one. A page behind a bot check is fetched again through
+ * the owner's Firecrawl key, when they stored one.
  */
 async function processFetch(env: Env, message: Message<FetchMessage>): Promise<void> {
   const { user_id, link_id } = message.body;
@@ -390,7 +515,7 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     // Nor is anything written for it when its deletion began during the fetch.
     if (!(await accountActive(env.DB, user_id))) return message.ack();
     if (result.ok) {
-      if (await storeResult(env, link, result)) {
+      if (await storeResult(env, link, result, Boolean(message.body.snapshot))) {
         const stored = await getLink(env.DB, link.user_id, link.id);
         if (stored) await afterFetch(env, stored, parseStrings(stored.notes));
         await queueIndexing(env, link.user_id, [link.id]);

@@ -2,9 +2,37 @@
 
 ## Interfaces
 
-### ReaderResponse
+### SnapshotColumns
 
-The reader view as the API returns it.
+What a link row says about its snapshot.
+
+#### Properties
+
+##### id
+
+> **id**: `string`
+
+##### snapshot\_at
+
+> **snapshot\_at**: `string` \| `null`
+
+##### snapshot\_id
+
+> **snapshot\_id**: `string` \| `null`
+
+##### snapshot\_kind
+
+> **snapshot\_kind**: `string` \| `null`
+
+##### user\_id
+
+> **user\_id**: `string`
+
+***
+
+### SnapshotResponse
+
+The snapshot as the API returns it.
 
 #### Properties
 
@@ -16,17 +44,23 @@ The reader view as the API returns it.
 
 > **content\_kind**: `"html"` \| `"pdf"`
 
-##### empty
+##### file\_url?
 
-> **empty**: `boolean`
+> `optional` **file\_url?**: `string`
+
+A PDF snapshot's file.
 
 ##### html
 
 > **html**: `string` \| `null`
 
-##### text
+##### notes
 
-> **text**: `string`
+> **notes**: `string`[]
+
+##### taken\_at
+
+> **taken\_at**: `string`
 
 ##### title
 
@@ -34,9 +68,9 @@ The reader view as the API returns it.
 
 ***
 
-### StoredReader
+### StoredArticle
 
-The stored reader view of a web page.
+A web page's snapshot as stored: the article, its byline and the notes taken with it.
 
 #### Properties
 
@@ -46,19 +80,81 @@ The stored reader view of a web page.
 
 ##### html
 
-> **html**: `string` \| `null`
+> **html**: `string`
+
+The sanitised article, its stored images at the addresses imageAddressPrefix gives.
+
+##### notes
+
+> **notes**: `string`[]
 
 ##### title
 
 > **title**: `string` \| `null`
 
+## Variables
+
+### ARTICLE\_OBJECT
+
+> `const` **ARTICLE\_OBJECT**: `"article.json"` = `'article.json'`
+
+The name of a web page snapshot's article in its folder.
+
+***
+
+### PDF\_OBJECT
+
+> `const` **PDF\_OBJECT**: `"file.pdf"` = `'file.pdf'`
+
+The name of a PDF snapshot's file in its folder.
+
 ## Functions
+
+### articleKey()
+
+> **articleKey**(`link`): `string` \| `null`
+
+The key of a link's stored article, or null when it has no web page snapshot.
+
+#### Parameters
+
+##### link
+
+[`SnapshotColumns`](#snapshotcolumns)
+
+#### Returns
+
+`string` \| `null`
+
+***
+
+### deleteFolder()
+
+> **deleteFolder**(`env`, `folder`): `Promise`\<`void`\>
+
+Deletes every object under one folder.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### folder
+
+`string`
+
+#### Returns
+
+`Promise`\<`void`\>
+
+***
 
 ### deleteLinkObjects()
 
-> **deleteLinkObjects**(`env`, `userId`, `linkId`): `Promise`\<`void`\>
+> **deleteLinkObjects**(`env`, `userId`, `linkId`, `keep?`): `Promise`\<`void`\>
 
-Deletes every object stored for a link.
+Deletes every object stored for a link, except those whose keys start with `keep`.
 
 #### Parameters
 
@@ -74,9 +170,76 @@ Deletes every object stored for a link.
 
 `string`
 
+##### keep?
+
+`string`
+
 #### Returns
 
 `Promise`\<`void`\>
+
+***
+
+### imageAddressPrefix()
+
+> **imageAddressPrefix**(`linkId`): `string`
+
+The address prefix under which the API serves a link's snapshot images, ending in '/'.
+
+#### Parameters
+
+##### linkId
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
+### imageKey()
+
+> **imageKey**(`link`, `name`): `string` \| `null`
+
+The key of one stored image of a link's snapshot, or null when the name cannot be one.
+
+#### Parameters
+
+##### link
+
+[`SnapshotColumns`](#snapshotcolumns)
+
+##### name
+
+`string`
+
+#### Returns
+
+`string` \| `null`
+
+***
+
+### legacyPdfKey()
+
+> **legacyPdfKey**(`userId`, `linkId`): `string`
+
+The key of a PDF stored before snapshots had folders. Such a PDF stays the
+link's snapshot, read from here, while the link has no snapshot id.
+
+#### Parameters
+
+##### userId
+
+`string`
+
+##### linkId
+
+`string`
+
+#### Returns
+
+`string`
 
 ***
 
@@ -120,21 +283,17 @@ A file name for a stored PDF: the link's title without characters a header canno
 
 ***
 
-### readerKey()
+### pdfKey()
 
-> **readerKey**(`userId`, `linkId`): `string`
+> **pdfKey**(`link`): `string`
 
-The key of a link's reader view: its title, byline and sanitised HTML, as JSON.
+The key of a link's stored PDF snapshot.
 
 #### Parameters
 
-##### userId
+##### link
 
-`string`
-
-##### linkId
-
-`string`
+[`SnapshotColumns`](#snapshotcolumns)
 
 #### Returns
 
@@ -142,11 +301,11 @@ The key of a link's reader view: its title, byline and sanitised HTML, as JSON.
 
 ***
 
-### snapshotKey()
+### snapshotFolder()
 
-> **snapshotKey**(`userId`, `linkId`): `string`
+> **snapshotFolder**(`userId`, `linkId`, `snapshotId`): `string`
 
-The key of a link's snapshot: the raw HTML, or the whole PDF.
+The folder of one snapshot of a link: its article and images, or its PDF.
 
 #### Parameters
 
@@ -155,6 +314,10 @@ The key of a link's snapshot: the raw HTML, or the whole PDF.
 `string`
 
 ##### linkId
+
+`string`
+
+##### snapshotId
 
 `string`
 
@@ -168,7 +331,7 @@ The key of a link's snapshot: the raw HTML, or the whole PDF.
 
 > **storedText**(`env`, `userId`, `linkId`): `Promise`\<`string`\>
 
-A link's stored reader-view text, or '' when it has none.
+A link's stored article text, or '' when it has none.
 
 #### Parameters
 

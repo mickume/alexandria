@@ -138,14 +138,13 @@ describe('fetching through Firecrawl', () => {
       state: 'active',
       title: 'Why We Keep Links Forever',
       final_url: URL_,
-      has_snapshot: true,
       notes: ['fetched through Firecrawl'],
     });
     const [call] = firecrawlCalls('/v2/scrape');
     expect(call?.headers.get('Authorization')).toBe(`Bearer ${KEY}`);
     expect(await call?.json()).toMatchObject({ url: URL_, formats: ['rawHtml'], proxy: 'auto' });
-    const read = await api('GET', `/api/v1/links/${id}/reader`, { as: user.session });
-    expect(read.status).toBe(200);
+    const read = await api('GET', `/api/v1/links/${id}/text`, { as: user.session });
+    expect(read.json.text).toContain('The first reason');
   });
 
   it.each([
