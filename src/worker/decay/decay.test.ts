@@ -13,6 +13,7 @@ import {
   seedLinks,
   setNow,
   signIn,
+  storeSnapshot,
   type ApiOptions,
   type TestUser,
 } from '../test/helpers';
@@ -434,8 +435,10 @@ describe('removal by decay', () => {
         .first<{ n: number }>();
       expect(row?.n, table).toBe(1);
     }
-    for (const id of [gone, kept])
-      await env.SNAPSHOTS.put(`u/${user.id}/l/${id}/snapshot`, '<html>stored</html>');
+    // One removed link's snapshot is in a folder; the other's is a PDF stored before folders.
+    await storeSnapshot(user, gone, { kind: 'html', text: null });
+    await env.SNAPSHOTS.put(`u/${user.id}/l/${gone}/snapshot`, '%PDF-1.4 stored');
+    await storeSnapshot(user, kept, { kind: 'html', text: null });
     await evaluateDecay(env, user.id);
     expect((await api('GET', `/api/v1/links/${gone}`, await as(user))).status).toBe(404);
     expect((await env.SNAPSHOTS.list({ prefix: `u/${user.id}/l/${gone}/` })).objects).toEqual([]);

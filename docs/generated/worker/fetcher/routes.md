@@ -18,19 +18,29 @@ The least time between two refreshes of one link.
 
 ***
 
+### SNAPSHOT\_INTERVAL\_MS
+
+> `const` **SNAPSHOT\_INTERVAL\_MS**: `number`
+
+The least time between two snapshots of one link the owner asks for.
+
+***
+
 ### snapshotRoutes
 
 > `const` **snapshotRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
 
-The stored copies of a user's links, under /api/v1/links: Read and Snapshot.
+The stored copies of a user's links, under /api/v1/links: the snapshot and the text.
 
 ## Functions
 
-### readerBody()
+### snapshotBody()
 
-> **readerBody**(`env`, `link`): `Promise`\<[`ReaderResponse`](snapshots.md#readerresponse)\>
+> **snapshotBody**(`env`, `link`, `base`): `Promise`\<[`SnapshotResponse`](snapshots.md#snapshotresponse) \| `null`\>
 
-The reader view of a link with a stored snapshot, as GET /api/v1/links/{id}/reader serves it.
+The stored snapshot of a link as GET /api/v1/links/{id}/snapshot serves it,
+its image and file addresses under `base` (the link's own address, or the
+export's); null when nothing is stored.
 
 #### Parameters
 
@@ -42,19 +52,21 @@ The reader view of a link with a stored snapshot, as GET /api/v1/links/{id}/read
 
 [`LinkRow`](../links/store.md#linkrow)
 
+##### base
+
+`string`
+
 #### Returns
 
-`Promise`\<[`ReaderResponse`](snapshots.md#readerresponse)\>
+`Promise`\<[`SnapshotResponse`](snapshots.md#snapshotresponse) \| `null`\>
 
 ***
 
-### snapshotResponse()
+### snapshotFileResponse()
 
-> **snapshotResponse**(`env`, `link`, `download`): `Promise`\<`Response` \| `null`\>
+> **snapshotFileResponse**(`env`, `link`, `download`): `Promise`\<`Response` \| `null`\>
 
-The stored snapshot of a link as GET /api/v1/links/{id}/snapshot serves it:
-the HTML sandboxed, or the PDF inline (or as an attachment); null when no
-object is stored.
+A link's stored PDF snapshot, inline or as an attachment; null when none is stored.
 
 #### Parameters
 
@@ -73,3 +85,51 @@ object is stored.
 #### Returns
 
 `Promise`\<`Response` \| `null`\>
+
+***
+
+### snapshotImageResponse()
+
+> **snapshotImageResponse**(`env`, `link`, `name`): `Promise`\<`Response` \| `null`\>
+
+One stored image of a link's snapshot; null when the snapshot holds no image of that name.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### link
+
+[`LinkRow`](../links/store.md#linkrow)
+
+##### name
+
+`string`
+
+#### Returns
+
+`Promise`\<`Response` \| `null`\>
+
+***
+
+### textBody()
+
+> **textBody**(`env`, `link`): `Promise`\<\{ `id`: `string`; `text`: `string`; \} \| `null`\>
+
+A link's stored article text as GET /api/v1/links/{id}/text serves it; null when there is none.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+##### link
+
+[`LinkRow`](../links/store.md#linkrow)
+
+#### Returns
+
+`Promise`\<\{ `id`: `string`; `text`: `string`; \} \| `null`\>

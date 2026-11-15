@@ -603,7 +603,7 @@ The URL of the last response of the latest successful fetch.
 
 > **has\_snapshot**: `boolean`
 
-Whether a snapshot is stored, so that Read and Snapshot can be offered.
+Whether a snapshot is stored, so that Read can be offered.
 
 ###### Inherited from
 
@@ -742,6 +742,46 @@ When an expired link will be removed.
 
 [`LinkView`](../worker/links/store.md#linkview).[`removal_at`](../worker/links/store.md#removal_at)
 
+##### snapshot\_at
+
+> **snapshot\_at**: `string` \| `null`
+
+When the stored snapshot was taken; null without one.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`snapshot_at`](../worker/links/store.md#snapshot_at-1)
+
+##### snapshot\_error
+
+> **snapshot\_error**: `string` \| `null`
+
+Why the last snapshot asked for failed; null once one is asked for again or succeeds.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`snapshot_error`](../worker/links/store.md#snapshot_error-1)
+
+##### snapshot\_kind
+
+> **snapshot\_kind**: `string` \| `null`
+
+What the stored snapshot is, 'html' or 'pdf'; null without one.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`snapshot_kind`](../worker/links/store.md#snapshot_kind-1)
+
+##### snapshot\_requested\_at
+
+> **snapshot\_requested\_at**: `string` \| `null`
+
+Set while a snapshot asked for is being taken; null otherwise.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`snapshot_requested_at`](../worker/links/store.md#snapshot_requested_at-1)
+
 ##### state
 
 > **state**: `string`
@@ -867,38 +907,6 @@ One page of a list.
 ##### next\_cursor
 
 > **next\_cursor**: `string` \| `null`
-
-***
-
-### ReaderView
-
-A link's stored reader view.
-
-#### Properties
-
-##### byline
-
-> **byline**: `string` \| `null`
-
-##### content\_kind
-
-> **content\_kind**: `"html"` \| `"pdf"`
-
-##### empty
-
-> **empty**: `boolean`
-
-##### html
-
-> **html**: `string` \| `null`
-
-##### text
-
-> **text**: `string`
-
-##### title
-
-> **title**: `string` \| `null`
 
 ***
 
@@ -1491,6 +1499,14 @@ The mode of a search that also finds links by meaning.
 
 ***
 
+### SnapshotView
+
+> **SnapshotView** = [`SnapshotResponse`](../worker/fetcher/snapshots.md#snapshotresponse)
+
+A link's stored snapshot: a web page's article with its stored images, or a PDF.
+
+***
+
 ### VocabularyKind
 
 > **VocabularyKind** = `"topics"` \| `"tags"`
@@ -1901,20 +1917,6 @@ Every expired link, most recently expired first, page after page.
 
 `Promise`\<[`Link`](#link-1)\>
 
-##### reader
-
-> **reader**: (`id`) => `Promise`\<[`ReaderView`](#readerview)\>
-
-###### Parameters
-
-###### id
-
-`string`
-
-###### Returns
-
-`Promise`\<[`ReaderView`](#readerview)\>
-
 ##### refresh
 
 > **refresh**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
@@ -1980,6 +1982,38 @@ Deletes a link for good; a link already gone counts as deleted.
 ###### Returns
 
 `Promise`\<[`Link`](#link-1)\>
+
+##### snapshot
+
+> **snapshot**: (`id`) => `Promise`\<[`SnapshotResponse`](../worker/fetcher/snapshots.md#snapshotresponse)\>
+
+The link's stored snapshot; reading it counts as a use.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<[`SnapshotResponse`](../worker/fetcher/snapshots.md#snapshotresponse)\>
+
+##### takeSnapshot
+
+> **takeSnapshot**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>
+
+Asks for a snapshot of the link, taken in the background.
+
+###### Parameters
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<\{ `status`: `"queued"`; \}\>
 
 ##### unarchive
 
@@ -2508,11 +2542,11 @@ The website's address of a search, by meaning when `mode` is 'hybrid'.
 
 ***
 
-### snapshotUrl()
+### snapshotFileUrl()
 
-> **snapshotUrl**(`id`, `__namedParameters?`): `string`
+> **snapshotFileUrl**(`id`, `__namedParameters?`): `string`
 
-The address of a link's stored snapshot; `download` asks for a PDF as an attachment.
+The address of a link's stored PDF; `download` asks for it as an attachment.
 
 #### Parameters
 

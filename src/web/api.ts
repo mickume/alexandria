@@ -2,6 +2,7 @@
 import type { Thresholds } from '../worker/decay/routes';
 import type { LinkView } from '../worker/links/store';
 import type { LinkEvent } from '../worker/links/use';
+import type { SnapshotResponse } from '../worker/fetcher/snapshots';
 
 /** A refusal from the API, with its status and the body's error code and message. */
 export class ApiError extends Error {
@@ -40,7 +41,14 @@ export async function request<T>(
   if (!response.ok) {
     const code = typeof json.error === 'string' ? json.error : 'error';
     const message = typeof json.message === 'string' ? json.message : code;
-    throw new ApiError(response.status, code, message, json);
+    // A refusal that says when to try again keeps it, in seconds, as retry_after.
+    const retryAfter = Number(response.headers.get('Retry-After') ?? NaN);
+    throw new ApiError(
+      response.status,
+      code,
+      message,
+      Number.isFinite(retryAfter) ? { ...json, retry_after: retryAfter } : json,
+    );
   }
   return json as T;
 }
@@ -108,23 +116,21 @@ export interface Changes {
   server_time: string;
 }
 
-/** A link's stored reader view. */
-export interface ReaderView {
-  content_kind: 'html' | 'pdf';
-  title: string | null;
-  byline: string | null;
-  html: string | null;
-  text: string;
-  empty: boolean;
-}
+/** A link's stored snapshot: a web page's article with its stored images, or a PDF. */
+export type SnapshotView = SnapshotResponse;
 
-/** The address of a link's stored snapshot; `download` asks for a PDF as an attachment. */
-export function snapshotUrl(id: string, { download = false } = {}): string {
-  return `/api/v1/links/${encodeURIComponent(id)}/snapshot${download ? '?download=1' : ''}`;
+/** The address of a link's stored PDF; `download` asks for it as an attachment. */
+export function snapshotFileUrl(id: string, { download = false } = {}): string {
+  return `/api/v1/links/${encodeURIComponent(id)}/snapshot/file${download ? '?download=1' : ''}`;
 }
 
 export const links = {
-  reader: (id: string) => request<ReaderView>('GET', `/links/${encodeURIComponent(id)}/reader`),
+  /** The link's stored snapshot; reading it counts as a use. */
+  snapshot: (id: string) =>
+    request<SnapshotView>('GET', `/links/${encodeURIComponent(id)}/snapshot`),
+  /** Asks for a snapshot of the link, taken in the background. */
+  takeSnapshot: (id: string) =>
+    request<{ status: 'queued' }>('POST', `/links/${encodeURIComponent(id)}/snapshot`),
   changedSince: (since: string) =>
     request<Changes>('GET', `/links?changed_since=${encodeURIComponent(since)}`),
   get: (id: string) => request<Link>('GET', `/links/${encodeURIComponent(id)}`),
@@ -594,7 +600,14 @@ export async function ask(
     const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
     const code = typeof json.error === 'string' ? json.error : 'error';
     const message = typeof json.message === 'string' ? json.message : code;
-    throw new ApiError(response.status, code, message, json);
+    // A refusal that says when to try again keeps it, in seconds, as retry_after.
+    const retryAfter = Number(response.headers.get('Retry-After') ?? NaN);
+    throw new ApiError(
+      response.status,
+      code,
+      message,
+      Number.isFinite(retryAfter) ? { ...json, retry_after: retryAfter } : json,
+    );
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

@@ -13,6 +13,7 @@ import type {
   LivenessMessage,
 } from './env';
 import { handleFetchBatch } from './fetcher/queue';
+import { sweepLegacySnapshots } from './fetcher/sweep';
 import { applyTitleRules } from './fetcher/titles';
 import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
 import { maintainIndex } from './meaning/backfill';
@@ -28,6 +29,7 @@ async function everyMinute(env: Env): Promise<void> {
     maintainIndex(env),
     sweepRankings(env.DB),
     applyTitleRules(env),
+    sweepLegacySnapshots(env),
   ]);
   for (const job of jobs) {
     if (job.status === 'rejected') console.error('an every-minute job failed', job.reason);
@@ -39,7 +41,8 @@ export default {
     return app.fetch(request, env, ctx);
   },
   scheduled(controller, env, ctx) {
-    // Every minute: imported links, the index, the kept search rankings and the title rules; every 5 minutes: account deletions; every hour:
+    // Every minute: imported links, the index, the kept search rankings, the title rules and the
+    // sweep of the copies stored before snapshots; every 5 minutes: account deletions; every hour:
     // decay and liveness.
     const run =
       controller.cron === DISPATCH_CRON

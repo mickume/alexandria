@@ -175,6 +175,21 @@
     padding: 0.25rem 0.75rem;
     border: 1px solid var(--border);
   }
+
+  /* A snapshot's images fit the measure; one it could not save says what it was. */
+  .reader-body img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .reader-body .missing-image {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm, 0.25rem);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+  }
 }
 
 @layer components {

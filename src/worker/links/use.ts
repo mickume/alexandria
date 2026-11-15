@@ -23,7 +23,8 @@ const DECAY_FROM_AFTER_USE = `CASE
 export type LinkEvent =
   | { kind: 'use'; at: string }
   | {
-      kind: 'fetch';
+      /** A fetch of the page, or a snapshot taken of it. */
+      kind: 'fetch' | 'snapshot';
       at: string;
       outcome: 'ok' | 'failed';
       http_status: number | null;
@@ -91,7 +92,7 @@ interface HistoryRow {
 function toEvent(row: HistoryRow): LinkEvent {
   if (row.src === 0) return { kind: 'use', at: row.at };
   return {
-    kind: 'fetch',
+    kind: row.kind === 'snapshot' ? 'snapshot' : 'fetch',
     at: row.at,
     outcome: row.outcome === 'ok' ? 'ok' : 'failed',
     http_status: row.http_status,

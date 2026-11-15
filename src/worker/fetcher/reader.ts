@@ -1,6 +1,7 @@
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { collapse, parsePage } from './html';
+import { SRCSET_SEPARATOR } from './images';
 
 /** The reader view of a page: its article alone, safe to show. */
 export interface ReaderView {
@@ -109,11 +110,26 @@ const DROPPED = new Set([
 /** Attributes kept, per element; every other attribute is removed. */
 const ATTRIBUTES: Record<string, Set<string>> = {
   a: new Set(['href', 'title']),
-  img: new Set(['src', 'alt', 'title', 'width', 'height']),
+  img: new Set(['src', 'srcset', 'alt', 'title', 'width', 'height']),
   th: new Set(['colspan', 'rowspan']),
   td: new Set(['colspan', 'rowspan']),
   time: new Set(['datetime']),
 };
+
+/**
+ * A srcset made absolute against `base`, keeping only its http(s) candidates
+ * with their descriptors; null when none is left.
+ */
+function safeSrcset(value: string, base: string): string | null {
+  const candidates = value
+    .split(SRCSET_SEPARATOR)
+    .map((candidate) => candidate.trim().split(/\s+/))
+    .flatMap(([address, descriptor]) => {
+      const url = address ? safeUrl(address, base, 'href') : null;
+      return url ? [descriptor ? `${url} ${descriptor}` : url] : [];
+    });
+  return candidates.length > 0 ? candidates.join(', ') : null;
+}
 
 /** `value` made absolute against `base`, or null when it is not a safe address for `attr`. */
 function safeUrl(value: string, base: string, attr: string): string | null {
@@ -166,8 +182,30 @@ function sanitize(root: Element, base: string): void {
         const url = safeUrl(el.getAttribute(name) ?? '', base, name);
         if (url === null) el.removeAttribute(name);
         else el.setAttribute(name, url);
+      } else if (name === 'srcset') {
+        const srcset = safeSrcset(el.getAttribute(name) ?? '', base);
+        if (srcset === null) el.removeAttribute(name);
+        else el.setAttribute(name, srcset);
       }
     }
+  }
+}
+
+/**
+ * Adds the candidates of each <picture>'s <source> elements to the srcset of
+ * its <img>, so that the snapshot can choose among them once the sources,
+ * which the allow-list drops, are gone.
+ */
+function foldPictureSources(root: Element): void {
+  for (const picture of [...root.querySelectorAll('picture')]) {
+    const img = picture.querySelector('img');
+    if (!img) continue;
+    const sets = [...picture.querySelectorAll('source')]
+      .map((source) => source.getAttribute('srcset')?.trim())
+      .filter((set): set is string => Boolean(set));
+    const own = img.getAttribute('srcset')?.trim();
+    if (own) sets.push(own);
+    if (sets.length > 0) img.setAttribute('srcset', sets.join(', '));
   }
 }
 
@@ -211,6 +249,7 @@ export function extractReader(page: string | Document, finalUrl: string): Reader
   );
   const root = out.getElementById('reader')!;
   root.innerHTML = article.content;
+  foldPictureSources(root);
   sanitize(root, finalUrl);
   const text = collapse(root.textContent ?? '');
   if (text.length < MIN_TEXT) return EMPTY;

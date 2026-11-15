@@ -62,9 +62,7 @@ describe('a card’s More actions menu', () => {
     expect(screen.getByRole('menuitem', { name: 'Details' }).getAttribute('href')).toBe(
       '/links/abc',
     );
-    expect(screen.getByRole('menuitem', { name: 'Snapshot' }).getAttribute('href')).toBe(
-      '/links/abc/snapshot',
-    );
+    expect(screen.getByRole('menuitem', { name: 'Retake snapshot' })).toBeTruthy();
   });
 
   it.each([
@@ -152,6 +150,91 @@ describe('refreshing from a card', () => {
   });
 });
 
+describe('taking a snapshot from a card', () => {
+  function cardOf(l: Link, onChanged: (l: Link) => void = noop) {
+    return (
+      <>
+        <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop, onChanged }} />
+        <Toaster />
+      </>
+    );
+  }
+
+  it('asks for one and shows the card as taking it', async () => {
+    const api = installFakeApi(
+      new FakeApi().on('POST', '/api/v1/links/abc/snapshot', {
+        status: 202,
+        body: { status: 'queued' },
+      }),
+    );
+    const changed = vi.fn();
+    render(cardOf(link, changed));
+    await moreActions();
+    await act(async () => screen.getByRole('menuitem', { name: 'Take snapshot' }).click());
+    expect(api.sent('POST', '/api/v1/links/abc/snapshot')).toHaveLength(1);
+    expect(await screen.findByText('Taking a snapshot…')).toBeTruthy();
+    expect(changed).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'abc', snapshot_requested_at: expect.any(String) }),
+    );
+  });
+
+  it.each([
+    {
+      status: 429,
+      headers: { 'Retry-After': '360' } as Record<string, string>,
+      body: { error: 'snapshot_recent', message: 'a snapshot was taken recently' },
+      said: 'A snapshot was taken recently; try again in 6 minutes.',
+    },
+    {
+      status: 503,
+      headers: {} as Record<string, string>,
+      body: { error: 'unavailable', message: 'the snapshot could not be queued' },
+      said: 'The snapshot could not be queued.',
+    },
+  ])('says why it was refused with $status', async ({ status, headers, body, said }) => {
+    installFakeApi(
+      new FakeApi().on('POST', '/api/v1/links/abc/snapshot', { status, headers, body }),
+    );
+    render(cardOf(link));
+    await moreActions();
+    await act(async () => screen.getByRole('menuitem', { name: 'Take snapshot' }).click());
+    expect(await screen.findByText(said)).toBeTruthy();
+  });
+
+  it('asks every 5 seconds until the snapshot is taken, then shows Read', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const taking = makeLink({
+        id: 'abc',
+        state: 'active',
+        snapshot_requested_at: '2026-01-01T00:00:00.000Z',
+      });
+      const done = { ...taking, snapshot_requested_at: null, has_snapshot: true };
+      const api = installFakeApi(
+        new FakeApi().on('GET', '/api/v1/links/abc', { status: 200, body: done }),
+      );
+      function Holder() {
+        const [l, setL] = useState<Link>(taking);
+        return cardOf(l, setL);
+      }
+      render(<Holder />);
+      expect(screen.getByText('Taking a snapshot…')).toBeTruthy();
+      expect(screen.queryByRole('link', { name: 'Read' })).toBeNull();
+      await act(async () => vi.advanceTimersByTime(5_000));
+      expect(api.sent('GET', '/api/v1/links/abc')).toHaveLength(1);
+      expect(await screen.findByRole('link', { name: 'Read' })).toBeTruthy();
+      expect(screen.queryByText('Taking a snapshot…')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows why the last snapshot failed', () => {
+    render(cardOf(makeLink({ id: 'abc', snapshot_error: 'no readable content' })));
+    expect(screen.getByText('Snapshot failed: no readable content')).toBeTruthy();
+  });
+});
+
 describe('a card’s fetch results', () => {
   it.each([
     {
@@ -223,12 +306,8 @@ describe('a card’s fetch results', () => {
       );
     }
     await moreActions();
-    expect(screen.queryByRole('menuitem', { name: 'Snapshot' }) !== null).toBe(read);
-    if (read) {
-      expect(screen.getByRole('menuitem', { name: 'Snapshot' }).getAttribute('href')).toBe(
-        `/links/${l.id}/snapshot`,
-      );
-    }
+    const take = read ? 'Retake snapshot' : 'Take snapshot';
+    expect(screen.getByRole('menuitem', { name: take })).toBeTruthy();
     expect(container.querySelector('img.favicon') !== null).toBe(favicon === true);
   });
 });

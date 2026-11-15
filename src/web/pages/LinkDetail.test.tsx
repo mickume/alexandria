@@ -198,6 +198,20 @@ describe('the detail page of a fetched link', () => {
               http_status: 503,
               reason: 'HTTP 503',
             },
+            {
+              kind: 'snapshot',
+              at: '2026-09-01T09:50:00.000Z',
+              outcome: 'ok',
+              http_status: null,
+              reason: null,
+            },
+            {
+              kind: 'snapshot',
+              at: '2026-09-01T09:40:00.000Z',
+              outcome: 'failed',
+              http_status: null,
+              reason: 'no readable content',
+            },
           ],
           next_cursor: null,
         },
@@ -214,6 +228,8 @@ describe('the detail page of a fetched link', () => {
       expect.stringMatching(/^Opened/),
       expect.stringMatching(/^Fetched/),
       expect.stringMatching(/^Fetch failed: HTTP 503/),
+      expect.stringMatching(/^Snapshot taken/),
+      expect.stringMatching(/^Snapshot failed: no readable content/),
     ]);
   });
 });
@@ -548,6 +564,7 @@ describe('the side column of a link’s detail page', () => {
     expect(column.getByRole('link', { name: 'A' }).getAttribute('href')).toBe('/workspaces/wa');
     const actions = within(column.getByRole('group', { name: 'Actions' }));
     expect(actions.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Take snapshot',
       'Refresh',
       'Check now',
       'Pin',
@@ -555,6 +572,47 @@ describe('the side column of a link’s detail page', () => {
       'Archive',
       'Delete',
     ]);
+    expect(actions.queryByRole('link', { name: 'Read' })).toBeNull();
+  });
+
+  it('offers Read and Retake snapshot for a link with a snapshot', async () => {
+    renderPage('/links/abc', sideApi({ has_snapshot: true, snapshot_kind: 'html' }));
+    const actions = within((await side()).getByRole('group', { name: 'Actions' }));
+    expect(actions.getByRole('link', { name: 'Read' }).getAttribute('href')).toBe(
+      '/links/abc/read',
+    );
+    expect(actions.getByRole('button', { name: 'Retake snapshot' })).toBeTruthy();
+  });
+
+  it('takes a snapshot, shows it being taken, and shows Read once it is stored', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let stored = false;
+      const api = sideApi().on('POST', '/api/v1/links/abc/snapshot', {
+        status: 202,
+        body: { status: 'queued' },
+      });
+      api.on('GET', '/api/v1/links/abc', () => ({
+        status: 200,
+        body: makeLink({
+          id: 'abc',
+          title: 'An Article',
+          state: 'active',
+          has_snapshot: stored,
+          snapshot_kind: stored ? 'html' : null,
+        }),
+      }));
+      renderPage('/links/abc', api);
+      const column = await side();
+      fireEvent.click(column.getByRole('button', { name: 'Take snapshot' }));
+      expect(await column.findByText('Taking a snapshot…')).toBeTruthy();
+      stored = true;
+      await act(async () => vi.advanceTimersByTime(5_000));
+      expect(await column.findByRole('link', { name: 'Read' })).toBeTruthy();
+      expect(api.sent('POST', '/api/v1/links/abc/snapshot')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('archives the link, offering Unarchive in place of Pin, and unarchives it again', async () => {
@@ -566,6 +624,7 @@ describe('the side column of a link’s detail page', () => {
     await column.findByRole('button', { name: 'Unarchive' });
     const actions = within(column.getByRole('group', { name: 'Actions' }));
     expect(actions.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Take snapshot',
       'Refresh',
       'Check now',
       'Unarchive',

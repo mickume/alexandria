@@ -2,11 +2,11 @@
 
 ## Variables
 
-### ARCHIVE\_REFRESH\_NOT\_QUEUED
+### ARCHIVE\_SNAPSHOT\_NOT\_QUEUED
 
-> `const` **ARCHIVE\_REFRESH\_NOT\_QUEUED**: `"refresh before archiving could not be queued"` = `'refresh before archiving could not be queued'`
+> `const` **ARCHIVE\_SNAPSHOT\_NOT\_QUEUED**: `"snapshot before archiving could not be queued"` = `'snapshot before archiving could not be queued'`
 
-Why the history of an archived link holds a failed fetch it never made.
+Why the history of an archived link holds a failed snapshot it never took.
 
 ***
 

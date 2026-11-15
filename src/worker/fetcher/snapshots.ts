@@ -5,44 +5,111 @@ export function linkPrefix(userId: string, linkId: string): string {
   return `u/${userId}/l/${linkId}/`;
 }
 
-/** The key of a link's snapshot: the raw HTML, or the whole PDF. */
-export function snapshotKey(userId: string, linkId: string): string {
+/** The folder of one snapshot of a link: its article and images, or its PDF. */
+export function snapshotFolder(userId: string, linkId: string, snapshotId: string): string {
+  return `${linkPrefix(userId, linkId)}s/${snapshotId}/`;
+}
+
+/**
+ * The key of a PDF stored before snapshots had folders. Such a PDF stays the
+ * link's snapshot, read from here, while the link has no snapshot id.
+ */
+export function legacyPdfKey(userId: string, linkId: string): string {
   return `${linkPrefix(userId, linkId)}snapshot`;
 }
 
-/** The key of a link's reader view: its title, byline and sanitised HTML, as JSON. */
-export function readerKey(userId: string, linkId: string): string {
-  return `${linkPrefix(userId, linkId)}reader.json`;
+/** The name of a web page snapshot's article in its folder. */
+export const ARTICLE_OBJECT = 'article.json';
+/** The name of a PDF snapshot's file in its folder. */
+export const PDF_OBJECT = 'file.pdf';
+
+/** What a link row says about its snapshot. */
+export interface SnapshotColumns {
+  user_id: string;
+  id: string;
+  snapshot_id: string | null;
+  snapshot_kind: string | null;
+  snapshot_at: string | null;
 }
 
-/** The stored reader view of a web page. */
-export interface StoredReader {
+/** The key of a link's stored PDF snapshot. */
+export function pdfKey(link: SnapshotColumns): string {
+  return link.snapshot_id
+    ? `${snapshotFolder(link.user_id, link.id, link.snapshot_id)}${PDF_OBJECT}`
+    : legacyPdfKey(link.user_id, link.id);
+}
+
+/** The key of a link's stored article, or null when it has no web page snapshot. */
+export function articleKey(link: SnapshotColumns): string | null {
+  return link.snapshot_id && link.snapshot_kind === 'html'
+    ? `${snapshotFolder(link.user_id, link.id, link.snapshot_id)}${ARTICLE_OBJECT}`
+    : null;
+}
+
+/** The key of one stored image of a link's snapshot, or null when the name cannot be one. */
+export function imageKey(link: SnapshotColumns, name: string): string | null {
+  if (!link.snapshot_id || link.snapshot_kind !== 'html' || !/^[\w-]+\.[a-z]+$/.test(name)) {
+    return null;
+  }
+  return `${snapshotFolder(link.user_id, link.id, link.snapshot_id)}img/${name}`;
+}
+
+/** The address prefix under which the API serves a link's snapshot images, ending in '/'. */
+export function imageAddressPrefix(linkId: string): string {
+  return `/api/v1/links/${encodeURIComponent(linkId)}/snapshot/images/`;
+}
+
+/** A web page's snapshot as stored: the article, its byline and the notes taken with it. */
+export interface StoredArticle {
   title: string | null;
   byline: string | null;
-  html: string | null;
+  /** The sanitised article, its stored images at the addresses imageAddressPrefix gives. */
+  html: string;
+  notes: string[];
 }
 
-/** Deletes every object stored for a link. */
-export async function deleteLinkObjects(env: Env, userId: string, linkId: string): Promise<void> {
+/** Deletes every object stored for a link, except those whose keys start with `keep`. */
+export async function deleteLinkObjects(
+  env: Env,
+  userId: string,
+  linkId: string,
+  keep?: string,
+): Promise<void> {
   const prefix = linkPrefix(userId, linkId);
+  let cursor: string | undefined;
   for (;;) {
-    const page = await env.SNAPSHOTS.list({ prefix });
-    if (page.objects.length > 0) await env.SNAPSHOTS.delete(page.objects.map((o) => o.key));
+    const page = await env.SNAPSHOTS.list({ prefix, cursor });
+    const keys = page.objects.map((o) => o.key).filter((k) => !keep || !k.startsWith(keep));
+    if (keys.length > 0) await env.SNAPSHOTS.delete(keys);
     if (!page.truncated) return;
+    cursor = page.cursor;
   }
 }
 
-/** The reader view as the API returns it. */
-export interface ReaderResponse {
+/** Deletes every object under one folder. */
+export async function deleteFolder(env: Env, folder: string): Promise<void> {
+  let cursor: string | undefined;
+  for (;;) {
+    const page = await env.SNAPSHOTS.list({ prefix: folder, cursor });
+    if (page.objects.length > 0) await env.SNAPSHOTS.delete(page.objects.map((o) => o.key));
+    if (!page.truncated) return;
+    cursor = page.cursor;
+  }
+}
+
+/** The snapshot as the API returns it. */
+export interface SnapshotResponse {
   content_kind: 'html' | 'pdf';
   title: string | null;
   byline: string | null;
   html: string | null;
-  text: string;
-  empty: boolean;
+  taken_at: string;
+  notes: string[];
+  /** A PDF snapshot's file. */
+  file_url?: string;
 }
 
-/** A link's stored reader-view text, or '' when it has none. */
+/** A link's stored article text, or '' when it has none. */
 export async function storedText(env: Env, userId: string, linkId: string): Promise<string> {
   const row = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ? AND user_id = ?')
     .bind(linkId, userId)

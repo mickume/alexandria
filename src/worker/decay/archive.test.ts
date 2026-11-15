@@ -7,6 +7,7 @@ import {
   seedLinks,
   setNow,
   signIn,
+  storeSnapshot,
   type TestUser,
 } from '../test/helpers';
 
@@ -96,7 +97,7 @@ describe('archiving a link', () => {
     },
   );
 
-  it('queues one refresh of its page, without touching the refresh window', async () => {
+  it('takes a snapshot of a link without one, outside the snapshot and refresh windows', async () => {
     setNow(T);
     const user = await signIn();
     const recently = new Date(T - 60_000).toISOString();
@@ -104,22 +105,48 @@ describe('archiving a link', () => {
       { url: 'https://kept.example/', state: 'active' },
       { url: 'https://fresh.example/', state: 'active' },
     ]);
-    await env.DB.prepare('UPDATE links SET refresh_requested_at = ? WHERE id = ?')
+    await env.DB.prepare(
+      'UPDATE links SET refresh_requested_at = ?1, snapshot_claimed_at = ?1 WHERE id = ?2',
+    )
       .bind(recently, link)
       .run();
     const sent = recordFetchQueue();
-    await api('POST', `/api/v1/links/${link}/archive`, { as: user.session });
+    const r = await api('POST', `/api/v1/links/${link}/archive`, { as: user.session });
+    expect(r.json.snapshot_requested_at).toBe(new Date(T).toISOString());
     expect(sent).toEqual([
-      { body: { user_id: user.id, link_id: link, refresh: true }, delaySeconds: undefined },
+      {
+        body: { user_id: user.id, link_id: link, refresh: true, snapshot: true },
+        delaySeconds: undefined,
+      },
     ]);
-    const row = await env.DB.prepare('SELECT refresh_requested_at FROM links WHERE id = ?')
+    const row = await env.DB.prepare(
+      'SELECT refresh_requested_at, snapshot_claimed_at FROM links WHERE id = ?',
+    )
       .bind(link)
-      .first<{ refresh_requested_at: string | null }>();
-    expect(row?.refresh_requested_at).toBe(recently);
+      .first<{ refresh_requested_at: string | null; snapshot_claimed_at: string | null }>();
+    expect(row).toEqual({ refresh_requested_at: recently, snapshot_claimed_at: recently });
 
     await api('POST', `/api/v1/links/${fresh}/archive`, { as: user.session });
     const refresh = await api('POST', `/api/v1/links/${fresh}/refresh`, { as: user.session });
     expect(refresh.status).toBe(202);
+    const snapshot = await api('POST', `/api/v1/links/${fresh}/snapshot`, { as: user.session });
+    expect(snapshot.status).toBe(202);
+  });
+
+  it('keeps the snapshot a link has and fetches nothing', async () => {
+    setNow(T);
+    const user = await signIn();
+    const [link = ''] = await seedLinks(user, [{ url: 'https://kept.example/', state: 'active' }]);
+    const folder = await storeSnapshot(user, link, { kind: 'html', html: '<p>As it was.</p>' });
+    const sent = recordFetchQueue();
+    const r = await api('POST', `/api/v1/links/${link}/archive`, { as: user.session });
+    expect(r.json).toMatchObject({
+      state: 'archived',
+      has_snapshot: true,
+      snapshot_requested_at: null,
+    });
+    expect(sent).toEqual([]);
+    expect((await env.SNAPSHOTS.list({ prefix: folder })).objects).toHaveLength(1);
   });
 
   it('changes nothing and queues nothing for a link already archived', async () => {
@@ -138,7 +165,7 @@ describe('archiving a link', () => {
     expect(sent).toEqual([]);
   });
 
-  it('keeps the link archived and says so in its history when the refresh cannot be queued', async () => {
+  it('keeps the link archived and says so in its history when the snapshot cannot be queued', async () => {
     setNow(T);
     const user = await signIn();
     const [id = ''] = await seedLinks(user, [{ url: 'https://kept.example/', state: 'active' }]);
@@ -147,13 +174,18 @@ describe('archiving a link', () => {
     } as unknown as typeof env.FETCH_QUEUE;
     const r = await api('POST', `/api/v1/links/${id}/archive`, { as: user.session });
     expect(r.status).toBe(200);
-    expect(r.json.state).toBe('archived');
+    expect(r.json).toMatchObject({
+      state: 'archived',
+      has_snapshot: false,
+      snapshot_requested_at: null,
+      snapshot_error: 'snapshot before archiving could not be queued',
+    });
     const history = await api('GET', `/api/v1/links/${id}/history`, { as: user.session });
     expect(history.json.items).toContainEqual(
       expect.objectContaining({
-        kind: 'fetch',
+        kind: 'snapshot',
         outcome: 'failed',
-        reason: 'refresh before archiving could not be queued',
+        reason: 'snapshot before archiving could not be queued',
       }),
     );
   });

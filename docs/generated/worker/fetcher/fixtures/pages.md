@@ -52,6 +52,29 @@ A page whose article text has exactly `chars` characters.
 
 ***
 
+### illustratedArticle()
+
+> **illustratedArticle**(`images`, `extra?`): `string`
+
+A blog article with an image after each paragraph: `images` are the
+<img> tags' src attributes, each with the alt text "Figure n".
+
+#### Parameters
+
+##### images
+
+`string`[]
+
+##### extra?
+
+`string` = `''`
+
+#### Returns
+
+`string`
+
+***
+
 ### longArticle()
 
 > **longArticle**(`chars`): `string`

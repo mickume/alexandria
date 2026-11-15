@@ -577,7 +577,7 @@ describe('a link without a key', () => {
     const { id, enrichMessages } = await addFetchAndEnrich(user, ARTICLE);
     const l = await link(user, id);
     expect(l.state).toBe('active');
-    expect(l.has_snapshot).toBe(true);
+    expect(l.content_kind).toBe('html');
     const row = await env.DB.prepare('SELECT enrichment_status, summary FROM links WHERE id = ?')
       .bind(id)
       .first();

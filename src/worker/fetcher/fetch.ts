@@ -154,7 +154,7 @@ function beforeAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
  * With the length the response declared, the bytes are read straight into one
  * buffer of that size, so a large body is held once, not twice.
  */
-async function readLimited(
+export async function readLimited(
   body: ReadableStream<Uint8Array> | null,
   limit: number,
   signal: AbortSignal,
@@ -229,15 +229,19 @@ function startsWithPdfMagic(bytes: Uint8Array): boolean {
   return new TextDecoder().decode(bytes.subarray(0, 5)) === '%PDF-';
 }
 
+/** What the fetcher accepts for a page. */
+export const PAGE_ACCEPT = 'text/html, application/pdf';
+
 /** Sends one request for `target`, through ORIGIN_PROXY_URL when that is set. */
 function send(
   env: Env,
   target: URL,
   signal: AbortSignal,
   method: 'GET' | 'HEAD' = 'GET',
+  accept = PAGE_ACCEPT,
 ): Promise<Response> {
   const headers = new Headers({
-    Accept: 'text/html, application/pdf',
+    Accept: accept,
     // The page that explains the fetcher, when the deployment names its address.
     'User-Agent': env.PUBLIC_ORIGIN
       ? `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`
@@ -297,7 +301,7 @@ async function readBody(response: Response, finalUrl: URL, signal: AbortSignal):
 export async function requestFollowing<T>(
   env: Env,
   url: string,
-  { method, timeoutMs }: { method: 'GET' | 'HEAD'; timeoutMs: number },
+  { method, timeoutMs, accept }: { method: 'GET' | 'HEAD'; timeoutMs: number; accept?: string },
   onFinal: (response: Response, finalUrl: URL, signal: AbortSignal) => Promise<T>,
 ): Promise<T | FetchFailed> {
   let target: URL;
@@ -313,7 +317,7 @@ export async function requestFollowing<T>(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await beforeAbort(
-        send(env, target, controller.signal, method),
+        send(env, target, controller.signal, method, accept),
         controller.signal,
       );
       const location = response.headers.get('Location');

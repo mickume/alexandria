@@ -54,7 +54,8 @@ export function outcomeOf(answer: ApiAnswer): Outcome {
   }
   const refused =
     (answer.status >= 400 && answer.status < 500) ||
-    (answer.status === 503 && answer.json?.error === 'search_unavailable');
+    (answer.status === 503 &&
+      (answer.json?.error === 'search_unavailable' || answer.json?.error === 'unavailable'));
   if (refused && answer.json?.error) {
     return { ok: false, body: answer.json as ErrorEnvelope };
   }
@@ -171,15 +172,16 @@ async function addLink(ctx: ToolContext, args: AddLinkArgs): Promise<Outcome> {
 
 const NO_CONTENT = refused(
   'no_content',
-  'nothing is stored for this link: it was not fetched as a page or a PDF',
+  'nothing is stored for this link: it has no text, or no snapshot',
 );
 
 /**
- * get_link_content: the reader-view text (GET /api/v1/links/{id}/reader; a
- * PDF's extracted text) or the snapshot HTML (GET /api/v1/links/{id}/snapshot),
- * each recording the use that endpoint records. The link is looked at first
- * (no use): HTML of a PDF is not_html, and a link with nothing stored is
- * no_content, neither recording a use.
+ * get_link_content: the stored article text (GET /api/v1/links/{id}/text; a
+ * PDF's extracted text) or the snapshot's article HTML (GET
+ * /api/v1/links/{id}/snapshot), each recording the use that endpoint records.
+ * The link is looked at first (no use): HTML of a PDF snapshot is not_html,
+ * and a link without the content asked for is no_content, neither recording
+ * a use.
  */
 async function getLinkContent(
   ctx: ToolContext,
@@ -188,21 +190,22 @@ async function getLinkContent(
   const path = `/links/${encodeURIComponent(args.id)}`;
   const link = outcomeOf(await ctx.call('GET', path));
   if (!link.ok) return link;
-  if (args.format === 'html' && link.body.content_kind === 'pdf') {
-    return refused('not_html', 'this link is a PDF; use format text');
-  }
-  if (!link.body.has_snapshot) return NO_CONTENT;
   if (args.format === 'text') {
-    const reader = await ctx.call('GET', `${path}/reader`);
-    if (reader.status === 404 && reader.json?.error === 'no_snapshot') return NO_CONTENT;
-    const read = outcomeOf(reader);
+    const text = await ctx.call('GET', `${path}/text`);
+    if (text.status === 404 && text.json?.error === 'no_text') return NO_CONTENT;
+    const read = outcomeOf(text);
     if (!read.ok) return read;
     return { ok: true, body: { id: args.id, format: 'text', content: read.body.text } };
   }
+  if (link.body.snapshot_kind === 'pdf') {
+    return refused('not_html', 'this link’s snapshot is a PDF; use format text');
+  }
+  if (!link.body.has_snapshot) return NO_CONTENT;
   const snapshot = await ctx.call('GET', `${path}/snapshot`);
   if (snapshot.status === 404 && snapshot.json?.error === 'no_snapshot') return NO_CONTENT;
-  if (snapshot.status !== 200) return outcomeOf(snapshot);
-  return { ok: true, body: { id: args.id, format: 'html', content: snapshot.text } };
+  const read = outcomeOf(snapshot);
+  if (!read.ok) return read;
+  return { ok: true, body: { id: args.id, format: 'html', content: read.body.html } };
 }
 
 const linkId = z.string().min(1).describe('The id of one of the owner’s links');
@@ -266,7 +269,7 @@ export const TOOLS: Tool[] = [
   {
     name: 'get_link_content',
     description:
-      'The stored content of a link: its reader-view text (a PDF’s text), or its snapshot HTML. Counts as a use of the link.',
+      'The stored content of a link: its article text (a PDF’s text), or its snapshot’s article HTML. Counts as a use of the link.',
     input: z.object({ id: linkId, format: z.enum(['text', 'html']).describe('text or html') }),
     run: getLinkContent,
   },
@@ -299,11 +302,22 @@ export const TOOLS: Tool[] = [
   {
     name: 'archive_link',
     description:
-      'Archive a link: keep it for good, out of the stream and out of decay, after one refresh of its page.',
+      'Archive a link: keep it for good, out of the stream and out of decay, with its snapshot (one is taken when it has none).',
     input: z.object({ link_id: linkId }),
     async run(ctx, args: { link_id: string }) {
       return outcomeOf(
         await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/archive`),
+      );
+    },
+  },
+  {
+    name: 'take_snapshot',
+    description:
+      'Take a snapshot of a link: fetch its page again and keep its article with the article’s images (or the PDF), readable whatever happens to the site. Runs in the background; at most once per link every 10 minutes.',
+    input: z.object({ link_id: linkId }),
+    async run(ctx, args: { link_id: string }) {
+      return outcomeOf(
+        await ctx.call('POST', `/links/${encodeURIComponent(args.link_id)}/snapshot`),
       );
     },
   },

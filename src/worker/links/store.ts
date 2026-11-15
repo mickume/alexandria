@@ -36,6 +36,18 @@ export interface LinkRow {
   has_snapshot: number;
   reader_empty: number;
   refresh_requested_at: string | null;
+  /** The id of the stored snapshot's folder; null for none, or for a PDF stored before folders. */
+  snapshot_id: string | null;
+  /** What the stored snapshot is: 'html' or 'pdf'. */
+  snapshot_kind: string | null;
+  /** When the stored snapshot was taken. */
+  snapshot_at: string | null;
+  /** Set while a snapshot asked for is being taken. */
+  snapshot_requested_at: string | null;
+  /** When the owner last asked for a snapshot. */
+  snapshot_claimed_at: string | null;
+  /** Why the last snapshot asked for failed. */
+  snapshot_error: string | null;
   updated_at: string;
   summary: string | null;
   topic_id: string | null;
@@ -98,8 +110,16 @@ export interface LinkView {
   notes: string[];
   /** What the fetched resource is: 'html', 'pdf' or 'other'; null before the first fetch. */
   content_kind: string | null;
-  /** Whether a snapshot is stored, so that Read and Snapshot can be offered. */
+  /** Whether a snapshot is stored, so that Read can be offered. */
   has_snapshot: boolean;
+  /** When the stored snapshot was taken; null without one. */
+  snapshot_at: string | null;
+  /** What the stored snapshot is, 'html' or 'pdf'; null without one. */
+  snapshot_kind: string | null;
+  /** Set while a snapshot asked for is being taken; null otherwise. */
+  snapshot_requested_at: string | null;
+  /** Why the last snapshot asked for failed; null once one is asked for again or succeeds. */
+  snapshot_error: string | null;
   /** When the link last changed in any way. */
   updated_at: string;
   summary: string | null;
@@ -169,6 +189,18 @@ function parseWorkspaces(json: string | undefined): { id: string; name: string }
   }
 }
 
+/**
+ * How long a snapshot asked for is shown as being taken. A message the queue
+ * gave up on never clears it, and a card must not wait for it forever.
+ */
+export const SNAPSHOT_PENDING_MS = 15 * 60_000;
+
+/** `requestedAt`, unless it is older than SNAPSHOT_PENDING_MS. */
+function pendingSnapshot(requestedAt: string | null, at: Date = now()): string | null {
+  if (!requestedAt) return null;
+  return at.getTime() - Date.parse(requestedAt) > SNAPSHOT_PENDING_MS ? null : requestedAt;
+}
+
 /** The API's view of a stored link, with its whole note when read on its own. */
 export function toFullView(row: LinkRow): LinkView {
   return { ...toView(row), note: row.note ?? '' };
@@ -199,6 +231,10 @@ export function toView(row: LinkRow): LinkView {
     notes: parseStrings(row.notes),
     content_kind: row.content_kind,
     has_snapshot: row.has_snapshot === 1,
+    snapshot_at: row.snapshot_at ?? null,
+    snapshot_kind: row.has_snapshot === 1 ? (row.snapshot_kind ?? null) : null,
+    snapshot_requested_at: pendingSnapshot(row.snapshot_requested_at ?? null),
+    snapshot_error: row.snapshot_error ?? null,
     updated_at: row.updated_at,
     summary: row.summary ?? null,
     tags: parseStrings(row.tags_json),

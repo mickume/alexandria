@@ -182,17 +182,18 @@ Settings then shows the token as just used.
 | `search_passages` | Answer a question from the library: the passages of your links that best answer it, found by their words and by meaning and ordered by relevance, each with its link's id, title and URL. Takes the same filters |
 | `list_recent` | The top of the stream: pinned links first, then the links with the most points (used most, and most recently) |
 | `get_link` | A link's metadata: addresses, title, summary, tags, topic, state and dates |
-| `get_link_content` | The stored text of a page or PDF (`format: "text"`), or the page's snapshot HTML (`format: "html"`) |
+| `get_link_content` | The stored text of a page or PDF (`format: "text"`), or the article HTML of the page's snapshot (`format: "html"`) |
 | `add_link` | Keep a new link, optionally with tags and into a workspace; a link already in the library is boosted: its days unused start again |
 | `list_workspaces` | Your workspaces, with their descriptions and link counts |
 | `add_to_workspace` | File a link at the bottom of a workspace (named by its id or its name) |
 | `pin_link` | Pin a link at the top of the stream |
-| `archive_link` | Archive a link: keep it for good, out of the stream and out of decay, after one refresh of its page |
+| `archive_link` | Archive a link: keep it for good, out of the stream and out of decay, with its snapshot (one is taken when it has none) |
+| `take_snapshot` | Keep a copy of a link's page: its article with the article's images (or the PDF), readable in Alexandria whatever happens to the site. It is taken in the background, at most once per link every 10 minutes |
 
 Two behaviours are worth knowing when you direct an agent:
 
 - **Reading content counts as using the link.** `get_link_content` records a
-  use, as opening the reader view does, which adds a point and resets the
+  use, as reading the snapshot does, which adds a point and resets the
   days the link has gone unused, so it rises in the stream. `search_links`, `search_passages`,
   `list_recent` and `get_link` record nothing. Ask the agent to read a link's content only when
   it needs more than the summary.

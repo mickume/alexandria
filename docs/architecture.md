@@ -15,7 +15,7 @@ browser ──► Worker (src/worker/index.ts)
                      ├──► D1 (DB)          users, sessions, tokens, links, link_uses, rate_limits, …
                      ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites
                      ├──► INDEX_QUEUE ──► index worker ──► Workers AI (AI) and Vectorize (VECTORIZE)
-                     └──► R2 (SNAPSHOTS)   snapshots and reader views
+                     └──► R2 (SNAPSHOTS)   snapshots: articles with their images, PDFs
 ```
 
 - **The Worker** (`src/worker/`): `index.ts` is the entry point and hands every
@@ -111,9 +111,10 @@ account and checks the PKCE verifier as Google does.
   and Alexandria's mark.
   `components/LinkCard` shows one link: its title, its site address and
   Open open the site in a new tab, through `/api/v1/links/{id}/open` so the
-  visit counts as a use. Open, Read (when a copy is stored) and Pin stay on
-  the card; Snapshot, Details, Refresh, Add to workspace, Remove from
-  workspace and Delete are behind its ⋯ More actions button, a
+  visit counts as a use. Open, Read (when a snapshot is stored) and Pin stay on
+  the card; Take snapshot (Retake snapshot), Details, Refresh, Add to
+  workspace, Remove from workspace and Delete are behind its ⋯ More actions
+  button, a
   dropdown menu (the workspace picker its submenu) that closes on Escape, on
   a click elsewhere and once an action is chosen; what an action in it did is
   said in a toast. Toasts (a delete's Undo among them) come from the one
@@ -135,7 +136,7 @@ account and checks the PKCE verifier as Google does.
 | `links` | per user: normalised and original URL, host, title, state, dates, use count, pin position |
 | `link_uses` | one row per use of a link |
 | `link_events` | one row per fetch attempt: time, outcome, HTTP status, reason |
-| `link_texts` | the reader-view text of a link, for search and enrichment |
+| `link_texts` | the article text of a link, for search and enrichment |
 | `workspaces` | per user: name (unique ignoring case through `name_key`), description, Markdown note |
 | `workspace_links` | the members of each workspace, at positions 1..n |
 | `rate_limits` | requests per user per minute |
@@ -176,25 +177,28 @@ quantities in the last list are never stored.
    dispatcher). Adding a URL the library already has stores nothing new: it
    *boosts* the link (`last_used_at` and `decay_from` now, and an expired link
    becomes active again). It records no use and sends no fetch.
-2. **On fetch** (`fetcher/queue.ts`, `writeFetched`): the objects are written
-   to R2 first: `snapshot` (the raw HTML, or the whole PDF up to 50 MB) and, for
-   a web page with a readable article, `reader.json` (the reader view's title,
-   byline and sanitised HTML). Then one D1 batch writes:
+2. **On fetch** (`fetcher/queue.ts`, `writeFetched`): a fetch stores no copy
+   of a web page; the first successful fetch of a PDF writes the whole file
+   (up to 50 MB) to R2 as the link's snapshot, under
+   `s/{snapshot_id}/file.pdf`. A fetch that takes a snapshot writes the
+   snapshot's objects first (see [Snapshots](#snapshots)). Then one D1 batch
+   writes:
    - on `links`: `final_url`, `http_status`, `description`, `favicon_url` and
      `language` (from the page's metadata, `fetcher/html.ts`), the page's
      title cleaned by the title rules unless the owner edited it,
-     `content_kind`, `fetched_at`,
-     `has_snapshot`, `reader_empty`, `notes` and the state (`active`, or
-     unchanged when `archived`);
-   - `link_texts`: the reader text (or the PDF's text), at most 500,000
+     `content_kind`, `fetched_at`, `reader_empty`, `notes` and the state
+     (`active`, or unchanged when `archived`);
+   - `link_texts`: the article text (or the PDF's text), at most 500,000
      characters, which replaces the earlier text;
    - the same text into `link_search.reader_text`;
-   - a `link_events` row for the attempt.
+   - a `link_events` row for the attempt;
+   - with a new snapshot, `snapshot_id`, `snapshot_kind`, `snapshot_at` and
+     `has_snapshot`, and a `snapshot` event.
 
    A failed attempt writes only its event and the retry bookkeeping
    (`fetch_attempts`, `state_reason`); a failed first fetch also titles the
    link from the words of its URL.
-   Anything other than a page or a PDF keeps no snapshot, only a note.
+   Anything other than a page or a PDF keeps only a note.
 3. **Derived after the fetch:**
    - *Enrichment*, with the owner's own key (`enrich/queue.ts`): `summary`,
      `topic_id` (a topic path filed into `topics`, creating the topics it
@@ -222,8 +226,8 @@ quantities in the last list are never stored.
    - Ask's answers: nothing about a question or an answer is stored, and no
      use is recorded.
 
-The page's content is therefore kept in several places: the R2 snapshot and
-reader view, the text in `link_texts` and again in the FTS5 index (a table
+The page's content is therefore kept in several places: the R2 snapshot (when
+one was taken), the text in `link_texts` and again in the FTS5 index (a table
 with its own content), its passages in `link_passages`, and their vectors.
 `deleteLink` and decay's removal delete them all: the rows in one batch, the
 R2 objects after it, and the vectors through `vector_deletions`.
@@ -243,14 +247,15 @@ least one second apart, across all users and jobs. `robots.txt` is not read.
 `GET /about/fetcher` is the public page that explains the fetcher.
 
 What a fetch stores (`fetcher/queue.ts`): for a web page, its metadata
-(`fetcher/html.ts`), the raw HTML as the snapshot and the reader view
-(`fetcher/reader.ts`: Readability over a linkedom DOM, sanitised by an
-allow-list) in R2 under `u/{user_id}/l/{link_id}/` (`snapshot`,
-`reader.json`), and the reader text (at most 500,000 characters) in
-`link_texts`; for a PDF, the whole file and its text (`fetcher/pdf.ts`,
-unpdf); for anything else, a note and no snapshot. Objects are written first,
-then the row in one D1 batch; a link deleted meanwhile leaves nothing, and a
-failed write removes what the attempt wrote and hands the message back. A
+(`fetcher/html.ts`) and its article text (at most 500,000 characters) in
+`link_texts`, read from the article Readability extracts (`fetcher/reader.ts`:
+Readability over a linkedom DOM, sanitised by an allow-list); for a PDF, its
+text (`fetcher/pdf.ts`, unpdf), and the whole file when the link has no
+snapshot yet; for anything else, a note. A fetch keeps no copy of a web page:
+that is the snapshot's ([ADR 11](adr/11-keep-the-article-with-its-images-as-the-snapshot.md)).
+Objects are written first, then the row in one D1 batch; a link deleted
+meanwhile leaves nothing, and a failed write removes what the attempt wrote
+and hands the message back. A
 fetch's failure is stated as a reason (`fetcher/fetch.ts`): "host not found",
 "could not connect", "TLS error", "timed out", "blocked by a bot check" (an
 answer marked `cf-mitigated: challenge`, such as Cloudflare's "Just a moment…"
@@ -271,9 +276,9 @@ lists, optionally per path, regular expressions whose matches are the site's
 name rather than the page's (GitHub's "GitHub - " and " · GitHub"), which it
 removes, and rewrites that shorten a long title (a GitHub repository's
 "owner/repo: description" to "repo: description", an issue's or pull
-request's to "Title · owner/repo#123"), which it applies after. The reader
-view's title is cleaned the same way as it is served, so a stored
-`reader.json` needs no rewrite. The rules file is bundled with the Worker; the
+request's to "Title · owner/repo#123"), which it applies after. A snapshot's
+title is cleaned the same way as it is served, so a stored `article.json`
+needs no rewrite. The rules file is bundled with the Worker; the
 every-minute run (`applyTitleRules`) cleans every stored title once after the
 rules change, which it notices by the hash of the file recorded in
 `title_rules_state`, skipping titles the owner edited, and sets `updated_at` on
@@ -289,20 +294,73 @@ answer as it would a direct fetch's, with the note "fetched through
 Firecrawl". Firecrawl refusing the key marks it rejected; Firecrawl being
 unavailable leaves the fetch to its retries. No other page goes to Firecrawl.
 
-Read and Snapshot (`fetcher/routes.ts`) serve only what is stored, to the
-owner alone, and record a use. The stream keeps cards current by polling
-`GET /api/v1/links?changed_since=` every 5 seconds while a card is pending or
-refreshing; every write to a link sets its `updated_at`.
+The stream keeps cards current by polling `GET /api/v1/links?changed_since=`
+every 5 seconds while a card is pending or refreshing; every write to a link
+sets its `updated_at`.
 
 A page is decoded in the encoding its `Content-Type` declares, else the one
 its byte order mark or first `<meta charset>` names, else UTF-8
-(`decodeHtml`), and its snapshot is stored as UTF-8. A page that cannot be
-parsed, or nests its elements deeper than 256 levels (`MAX_DEPTH` in
-`fetcher/reader.ts`; Readability's time grows steeply with depth), keeps its
-snapshot with the note "page could not be read" and is not enriched. The
-writes of a fetch check the row as it is when they run: a failed first fetch
-changes only a link still `pending` (one archived meanwhile stays archived),
-and a failed write of a refresh leaves the copy the link had.
+(`decodeHtml`). A page that cannot be parsed, or nests its elements deeper
+than 256 levels (`MAX_DEPTH` in `fetcher/reader.ts`; Readability's time grows
+steeply with depth), is stored with the note "page could not be read" and is
+not enriched. The writes of a fetch check the row as it is when they run: a
+failed first fetch changes only a link still `pending` (one archived meanwhile
+stays archived), and a failed write of a refresh leaves what the link had.
+
+### Snapshots
+
+A link's snapshot ([ADR 11](adr/11-keep-the-article-with-its-images-as-the-snapshot.md))
+is the copy of its page kept for reading: a web page's article with its images
+stored, or a PDF's file. `POST /api/v1/links/{id}/snapshot`
+(`fetcher/routes.ts`) claims the 10-minute window on the row as it was read
+(`snapshot_claimed_at`), sets `snapshot_requested_at` and sends
+`{user_id, link_id, refresh: true, snapshot: true}` on `FETCH_QUEUE`; a send
+that fails gives the claim back and answers 503. Archiving a link without a
+snapshot sends the same message (`decay/archive.ts`).
+
+The consumer handles the message as a refresh, then, for a web page, hands the
+sanitised article to `saveImages` (`fetcher/images.ts`). The reader view's
+allow-list keeps an image's `srcset`, with a `<picture>`'s `<source>`
+candidates folded into it (`foldPictureSources`), so that `chooseImage` can
+take the widest candidate at most 2000 pixels wide. Each image is fetched in
+the order it appears through `requestFollowing` (the host gate, the redirect
+checks, 15 seconds, an image `Accept`), at most 100, 10 MB each and 50 MB in
+all; one that is not a stored type, fails or passes a limit becomes a
+`<span class="missing-image">` with its alt text and a link to its address.
+Each stored image is named `{snapshot_id}-{n}.{ext}` and its `src` rewritten
+to `/api/v1/links/{id}/snapshot/images/{name}`.
+
+A snapshot's objects live in their own folder,
+`u/{user_id}/l/{link_id}/s/{snapshot_id}/`: `article.json` (title, byline,
+HTML and notes) with `img/{name}`, or `file.pdf`. They are written before the
+D1 batch that points the link at them (`snapshot_id`, `snapshot_kind`,
+`snapshot_at`) and records the `snapshot` event; only once that batch has
+applied is every other object under the link's prefix deleted, so a failure
+at any step leaves the previous snapshot whole, and a failed write deletes
+only the new folder. The update applies unconditionally for a snapshot asked
+for, and for a PDF's automatic one only while the link has none
+(`snapshot_at IS NULL`), so a refresh never replaces a PDF. A snapshot that
+fails records its reason in `snapshot_error` and a failed `snapshot` event.
+A PDF stored before snapshots had folders stays at `u/{user_id}/l/{link_id}/snapshot`
+and is read from there while `snapshot_id` is null.
+
+The snapshot routes serve only what is stored, to the owner alone:
+`GET .../snapshot` (JSON, a use), `.../snapshot/file` (a PDF) and
+`.../snapshot/images/{name}` (an image, cached privately for a year; an SVG
+under a sandbox policy). `GET .../text` serves the article text, as a use. The
+website polls `GET /api/v1/links/{id}` every 5 seconds for a card or detail
+page whose link has `snapshot_requested_at` (`useSnapshotWatch` in
+`components/LinkCard.tsx`): the change feed leaves archived links out, and an
+archived link's card must update on the Archive page. The API shows
+`snapshot_requested_at` as null after 15 minutes, so a message the queue gave
+up on never keeps a page polling.
+
+Migration 0024 made the stored PDFs snapshots and every web page snapshot-less.
+The every-minute run (`sweepLegacySnapshots` in `fetcher/sweep.ts`) then goes
+through the bucket once, five pages of 1,000 objects a run, deleting every
+`reader.json` and every `snapshot` object stored as `text/html`, which nothing
+writes any more; it keeps its R2 cursor in `maintenance_state`, so a run that
+fails part-way is resumed by the next.
 
 ### Lost messages
 
@@ -488,11 +546,12 @@ chose to keep, and decay leaves it alone: the expiry statement takes only
 `active`, `pending` and `unreachable` links and removal only `expired` ones,
 and `decay/note.ts` gives it no points and no removal date.
 `POST /api/v1/links/{id}/archive` (`decay/archive.ts`) sets the state in one
-batch with the unpin statements (`unpinStatements`), then sends a refresh
-message on `FETCH_QUEUE` without touching `refresh_requested_at`, recording a
-failed fetch event when the send fails. The fetch worker's write
-(`writeFetched`) keeps the state `archived`, so the refresh replaces the
-snapshot and reader text and re-enriches the link without un-archiving it.
+batch with the unpin statements (`unpinStatements`). A link with a snapshot
+keeps it and nothing is sent; one without gets a snapshot message on
+`FETCH_QUEUE`, outside the refresh and snapshot windows, recording a failed
+`snapshot` event when the send fails. The fetch worker's write
+(`writeFetched`) keeps the state `archived`, so the snapshot updates the link
+and re-enriches it without un-archiving it.
 `POST .../unarchive` makes it `active` with `last_used_at` and `decay_from`
 now. The stream
 and the change feed leave archived links out; searches and Ask keep them,
@@ -780,9 +839,11 @@ document from a `ReadableStream` fed page by page (100 links a query, in id
 order); each link is serialised by the same `toFullView` as
 `GET /api/v1/links/{id}`, and a read error errors the stream, so that a cut-off
 download lacks the closing `"complete": true`. The export's content URLs
-(`/api/v1/export/links/{id}/snapshot` and `/reader`) serve through the same
-`snapshotResponse` and `readerBody` as the link routes (`fetcher/routes.ts`),
-without `recordUse`.
+(`/api/v1/export/links/{id}/snapshot`, its `/file` and `/images/{name}`, and
+`/text`) serve through the same `snapshotBody`, `snapshotFileResponse`,
+`snapshotImageResponse` and `textBody` as the link routes
+(`fetcher/routes.ts`), without `recordUse`; the exported snapshot's image and
+file addresses are the export's own.
 
 `DELETE /api/v1/me` (`account/deletion.ts`), with a session only, deletes the
 user's sessions, tokens and AI key at once, sets `users.deletion_requested_at`

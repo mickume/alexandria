@@ -340,7 +340,8 @@ describe('counting background work', () => {
     );
     const shown = await historyFetches(user, [ok.id, down.id, kept]);
     expect(shown.ok).toBe(1);
-    expect(shown.failed).toBeGreaterThanOrEqual(2);
+    // The archive's snapshot that could not be queued is a snapshot event, not a fetch.
+    expect(shown.failed).toBeGreaterThanOrEqual(1);
     const day = await today(user);
     expect({ ok: day.fetch_ok, failed: day.fetch_failed }).toEqual(shown);
   });

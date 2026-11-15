@@ -94,17 +94,17 @@ restoreRoutes.post('/:id/restore', async (c) => {
   return c.json(toFullView((await getLink(c.env.DB, userId, id))!));
 });
 
-/** Why the history of an archived link holds a failed fetch it never made. */
-export const ARCHIVE_REFRESH_NOT_QUEUED = 'refresh before archiving could not be queued';
+/** Why the history of an archived link holds a failed snapshot it never took. */
+export const ARCHIVE_SNAPSHOT_NOT_QUEUED = 'snapshot before archiving could not be queued';
 
 /** Archiving and unarchiving one link, under /api/v1/links. */
 export const archiveLinkRoutes = new Hono<AppEnv>();
 
 /**
  * Archives a link that is not archived: it leaves the stream and decay at
- * once, unpinned, in its workspaces still, and a fetch of its page is queued
- * as a refresh, outside the refresh window. A link already archived is
- * answered as it is.
+ * once, unpinned, in its workspaces still. A link with a snapshot keeps it
+ * and nothing is fetched; one without gets a snapshot taken, outside the
+ * snapshot window. A link already archived is answered as it is.
  */
 archiveLinkRoutes.post('/:id/archive', async (c) => {
   const db = c.env.DB;
@@ -114,26 +114,38 @@ archiveLinkRoutes.post('/:id/archive', async (c) => {
   if (!link) return notFound(c);
   if (link.state === 'archived') return c.json(toFullView(link));
   const at = now().toISOString();
+  const takeSnapshot = !link.has_snapshot;
   await db.batch([
     ...unpinStatements(db, userId, id),
     db
       .prepare(
-        `UPDATE links SET state = 'archived', archived_at = ?1, expired_at = NULL, updated_at = ?1
+        `UPDATE links SET state = 'archived', archived_at = ?1, expired_at = NULL, updated_at = ?1,
+           snapshot_requested_at = CASE WHEN ?4 THEN ?1 ELSE snapshot_requested_at END,
+           snapshot_error = CASE WHEN ?4 THEN NULL ELSE snapshot_error END
          WHERE id = ?2 AND user_id = ?3 AND state <> 'archived'`,
       )
-      .bind(at, id, userId),
+      .bind(at, id, userId, takeSnapshot ? 1 : 0),
   ]);
-  try {
-    await c.env.FETCH_QUEUE.send({ user_id: userId, link_id: id, refresh: true });
-  } catch (err) {
-    console.error('the refresh of an archived link could not be queued', err);
-    await db
-      .prepare(
-        `INSERT INTO link_events (link_id, user_id, kind, at, outcome, http_status, reason)
-         VALUES (?1, ?2, 'fetch', ?3, 'failed', NULL, ?4)`,
-      )
-      .bind(id, userId, at, ARCHIVE_REFRESH_NOT_QUEUED)
-      .run();
+  if (takeSnapshot) {
+    try {
+      await c.env.FETCH_QUEUE.send({ user_id: userId, link_id: id, refresh: true, snapshot: true });
+    } catch (err) {
+      console.error('the snapshot of an archived link could not be queued', err);
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE links SET snapshot_requested_at = NULL, snapshot_error = ?1
+             WHERE id = ?2 AND user_id = ?3`,
+          )
+          .bind(ARCHIVE_SNAPSHOT_NOT_QUEUED, id, userId),
+        db
+          .prepare(
+            `INSERT INTO link_events (link_id, user_id, kind, at, outcome, http_status, reason)
+             VALUES (?1, ?2, 'snapshot', ?3, 'failed', NULL, ?4)`,
+          )
+          .bind(id, userId, at, ARCHIVE_SNAPSHOT_NOT_QUEUED),
+      ]);
+    }
   }
   const archived = await getLink(db, userId, id);
   return archived ? c.json(toFullView(archived)) : notFound(c);

@@ -146,6 +146,42 @@ A JSON array of notes.
 
 > **refresh\_requested\_at**: `string` \| `null`
 
+##### snapshot\_at
+
+> **snapshot\_at**: `string` \| `null`
+
+When the stored snapshot was taken.
+
+##### snapshot\_claimed\_at
+
+> **snapshot\_claimed\_at**: `string` \| `null`
+
+When the owner last asked for a snapshot.
+
+##### snapshot\_error
+
+> **snapshot\_error**: `string` \| `null`
+
+Why the last snapshot asked for failed.
+
+##### snapshot\_id
+
+> **snapshot\_id**: `string` \| `null`
+
+The id of the stored snapshot's folder; null for none, or for a PDF stored before folders.
+
+##### snapshot\_kind
+
+> **snapshot\_kind**: `string` \| `null`
+
+What the stored snapshot is: 'html' or 'pdf'.
+
+##### snapshot\_requested\_at
+
+> **snapshot\_requested\_at**: `string` \| `null`
+
+Set while a snapshot asked for is being taken.
+
 ##### state
 
 > **state**: `string`
@@ -302,7 +338,7 @@ The URL of the last response of the latest successful fetch.
 
 > **has\_snapshot**: `boolean`
 
-Whether a snapshot is stored, so that Read and Snapshot can be offered.
+Whether a snapshot is stored, so that Read can be offered.
 
 ##### host
 
@@ -376,6 +412,30 @@ start; null for an archived link, which decay leaves alone.
 > **removal\_at**: `string` \| `null`
 
 When an expired link will be removed.
+
+##### snapshot\_at
+
+> **snapshot\_at**: `string` \| `null`
+
+When the stored snapshot was taken; null without one.
+
+##### snapshot\_error
+
+> **snapshot\_error**: `string` \| `null`
+
+Why the last snapshot asked for failed; null once one is asked for again or succeeds.
+
+##### snapshot\_kind
+
+> **snapshot\_kind**: `string` \| `null`
+
+What the stored snapshot is, 'html' or 'pdf'; null without one.
+
+##### snapshot\_requested\_at
+
+> **snapshot\_requested\_at**: `string` \| `null`
+
+Set while a snapshot asked for is being taken; null otherwise.
 
 ##### state
 
@@ -484,6 +544,15 @@ The most links one library holds, in any state.
 > `const` **PIN\_LIMIT**: `30` = `30`
 
 The most links one user may pin.
+
+***
+
+### SNAPSHOT\_PENDING\_MS
+
+> `const` **SNAPSHOT\_PENDING\_MS**: `number`
+
+How long a snapshot asked for is shown as being taken. A message the queue
+gave up on never clears it, and a card must not wait for it forever.
 
 ## Functions
 

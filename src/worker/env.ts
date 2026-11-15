@@ -34,7 +34,7 @@ export interface Env {
   MEANING_FAKE_URL?: string;
   /** The per-host rate limit: one Durable Object per host. */
   HOST_GATE: DurableObjectNamespace<import('./fetcher/hostgate').HostGate>;
-  /** Snapshots and reader views. */
+  /** Snapshots: each link's article with its images, or its PDF. */
   SNAPSHOTS: R2Bucket;
   /** End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target. */
   ORIGIN_PROXY_URL?: string;
@@ -83,6 +83,8 @@ export interface FetchMessage {
   link_id: string;
   /** Set for a refresh the owner asked for; a failed refresh is not retried. */
   refresh?: boolean;
+  /** Set when the fetch also takes a snapshot: the page's article with its images, or the PDF. */
+  snapshot?: boolean;
 }
 
 /** The user a request is authenticated as. */

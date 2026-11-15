@@ -46,6 +46,99 @@ export function RefreshButton({
   );
 }
 
+/** The link as it is while the snapshot just asked for is being taken. */
+function requested(link: Link): Link {
+  return { ...link, snapshot_requested_at: new Date().toISOString(), snapshot_error: null };
+}
+
+/** What the owner is told when the API refuses a snapshot. */
+function snapshotRefusal(err: ApiError): string {
+  if (err.code === 'snapshot_recent') {
+    const seconds = Number(err.body.retry_after ?? 60);
+    const minutes = Math.max(1, Math.ceil(seconds / 60));
+    return `A snapshot was taken recently; try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+  }
+  if (err.code === 'unavailable') return 'The snapshot could not be queued.';
+  return err.message;
+}
+
+/**
+ * Take snapshot (Retake snapshot, when the link has one): asks the API to
+ * fetch the page again and keep its article with its images, and says in a
+ * toast that it is being taken, or why it was refused. `onRequested` hears of
+ * the link as it is while the snapshot is taken.
+ */
+export function SnapshotButton({
+  link,
+  onRequested,
+  ...look
+}: ButtonLook & { link: Link; onRequested?: (link: Link) => void }) {
+  return (
+    <StatusButton
+      {...look}
+      label={link.has_snapshot ? 'Retake snapshot' : 'Take snapshot'}
+      failure="could not take a snapshot, try again"
+      run={async () => {
+        try {
+          await links.takeSnapshot(link.id);
+        } catch (err) {
+          if (err instanceof ApiError)
+            throw new ApiError(err.status, err.code, snapshotRefusal(err));
+          throw err;
+        }
+        onRequested?.(requested(link));
+        return 'Taking a snapshot…';
+      }}
+    />
+  );
+}
+
+/** How often a page asks whether the snapshot of a link has been taken. */
+const SNAPSHOT_POLL_MS = 5_000;
+
+/**
+ * While a snapshot of `link` is being taken, asks for the link every 5
+ * seconds and hands it to `onChanged` once the snapshot is stored or failed.
+ */
+export function useSnapshotWatch(link: Link, onChanged?: (link: Link) => void): void {
+  const pending = link.snapshot_requested_at;
+  const latest = useRef(onChanged);
+  useEffect(() => {
+    latest.current = onChanged;
+  }, [onChanged]);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setInterval(() => {
+      links
+        .get(link.id)
+        .then((fresh) => {
+          if (fresh.snapshot_requested_at !== pending) latest.current?.(fresh);
+        })
+        .catch(() => undefined);
+    }, SNAPSHOT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [link.id, pending]);
+}
+
+/** That a snapshot is being taken, or why the last one failed. */
+export function SnapshotStatus({ link }: { link: Link }) {
+  if (link.snapshot_requested_at) {
+    return (
+      <p className="muted snapshot-status" role="status">
+        Taking a snapshot…
+      </p>
+    );
+  }
+  if (link.snapshot_error) {
+    return (
+      <p className="muted snapshot-status" role="status">
+        Snapshot failed: {link.snapshot_error}
+      </p>
+    );
+  }
+  return null;
+}
+
 /**
  * A summary shown in one line, with a control that shows all of it. The
  * control is left out once the text is seen to fit in the line; where
@@ -327,6 +420,7 @@ function pinDragProps(link: Link, actions: CardActions) {
  */
 export function LinkCard({ link, actions }: { link: Link; actions: CardActions }) {
   const archived = link.state === 'archived';
+  useSnapshotWatch(link, actions.onChanged);
   // Joining a workspace can change the decay note, so the card shows the link as the API
   // now has it; without it, the chips at least show the new workspace.
   const joined = (w: { id: string; name: string }) => {
@@ -409,11 +503,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
             </Button>
           )}
           <CardMenu>
-            {link.has_snapshot && (
-              <DropdownMenuItem asChild>
-                <PageLink to={`/links/${link.id}/snapshot`}>Snapshot</PageLink>
-              </DropdownMenuItem>
-            )}
+            <SnapshotButton link={link} onRequested={actions.onChanged} look="menu" />
             <DropdownMenuItem asChild>
               <PageLink to={`/links/${link.id}`}>Details</PageLink>
             </DropdownMenuItem>
@@ -442,6 +532,7 @@ export function LinkCard({ link, actions }: { link: Link; actions: CardActions }
         </div>
       </div>
       <CardMeta link={link} />
+      <SnapshotStatus link={link} />
       {link.summary && <Summary text={link.summary} />}
       {link.enrichment_status === 'failed' && (
         <EnrichmentFailed link={link} onQueued={actions.onRefreshing} />

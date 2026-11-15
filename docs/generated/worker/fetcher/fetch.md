@@ -131,6 +131,14 @@ Redirects followed before a fetch fails.
 
 ***
 
+### PAGE\_ACCEPT
+
+> `const` **PAGE\_ACCEPT**: `"text/html, application/pdf"` = `'text/html, application/pdf'`
+
+What the fetcher accepts for a page.
+
+***
+
 ### PAGE\_LIMIT
 
 > `const` **PAGE\_LIMIT**: `number`
@@ -231,6 +239,38 @@ of the site's own.
 
 ***
 
+### readLimited()
+
+> **readLimited**(`body`, `limit`, `signal`, `declared?`): `Promise`\<\{ `bytes`: `Uint8Array`; `over`: `boolean`; \}\>
+
+Reads at most `limit` bytes of `body`; `over` says whether there was more.
+With the length the response declared, the bytes are read straight into one
+buffer of that size, so a large body is held once, not twice.
+
+#### Parameters
+
+##### body
+
+`ReadableStream`\<`Uint8Array`\<`ArrayBufferLike`\>\> \| `null`
+
+##### limit
+
+`number`
+
+##### signal
+
+`AbortSignal`
+
+##### declared?
+
+`number` = `NaN`
+
+#### Returns
+
+`Promise`\<\{ `bytes`: `Uint8Array`; `over`: `boolean`; \}\>
+
+***
+
 ### requestFollowing()
 
 > **requestFollowing**\<`T`\>(`env`, `url`, `__namedParameters`, `onFinal`): `Promise`\<[`FetchFailed`](#fetchfailed) \| `T`\>
@@ -258,6 +298,10 @@ Alexandria's own (the host gate) is thrown, not turned into a reason.
 `string`
 
 ##### \_\_namedParameters
+
+###### accept?
+
+`string`
 
 ###### method
 
