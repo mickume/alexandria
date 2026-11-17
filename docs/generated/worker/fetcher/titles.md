@@ -39,9 +39,10 @@ The page's path must match one of these; null for any path.
 Cleans the titles already stored, once for each version of the rules: when
 the hash of the rules file differs from the one recorded in
 title_rules_state, every link's title is cleaned (except a title the owner
-edited), the links whose title changes are marked as changed, and the new
-hash is recorded. A run that fails records nothing, and the next one starts
-again; cleaning a title twice changes nothing more. Returns how many titles
+edited, or one a retriever stored), the links whose title changes are
+marked as changed, and the new hash is recorded. A run that fails records
+nothing, and the next one starts again; cleaning a title twice changes
+nothing more. Returns how many titles
 changed.
 
 #### Parameters

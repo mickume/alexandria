@@ -139,6 +139,7 @@ A link is shown as:
   "snapshot_requested_at": null,
   "snapshot_error": null,
   "updated_at": "2026-06-01T08:00:00.000Z",
+  "site": null,
   "summary": null,
   "tags": [],
   "topic": null,
@@ -171,6 +172,41 @@ what it is (`html` or `pdf`). `snapshot_requested_at` is set while a snapshot
 asked for is being taken (it reads null once it is 15 minutes old, so that a
 snapshot lost on the way never keeps a page waiting), and `snapshot_error`
 says why the last one asked for failed, until another is asked for.
+
+For a GitHub repository, issue or pull request, and for a YouTube video when
+the deployment has a YouTube key, a fetch asks the site's API instead of
+fetching the page (see [Retrievers](configuration.md#retrievers)). The link
+then stores the site's own title ("repo: description", "Title ·
+owner/repo#123", the video's title), a `description` of at most 300
+characters, the thing's canonical address as `final_url`, 200 as
+`http_status`, the text that search, Ask and enrichment read (the README, the
+issue's body, the video's description), the note "retrieved through the
+GitHub API" (or "… the YouTube API"), and `site`:
+
+```json
+{
+  "retriever": "github",
+  "kind": "repository",
+  "retrieved_at": "2026-06-01T08:00:05.000Z",
+  "facts": [
+    { "key": "stars", "label": "Stars", "value": "12.3k", "card": true },
+    { "key": "language", "label": "Language", "value": "TypeScript", "card": true },
+    { "key": "owner", "label": "Owner", "value": "acme", "card": false }
+  ]
+}
+```
+
+`retriever` is `github` or `youtube`; `kind` is `repository`, `issue`,
+`pull_request` or `video`; `retrieved_at` is the last successful retrieval;
+`facts` lists the site's details in order, each `value` as it is shown, and
+`card` marks the (at most 3) the card shows. A repository's facts are Stars,
+Language, Archived (only when it is), Owner, Topics, License and Last push; an
+issue's or pull request's State ("open issue", "merged pull request", …),
+Comments, Author and Opened; a video's Channel, Duration, Published and
+Thumbnail (an address). A fact the API does not give is left out. `site` is
+null for a link no retriever has retrieved. When the API cannot answer, the
+page is fetched as for any other link, `site` keeps what an earlier
+retrieval stored, and the fetch's history event says why (see below).
 
 Enrichment adds `summary` (at most 60 words), `tags` (1 to 5, lower-case,
 hyphenated) and `topic`. Enrichment files the link under a topic path of up
@@ -317,7 +353,12 @@ The link's uses, fetch attempts and snapshots, newest first:
 `200 {"items": [<event>], "next_cursor"}`, where an event is
 `{"kind": "use", "at"}` or
 `{"kind": "fetch" | "snapshot", "at", "outcome": "ok" | "failed", "http_status": <number or null>, "reason": <string or null>}`.
-Query: `limit` (1 to 100, default 100), `cursor`.
+Query: `limit` (1 to 100, default 100), `cursor`. A successful fetch has a
+reason only when its site's API could not answer and the page was fetched
+instead ("GitHub API: rate limited; fetched as the page", the failure being
+one of "unreachable", "timed out", "rate limited", "key refused", "not found"
+and "unusable answer"), or when a repository's README could not be read
+("GitHub API: README could not be read").
 
 #### `POST /api/v1/links/{id}/pin`
 

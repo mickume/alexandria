@@ -18,6 +18,7 @@ import { applyTitleRules } from './fetcher/titles';
 import { DISPATCH_CRON, dispatchAllImports } from './imports/dispatch';
 import { maintainIndex } from './meaning/backfill';
 import { handleIndexBatch } from './meaning/indexing';
+import { retrieveStoredLinks } from './retrievers/backfill';
 import { sweepRankings } from './search/routes';
 
 export { HostGate } from './fetcher/hostgate';
@@ -30,6 +31,7 @@ async function everyMinute(env: Env): Promise<void> {
     sweepRankings(env.DB),
     applyTitleRules(env),
     sweepLegacySnapshots(env),
+    retrieveStoredLinks(env),
   ]);
   for (const job of jobs) {
     if (job.status === 'rejected') console.error('an every-minute job failed', job.reason);
@@ -41,9 +43,9 @@ export default {
     return app.fetch(request, env, ctx);
   },
   scheduled(controller, env, ctx) {
-    // Every minute: imported links, the index, the kept search rankings, the title rules and the
-    // sweep of the copies stored before snapshots; every 5 minutes: account deletions; every hour:
-    // decay and liveness.
+    // Every minute: imported links, the index, the kept search rankings, the title rules, the
+    // sweep of the copies stored before snapshots and the one-time retrieval of links stored
+    // before their retriever; every 5 minutes: account deletions; every hour: decay and liveness.
     const run =
       controller.cron === DISPATCH_CRON
         ? everyMinute(env)

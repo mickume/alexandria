@@ -1,4 +1,5 @@
 import { now } from '../clock';
+import { parseSite, type SiteView } from '../retrievers/retriever';
 import { countStatement } from '../stats/daily';
 import { decayFields } from '../decay/note';
 import { notePreview } from '../workspaces/notes';
@@ -75,6 +76,10 @@ export interface LinkRow {
   last_check_result: string | null;
   check_enqueued_at: string | null;
   last_manual_check_at: string | null;
+  /** JSON: what a retriever stored about the link; null for none. */
+  site?: string | null;
+  /** The retriever whose one-time retrieval has taken the link. */
+  retrieval_seen?: string | null;
   /** Read through link_views: the link's user's start points. */
   user_start_points?: number;
   /** Read through link_views: the link's user's removal delay. */
@@ -122,6 +127,8 @@ export interface LinkView {
   snapshot_error: string | null;
   /** When the link last changed in any way. */
   updated_at: string;
+  /** What a retriever stored from the site's API (its kind and facts); null when none did. */
+  site: SiteView | null;
   summary: string | null;
   tags: string[];
   topic: string | null;
@@ -236,6 +243,7 @@ export function toView(row: LinkRow): LinkView {
     snapshot_requested_at: pendingSnapshot(row.snapshot_requested_at ?? null),
     snapshot_error: row.snapshot_error ?? null,
     updated_at: row.updated_at,
+    site: parseSite(row.site),
     summary: row.summary ?? null,
     tags: parseStrings(row.tags_json),
     topic: row.topic ?? null,

@@ -16,8 +16,15 @@
  * offline, after which it refuses every connection. POST /__page sets the
  * page one address serves, so a test can change it between two fetches.
  *
+ * It also fakes the two APIs the retrievers ask (GITHUB_API_URL and
+ * YOUTUBE_API_URL point here): GitHub's at /__github, which knows the
+ * repository acme/widget, its README holding the word 'frobnicator', and
+ * answers 503 for everything while it is down; and YouTube's at /__youtube,
+ * which knows the video dQw4w9WgXcQ. https://github.com/acme/fallback is a
+ * GitHub page for a repository its API does not know.
+ *
  * Control: POST /__offline, POST /__online, POST /__page ({url, title, text}),
- * GET /__log (JSON), GET /health.
+ * POST /__github/down, POST /__github/up, GET /__log (JSON), GET /health.
  * Run with: node e2e/fake-origin.ts <port>
  */
 import { createServer } from 'node:http';
@@ -166,12 +173,82 @@ const pages: Record<string, { type: string; body: string | Uint8Array }> = {
   },
   'https://papers.example/on-links.pdf': { type: 'application/pdf', body: paperPdf('On Links') },
   'https://illustrated.example/article': { type: HTML, body: illustrated },
+  'https://github.com/acme/fallback': {
+    type: HTML,
+    body: articlePage(
+      'GitHub - acme/fallback: From the page · GitHub',
+      'A repository page that the fake GitHub API does not know, fetched as a page.',
+    ),
+  },
   'https://illustrated.example/img/one.png': { type: 'image/png', body: PIXEL },
   'https://img.example/two.png': { type: 'image/png', body: PIXEL },
 };
 
 const log: { target: string; at: number }[] = [];
 let offline = false;
+let githubDown = false;
+
+/** The fake GitHub API's answers, by path under /__github. */
+const github: Record<string, { type: string; body: string }> = {
+  '/repos/acme/widget': {
+    type: 'application/json',
+    body: JSON.stringify({
+      name: 'widget',
+      full_name: 'acme/widget',
+      owner: { login: 'acme' },
+      description: 'Widgets for everyone',
+      stargazers_count: 12345,
+      language: 'TypeScript',
+      topics: ['widgets'],
+      license: { spdx_id: 'MIT' },
+      archived: false,
+      pushed_at: '2026-10-01T12:00:00Z',
+      html_url: 'https://github.com/acme/widget',
+    }),
+  },
+  '/repos/acme/widget/readme': {
+    type: 'text/plain',
+    body: '# Widget\n\nWidgets are assembled from a frobnicator and two sprockets.',
+  },
+};
+
+/** The fake YouTube Data API's videos, by id. */
+const videos: Record<string, unknown> = {
+  dQw4w9WgXcQ: {
+    snippet: {
+      title: 'A Fixture Video',
+      description: 'A video about fixtures, described at length by its channel.',
+      channelTitle: 'Fixture Channel',
+      publishedAt: '2026-01-02T03:04:05Z',
+      thumbnails: { high: { url: `http://localhost:${port}/__thumbnail.png` } },
+    },
+    contentDetails: { duration: 'PT12M34S' },
+  },
+};
+
+/** Answers a request to the fake GitHub or YouTube API; false when it is for neither. */
+function answerApi(url: URL, res: import('node:http').ServerResponse): boolean {
+  if (url.pathname.startsWith('/__github/')) {
+    const path = url.pathname.slice('/__github'.length);
+    const answer = github[path];
+    if (githubDown) res.writeHead(503).end('down');
+    else if (!answer) res.writeHead(404, { 'Content-Type': 'application/json' }).end('{}');
+    else res.writeHead(200, { 'Content-Type': answer.type }).end(answer.body);
+    return true;
+  }
+  if (url.pathname === '/__youtube/videos') {
+    const video = videos[url.searchParams.get('id') ?? ''];
+    res
+      .writeHead(200, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify({ items: video ? [video] : [] }));
+    return true;
+  }
+  if (url.pathname === '/__thumbnail.png') {
+    res.writeHead(200, { 'Content-Type': 'image/png' }).end(PIXEL);
+    return true;
+  }
+  return false;
+}
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost:${port}`);
@@ -194,6 +271,11 @@ const server = createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/__github/down' || url.pathname === '/__github/up') {
+    githubDown = url.pathname.endsWith('down');
+    return void res.end(githubDown ? 'down' : 'up');
+  }
+  if (answerApi(url, res)) return;
   if (url.pathname === '/__log') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return void res.end(JSON.stringify(log));

@@ -90,6 +90,24 @@ export const Link = z.strictObject({
     .nullable()
     .describe('Why the last snapshot asked for failed; cleared by the next request'),
   updated_at: z.string().describe('When the link last changed in any way'),
+  site: z
+    .strictObject({
+      retriever: z.enum(['github', 'youtube']),
+      kind: z.enum(['repository', 'issue', 'pull_request', 'video']),
+      retrieved_at: z.string().describe('When the link was last retrieved through the site’s API'),
+      facts: z
+        .array(
+          z.strictObject({
+            key: z.string(),
+            label: z.string(),
+            value: z.string().describe('As it is shown, such as "12.3k" or "12:34"'),
+            card: z.boolean().describe('Shown on the link’s card (at most 3)'),
+          }),
+        )
+        .describe('The site’s details of the link, in order'),
+    })
+    .nullable()
+    .describe('What a retriever stored from the site’s API; null when none did'),
   summary: z.string().nullable(),
   tags: z.array(z.string()),
   topic: z.string().nullable(),

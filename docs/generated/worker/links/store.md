@@ -146,6 +146,18 @@ A JSON array of notes.
 
 > **refresh\_requested\_at**: `string` \| `null`
 
+##### retrieval\_seen?
+
+> `optional` **retrieval\_seen?**: `string` \| `null`
+
+The retriever whose one-time retrieval has taken the link.
+
+##### site?
+
+> `optional` **site?**: `string` \| `null`
+
+JSON: what a retriever stored about the link; null for none.
+
 ##### snapshot\_at
 
 > **snapshot\_at**: `string` \| `null`
@@ -412,6 +424,12 @@ start; null for an archived link, which decay leaves alone.
 > **removal\_at**: `string` \| `null`
 
 When an expired link will be removed.
+
+##### site
+
+> **site**: [`SiteView`](../retrievers/retriever.md#siteview) \| `null`
+
+What a retriever stored from the site's API (its kind and facts); null when none did.
 
 ##### snapshot\_at
 

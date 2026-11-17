@@ -46,6 +46,14 @@ export interface Env {
   OPENROUTER_BASE_URL: string;
   /** Firecrawl's API base URL; configurable so tests can run a local fake. */
   FIRECRAWL_API_URL: string;
+  /** The GitHub REST API's base URL; configurable so tests can run a local fake. */
+  GITHUB_API_URL: string;
+  /** A GitHub token for the GitHub retriever; unset, GitHub's API is called without one. */
+  GITHUB_TOKEN?: string;
+  /** The YouTube Data API's base URL; configurable so tests can run a local fake. */
+  YOUTUBE_API_URL: string;
+  /** A YouTube Data API key; unset, YouTube's pages are fetched as pages. */
+  YOUTUBE_API_KEY?: string;
 }
 
 /** A request to index one link by meaning. */
@@ -85,6 +93,8 @@ export interface FetchMessage {
   refresh?: boolean;
   /** Set when the fetch also takes a snapshot: the page's article with its images, or the PDF. */
   snapshot?: boolean;
+  /** Set when the one-time retrieval of the links stored before a retriever existed sent it. */
+  backfill?: boolean;
 }
 
 /** The user a request is authenticated as. */

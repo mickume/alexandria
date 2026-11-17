@@ -13,7 +13,8 @@ browser ──► Worker (src/worker/index.ts)
               └── pages       website's static assets (dist/client), after the session check
                      │
                      ├──► D1 (DB)          users, sessions, tokens, links, link_uses, rate_limits, …
-                     ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites
+                     ├──► FETCH_QUEUE ──► queue consumer ──► HOST_GATE (one DO per host) ──► origin sites,
+                     │                                                                     or GitHub's and YouTube's APIs
                      ├──► INDEX_QUEUE ──► index worker ──► Workers AI (AI) and Vectorize (VECTORIZE)
                      └──► R2 (SNAPSHOTS)   snapshots: articles with their images, PDFs
 ```
@@ -34,6 +35,11 @@ browser ──► Worker (src/worker/index.ts)
     pinning and deleting (`store.ts`), the stream (`stream.ts`), uses and
     history (`use.ts`), and the routes.
   - `stats/`: the library statistics (`stats.ts`) and their route.
+  - `retrievers/`: the retrievers that ask a site's API instead of fetching
+    its page (see [Retrievers](#retrievers)): what they share (`retriever.ts`,
+    `api.ts`, `facts.ts`), the list of them (`registry.ts`), one module per
+    site (`github.ts`, `youtube.ts`), and the one-time retrieval of the links
+    stored before them (`backfill.ts`).
 
 The stream (`links/stream.ts`, `listStream`) lists the pinned links by pin
 position, then every other link by its points descending, then `last_used_at`
@@ -153,6 +159,7 @@ account and checks the PKCE verifier as Google does.
 | `link_tags` | the tags of each link, at positions |
 | `imports`, `import_links` | each import's report, and the links it added with their line and dispatch time (see Imports) |
 | `title_rules_state` | one row: the hash of the title rules the stored titles were last cleaned with, and when (see Fetching) |
+| `retrieval_state` | per retriever: until when its one-time retrieval waits after its API's rate limit or quota was spent (see Retrievers) |
 
 Every query of a user's resources is filtered by the authenticated user, so
 another user's id is answered exactly as a missing one.
@@ -184,8 +191,9 @@ quantities in the last list are never stored.
    snapshot's objects first (see [Snapshots](#snapshots)). Then one D1 batch
    writes:
    - on `links`: `final_url`, `http_status`, `description`, `favicon_url` and
-     `language` (from the page's metadata, `fetcher/html.ts`), the page's
-     title cleaned by the title rules unless the owner edited it,
+     `language` (from the page's metadata, `fetcher/html.ts`, or from the
+     site's API for a link a retriever claims, with its facts in `site`), the
+     page's title cleaned by the title rules unless the owner edited it,
      `content_kind`, `fetched_at`, `reader_empty`, `notes` and the state
      (`active`, or unchanged when `archived`);
    - `link_texts`: the article text (or the PDF's text), at most 500,000
@@ -361,6 +369,52 @@ through the bucket once, five pages of 1,000 objects a run, deleting every
 `reader.json` and every `snapshot` object stored as `text/html`, which nothing
 writes any more; it keeps its R2 cursor in `maintenance_state`, so a run that
 fails part-way is resumed by the next.
+
+### Retrievers
+
+For the addresses of some sites ([ADR 12](adr/12-retrieve-links-through-their-sites-apis.md)), the HTML page is a poor account of what a
+link is, and the site's API a good one. A retriever (`retrievers/`) claims
+the addresses of one site by host and path and asks the site's API instead
+of fetching the page. `registry.ts` lists them (`RETRIEVERS`): `github`
+(a repository, an issue or a pull request, through the GitHub REST API, with
+`GITHUB_TOKEN` when set) and `youtube` (a video, through the YouTube Data
+API, only with `YOUTUBE_API_KEY`). The fetch consumer, the one-time retrieval
+and the website take every retriever from that list; adding one changes none
+of them.
+
+`processFetch` asks `findRetriever` for the link's address before fetching
+it. A retriever's requests (`callApi` in `retrievers/api.ts`) go through the
+host gate under the API's host name, with the fetcher's User-Agent and 15
+seconds each, and a failure is named: "unreachable" (no connection, or a 5xx),
+"timed out", "rate limited" (429, or a 400 or 403 the site marks as a spent
+limit or quota), "key refused" (401, any other 403, or a 400 the site marks
+as a bad key), "not found" (404, or an empty answer) or "unusable answer"
+(anything else, a redirect included). On success the answer is written
+through `writeFetched` as a fetch's is: its title (the title rules are not
+applied, and `applyTitleRules` skips links with a `site`), a description of
+at most 300 characters, the thing's canonical address as `final_url`, 200 as
+`http_status`, the text in `link_texts` (a repository's README as written, an
+issue's body, a video's description), the note "retrieved through the GitHub
+API" and the `site` column: `{retriever, kind, retrieved_at, facts}`, the
+facts an ordered list of `{key, label, value, card}` as they are shown. On
+failure the page is fetched in the same attempt, as before (Firecrawl
+included), and its fetch event records the reason "GitHub API: <failure>;
+fetched as the page"; `site` keeps what an earlier retrieval stored. A
+snapshot of a claimed address takes the page's article; the API's answer
+then gives the link's metadata and text.
+
+**The one-time retrieval** (`retrieveStoredLinks` in `retrievers/backfill.ts`,
+in the every-minute run) sends the links a retriever claims but has never
+retrieved (no `site` of its own), in any state but `pending`, to the fetch
+worker as refreshes marked `backfill`, at most 20 a minute across all users,
+none while an import has links waiting, and none for a retriever that is off
+or paused. Each link it reads on the retriever's hosts gets the retriever's
+name in `retrieval_seen`, claimed or not, so it reads no link twice. A
+backfill message whose API answers "rate limited" fetches nothing: the link's
+`retrieval_seen` is cleared and the retriever's retrieval waits an hour
+(`retrieval_state`). Any other failure falls back to the page. A backfill
+fetch records no use and enriches the link again only when its stored text
+changed.
 
 ### Lost messages
 

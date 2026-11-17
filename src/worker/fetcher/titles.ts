@@ -109,9 +109,10 @@ const PAGE_SIZE = 500;
  * Cleans the titles already stored, once for each version of the rules: when
  * the hash of the rules file differs from the one recorded in
  * title_rules_state, every link's title is cleaned (except a title the owner
- * edited), the links whose title changes are marked as changed, and the new
- * hash is recorded. A run that fails records nothing, and the next one starts
- * again; cleaning a title twice changes nothing more. Returns how many titles
+ * edited, or one a retriever stored), the links whose title changes are
+ * marked as changed, and the new hash is recorded. A run that fails records
+ * nothing, and the next one starts again; cleaning a title twice changes
+ * nothing more. Returns how many titles
  * changed.
  */
 export async function applyTitleRules(env: Env, file: unknown = rulesFile): Promise<number> {
@@ -126,7 +127,7 @@ export async function applyTitleRules(env: Env, file: unknown = rulesFile): Prom
   for (;;) {
     const { results } = await env.DB.prepare(
       `SELECT id, title, url, final_url FROM links
-       WHERE id > ? AND NOT ${ownerEdited('title')}
+       WHERE id > ? AND NOT ${ownerEdited('title')} AND site IS NULL
        ORDER BY id LIMIT ?`,
     )
       .bind(after, PAGE_SIZE)
@@ -140,7 +141,7 @@ export async function applyTitleRules(env: Env, file: unknown = rulesFile): Prom
       updates.push(
         env.DB.prepare(
           `UPDATE links SET title = ?1, updated_at = ?2
-           WHERE id = ?3 AND title = ?4 AND NOT ${ownerEdited('title')}`,
+           WHERE id = ?3 AND title = ?4 AND NOT ${ownerEdited('title')} AND site IS NULL`,
         ).bind(title, at, row.id, row.title),
       );
     }

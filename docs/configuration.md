@@ -23,6 +23,8 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
 | `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
 | `FIRECRAWL_API_URL` | `wrangler.jsonc` | Firecrawl's API base URL, `https://api.firecrawl.dev`, used for pages behind a bot check when the owner stored a Firecrawl key; changed only for tests. |
+| `GITHUB_API_URL` | `wrangler.jsonc` | The GitHub REST API's base URL, `https://api.github.com`, which the GitHub retriever asks (see [Retrievers](#retrievers)); changed only for tests. |
+| `YOUTUBE_API_URL` | `wrangler.jsonc` | The YouTube Data API's base URL, `https://www.googleapis.com/youtube/v3`, which the YouTube retriever asks; changed only for tests. |
 | `MEANING_FAKE_URL` | end-to-end tests only | When set, embeddings and the vector index are served by the fake at this URL (`e2e/fake-meaning.ts`) instead of the `AI` and `VECTORIZE` bindings. Never set in a deployment. |
 
 ## Secrets
@@ -30,6 +32,8 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | Name                   | Meaning                                                                                                                                  |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `GOOGLE_CLIENT_SECRET` | The OAuth 2.0 client secret of the Google Cloud project. Set with `wrangler secret put GOOGLE_CLIENT_SECRET`, or in `.dev.vars` locally. |
+| `GITHUB_TOKEN` | Optional. A GitHub token the GitHub retriever sends with every request to GitHub's API, for its limit of 5,000 requests an hour; a fine-grained token with no repository access will do, as only public data is read. Unset, GitHub's API is called without a token (60 requests an hour per client address, often spent), and a spent limit means the page is fetched instead. |
+| `YOUTUBE_API_KEY` | Optional. A Google Cloud API key with the YouTube Data API v3 enabled. Unset, the YouTube retriever is off and YouTube's pages are fetched as other pages are. |
 | `KEY_ENCRYPTION_KEY` | Any long random string. The owners' AI and Firecrawl keys are encrypted with AES-256-GCM under a key derived from it (its SHA-256), with each user's id bound as additional data. Changing it makes every stored key unreadable: owners then enter their keys again. |
 
 ## Bindings
@@ -58,8 +62,10 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
   links per user that have no up-to-date passages (the backfill) on
   `alexandria-index`, the most recently used first and none twice within 10
   minutes, and cleans the stored titles once after the title rules changed
-  (see [Title rules](#title-rules)). The four are independent: one failing does
-  not stop the others.
+  (see [Title rules](#title-rules)), sweeps the copies stored before snapshots,
+  and sends up to 20 links that a retriever claims but has never retrieved to
+  the fetch worker (see [Retrievers](#retrievers)). They are independent: one
+  failing does not stop the others.
 - `*/5 * * * *`: the sweep that runs the deletion job of every account marked
   for deletion more than 5 minutes ago.
 
@@ -116,6 +122,33 @@ pages of 500), records the new hash, and is done until the rules change again.
 A title the owner edited is never changed. Removing a rule does not restore
 the titles it cleaned; a refresh of a link fetches its title again.
 
+## Retrievers
+
+For some sites, a link is retrieved through the site's API instead of
+fetched as a page: its title, description, text and facts come from the API
+(see [architecture.md](architecture.md#retrievers)). Each retriever is a
+module of `src/worker/retrievers/`, listed in `registry.ts`, and is bundled
+with the Worker:
+
+| Retriever | Addresses it claims | API | Needs |
+| --------- | ------------------- | --- | ----- |
+| `github` | `github.com/{owner}/{repo}`, `…/issues/{n}`, `…/pull/{n}` (and `www.github.com`) | GitHub REST API (`GITHUB_API_URL`) | nothing; `GITHUB_TOKEN` for its higher limit |
+| `youtube` | `youtube.com/watch?v={id}`, `/shorts/{id}`, `/live/{id}`, `/embed/{id}` (and `www.`, `m.`, `music.`), `youtu.be/{id}` | YouTube Data API v3 (`YOUTUBE_API_URL`) | `YOUTUBE_API_KEY`; off without it |
+
+Neither key is checked when it is set: a key the API refuses shows only as
+the reason "GitHub API: key refused; fetched as the page" (or YouTube's) in
+the history of each link it affected. When a retriever is first deployed, or
+its key is set, the every-minute run retrieves the links already stored that
+it claims, once, at most 20 a minute across all users and only while no
+import has links waiting; it waits an hour whenever the API says its rate
+limit or quota is spent.
+
+To add a retriever, write its module (its hosts, which addresses it claims,
+and how it turns the API's answer into a title, description, text and facts),
+list it in `RETRIEVERS` in `registry.ts`, and give its base URL a variable
+here. The fetcher, the one-time retrieval, the API's `site` field and the
+website take it from there.
+
 ## Deploying
 
 Two ways deploy the same Worker:
@@ -153,8 +186,8 @@ authorised redirect URI of the Google OAuth client.
 from a `.env` file in the checkout, or from the file named after it
 (`npm run configure -- prod.env`). Copy `.env.example` to `.env` (git ignores
 `.env` and `.env.*`) and fill it in. The script stores each of
-`ALLOWED_EMAILS`, `GOOGLE_CLIENT_ID`, `PUBLIC_ORIGIN`, `GOOGLE_CLIENT_SECRET`
-and `KEY_ENCRYPTION_KEY` that the file holds as a secret of the Worker, in one
+`ALLOWED_EMAILS`, `GOOGLE_CLIENT_ID`, `PUBLIC_ORIGIN`, `GOOGLE_CLIENT_SECRET`,
+`KEY_ENCRYPTION_KEY`, `GITHUB_TOKEN` and `YOUTUBE_API_KEY` that the file holds as a secret of the Worker, in one
 `wrangler secret bulk` call, so that every deploy keeps them; a setting the
 file leaves out is left as it is. `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` may be in the file too: they are used to reach the
@@ -187,6 +220,10 @@ its telemetry off (`WRANGLER_SEND_METRICS=false`).
 
 `e2e/fake-google.ts` signs in `FAKE_GOOGLE_EMAIL` (default `owner@example.test`)
 named `FAKE_GOOGLE_NAME` (default `Ada Owner`).
+
+`e2e/fake-origin.ts` also fakes GitHub's and YouTube's APIs: the Worker is
+given `GITHUB_API_URL` and `YOUTUBE_API_URL` pointing at it, and a
+`YOUTUBE_API_KEY`.
 
 `e2e/fake-meaning.ts` stands in for Workers AI and Vectorize (the Worker is
 given its address as `MEANING_FAKE_URL`), and `wrangler dev` runs with

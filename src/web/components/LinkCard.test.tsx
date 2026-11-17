@@ -293,11 +293,34 @@ describe('a card’s fetch results', () => {
       texts: ['no text in this PDF'],
       read: true,
     },
-  ])('shows $label as it is', async ({ link: l, texts, roles, read, favicon }) => {
+    {
+      label: 'a repository retrieved through GitHub’s API, with its card facts only',
+      link: makeLink({
+        id: 'repo',
+        state: 'active',
+        host: 'github.com',
+        title: 'widget: Widgets for everyone',
+        site: {
+          retriever: 'github',
+          kind: 'repository',
+          retrieved_at: '2026-09-01T10:00:00.000Z',
+          facts: [
+            { key: 'stars', label: 'Stars', value: '12.3k', card: true },
+            { key: 'language', label: 'Language', value: 'TypeScript', card: true },
+            { key: 'owner', label: 'Owner', value: 'acme-owner', card: false },
+          ],
+        },
+      }),
+      texts: ['★ 12.3k', 'TypeScript'],
+      absent: ['acme-owner'],
+      read: false,
+    },
+  ])('shows $label as it is', async ({ link: l, texts, absent, roles, read, favicon }) => {
     const { container } = render(
       <LinkCard link={l} actions={{ onPin: noop, onUnpin: noop, onDelete: noop }} />,
     );
     for (const text of texts) expect(screen.getByText(text)).toBeTruthy();
+    for (const text of absent ?? []) expect(screen.queryByText(text)).toBe(null);
     for (const name of roles ?? []) expect(screen.getByRole('img', { name })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Read' }) !== null).toBe(read);
     if (read) {

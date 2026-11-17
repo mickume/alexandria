@@ -187,6 +187,7 @@ export function makeLink(overrides: Partial<Link> & { id: string }): Link {
     snapshot_requested_at: null,
     snapshot_error: null,
     updated_at: '2026-03-05T10:00:00.000Z',
+    site: null,
     summary: null,
     tags: [],
     topic: null,

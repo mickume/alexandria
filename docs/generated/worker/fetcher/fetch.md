@@ -340,3 +340,22 @@ a 530 with error 1016 as 'host not found'; any other status is
 #### Returns
 
 `Promise`\<`string`\>
+
+***
+
+### userAgent()
+
+> **userAgent**(`env`): `string`
+
+The fetcher's User-Agent, naming the page that explains it when the
+deployment names its address.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+#### Returns
+
+`string`

@@ -91,6 +91,10 @@ export const fakeOrigin = {
       body: JSON.stringify({ url, title, text }),
     });
   },
+  /** Makes the fake GitHub API answer 503 to everything, or answer again. */
+  async githubDown(down: boolean): Promise<void> {
+    await fetch(`${this.url}/__github/${down ? 'down' : 'up'}`, { method: 'POST' });
+  },
   async requestsSince(t: number): Promise<number> {
     const log = (await (await fetch(`${this.url}/__log`)).json()) as { at: number }[];
     return log.filter((r) => r.at >= t).length;
