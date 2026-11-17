@@ -29,7 +29,8 @@ test('a link unused for longer than its start points expires and the owner resto
   await expect(cardOf(page, id)).toHaveCount(0);
 
   await page.goto('/expired');
-  const row = page.getByRole('article', { name: 'example.org' });
+  // The row by its host: the fetch of /old fails, after which its title is read from the address.
+  const row = page.getByRole('article').filter({ hasText: 'example.org' });
   await expect(row.getByText(`removed on ${expired.removal_at.slice(0, 10)}`)).toBeVisible();
   await row.getByRole('button', { name: 'Restore' }).click();
   await expect(page.getByRole('article')).toHaveCount(0);
