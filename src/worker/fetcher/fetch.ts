@@ -232,6 +232,16 @@ function startsWithPdfMagic(bytes: Uint8Array): boolean {
 /** What the fetcher accepts for a page. */
 export const PAGE_ACCEPT = 'text/html, application/pdf';
 
+/**
+ * The fetcher's User-Agent, naming the page that explains it when the
+ * deployment names its address.
+ */
+export function userAgent(env: Env): string {
+  return env.PUBLIC_ORIGIN
+    ? `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`
+    : 'Alexandria/1.0';
+}
+
 /** Sends one request for `target`, through ORIGIN_PROXY_URL when that is set. */
 function send(
   env: Env,
@@ -240,13 +250,7 @@ function send(
   method: 'GET' | 'HEAD' = 'GET',
   accept = PAGE_ACCEPT,
 ): Promise<Response> {
-  const headers = new Headers({
-    Accept: accept,
-    // The page that explains the fetcher, when the deployment names its address.
-    'User-Agent': env.PUBLIC_ORIGIN
-      ? `Alexandria/1.0 (+${env.PUBLIC_ORIGIN}/about/fetcher)`
-      : 'Alexandria/1.0',
-  });
+  const headers = new Headers({ Accept: accept, 'User-Agent': userAgent(env) });
   let url = target.href;
   if (env.ORIGIN_PROXY_URL) {
     headers.set('X-Alexandria-Target', target.href);

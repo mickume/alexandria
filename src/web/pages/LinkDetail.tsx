@@ -5,6 +5,7 @@ import { CheckButton } from '../components/CheckButton';
 import { EditableField } from '../components/EditableField';
 import { Icon } from '../components/Icon';
 import { NoteEditor } from '../components/NoteEditor';
+import { SiteSection } from '../components/SiteFacts';
 import {
   RefreshButton,
   SiteLink,
@@ -35,7 +36,11 @@ const CONFIRM_DELETE = {
 function eventLabel(event: LinkEvent): string {
   if (event.kind === 'use') return 'Opened';
   const what = event.kind === 'snapshot' ? 'Snapshot' : 'Fetch';
-  if (event.outcome === 'ok') return event.kind === 'snapshot' ? 'Snapshot taken' : 'Fetched';
+  if (event.outcome === 'ok') {
+    if (event.kind === 'snapshot') return 'Snapshot taken';
+    // A fetch that succeeded can still say why: its site's API could not answer, say.
+    return event.reason ? `Fetched (${event.reason})` : 'Fetched';
+  }
   return `${what} failed: ${event.reason ?? 'unknown error'}`;
 }
 
@@ -301,7 +306,8 @@ function Sidebar({ link, onChange }: { link: Link; onChange: (link: Link) => voi
 /**
  * The detail page of one link, laid out as an issue is: the title across the
  * top; then its note, editable title and summary, when it was added and used,
- * the links related to it, its history and last its technical details on the left; and its tags,
+ * the links related to it, its history, what its site's API said of it and last its technical
+ * details on the left; and its tags,
  * topic, workspaces and actions in a narrower column on the right.
  */
 export function LinkDetail({ id }: { id: string }) {
@@ -369,6 +375,12 @@ export function LinkDetail({ id }: { id: string }) {
             ))}
           </ul>
           <hr />
+          {link.site && (
+            <>
+              <SiteSection site={link.site} description={link.description} />
+              <hr />
+            </>
+          )}
           <section aria-labelledby="facts-heading">
             <h2 id="facts-heading">Technical details</h2>
             <Facts link={link} />

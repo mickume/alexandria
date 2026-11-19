@@ -362,7 +362,7 @@ One UTC day of the owner's daily record; counters are null before the record beg
 
 ##### size
 
-> **size**: `Record`\<`"expired"` \| `"archived"` \| `"pending"` \| `"active"` \| `"unreachable"` \| `"total"`, `number`\> \| `null`
+> **size**: `Record`\<`"unreachable"` \| `"expired"` \| `"archived"` \| `"pending"` \| `"active"` \| `"total"`, `number`\> \| `null`
 
 ##### unarchived
 
@@ -741,6 +741,16 @@ When an expired link will be removed.
 ###### Inherited from
 
 [`LinkView`](../worker/links/store.md#linkview).[`removal_at`](../worker/links/store.md#removal_at)
+
+##### site
+
+> **site**: [`SiteView`](../worker/retrievers/retriever.md#siteview) \| `null`
+
+What a retriever stored from the site's API (its kind and facts); null when none did.
+
+###### Inherited from
+
+[`LinkView`](../worker/links/store.md#linkview).[`site`](../worker/links/store.md#site-1)
 
 ##### snapshot\_at
 

@@ -234,6 +234,89 @@ describe('the detail page of a fetched link', () => {
   });
 });
 
+describe('the detail page of a retrieved link', () => {
+  it('shows what the site’s API said above the technical details, and a fallback’s reason', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links/vid', {
+        status: 200,
+        body: makeLink({
+          id: 'vid',
+          state: 'active',
+          host: 'youtube.com',
+          title: 'A video',
+          description: 'What the video is about.',
+          site: {
+            retriever: 'youtube',
+            kind: 'video',
+            retrieved_at: '2026-09-01T10:00:00.000Z',
+            facts: [
+              { key: 'channel', label: 'Channel', value: 'A Channel', card: true },
+              { key: 'duration', label: 'Duration', value: '12:34', card: true },
+              {
+                key: 'thumbnail',
+                label: 'Thumbnail',
+                value: 'https://i.ytimg.com/vi/x/maxresdefault.jpg',
+                card: false,
+              },
+            ],
+          },
+        }),
+      })
+      .on('GET', '/api/v1/links/vid/history', {
+        status: 200,
+        body: {
+          items: [
+            {
+              kind: 'fetch',
+              at: '2026-09-02T10:00:00.000Z',
+              outcome: 'ok',
+              http_status: 200,
+              reason: 'YouTube API: rate limited; fetched as the page',
+            },
+          ],
+          next_cursor: null,
+        },
+      });
+    renderPage('/links/vid', api);
+    const section = (await screen.findByRole('heading', { name: 'From YouTube' })).closest(
+      'section',
+    )!;
+    expect(within(section).getByText('What the video is about.')).toBeTruthy();
+    expect(within(section).getByText('A Channel')).toBeTruthy();
+    expect(within(section).getByText('12:34')).toBeTruthy();
+    expect(section.querySelector('img')?.getAttribute('src')).toBe(
+      'https://i.ytimg.com/vi/x/maxresdefault.jpg',
+    );
+    expect(within(section).getByText(/Retrieved 1 Sept? 2026/)).toBeTruthy();
+    // The section comes before the technical details.
+    const technical = screen.getByRole('heading', { name: 'Technical details' });
+    expect(
+      section.compareDocumentPosition(technical) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const rows = within(await screen.findByRole('list', { name: 'History' })).getAllByRole(
+      'listitem',
+    );
+    expect(rows[0]!.textContent).toMatch(
+      /^Fetched \(YouTube API: rate limited; fetched as the page\)/,
+    );
+  });
+
+  it('shows no such section for a link no retriever retrieved', async () => {
+    const api = new FakeApi()
+      .on('GET', '/api/v1/links/abc', {
+        status: 200,
+        body: makeLink({ id: 'abc', state: 'active' }),
+      })
+      .on('GET', '/api/v1/links/abc/history', {
+        status: 200,
+        body: { items: [], next_cursor: null },
+      });
+    renderPage('/links/abc', api);
+    await screen.findByRole('heading', { name: 'Technical details' });
+    expect(screen.queryByRole('heading', { name: /^From / })).toBe(null);
+  });
+});
+
 describe('editing a link on its detail page', () => {
   function detailApi(): FakeApi {
     let current = makeLink({

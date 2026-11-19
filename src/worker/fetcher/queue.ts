@@ -4,6 +4,9 @@ import { accountActive } from '../account/deletion';
 import { afterFetch } from '../enrich/queue';
 import { getLink, ownerEdited, parseStrings, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
+import { pauseRetrieval } from '../retrievers/backfill';
+import { findRetriever, retrieve, retrievedNote } from '../retrievers/registry';
+import type { Retrieved, Retriever, SiteView } from '../retrievers/retriever';
 import { indexReaderTextStatement } from '../search/search';
 import { decodeHtml, fetchPage, type FetchFailed, type FetchOk } from './fetch';
 import { FIRECRAWL_NOTE, fetchThroughFirecrawl } from './firecrawl';
@@ -140,6 +143,49 @@ interface Fetched {
   notes: string[];
   /** The article text to store, or null to store none. */
   text: string | null;
+  /** The reason the fetch event records beside its success, such as a retriever's fallback. */
+  eventReason?: string | null;
+  /** Set when a retriever answered: what it says the thing's address and facts are. */
+  retrieved?: { finalUrl: string; site: SiteView };
+}
+
+/** What a retriever's answer stores on the link, in place of what a page fetch would. */
+function fromRetrieved(retriever: Retriever, r: Retrieved): Fetched {
+  return {
+    title: r.title,
+    description: r.description,
+    faviconUrl: r.faviconUrl,
+    language: r.language,
+    contentKind: 'html',
+    readerEmpty: r.text === null,
+    notes: [retrievedNote(retriever)],
+    text: r.text === null ? null : capText(r.text),
+    eventReason: r.warning ?? null,
+    retrieved: {
+      finalUrl: r.finalUrl,
+      site: {
+        retriever: retriever.name,
+        kind: r.kind,
+        retrieved_at: now().toISOString(),
+        facts: r.facts,
+      },
+    },
+  };
+}
+
+/**
+ * What a retriever adds to a page fetch: its answer, which replaces what the
+ * page says about itself (the page then gives only the snapshot), or the
+ * reason it could not answer, which the fetch event records.
+ */
+interface Retrieval {
+  retrieved?: Fetched | null;
+  reason?: string | null;
+}
+
+/** `fetched`, or the retriever's answer in its place, with the retrieval's reason. */
+function withRetrieval(fetched: Fetched, retrieval: Retrieval): Fetched {
+  return retrieval.retrieved ?? { ...fetched, eventReason: retrieval.reason ?? null };
 }
 
 /** A snapshot to store with the fetch: its folder and the objects in it. */
@@ -242,6 +288,8 @@ async function writeFetched(
   snapshot: SnapshotOutcome,
 ): Promise<boolean> {
   const store = snapshot && 'store' in snapshot ? snapshot.store : null;
+  const retrieved = fetched.retrieved;
+  const status = retrieved ? 200 : result.status;
   const folder = store ? snapshotFolder(link.user_id, link.id, store.id) : null;
   try {
     for (const o of store?.objects ?? []) {
@@ -256,12 +304,14 @@ async function writeFetched(
                    THEN title ELSE ?1 END,
            final_url = ?2,
            http_status = ?3, description = ?4, favicon_url = ?5, language = ?6, fetched_at = ?7,
-           content_kind = ?8, reader_empty = ?9, notes = ?10, updated_at = ?7
+           content_kind = ?8, reader_empty = ?9, notes = ?10, updated_at = ?7,
+           site = COALESCE(?13, site)
          WHERE id = ?11 AND user_id = ?12`,
       ).bind(
-        cleanTitle(fetched.title, result.finalUrl),
-        result.finalUrl,
-        result.status,
+        // A retriever's title is the site's own; the title rules clean a page's.
+        retrieved ? fetched.title : cleanTitle(fetched.title, result.finalUrl),
+        retrieved?.finalUrl ?? result.finalUrl,
+        status,
         fetched.description,
         fetched.faviconUrl,
         fetched.language,
@@ -271,6 +321,7 @@ async function writeFetched(
         JSON.stringify(fetched.notes),
         link.id,
         link.user_id,
+        retrieved ? JSON.stringify({ ...retrieved.site, retrieved_at: at }) : null,
       ),
       env.DB.prepare('DELETE FROM link_texts WHERE link_id = ? AND user_id = ?').bind(
         link.id,
@@ -281,7 +332,7 @@ async function writeFetched(
          SELECT id, user_id, ?1 FROM links WHERE id = ?2 AND user_id = ?3 AND ?1 IS NOT NULL`,
       ).bind(fetched.text, link.id, link.user_id),
       indexReaderTextStatement(env.DB, link.id, fetched.text),
-      eventStatement(env, link, at, 'ok', result.status, null),
+      eventStatement(env, link, at, 'ok', status, fetched.eventReason ?? null),
     ];
     if (store) statements.push(...snapshotStatements(env, link, at, store));
     else if (snapshot && 'failed' in snapshot) {
@@ -359,6 +410,7 @@ async function storeHtml(
   link: LinkRow,
   result: FetchOk & { body: Uint8Array },
   takeSnapshot: boolean,
+  retrieval: Retrieval,
 ) {
   const { html } = decodeHtml(result.body, result.charset);
   // A page that cannot be parsed, or is nested too deep to read, is still a
@@ -385,41 +437,53 @@ async function storeHtml(
     env,
     link,
     result,
-    {
-      title: meta.title,
-      description: meta.description,
-      faviconUrl: meta.faviconUrl,
-      language: meta.language,
-      contentKind: 'html',
-      readerEmpty: reader.empty,
-      notes: [
-        ...(result.via === 'firecrawl' ? [FIRECRAWL_NOTE] : []),
-        ...(result.truncated ? ['truncated'] : []),
-        ...(unreadable ? [UNREADABLE_NOTE] : []),
-      ],
-      text: reader.empty ? null : capText(reader.text),
-    },
+    withRetrieval(
+      {
+        title: meta.title,
+        description: meta.description,
+        faviconUrl: meta.faviconUrl,
+        language: meta.language,
+        contentKind: 'html',
+        readerEmpty: reader.empty,
+        notes: [
+          ...(result.via === 'firecrawl' ? [FIRECRAWL_NOTE] : []),
+          ...(result.truncated ? ['truncated'] : []),
+          ...(unreadable ? [UNREADABLE_NOTE] : []),
+        ],
+        text: reader.empty ? null : capText(reader.text),
+      },
+      retrieval,
+    ),
     snapshot,
   );
 }
 
 /** Stores a fetched resource that is neither a web page nor a PDF: a note, and no snapshot. */
-function storeOther(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: boolean) {
+function storeOther(
+  env: Env,
+  link: LinkRow,
+  result: FetchOk,
+  takeSnapshot: boolean,
+  retrieval: Retrieval,
+) {
   const note = `not a web page (${result.contentType || 'unknown type'})`;
   return writeFetched(
     env,
     link,
     result,
-    {
-      title: lastSegmentOrHost(result.finalUrl),
-      description: null,
-      faviconUrl: null,
-      language: null,
-      contentKind: 'other',
-      readerEmpty: true,
-      notes: [note],
-      text: null,
-    },
+    withRetrieval(
+      {
+        title: lastSegmentOrHost(result.finalUrl),
+        description: null,
+        faviconUrl: null,
+        language: null,
+        contentKind: 'other',
+        readerEmpty: true,
+        notes: [note],
+        text: null,
+      },
+      retrieval,
+    ),
     takeSnapshot ? { failed: note } : null,
   );
 }
@@ -429,7 +493,13 @@ function storeOther(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: bool
  * first successful fetch stores it, and later only a snapshot asked for
  * replaces it. A PDF over 50 MB is not stored.
  */
-async function storePdf(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: boolean) {
+async function storePdf(
+  env: Env,
+  link: LinkRow,
+  result: FetchOk,
+  takeSnapshot: boolean,
+  retrieval: Retrieval,
+) {
   const name = lastSegmentOrHost(result.finalUrl);
   const base = { description: null, faviconUrl: null, language: null, contentKind: 'pdf' as const };
   if (!result.body) {
@@ -437,13 +507,16 @@ async function storePdf(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: 
       env,
       link,
       result,
-      {
-        ...base,
-        title: name,
-        readerEmpty: true,
-        notes: [PDF_TOO_LARGE],
-        text: null,
-      },
+      withRetrieval(
+        {
+          ...base,
+          title: name,
+          readerEmpty: true,
+          notes: [PDF_TOO_LARGE],
+          text: null,
+        },
+        retrieval,
+      ),
       takeSnapshot ? { failed: PDF_TOO_LARGE } : null,
     );
   }
@@ -466,38 +539,71 @@ async function storePdf(env: Env, link: LinkRow, result: FetchOk, takeSnapshot: 
     env,
     link,
     result,
-    {
-      ...base,
-      title: title ?? name,
-      readerEmpty: text === '',
-      notes: text === '' ? ['no text in this PDF'] : [],
-      text: text === '' ? null : capText(text),
-    },
+    withRetrieval(
+      {
+        ...base,
+        title: title ?? name,
+        readerEmpty: text === '',
+        notes: text === '' ? ['no text in this PDF'] : [],
+        text: text === '' ? null : capText(text),
+      },
+      retrieval,
+    ),
     snapshot,
   );
 }
 
-/** Stores what a successful fetch returned; false when the link was deleted meanwhile. */
+/**
+ * Stores what a successful fetch returned, with what the link's retriever
+ * added to it; false when the link was deleted meanwhile.
+ */
 async function storeResult(
   env: Env,
   link: LinkRow,
   result: FetchOk,
   takeSnapshot: boolean,
+  retrieval: Retrieval = {},
 ): Promise<boolean> {
   if (result.kind === 'html' && result.body) {
-    return storeHtml(env, link, { ...result, body: result.body }, takeSnapshot);
+    return storeHtml(env, link, { ...result, body: result.body }, takeSnapshot, retrieval);
   }
-  if (result.kind === 'pdf') return storePdf(env, link, result, takeSnapshot);
-  return storeOther(env, link, result, takeSnapshot);
+  if (result.kind === 'pdf') return storePdf(env, link, result, takeSnapshot, retrieval);
+  return storeOther(env, link, result, takeSnapshot, retrieval);
+}
+
+/** The link's stored text, to tell whether a fetch changed it. */
+async function storedText(env: Env, link: LinkRow): Promise<string | null> {
+  const row = await env.DB.prepare('SELECT text FROM link_texts WHERE link_id = ? AND user_id = ?')
+    .bind(link.id, link.user_id)
+    .first<{ text: string }>();
+  return row?.text ?? null;
+}
+
+/** What a fetch through a retriever is written as: a 200 answer at the thing's address. */
+function retrievedResult(retrieved: Fetched): FetchOk {
+  return {
+    ok: true,
+    finalUrl: retrieved.retrieved?.finalUrl ?? '',
+    status: 200,
+    contentType: 'application/json',
+    kind: 'html',
+    body: null,
+    truncated: false,
+  };
 }
 
 /**
- * Fetches one link's page and stores the result, with a snapshot when the
- * message asks for one. A page behind a bot check is fetched again through
- * the owner's Firecrawl key, when they stored one.
+ * Fetches one link and stores the result, with a snapshot when the message
+ * asks for one. An address a retriever claims is retrieved through its site's
+ * API; a snapshot of it still takes the page's article, and a retriever that
+ * cannot answer leaves the link to be fetched as a page, the reason recorded
+ * in its history. A page behind a bot check is fetched again through the
+ * owner's Firecrawl key, when they stored one. The one-time retrieval of a
+ * link meeting a spent rate limit hands the link back to it instead, and
+ * enriches the link again only when its text changed.
  */
 async function processFetch(env: Env, message: Message<FetchMessage>): Promise<void> {
-  const { user_id, link_id } = message.body;
+  const { user_id, link_id, backfill } = message.body;
   // Whatever fails here fails this message alone: the others of its batch go on.
   try {
     // An account being deleted is fetched for no more.
@@ -508,20 +614,49 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
       message.ack();
       return;
     }
-    let result = await fetchPage(env, link.url);
-    if (!result.ok && result.final) {
-      result = await fetchThroughFirecrawl(env, user_id, link.url, result);
-    }
-    // Nor is anything written for it when its deletion began during the fetch.
-    if (!(await accountActive(env.DB, user_id))) return message.ack();
-    if (result.ok) {
-      if (await storeResult(env, link, result, Boolean(message.body.snapshot))) {
-        const stored = await getLink(env.DB, link.user_id, link.id);
-        if (stored) await afterFetch(env, stored, parseStrings(stored.notes));
-        await queueIndexing(env, link.user_id, [link.id]);
+    const takeSnapshot = Boolean(message.body.snapshot);
+    const retrieval: Retrieval = {};
+    const found = findRetriever(env, link.url);
+    if (found) {
+      const answer = await retrieve(env, found);
+      if (answer.ok) {
+        retrieval.retrieved = fromRetrieved(found.retriever, answer.value);
+      } else if (backfill && answer.failure === 'rate limited') {
+        await pauseRetrieval(env, found.retriever.name, user_id, link_id);
+        return message.ack();
+      } else {
+        retrieval.reason = `${found.retriever.site} API: ${answer.failure}; fetched as the page`;
       }
+    }
+    const textBefore = backfill ? await storedText(env, link) : undefined;
+    let stored: boolean;
+    if (retrieval.retrieved && !takeSnapshot) {
+      if (!(await accountActive(env.DB, user_id))) return message.ack();
+      stored = await writeFetched(
+        env,
+        link,
+        retrievedResult(retrieval.retrieved),
+        retrieval.retrieved,
+        null,
+      );
     } else {
-      await recordFailure(env, link, message.body, result);
+      let result = await fetchPage(env, link.url);
+      if (!result.ok && result.final) {
+        result = await fetchThroughFirecrawl(env, user_id, link.url, result);
+      }
+      // Nor is anything written for it when its deletion began during the fetch.
+      if (!(await accountActive(env.DB, user_id))) return message.ack();
+      if (!result.ok) {
+        await recordFailure(env, link, message.body, result);
+        return message.ack();
+      }
+      stored = await storeResult(env, link, result, takeSnapshot, retrieval);
+    }
+    if (stored) {
+      const after = await getLink(env.DB, link.user_id, link.id);
+      const changed = textBefore === undefined || textBefore !== (await storedText(env, link));
+      if (after && changed) await afterFetch(env, after, parseStrings(after.notes));
+      await queueIndexing(env, link.user_id, [link.id]);
     }
     message.ack();
   } catch (err) {

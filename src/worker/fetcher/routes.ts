@@ -38,6 +38,9 @@ page again with the images of its article. It identifies itself as <code>Alexand
 <li>It fetches only the pages its users add, pages they ask to refresh or snapshot, and the
 images of a page's article when they take a snapshot of it. It does not crawl, follow links,
 or fetch stylesheets, scripts, feeds or other resources the page refers to.</li>
+<li>For GitHub repositories, issues and pull requests, and for YouTube videos, it asks
+GitHub's and YouTube's APIs what the page is instead of fetching it, and fetches the page
+only when the API cannot answer.</li>
 <li>It sends at most 1 request per second to any one host.</li>
 <li>It acts as its user's browser would and does not read <code>robots.txt</code>.</li>
 </ul>

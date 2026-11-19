@@ -132,17 +132,21 @@ describe('cleaning the stored titles', () => {
       .first<{ title: string; updated_at: string }>();
   }
 
-  it('cleans every title once in the every-minute run, except those the owner edited', async () => {
+  it('cleans every title once in the every-minute run, except those the owner edited or a retriever stored', async () => {
     const { user, ids } = await seedTitled([
       ['https://github.com/owner/repo', REPO_TITLE],
       ['https://github.com/owner/mine', 'GitHub - owner/mine · GitHub'],
       ['https://example.com/a', REPO_TITLE],
+      ['https://github.com/owner/api', 'GitHub - owner/api · GitHub'],
     ]);
-    const [repo, mine, other] = ids as [string, string, string];
+    const [repo, mine, other, retrieved] = ids as [string, string, string, string];
     await api('PATCH', `/api/v1/links/${mine}`, {
       as: user.session,
       body: { title: 'GitHub - owner/mine · GitHub' },
     });
+    await env.DB.prepare('UPDATE links SET site = ? WHERE id = ?')
+      .bind(JSON.stringify({ retriever: 'github', kind: 'repository', facts: [] }), retrieved)
+      .run();
     setNow('2026-11-10T12:00:00.000Z');
     await runEveryMinute();
     expect(await stored(repo)).toEqual({
@@ -151,6 +155,7 @@ describe('cleaning the stored titles', () => {
     });
     expect((await stored(mine))?.title).toBe('GitHub - owner/mine · GitHub');
     expect((await stored(other))?.title).toBe(REPO_TITLE);
+    expect((await stored(retrieved))?.title).toBe('GitHub - owner/api · GitHub');
 
     // With the same rules, a title stored meanwhile is left for the fetch to clean.
     await env.DB.prepare('UPDATE links SET title = ? WHERE id = ?').bind(REPO_TITLE, repo).run();

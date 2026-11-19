@@ -186,7 +186,7 @@
     display: inline-block;
     padding: 0.25rem 0.5rem;
     border: 1px dashed var(--border);
-    border-radius: var(--radius-sm, 0.25rem);
+    border-radius: var(--radius-sm);
     color: var(--muted-foreground);
     font-size: var(--text-sm);
   }
@@ -1150,6 +1150,18 @@
   .facts dd {
     min-width: 0;
     margin: 0;
+  }
+
+  .site-description {
+    margin: 0 0 0.75rem;
+  }
+
+  .site-thumbnail {
+    display: block;
+    width: 100%;
+    max-width: 20rem;
+    height: auto;
+    border-radius: var(--radius-sm);
   }
 
   .history {

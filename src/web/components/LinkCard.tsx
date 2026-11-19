@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { Link as PageLink } from '../App';
 import { ApiError, filterQuery, links, openUrl, searchPath, type Link } from '../api';
+import { CardFacts } from './SiteFacts';
 import { StatusButton, type ButtonLook } from './CheckButton';
 import { byName, formatDate, formatWhen } from '../format';
 import { Icon } from './Icon';
@@ -287,13 +288,17 @@ function CardMenu({ children }: { children: ReactNode }) {
   );
 }
 
-/** What the card says about the link: host, dates, state with its reason, and notes. */
+/**
+ * What the card says about the link: host, the facts its site's API gave,
+ * dates, state with its reason, and notes.
+ */
 function CardMeta({ link }: { link: Link }) {
   return (
     <div className="card-meta muted">
       <SiteLink link={link} className="card-host">
         {link.host}
       </SiteLink>
+      <CardFacts link={link} />
       <span>Added {formatDate(link.added_at)}</span>
       <span>Used {formatWhen(link.last_used_at)}</span>
       <span className={`state state-${link.state}`}>

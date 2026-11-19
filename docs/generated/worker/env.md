@@ -192,6 +192,18 @@ The queue of fetch messages, one per link to fetch.
 
 Firecrawl's API base URL; configurable so tests can run a local fake.
 
+##### GITHUB\_API\_URL
+
+> **GITHUB\_API\_URL**: `string`
+
+The GitHub REST API's base URL; configurable so tests can run a local fake.
+
+##### GITHUB\_TOKEN?
+
+> `optional` **GITHUB\_TOKEN?**: `string`
+
+A GitHub token for the GitHub retriever; unset, GitHub's API is called without one.
+
 ##### GOOGLE\_AUTH\_URL
 
 > **GOOGLE\_AUTH\_URL**: `string`
@@ -276,6 +288,18 @@ Snapshots: each link's article with its images, or its PDF.
 
 The Vectorize index holding the embeddings of every user's passages, one namespace per user.
 
+##### YOUTUBE\_API\_KEY?
+
+> `optional` **YOUTUBE\_API\_KEY?**: `string`
+
+A YouTube Data API key; unset, YouTube's pages are fetched as pages.
+
+##### YOUTUBE\_API\_URL
+
+> **YOUTUBE\_API\_URL**: `string`
+
+The YouTube Data API's base URL; configurable so tests can run a local fake.
+
 ***
 
 ### FetchMessage
@@ -283,6 +307,12 @@ The Vectorize index holding the embeddings of every user's passages, one namespa
 A request to fetch one link's page.
 
 #### Properties
+
+##### backfill?
+
+> `optional` **backfill?**: `boolean`
+
+Set when the one-time retrieval of the links stored before a retriever existed sent it.
 
 ##### link\_id
 

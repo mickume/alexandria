@@ -97,6 +97,20 @@ workspaces and the actions on the right: **Refresh**, **Check now**, **Pin** or
 **Unpin**, **Add to workspace** (and × to take it out of one), and **Delete**,
 which asks first and then goes back to the stream.
 
+## GitHub and YouTube links
+
+A GitHub repository, issue or pull request, and a YouTube video, is read
+through its site's API rather than from its page: the link keeps the site's
+own title, description and text (a repository's README, an issue's body, a
+video's description, all searchable and read by Ask), and its card shows up to
+three of the site's facts, such as a repository's ★ stars and language or a
+video's channel and duration. The detail page lists them all under "From
+GitHub" or "From YouTube". When the API cannot answer, the page is fetched as
+any other, and the link's history says why. The deployment's `GITHUB_TOKEN`
+raises GitHub's limit, and `YOUTUBE_API_KEY` turns the YouTube retriever on
+(see [Retrievers](docs/configuration.md#retrievers)). Links already in the
+library are read again through the API once, in the background.
+
 ## Ask
 
 The **Ask** tab, between Tags and Expired, answers a question from your own
