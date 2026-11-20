@@ -6,7 +6,7 @@
 
 > **Settings**(): `Element`
 
-The settings page: tokens, the AI key, decay, importing, exporting and leaving.
+The settings page: tokens, decay, importing, exporting and leaving.
 
 #### Returns
 

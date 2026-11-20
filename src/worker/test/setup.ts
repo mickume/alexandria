@@ -52,6 +52,11 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  // The deployment's keys are a test's own: useAi and useFirecrawl set them.
+  env.AI_PROVIDER = undefined;
+  env.AI_MODEL = undefined;
+  env.AI_API_KEY = undefined;
+  env.FIRECRAWL_API_KEY = undefined;
   env.FETCH_QUEUE = fetchQueue;
   env.ENRICH_QUEUE = enrichQueue;
   env.LIVENESS_QUEUE = livenessQueue;
@@ -71,7 +76,7 @@ afterAll(() => {
 });
 
 afterAll(() => {
-  // No answer of the API may carry an AI key, beyond its last 4 characters.
+  // No answer of the API may carry a key of the deployment's.
   const leaks = recordedResponses.flatMap(({ method, path, body, headers }) => {
     const text = `${JSON.stringify(body)}\n${headers}`;
     return [...savedKeys].filter((key) => text.includes(key)).map(() => `${method} ${path}`);

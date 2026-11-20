@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, cardOf, d1, fakeAi, saveAiKey, signIn } from './helpers';
+import { addLinkIds, cardOf, d1, fakeAi, signIn } from './helpers';
 
 /** Files the link `id` under `topic`, a name or a path, through the API. */
 async function fileUnder(page: Page, id: string, topic: string): Promise<void> {
@@ -109,7 +109,6 @@ test('a new link is enriched into a new sub-topic of an existing topic', async (
     topic: 'Software engineering > Testing',
   });
   await signIn(page);
-  await saveAiKey(page);
   const [seed] = await addLinkIds(page, ['https://tree.example/se-seed']);
   await fileUnder(page, seed!, 'Software engineering');
   const [id] = await addLinkIds(page, ['https://code.example/tree-enriched']);
@@ -143,7 +142,6 @@ test('a new link is enriched into a new sub-topic of an existing topic', async (
 test('the owner splits a topic of 25 links from the Topics page', async ({ page }) => {
   await fakeAi.splitInto(['Novels', 'Poetry', 'Essays']);
   await signIn(page);
-  await saveAiKey(page);
   const ids = await addLinkIds(
     page,
     Array.from({ length: 25 }, (_, i) => `https://shelf.example/book-${i}`),

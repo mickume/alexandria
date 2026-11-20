@@ -1172,7 +1172,7 @@ When the background throttle frees up; null when it already has.
 
 ###### ai\_key
 
-> **ai\_key**: `"verified"` \| `"rejected"` \| `"none"`
+> **ai\_key**: `"none"` \| `"verified"` \| `"rejected"`
 
 ###### dead
 
@@ -1446,27 +1446,11 @@ A workspace as listed.
 
 ## Type Aliases
 
-### AiSettings
-
-> **AiSettings** = \{ `configured`: `true`; `key_last4`: `string`; `model`: `string`; `provider`: `"anthropic"` \| `"openrouter"`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; `unenriched_count`: `number`; \} \| \{ `configured`: `false`; `unenriched_count`: `number`; \}
-
-The owner's AI settings, never with the key beyond its last 4 characters.
-
-***
-
 ### AskEvent
 
 > **AskEvent** = \{ `data`: \{ `meaning?`: [`Meaning`](#meaning-1); `queries?`: `string`[]; `sources`: [`AskSource`](#asksource)[]; \}; `event`: `"sources"`; \} \| \{ `data`: \{ `text`: `string`; \}; `event`: `"delta"`; \} \| \{ `data`: `Record`\<`string`, `never`\>; `event`: `"done"`; \} \| \{ `data`: \{ `error`: `string`; `message`: `string`; \}; `event`: `"error"`; \}
 
 One event of an answer: the sources first, then pieces of the answer, then done or an error.
-
-***
-
-### FirecrawlSettings
-
-> **FirecrawlSettings** = \{ `configured`: `true`; `key_last4`: `string`; `rejected_message`: `string` \| `null`; `status`: `"verified"` \| `"rejected"`; \} \| \{ `configured`: `false`; \}
-
-The owner's Firecrawl key, never beyond its last 4 characters.
 
 ***
 
@@ -1571,62 +1555,6 @@ Deletes the account, confirmed by its email typed by the owner.
 
 ***
 
-### ai
-
-> `const` **ai**: `object`
-
-#### Type Declaration
-
-##### enrichUnenriched
-
-> **enrichUnenriched**: () => `Promise`\<\{ `queued`: `number`; \}\>
-
-###### Returns
-
-`Promise`\<\{ `queued`: `number`; \}\>
-
-##### get
-
-> **get**: () => `Promise`\<[`AiSettings`](#aisettings)\>
-
-###### Returns
-
-`Promise`\<[`AiSettings`](#aisettings)\>
-
-##### remove
-
-> **remove**: () => `Promise`\<`void`\>
-
-###### Returns
-
-`Promise`\<`void`\>
-
-##### save
-
-> **save**: (`body`) => `Promise`\<[`AiSettings`](#aisettings)\>
-
-###### Parameters
-
-###### body
-
-###### api_key
-
-`string`
-
-###### model?
-
-`string`
-
-###### provider
-
-`string`
-
-###### Returns
-
-`Promise`\<[`AiSettings`](#aisettings)\>
-
-***
-
 ### decay
 
 > `const` **decay**: `object`
@@ -1654,44 +1582,6 @@ Deletes the account, confirmed by its email typed by the owner.
 ###### Returns
 
 `Promise`\<[`Thresholds`](../worker/decay/routes.md#thresholds)\>
-
-***
-
-### firecrawl
-
-> `const` **firecrawl**: `object`
-
-#### Type Declaration
-
-##### get
-
-> **get**: () => `Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
-
-###### Returns
-
-`Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
-
-##### remove
-
-> **remove**: () => `Promise`\<`void`\>
-
-###### Returns
-
-`Promise`\<`void`\>
-
-##### save
-
-> **save**: (`apiKey`) => `Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
-
-###### Parameters
-
-###### apiKey
-
-`string`
-
-###### Returns
-
-`Promise`\<[`FirecrawlSettings`](#firecrawlsettings)\>
 
 ***
 

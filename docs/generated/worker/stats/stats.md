@@ -12,6 +12,16 @@ What a section is built from: the context and the links' own counts (linkCounts)
 
 #### Properties
 
+##### aiKey
+
+> **aiKey**: `"none"` \| `"verified"` \| `"rejected"`
+
+The deployment's AI key: none, usable, or refused by its provider.
+
+###### Inherited from
+
+[`StatsContext`](#statscontext).[`aiKey`](#aikey-1)
+
 ##### at
 
 > **at**: `Date`
@@ -100,6 +110,12 @@ What a section knows when it is computed.
 
 #### Properties
 
+##### aiKey
+
+> **aiKey**: `"none"` \| `"verified"` \| `"rejected"`
+
+The deployment's AI key: none, usable, or refused by its provider.
+
 ##### at
 
 > **at**: `Date`
@@ -150,7 +166,7 @@ Test seams of the statistics, as the clock is one.
 
 ### computeStats()
 
-> **computeStats**(`db`, `userId`, `at`): `Promise`\<`Record`\<`string`, `unknown`\>\>
+> **computeStats**(`db`, `userId`, `at`, `aiKey`): `Promise`\<`Record`\<`string`, `unknown`\>\>
 
 The statistics of the user's library at `at`: every section's statements in
 one batch, then each section built from its own results. Any failure is
@@ -169,6 +185,10 @@ thrown, so the caller answers with no partial result.
 ##### at
 
 `Date`
+
+##### aiKey
+
+`"none"` \| `"verified"` \| `"rejected"`
 
 #### Returns
 

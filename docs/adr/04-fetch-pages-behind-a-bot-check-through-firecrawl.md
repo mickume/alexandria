@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-11-08).
+Accepted (2026-11-08). The key became the deployment's `FIRECRAWL_API_KEY`
+([ADR 13](13-hold-the-ai-and-firecrawl-keys-in-the-deployment.md)); the
+fallback itself is unchanged.
 
 ## Context
 

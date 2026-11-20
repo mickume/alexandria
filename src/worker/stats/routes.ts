@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { validationError } from '../api/errors';
 import { now } from '../clock';
 import type { AppEnv } from '../env';
+import { aiState } from '../enrich/keys';
 import { readHistory } from './daily';
 import { computeStats, lastDays } from './stats';
 
@@ -12,7 +13,10 @@ const HISTORY_DEFAULT_DAYS = 30;
 /** The statistics of the owner's library, under /api/v1/stats. */
 export const statsRoutes = new Hono<AppEnv>();
 
-statsRoutes.get('/', async (c) => c.json(await computeStats(c.env.DB, c.get('user').id, now())));
+statsRoutes.get('/', async (c) => {
+  const aiKey = (await aiState(c.env)).status;
+  return c.json(await computeStats(c.env.DB, c.get('user').id, now(), aiKey));
+});
 
 statsRoutes.get('/history', async (c) => {
   const raw = c.req.query('days');

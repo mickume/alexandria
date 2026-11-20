@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, cardOf, d1, fakeAi, saveAiKey, signIn } from './helpers';
+import { addLinkIds, cardOf, d1, fakeAi, signIn } from './helpers';
 
 const answer = (tags: string[]) => ({ summary: 'About code.', tags, topic: 'Programming' });
 
@@ -21,7 +21,6 @@ test('the owner merges two tags and later enrichment uses the survivor', async (
   await fakeAi.answerWhen('marker-javascript-one', answer(['javascript', 'scripting', 'web']));
   await fakeAi.answerWhen('marker-new-page', answer(['js', 'frontend', 'react']));
   await signIn(page);
-  await saveAiKey(page);
   const seeded = await addLinkIds(page, [
     'https://code.example/js-one',
     'https://code.example/js-two',

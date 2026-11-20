@@ -26,7 +26,7 @@ The most tokens the answer may hold; ANSWER_MAX_TOKENS when not given.
 
 ### ProviderCall
 
-The provider and credentials one call runs with: always the user's own.
+The provider and credentials one call runs with: the deployment's (aiConfig).
 
 #### Properties
 
@@ -332,7 +332,7 @@ that the answer for 500 links stays a few thousand tokens.
 
 > **enrichWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA).
+Asks the deployment's provider for a structured {summary, tags, topic} (RESULT_SCHEMA).
 
 #### Parameters
 
@@ -358,7 +358,7 @@ Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA)
 
 > **phrasingsWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA).
+Asks the deployment's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA).
 
 #### Parameters
 
@@ -402,7 +402,7 @@ Shortens the provider timeout, for tests; null restores the 60 seconds.
 
 > **splitWith**(`env`, `call`, `prompt`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`unknown`\>\>
 
-Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA).
+Asks the deployment's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA).
 
 #### Parameters
 
@@ -428,7 +428,7 @@ Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLI
 
 > **streamAnswer**(`env`, `call`, `request`, `onText`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`void`\>\>
 
-Streams the user's provider's answer to a question, handing each piece of
+Streams the deployment's provider's answer to a question, handing each piece of
 text to `onText` as it arrives: through `messages.stream` of Anthropic's SDK,
 and through OpenRouter's chat completions with `stream: true`. The whole
 answer has the provider timeout, and a failure is sorted as enrichment's is.
@@ -450,28 +450,6 @@ answer has the provider timeout, and a failure is sorted as enrichment's is.
 ##### onText
 
 (`text`) => `void` \| `Promise`\<`void`\>
-
-#### Returns
-
-`Promise`\<[`ProviderOutcome`](#provideroutcome)\<`void`\>\>
-
-***
-
-### testKey()
-
-> **testKey**(`env`, `call`): `Promise`\<[`ProviderOutcome`](#provideroutcome)\<`void`\>\>
-
-Sends one minimal completion with the user's key and model, to see whether the provider accepts them.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### call
-
-[`ProviderCall`](#providercall)
 
 #### Returns
 

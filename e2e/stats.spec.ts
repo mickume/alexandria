@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { addLinkIds, d1, daysAgo, runMinute, runScheduled, saveAiKey, signIn } from './helpers';
+import { addLinkIds, d1, daysAgo, runMinute, runScheduled, signIn } from './helpers';
 
 /** The statistics as the API answers them now. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -198,7 +198,6 @@ test('decay expires and removes a link, and Trends still counts it', async ({ pa
 test('the owner’s AI calls show as token usage under Trends', async ({ page }) => {
   test.setTimeout(120_000);
   await signIn(page);
-  await saveAiKey(page);
   const [id = ''] = await addLinkIds(page, ['https://example.com/alarms-for-agents']);
   const question = 'how do I schedule background work on Cloudflare?';
   await expect
@@ -227,12 +226,12 @@ test('the owner’s AI calls show as token usage under Trends', async ({ page })
   await expect(page.getByText('[1]').first()).toBeVisible({ timeout: 30_000 });
 
   const purposes = ((await todayRecord(page)).ai as { purpose: string }[]).map((u) => u.purpose);
-  for (const p of ['key_test', 'enrich', 'ask']) expect(purposes).toContain(p);
+  for (const p of ['enrich', 'ask']) expect(purposes).toContain(p);
   await page.goto('/stats');
   const totals = page
     .getByRole('region', { name: 'Trends' })
     .getByRole('table', { name: 'AI usage by purpose and model' });
-  for (const p of ['key_test', 'enrich', 'ask']) {
+  for (const p of ['enrich', 'ask']) {
     // One row a model: the other specs of a run may have called a second one.
     await expect(totals.getByRole('cell', { name: p, exact: true }).first()).toBeVisible();
   }

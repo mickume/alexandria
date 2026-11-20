@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { d1, saveAiKey, signIn } from './helpers';
+import { d1, signIn } from './helpers';
 
 const MALFORMED: Record<number, string> = {
   57: 'https://localhost/a',
@@ -24,7 +24,6 @@ function importFile(): { text: string; urls: string[] } {
 test('the owner imports a 400-line file and the stream fills in', async ({ page }) => {
   test.setTimeout(240_000);
   await signIn(page);
-  await saveAiKey(page);
   const { text, urls } = importFile();
 
   await page.goto('/settings');

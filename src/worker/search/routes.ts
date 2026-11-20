@@ -4,7 +4,7 @@ import { encodeCursor, readCursor, readLimit } from '../api/pagination';
 import type { AppEnv } from '../env';
 import { toView, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
-import { decryptKey, getAiSettings, markKeyRejected } from '../enrich/keys';
+import { aiState, markAiKeyRejected, NO_AI_KEY_MESSAGE } from '../enrich/keys';
 import { splitWith } from '../enrich/providers';
 import { buildSplitPrompt } from '../enrich/enrich';
 import { isStreamCursor, listStream } from '../links/stream';
@@ -405,19 +405,12 @@ topicRoutes.post('/:id/split', async (c) => {
   const request = await prepareSplit(c.env.DB, userId, id);
   if (request === 'not_found') return notFound(c);
   if (typeof request === 'string') return refusal(c, 409, request, SPLIT_REFUSALS[request]);
-  const settings = await getAiSettings(c.env.DB, userId);
-  if (!settings) return limitReached(c, 'no_ai_key', 'add an AI key in settings');
-  if (settings.status === 'rejected') {
-    return limitReached(
-      c,
-      'ai_key_rejected',
-      settings.rejectedMessage ?? 'the provider rejected the key',
-    );
-  }
-  const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
+  const ai = await aiState(c.env);
+  if (ai.status === 'none') return limitReached(c, 'no_ai_key', NO_AI_KEY_MESSAGE);
+  if (ai.status === 'rejected') return limitReached(c, 'ai_key_rejected', ai.message);
   const outcome = await splitWith(
     c.env,
-    { provider: settings.provider, apiKey, model: settings.model, userId },
+    { ...ai.config, userId },
     buildSplitPrompt({
       topic: request.path.at(-1)!,
       children: request.children,
@@ -426,7 +419,7 @@ topicRoutes.post('/:id/split', async (c) => {
   );
   // The provider's failures take Ask's codes.
   if (!outcome.ok && outcome.kind === 'rejected') {
-    await markKeyRejected(c.env.DB, userId, outcome.message);
+    await markAiKeyRejected(c.env, ai.config, outcome.message);
     return refusal(c, 409, 'ai_key_rejected', outcome.message);
   }
   if (!outcome.ok && outcome.kind === 'unavailable') {

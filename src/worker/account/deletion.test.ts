@@ -7,8 +7,8 @@ import {
   createToken,
   deliverAccount,
   deliverEnrichments,
-  deliverIndexing,
   deliverFetches,
+  deliverIndexing,
   deliverLiveness,
   env,
   recordAccountQueue,
@@ -20,6 +20,7 @@ import {
   setNow,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { googleSignIn } from '../test/google';
 import { meaning } from '../test/meaning';
@@ -30,19 +31,11 @@ import { blogArticle } from '../fetcher/fixtures/pages';
 import { dispatchAllImports, dispatchImports } from '../imports/dispatch';
 import { runScheduled } from '../decay/cron';
 
-/** A user with two sessions, three tokens, an AI key and links. */
+/** A user with two sessions, three tokens and links. */
 async function owner(): Promise<TestUser> {
   const user = await signIn('owner@example.test');
   await signIn('owner@example.test');
   for (let i = 0; i < 3; i++) await createToken(user);
-  await env.DB.prepare(
-    `UPDATE users SET ai_provider = 'anthropic', ai_model = 'm', ai_key_ciphertext = 'c',
-       ai_key_iv = 'iv', ai_key_last4 = '1234', ai_key_status = 'verified',
-       firecrawl_key_ciphertext = 'f', firecrawl_key_iv = 'iv', firecrawl_key_last4 = '9876'
-     WHERE id = ?`,
-  )
-    .bind(user.id)
-    .run();
   await seedLinks(user, [{ url: 'https://one.example' }, { url: 'https://two.example' }]);
   return user;
 }
@@ -52,10 +45,7 @@ async function state(user: TestUser) {
     sessions: await count('sessions', 'user_id = ?', user.id),
     tokens: await count('tokens', 'user_id = ?', user.id),
     links: await count('links', 'user_id = ?', user.id),
-    user: await env.DB.prepare(
-      `SELECT ai_key_ciphertext, ai_key_last4, firecrawl_key_ciphertext, firecrawl_key_last4,
-         deletion_requested_at FROM users WHERE id = ?`,
-    )
+    user: await env.DB.prepare('SELECT deletion_requested_at FROM users WHERE id = ?')
       .bind(user.id)
       .first(),
   };
@@ -81,13 +71,7 @@ describe('DELETE /api/v1/me', () => {
         sessions: 0,
         tokens: 0,
         links: 2,
-        user: {
-          ai_key_ciphertext: null,
-          ai_key_last4: null,
-          firecrawl_key_ciphertext: null,
-          firecrawl_key_last4: null,
-          deletion_requested_at: t,
-        },
+        user: { deletion_requested_at: t },
       });
       expect(queue.map((m) => m.body)).toEqual([{ user_id: user.id }]);
       expect((await api('GET', '/api/v1/me', { as: user.session })).status).toBe(401);
@@ -289,11 +273,6 @@ async function everything(user: TestUser, prefix: string) {
     body: new TextEncoder().encode(`https://${prefix}-imported.example\nnot-a-url`),
     headers: { 'Content-Type': 'text/plain' },
   });
-  await env.DB.prepare(
-    "UPDATE users SET ai_provider = 'anthropic', ai_key_ciphertext = 'c' WHERE id = ?",
-  )
-    .bind(user.id)
-    .run();
   return ids;
 }
 
@@ -515,11 +494,7 @@ describe('background work for a deleted account', () => {
       { url: 'https://unenriched.example/', state: 'active' },
       { url: 'https://due.example/', state: 'active', lastUsedAt: '2026-01-01T00:00:00.000Z' },
     ]);
-    await env.DB.prepare(
-      `UPDATE users SET ai_provider = 'anthropic', ai_model = 'claude', ai_key_status = 'verified' WHERE id = ?`,
-    )
-      .bind(a.id)
-      .run();
+    useAi({ model: 'claude' });
     const fetches = recordFetchQueue();
     const imported = await api('POST', '/api/v1/imports', {
       as: a.session,

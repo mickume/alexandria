@@ -1,26 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { FakeAi } from '../test/ai';
-import { api, count, deliverIndexing, env, signIn, type TestUser } from '../test/helpers';
+import {
+  api,
+  count,
+  deliverIndexing,
+  env,
+  rejectAiKey,
+  signIn,
+  type TestUser,
+  useAi,
+} from '../test/helpers';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
-import { markKeyRejected } from '../enrich/keys';
+import { keyRejection } from '../enrich/keys';
 import { setProviderTimeout } from '../enrich/providers';
-
-/** Saves a key the fake provider accepts, for Anthropic or OpenRouter. */
-async function saveKey(
-  user: TestUser,
-  provider: 'anthropic' | 'openrouter' = 'anthropic',
-  model?: string,
-) {
-  const r = await api('PUT', '/api/v1/settings/ai', {
-    as: user.session,
-    body: {
-      provider,
-      api_key: provider === 'anthropic' ? 'sk-ant-abcd1234' : 'sk-or-abcd1234',
-      ...(model ? { model } : {}),
-    },
-  });
-  expect(r.status).toBe(200);
-}
 
 /** One server-sent event of an answer. */
 interface AnswerEvent {
@@ -112,7 +104,7 @@ describe('a question that is refused before the answer streams', () => {
       name: 'a question of exactly 500 characters (refused only for lacking a key)',
       body: { question: 'x'.repeat(500) },
       status: 409,
-      json: { error: 'no_ai_key', message: 'add an AI key in settings' },
+      json: { error: 'no_ai_key', message: 'this deployment has no AI key' },
     },
   ])('answers $status for $name, calling no one', async ({ body, status, json }) => {
     const user = await signIn();
@@ -128,15 +120,15 @@ describe('a question that is refused before the answer streams', () => {
 
   it.each([
     {
-      name: 'no key is saved',
+      name: 'the deployment has no key',
       arrange: async () => undefined,
-      json: { error: 'no_ai_key', message: 'add an AI key in settings' },
+      json: { error: 'no_ai_key', message: 'this deployment has no AI key' },
     },
     {
-      name: 'the saved key is marked rejected',
-      arrange: async (user: TestUser) => {
-        await saveKey(user);
-        await markKeyRejected(env.DB, user.id, 'invalid x-api-key');
+      name: 'the deployment’s key is marked refused',
+      arrange: async () => {
+        useAi();
+        await rejectAiKey('invalid x-api-key');
       },
       json: { error: 'ai_key_rejected', message: 'invalid x-api-key' },
     },
@@ -145,7 +137,7 @@ describe('a question that is refused before the answer streams', () => {
     async ({ arrange, json }) => {
       const user = await signIn();
       const ai = new FakeAi();
-      await arrange(user);
+      await arrange();
       meaning.calls.length = 0;
 
       const r = await ask(user, { question: 'how do I schedule background work?' });
@@ -160,7 +152,7 @@ describe('a question that is refused before the answer streams', () => {
   it('answers 409 and marks the key when the provider rejects it while rephrasing the question', async () => {
     const user = await signIn();
     const ai = new FakeAi().failPhrasings(401, 'invalid x-api-key');
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
 
     const r = await ask(user, { question: QUESTION });
@@ -168,10 +160,7 @@ describe('a question that is refused before the answer streams', () => {
     expect(r.status).toBe(409);
     expect(r.json).toEqual({ error: 'ai_key_rejected', message: 'invalid x-api-key' });
     expect(ai.asks).toEqual([]);
-    expect((await api('GET', '/api/v1/settings/ai', { as: user.session })).json).toMatchObject({
-      status: 'rejected',
-      rejected_message: 'invalid x-api-key',
-    });
+    expect(await keyRejection(env.DB, 'ai', env.AI_API_KEY!)).toBe('invalid x-api-key');
   });
 });
 
@@ -185,7 +174,7 @@ describe('the passages an answer is written from', () => {
   ])('are found by their words when $name, and the answer says so', async (the) => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     const [alarms] = await indexed(user, [ARTICLES.alarms, ARTICLES.tomatoes]);
     the.arrange();
 
@@ -210,7 +199,7 @@ describe('the passages an answer is written from', () => {
       'soil for a balcony',
       'a fourth phrasing',
     ]);
-    await saveKey(user);
+    useAi();
     const [tomatoes] = await indexed(user, [ARTICLES.tomatoes, ARTICLES.queues]);
 
     const question = 'what do I plant tag:none-such';
@@ -249,7 +238,7 @@ describe('the passages an answer is written from', () => {
     const user = await signIn();
     const ai = new FakeAi();
     arrange(ai);
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
 
     const sent = events(await (await ask(user, { question: QUESTION })).response.text());
@@ -261,7 +250,7 @@ describe('the passages an answer is written from', () => {
   it('go to the provider with their neighbours, joined, under what is known of their link', async () => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     const filler = (n: number) => `Filler sentence number ${n} about nothing at all. `.repeat(28);
     await indexed(user, [
       {
@@ -293,7 +282,7 @@ describe('an answer to a question', () => {
   it('streams the sources, then the answer piece by piece, then done', async () => {
     const user = await signIn();
     const ai = new FakeAi().answerText(['Use an alarm ', '[1].']);
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
 
     const r = await ask(user, { question: QUESTION });
@@ -315,7 +304,7 @@ describe('an answer to a question', () => {
   it('numbers the sources from 1 in the order of their best passage, each passage headed by its number', async () => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     const [alarms, queues] = await indexed(user, [ARTICLES.alarms, ARTICLES.queues]);
     const stream = (await api('GET', '/api/v1/links', { as: user.session })).json.items;
     const passages = (
@@ -351,7 +340,7 @@ describe('an answer to a question', () => {
     async ({ provider, model, key }) => {
       const user = await signIn();
       const ai = new FakeAi();
-      await saveKey(user, provider, model);
+      useAi({ provider, model });
       const big: Article = {
         url: 'https://big.example/',
         title: 'Scheduling notes',
@@ -386,7 +375,7 @@ describe('an answer to a question', () => {
     async ({ detailed, passages, maxTokens, thorough }) => {
       const user = await signIn();
       const ai = new FakeAi();
-      await saveKey(user);
+      useAi();
       const articles = Array.from({ length: 7 }, (_, i): Article => ({
         url: `https://notes${i}.example/`,
         title: `Scheduling notes ${i}`,
@@ -411,7 +400,7 @@ describe('an answer to a question', () => {
   it('reads the passages under the question’s filters', async () => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     const [tagged, , , archived] = await indexed(user, [
       { url: 'https://a.example/', title: 'Alarm tagged', text: null, tags: ['infra'] },
       { url: 'https://b.example/', title: 'Alarm plain', text: null },
@@ -448,7 +437,7 @@ describe('an answer to a question', () => {
   it('tells the provider to answer from the passages only, citing [n], or to say nothing answers', async () => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
 
     await (await ask(user, { question: QUESTION })).response.text();
@@ -463,7 +452,7 @@ describe('an answer to a question', () => {
   it('records no use of any source and counts as one request', async () => {
     const user = await signIn();
     new FakeAi();
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
     const uses = async () =>
       (await env.DB.prepare('SELECT id, use_count, last_used_at FROM links ORDER BY id').all())
@@ -489,7 +478,7 @@ describe('an answer to a question', () => {
     const a = await signIn('a@example.test', 'A');
     const b = await signIn('b@example.test', 'B');
     const ai = new FakeAi();
-    await saveKey(a);
+    useAi();
     const [aLink] = await indexed(a, [
       { ...ARTICLES.alarms, url: 'https://a.example/alarms', title: 'Alarms of A' },
     ]);
@@ -509,7 +498,7 @@ describe('an answer to a question', () => {
   it('answers that nothing answers, without calling the provider, when no passage is near enough', async () => {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     await indexed(user, [ARTICLES.alarms]);
 
     const r = await ask(user, { question: 'quarterly tax return' });
@@ -543,24 +532,24 @@ describe('an answer the provider cannot finish', () => {
   ) {
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user, provider, model);
+    useAi({ provider, model });
     await indexed(user, [ARTICLES.alarms]);
     arrange(ai);
     const sent = events(await (await ask(user, { question: QUESTION })).response.text());
-    const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
-    return { sent, settings };
+    const rejection = await keyRejection(env.DB, 'ai', env.AI_API_KEY!);
+    return { sent, rejection };
   }
 
   it.each(providers.flatMap((p) => [401, 402, 403].map((status) => ({ ...p, status }))))(
     'ends with ai_key_rejected and marks the key when $provider answers $status',
     async ({ provider, model, status }) => {
-      const { sent, settings } = await asked(provider, model, (ai) =>
+      const { sent, rejection } = await asked(provider, model, (ai) =>
         ai.status(status, 'invalid x-api-key', { testsToo: false }),
       );
 
       expect(sent.map((e) => e.event)).toEqual(['sources', 'error']);
       expect(sent[1]!.data).toEqual({ error: 'ai_key_rejected', message: 'invalid x-api-key' });
-      expect(settings).toMatchObject({ status: 'rejected', rejected_message: 'invalid x-api-key' });
+      expect(rejection).toBe('invalid x-api-key');
     },
   );
 
@@ -586,7 +575,7 @@ describe('an answer the provider cannot finish', () => {
   )(
     'ends with provider_unavailable, keeping the key, when $provider $name',
     async ({ provider, model, arrange, deltas }) => {
-      const { sent, settings } = await asked(provider, model, arrange);
+      const { sent, rejection } = await asked(provider, model, arrange);
 
       expect(sent.map((e) => e.event)).toEqual([
         'sources',
@@ -595,7 +584,7 @@ describe('an answer the provider cannot finish', () => {
       ]);
       expect(sent.at(-1)!.data).toMatchObject({ error: 'provider_unavailable' });
       expect(typeof sent.at(-1)!.data.message).toBe('string');
-      expect(settings.status).toBe('verified');
+      expect(rejection).toBeNull();
     },
   );
 
@@ -623,11 +612,11 @@ describe('an answer the provider cannot finish', () => {
   )(
     'ends with provider_failed and the provider’s message when $provider $name',
     async ({ provider, model, arrange, message }) => {
-      const { sent, settings } = await asked(provider, model, arrange);
+      const { sent, rejection } = await asked(provider, model, arrange);
 
       expect(sent.map((e) => e.event)).toEqual(['sources', 'error']);
       expect(sent[1]!.data).toEqual({ error: 'provider_failed', message });
-      expect(settings.status).toBe('verified');
+      expect(rejection).toBeNull();
     },
   );
 });

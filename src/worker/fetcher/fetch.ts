@@ -28,7 +28,7 @@ export interface FetchOk {
   body: Uint8Array | null;
   /** A web page longer than PAGE_LIMIT, of which only the first PAGE_LIMIT bytes were read. */
   truncated: boolean;
-  /** Set when the page came through the owner's Firecrawl key instead of a direct fetch. */
+  /** Set when the page came through the deployment's Firecrawl key instead of a direct fetch. */
   via?: 'firecrawl';
 }
 

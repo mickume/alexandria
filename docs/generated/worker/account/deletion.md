@@ -132,8 +132,8 @@ retried and continues with what remains; what it removed stays removed.
 
 DELETE /api/v1/me: the owner, signed in with a session, deletes the account
 by typing its email (compared ignoring case and surrounding whitespace).
-Every session and token and the AI key go at once, the account is marked
-and its deletion job queued; the session cookie is cleared.
+Every session and token goes at once, the account is marked and its
+deletion job queued; the session cookie is cleared.
 
 #### Parameters
 

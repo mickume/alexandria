@@ -44,14 +44,6 @@ Firecrawl could not be reached, timed out, was rate limited or answered 5xx: wor
 
 Anything else: Firecrawl could not load the page, or answered unusably.
 
-***
-
-### FirecrawlSettings
-
-> **FirecrawlSettings** = [`StoredKey`](../enrich/keys.md#storedkey)
-
-A user's stored Firecrawl key.
-
 ## Variables
 
 ### FIRECRAWL\_NOTE
@@ -59,14 +51,6 @@ A user's stored Firecrawl key.
 > `const` **FIRECRAWL\_NOTE**: `"fetched through Firecrawl"` = `'fetched through Firecrawl'`
 
 The note a page fetched through Firecrawl carries.
-
-***
-
-### firecrawlSettingsRoutes
-
-> `const` **firecrawlSettingsRoutes**: `Hono`\<[`AppEnv`](../env.md#appenv), `BlankSchema`, `"/"`\>
-
-The owner's Firecrawl key, under /api/v1/settings.
 
 ***
 
@@ -78,46 +62,21 @@ How long Firecrawl may take to load a page, sent as its own time limit.
 
 ## Functions
 
-### clearFirecrawlKey()
-
-> **clearFirecrawlKey**(`db`, `userId`): `Promise`\<`void`\>
-
-Forgets the user's Firecrawl key.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
 ### fetchThroughFirecrawl()
 
-> **fetchThroughFirecrawl**(`env`, `userId`, `url`, `failure`): `Promise`\<[`FetchOk`](fetch.md#fetchok) \| [`FetchFailed`](fetch.md#fetchfailed)\>
+> **fetchThroughFirecrawl**(`env`, `url`, `failure`): `Promise`\<[`FetchOk`](fetch.md#fetchok) \| [`FetchFailed`](fetch.md#fetchfailed)\>
 
-The fallback after a direct fetch of `url` met a bot check: with the user's
-verified Firecrawl key, the page as Firecrawl fetched it; otherwise the
-failure as it was. A refused key is marked rejected; a failure Firecrawl may
-get over is no longer final, so the link's fetch is retried.
+The fallback after a direct fetch of `url` met a bot check: with the
+deployment's Firecrawl key, unless Firecrawl refused it within the hour, the
+page as Firecrawl fetched it; otherwise the failure as it was. A refused key
+is recorded as refused; a failure Firecrawl may get over is no longer final,
+so the link's fetch is retried.
 
 #### Parameters
 
 ##### env
 
 [`Env`](../env.md#env)
-
-##### userId
-
-`string`
 
 ##### url
 
@@ -130,54 +89,6 @@ get over is no longer final, so the link's fetch is retried.
 #### Returns
 
 `Promise`\<[`FetchOk`](fetch.md#fetchok) \| [`FetchFailed`](fetch.md#fetchfailed)\>
-
-***
-
-### getFirecrawlSettings()
-
-> **getFirecrawlSettings**(`db`, `userId`): `Promise`\<[`StoredKey`](../enrich/keys.md#storedkey) \| `null`\>
-
-The user's Firecrawl settings, or null when no key is stored.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-#### Returns
-
-`Promise`\<[`StoredKey`](../enrich/keys.md#storedkey) \| `null`\>
-
-***
-
-### saveFirecrawlKey()
-
-> **saveFirecrawlKey**(`env`, `userId`, `key`): `Promise`\<`void`\>
-
-Stores a verified key, replacing any earlier one and lifting a rejection.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### userId
-
-`string`
-
-##### key
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
 
 ***
 
@@ -225,25 +136,3 @@ Shortens the call timeout, for tests; null restores it.
 #### Returns
 
 `void`
-
-***
-
-### testFirecrawlKey()
-
-> **testFirecrawlKey**(`env`, `apiKey`): `Promise`\<[`FirecrawlOutcome`](#firecrawloutcome)\<`null`\>\>
-
-Tests `apiKey` with a request that costs no credits: the team's credit usage.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### apiKey
-
-`string`
-
-#### Returns
-
-`Promise`\<[`FirecrawlOutcome`](#firecrawloutcome)\<`null`\>\>

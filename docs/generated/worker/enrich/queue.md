@@ -7,8 +7,8 @@
 > **afterFetch**(`env`, `link`, `notes`): `Promise`\<`void`\>
 
 Hands a freshly fetched link to enrichment: skipped when it has nothing to
-read, 'no_key' without a key, 'waiting_for_key' while the key is rejected,
-else 'queued' with an enrichment message sent at once.
+read, 'no_key' when the deployment has no AI key, 'waiting_for_key' while
+its key is refused, else 'queued' with an enrichment message sent at once.
 
 #### Parameters
 

@@ -2,10 +2,8 @@ import { ImportSection } from './ImportSection';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError, tokens, type Token } from '../api';
 import { formatDate } from '../format';
-import { AiKeySection } from './AiKeySection';
 import { DecaySection } from './DecaySection';
 import { DeleteAccountSection } from './DeleteAccountSection';
-import { FirecrawlSection } from './FirecrawlSection';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,7 +50,7 @@ function ExportSection() {
   );
 }
 
-/** The settings page: tokens, the AI key, decay, importing, exporting and leaving. */
+/** The settings page: tokens, decay, importing, exporting and leaving. */
 export function Settings() {
   const [list, setList] = useState<Token[] | null>(null);
   const [name, setName] = useState('');
@@ -135,8 +133,6 @@ export function Settings() {
         ))}
       </ul>
       {list?.length === 0 && <p className="muted">No tokens yet.</p>}
-      <AiKeySection />
-      <FirecrawlSection />
       <DecaySection />
       <ImportSection />
       <ExportSection />

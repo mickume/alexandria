@@ -55,10 +55,11 @@ export default defineConfig({
           ` --var GOOGLE_TOKEN_URL:http://localhost:${FAKE_GOOGLE_PORT}/token` +
           ` --var PUBLIC_ORIGIN:http://localhost:${PORT}` +
           ` --var ORIGIN_PROXY_URL:http://localhost:${FAKE_ORIGIN_PORT}/` +
-          ` --var KEY_ENCRYPTION_KEY:e2e-key-encryption-key` +
           ` --var MEANING_FAKE_URL:http://localhost:${FAKE_MEANING_PORT}` +
           ` --var ANTHROPIC_BASE_URL:http://localhost:${FAKE_AI_PORT}` +
           ` --var OPENROUTER_BASE_URL:http://localhost:${FAKE_AI_PORT}/openrouter` +
+          ` --var AI_PROVIDER:anthropic` +
+          ` --var AI_API_KEY:sk-ant-test-1234` +
           ` --var GITHUB_API_URL:http://localhost:${FAKE_ORIGIN_PORT}/__github` +
           ` --var YOUTUBE_API_URL:http://localhost:${FAKE_ORIGIN_PORT}/__youtube` +
           ` --var YOUTUBE_API_KEY:e2e-youtube-key`,

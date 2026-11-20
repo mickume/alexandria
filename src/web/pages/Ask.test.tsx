@@ -218,7 +218,7 @@ describe('the Ask page', () => {
   });
 
   it.each([
-    { status: 409, error: 'no_ai_key', message: 'add an AI key in settings' },
+    { status: 409, error: 'no_ai_key', message: 'this deployment has no AI key' },
     { status: 409, error: 'ai_key_rejected', message: 'invalid x-api-key' },
     {
       status: 503,
@@ -267,7 +267,7 @@ describe('the Ask page', () => {
 
   it('clears an earlier error when the owner asks again', async () => {
     const refusals = [
-      { status: 409, body: { error: 'no_ai_key', message: 'add an AI key in settings' } },
+      { status: 409, body: { error: 'no_ai_key', message: 'this deployment has no AI key' } },
       {
         status: 200,
         headers: sseHeaders,

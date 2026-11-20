@@ -14,6 +14,7 @@ import {
   seedLinks,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { ARTICLES, meaning, seedArticle, type Article } from '../test/meaning';
 import { blogArticle } from '../fetcher/fixtures/pages';
@@ -515,10 +516,7 @@ describe('queueing a link for indexing', () => {
     new FakeOrigin().page('https://news.example/enriched', blogArticle);
     new FakeAi().answer({ summary: 'A summary.', tags: ['one', 'two', 'three'], topic: 'A topic' });
     const user = await signIn();
-    await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
+    useAi();
     const enrich = recordEnrichQueue();
     const { id } = await addAndFetch(user, 'https://news.example/enriched');
     await deliverIndexing([{ user_id: user.id, link_id: id }]);

@@ -114,6 +114,24 @@ The queue of account deletion jobs, one message per run.
 
 Workers AI, which computes the embeddings.
 
+##### AI\_API\_KEY?
+
+> `optional` **AI\_API\_KEY?**: `string`
+
+The AI provider's API key; unset, nothing is enriched and Ask is off.
+
+##### AI\_MODEL?
+
+> `optional` **AI\_MODEL?**: `string`
+
+The provider's model; unset, Anthropic's default model (OpenRouter needs one).
+
+##### AI\_PROVIDER?
+
+> `optional` **AI\_PROVIDER?**: `string`
+
+The AI provider enrichment, Ask and topic splits use: 'anthropic' (the default) or 'openrouter'.
+
 ##### ALLOWED\_EMAILS
 
 > **ALLOWED\_EMAILS**: `string`
@@ -186,6 +204,12 @@ The queue of enrichment messages, one per link to summarise, tag and file.
 
 The queue of fetch messages, one per link to fetch.
 
+##### FIRECRAWL\_API\_KEY?
+
+> `optional` **FIRECRAWL\_API\_KEY?**: `string`
+
+A Firecrawl key, for pages behind a bot check; unset, such pages stay unreachable.
+
 ##### FIRECRAWL\_API\_URL
 
 > **FIRECRAWL\_API\_URL**: `string`
@@ -239,12 +263,6 @@ The per-host rate limit: one Durable Object per host.
 > **INDEX\_QUEUE**: `Queue`\<[`IndexMessage`](#indexmessage)\>
 
 The queue of indexing jobs, one message per link to index by meaning.
-
-##### KEY\_ENCRYPTION\_KEY
-
-> **KEY\_ENCRYPTION\_KEY**: `string`
-
-The secret the owners' AI keys are encrypted under.
 
 ##### LIVENESS\_QUEUE
 

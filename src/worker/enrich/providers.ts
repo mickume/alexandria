@@ -18,7 +18,7 @@ function timeoutMs(): number {
   return timeoutOverride ?? PROVIDER_TIMEOUT_MS;
 }
 
-/** The provider and credentials one call runs with: always the user's own. */
+/** The provider and credentials one call runs with: the deployment's (aiConfig). */
 export interface ProviderCall {
   provider: Provider;
   apiKey: string;
@@ -225,35 +225,6 @@ function fromError(err: unknown): ProviderOutcome<never> {
   return { ok: false, kind: 'unavailable', message: 'could not reach the provider' };
 }
 
-/** Sends one minimal completion with the user's key and model, to see whether the provider accepts them. */
-export async function testKey(env: Env, call: ProviderCall): Promise<ProviderOutcome<void>> {
-  const prompt = 'Reply with the single word: ok';
-  return metered(env, call, 'key_test', async (seen) => {
-    try {
-      await withTimeout(async (signal) => {
-        if (call.provider === 'anthropic') {
-          const message = await anthropic(env, call.apiKey).messages.create(
-            { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
-            { signal },
-          );
-          seen(anthropicTokens(message.usage));
-        } else {
-          const answer = await openRouterChat(
-            env,
-            call.apiKey,
-            { model: call.model, max_tokens: 5, messages: [{ role: 'user', content: prompt }] },
-            signal,
-          );
-          seen(answer.tokens);
-        }
-      });
-      return { ok: true, value: undefined };
-    } catch (err) {
-      return fromError(err);
-    }
-  });
-}
-
 /**
  * The structured result asked of the model for a topic's split: each
  * sub-topic with the numbers of its links in the request. Links are named by
@@ -290,7 +261,7 @@ const ENRICH_MAX_TOKENS = 4096;
 const SPLIT_MAX_TOKENS = 16_384;
 
 /**
- * Asks the user's provider for a structured result of `schema`: a JSON schema
+ * Asks the deployment's provider for a structured result of `schema`: a JSON schema
  * through structured outputs (output_config.format) of Anthropic's Messages
  * API, and through the response format of OpenRouter's chat completions. The
  * value is the model's raw object.
@@ -364,7 +335,7 @@ async function structuredWith(
   }
 }
 
-/** Asks the user's provider for a structured {summary, tags, topic} (RESULT_SCHEMA). */
+/** Asks the deployment's provider for a structured {summary, tags, topic} (RESULT_SCHEMA). */
 export function enrichWith(
   env: Env,
   call: ProviderCall,
@@ -381,7 +352,7 @@ export function enrichWith(
   );
 }
 
-/** Asks the user's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA). */
+/** Asks the deployment's provider for a topic's split: {subtopics: [{name, links}]} (SPLIT_SCHEMA). */
 export function splitWith(
   env: Env,
   call: ProviderCall,
@@ -420,7 +391,7 @@ const PHRASINGS_MAX_TOKENS = 512;
 /** How long rephrasing a question may take before the question is used as typed, in milliseconds. */
 export const PHRASINGS_TIMEOUT_MS = 10_000;
 
-/** Asks the user's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA). */
+/** Asks the deployment's provider for a question's phrasings: {phrasings: [..]} (PHRASINGS_SCHEMA). */
 export function phrasingsWith(
   env: Env,
   call: ProviderCall,
@@ -502,7 +473,7 @@ async function readOpenRouterStream(
 }
 
 /**
- * Streams the user's provider's answer to a question, handing each piece of
+ * Streams the deployment's provider's answer to a question, handing each piece of
  * text to `onText` as it arrives: through `messages.stream` of Anthropic's SDK,
  * and through OpenRouter's chat completions with `stream: true`. The whole
  * answer has the provider timeout, and a failure is sorted as enrichment's is.

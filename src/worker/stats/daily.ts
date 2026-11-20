@@ -68,7 +68,10 @@ export function countStatement(db: D1Database, c: Count): D1PreparedStatement {
 /** The size columns of the daily record, in the order the answer gives them. */
 export const SIZE_STATES = ['pending', 'active', 'unreachable', 'expired', 'archived'] as const;
 
-/** Why a call to the owner's AI provider was made. */
+/**
+ * Why a call to the AI provider was made for an owner. 'key_test' is kept for
+ * the days recorded while owners saved their own keys, each tested first.
+ */
 export type Purpose = 'enrich' | 'split' | 'ask' | 'key_test';
 
 /** One provider call to record: when it ended, and the tokens its answer reported, if any. */

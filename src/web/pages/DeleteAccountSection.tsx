@@ -51,8 +51,8 @@ export function DeleteAccountSection() {
     <section aria-labelledby="delete-heading" className="danger-zone">
       <h2 id="delete-heading">Delete account</h2>
       <p>
-        Deleting your account removes every link, snapshot, workspace, token and the AI key. It
-        cannot be undone.
+        Deleting your account removes every link, snapshot, workspace and token. It cannot be
+        undone.
       </p>
       <Label htmlFor="delete-confirm">Type your email address to confirm</Label>
       <Input

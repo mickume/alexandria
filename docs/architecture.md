@@ -208,7 +208,7 @@ quantities in the last list are never stored.
    link from the words of its URL.
    Anything other than a page or a PDF keeps only a note.
 3. **Derived after the fetch:**
-   - *Enrichment*, with the owner's own key (`enrich/queue.ts`): `summary`,
+   - *Enrichment*, with the deployment's AI key (`enrich/queue.ts`): `summary`,
      `topic_id` (a topic path filed into `topics`, creating the topics it
      lacks), tags (`tags`, `link_tags`), `enriched_at` and
      `enrichment_status`. Fields listed in `edited_fields` keep the owner's
@@ -295,12 +295,13 @@ the links it changes so that open pages show the new title. The format is in
 
 A page behind a bot check can still be fetched through Firecrawl
 (`fetcher/firecrawl.ts`, [ADR 04](adr/04-fetch-pages-behind-a-bot-check-through-firecrawl.md))
-when its owner stored their own Firecrawl key, encrypted like the AI key. After
+when the deployment has a Firecrawl key (`FIRECRAWL_API_KEY`). After
 a direct fetch meets a bot check, the consumer sends the address to Firecrawl
 (`POST {FIRECRAWL_API_URL}/v2/scrape` for the page's raw HTML) and stores the
 answer as it would a direct fetch's, with the note "fetched through
-Firecrawl". Firecrawl refusing the key marks it rejected; Firecrawl being
-unavailable leaves the fetch to its retries. No other page goes to Firecrawl.
+Firecrawl". Firecrawl refusing the key marks it refused for an hour, as the
+AI key is (below); Firecrawl being unavailable leaves the fetch to its
+retries. No other page goes to Firecrawl.
 
 The stream keeps cards current by polling `GET /api/v1/links?changed_since=`
 every 5 seconds while a card is pending or refreshing; every write to a link
@@ -432,19 +433,20 @@ complete"), which "enrich all" takes up.
 
 When a fetch (first or refresh) makes a link `active`, the fetch worker hands
 it to enrichment (`enrich/queue.ts`, `afterFetch`): a link whose notes say it
-has nothing to read is `skipped`; without an AI key it is `no_key`; while the
-key is rejected it is `waiting_for_key`; otherwise it is `queued` and one
-`ENRICH_QUEUE` message is sent. The enrichment worker (the Worker's `queue`
-handler for `alexandria-enrich`) decrypts the user's own key
-(`enrich/keys.ts`: AES-GCM under `KEY_ENCRYPTION_KEY`, the user id as
-additional data), builds the request (`enrich/enrich.ts`: instructions, title,
+has nothing to read is `skipped`; when the deployment has no AI key it is
+`no_key`; while its key is refused it is `waiting_for_key`; otherwise it is
+`queued` and one `ENRICH_QUEUE` message is sent. The enrichment worker (the
+Worker's `queue` handler for `alexandria-enrich`) takes the deployment's
+provider, model and key (`enrich/keys.ts`, `aiState`: `AI_PROVIDER`,
+`AI_MODEL` and `AI_API_KEY`, and whether `key_rejections` holds a refusal of
+that key), builds the request (`enrich/enrich.ts`: instructions, title,
 host, the paths of the user's 100 topics whose newest link (under the topic
 or beneath it) is the most recent, one per line and without counts, the 300
 most used tags, each with the number of links that carry it, and the first
 20,000 characters of the reader text, or the title and description; it asks
 for the topic as a path of one to three names, the most specific that fits),
 asks
-the user's provider for a structured result (`enrich/providers.ts`: a JSON
+the provider for a structured result (`enrich/providers.ts`: a JSON
 schema through structured outputs, `output_config.format`, with
 `@anthropic-ai/sdk`, since current models refuse a forced tool call; or a
 JSON-schema response format through OpenRouter's HTTP API), normalises it
@@ -793,12 +795,26 @@ one namespace per user.
   Vectorize. With `MEANING_FAKE_URL` set (end-to-end tests only) it speaks HTTP
   to `e2e/fake-meaning.ts` instead of using the `AI` and `VECTORIZE` bindings.
 
+The AI provider and the Firecrawl key are settings of the deployment, the
+same for every owner ([ADR 13](adr/13-hold-the-ai-and-firecrawl-keys-in-the-deployment.md)).
+A provider answering 401, 402 or 403 to any call (enrichment, Ask, a split)
+records the refusal in `key_rejections` (`markKeyRejected`): the service, the
+SHA-256 of the key, the provider's message and the time. A refusal holds while
+the key is the same and is under an hour old (`keyRejection`); a new key, or
+the hour, lifts it, and the next call tries the key again. The every-minute
+run (`enrich/resume.ts`, `resumeEnrichment`) does nothing while the key is
+missing or refused; otherwise it moves up to 20 `no_key` and
+`waiting_for_key` links a minute, across the owners whose accounts are not
+being deleted and the longest waiting first, to `queued`, and schedules them
+through each owner's throttle. Each call is still recorded under the owner it
+was made for in `daily_ai_usage`.
+
 ## Asking the library
 
 `POST /api/v1/ask` (`meaning/ask.ts`) answers a question from the owner's own
-links with the owner's own AI provider. It refuses in this order: the body, the
-question (`parseQuery` with a cap of 500 characters) and the owner's key
-(`getAiSettings`: none, or marked rejected). It then asks the provider for the
+links with the deployment's AI provider. It refuses in this order: the body, the
+question (`parseQuery` with a cap of 500 characters) and the deployment's key
+(`aiState`: none, or refused). It then asks the provider for the
 question's phrasings (`phrasingsWith`, a structured request with 10 seconds:
 the question restated as a search query and at most two other ways of asking
 it; `usablePhrasings` keeps at most three of at most 200 characters). A key
@@ -900,7 +916,7 @@ download lacks the closing `"complete": true`. The export's content URLs
 file addresses are the export's own.
 
 `DELETE /api/v1/me` (`account/deletion.ts`), with a session only, deletes the
-user's sessions, tokens and AI key at once, sets `users.deletion_requested_at`
+user's sessions and tokens at once, sets `users.deletion_requested_at`
 and sends a message on `ACCOUNT_QUEUE`. Each message is one run of the
 deletion job (`runDeletion`):
 

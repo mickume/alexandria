@@ -7,14 +7,14 @@
 # The file holds one NAME=value per line; blank lines and lines starting with
 # # are skipped, and quotes around a value are removed as in any .env file (a
 # value holding # or spaces needs them).
-# The names it may set are the seven below. CLOUDFLARE_API_TOKEN and
+# The names it may set are the ten below. CLOUDFLARE_API_TOKEN and
 # CLOUDFLARE_ACCOUNT_ID may be in it too: they are used to reach the account
 # (unless already set in the environment) and never uploaded. Any other name,
 # an empty value or a line that is not NAME=value stops the script before
 # anything is sent. Values are never printed.
 set -euo pipefail
 
-SETTINGS=" ALLOWED_EMAILS GOOGLE_CLIENT_ID PUBLIC_ORIGIN GOOGLE_CLIENT_SECRET KEY_ENCRYPTION_KEY GITHUB_TOKEN YOUTUBE_API_KEY "
+SETTINGS=" ALLOWED_EMAILS GOOGLE_CLIENT_ID PUBLIC_ORIGIN GOOGLE_CLIENT_SECRET AI_PROVIDER AI_MODEL AI_API_KEY FIRECRAWL_API_KEY GITHUB_TOKEN YOUTUBE_API_KEY "
 ACCOUNT=" CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID "
 
 # A file named on the command line is found from where the script was run;

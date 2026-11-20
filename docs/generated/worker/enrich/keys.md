@@ -2,39 +2,15 @@
 
 ## Interfaces
 
-### AiSettings
+### AiConfig
 
-A user's stored AI settings.
-
-#### Extends
-
-- [`StoredKey`](#storedkey)
+The deployment's AI provider, model and key.
 
 #### Properties
 
-##### ciphertext
+##### apiKey
 
-> **ciphertext**: `string`
-
-###### Inherited from
-
-[`StoredKey`](#storedkey).[`ciphertext`](#ciphertext-1)
-
-##### iv
-
-> **iv**: `string`
-
-###### Inherited from
-
-[`StoredKey`](#storedkey).[`iv`](#iv-1)
-
-##### last4
-
-> **last4**: `string`
-
-###### Inherited from
-
-[`StoredKey`](#storedkey).[`last4`](#last4-1)
+> **apiKey**: `string`
 
 ##### model
 
@@ -44,61 +20,21 @@ A user's stored AI settings.
 
 > **provider**: [`Provider`](#provider-1)
 
-##### rejectedMessage
+## Type Aliases
 
-> **rejectedMessage**: `string` \| `null`
+### AiState
 
-###### Inherited from
+> **AiState** = \{ `status`: `"none"`; \} \| \{ `config`: [`AiConfig`](#aiconfig); `status`: `"verified"`; \} \| \{ `config`: [`AiConfig`](#aiconfig); `message`: `string`; `status`: `"rejected"`; \}
 
-[`StoredKey`](#storedkey).[`rejectedMessage`](#rejectedmessage-1)
-
-##### status
-
-> **status**: `"verified"` \| `"rejected"`
-
-###### Inherited from
-
-[`StoredKey`](#storedkey).[`status`](#status-1)
+The deployment's AI key as owners meet it: none, usable, or refused with the provider's message.
 
 ***
 
-### StoredKey
+### KeyService
 
-A key a user stored: encrypted, with its last 4 characters and whether its service still takes it.
+> **KeyService** = `"ai"` \| `"firecrawl"`
 
-#### Extended by
-
-- [`AiSettings`](#aisettings)
-
-#### Properties
-
-##### ciphertext
-
-> **ciphertext**: `string`
-
-##### iv
-
-> **iv**: `string`
-
-##### last4
-
-> **last4**: `string`
-
-##### rejectedMessage
-
-> **rejectedMessage**: `string` \| `null`
-
-##### status
-
-> **status**: `"verified"` \| `"rejected"`
-
-## Type Aliases
-
-### KeyColumns
-
-> **KeyColumns** = `"ai_key"` \| `"firecrawl_key"`
-
-The users columns a stored key is kept in: `ai_key_…` or `firecrawl_key_…`.
+The services whose key the deployment holds.
 
 ***
 
@@ -106,7 +42,7 @@ The users columns a stored key is kept in: `ai_key_…` or `firecrawl_key_…`.
 
 > **Provider** = `"anthropic"` \| `"openrouter"`
 
-The providers a user can choose.
+The AI providers a deployment can use.
 
 ## Variables
 
@@ -114,67 +50,34 @@ The providers a user can choose.
 
 > `const` **DEFAULT\_ANTHROPIC\_MODEL**: `"claude-opus-5-5"` = `'claude-opus-5-5'`
 
-The model used with Anthropic when the user names none.
+The model used with Anthropic when AI_MODEL names none.
+
+***
+
+### NO\_AI\_KEY\_MESSAGE
+
+> `const` **NO\_AI\_KEY\_MESSAGE**: `"this deployment has no AI key"` = `'this deployment has no AI key'`
+
+The message of the refusal of an AI request when the deployment has no AI key.
+
+***
+
+### REJECTION\_RETRY\_MS
+
+> `const` **REJECTION\_RETRY\_MS**: `number`
+
+How long a refused key is left alone before it is tried again.
 
 ## Functions
 
-### clearAiSettings()
+### aiConfig()
 
-> **clearAiSettings**(`db`, `userId`): `Promise`\<`void`\>
+> **aiConfig**(`env`): [`AiConfig`](#aiconfig) \| `null`
 
-Forgets the user's provider, model and key.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
-### clearStoredKey()
-
-> **clearStoredKey**(`db`, `userId`, `columns`, `extra?`): `Promise`\<`void`\>
-
-Forgets the user's key stored under `columns`, and the `extra` users columns with it.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-##### columns
-
-[`KeyColumns`](#keycolumns)
-
-##### extra?
-
-`string`[] = `[]`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
-### decryptKey()
-
-> **decryptKey**(`env`, `ciphertext`, `iv`, `userId`): `Promise`\<`string`\>
-
-Decrypts a user's API key; throws when it was sealed for another user or under another secret.
+The deployment's AI configuration: AI_API_KEY with AI_PROVIDER (Anthropic
+when unset) and AI_MODEL (DEFAULT_ANTHROPIC_MODEL with Anthropic when
+unset). Null without a key, with a provider that is neither 'anthropic' nor
+'openrouter', or with OpenRouter and no model, as then nothing can be asked.
 
 #### Parameters
 
@@ -182,136 +85,106 @@ Decrypts a user's API key; throws when it was sealed for another user or under a
 
 [`Env`](../env.md#env)
 
-##### ciphertext
-
-`string`
-
-##### iv
-
-`string`
-
-##### userId
-
-`string`
-
 #### Returns
 
-`Promise`\<`string`\>
+[`AiConfig`](#aiconfig) \| `null`
 
 ***
 
-### encryptKey()
+### aiState()
 
-> **encryptKey**(`env`, `key`, `userId`): `Promise`\<\{ `ciphertext`: `string`; `iv`: `string`; \}\>
+> **aiState**(`env`): `Promise`\<[`AiState`](#aistate)\>
 
-Encrypts a user's API key (for an AI provider or Firecrawl) with AES-GCM
-under KEY_ENCRYPTION_KEY, with a fresh IV and the user's id as additional
-data, so that a ciphertext copied to another user's row does not decrypt.
+The deployment's AI configuration and whether the provider refused its key.
 
 #### Parameters
 
 ##### env
 
 [`Env`](../env.md#env)
+
+#### Returns
+
+`Promise`\<[`AiState`](#aistate)\>
+
+***
+
+### firecrawlKey()
+
+> **firecrawlKey**(`env`): `string` \| `null`
+
+The deployment's Firecrawl key, or null without one.
+
+#### Parameters
+
+##### env
+
+[`Env`](../env.md#env)
+
+#### Returns
+
+`string` \| `null`
+
+***
+
+### keyRejection()
+
+> **keyRejection**(`db`, `service`, `key`): `Promise`\<`string` \| `null`\>
+
+The message `service` refused `key` with, while the refusal holds: the key
+is the one refused and the refusal is under an hour old. Null otherwise.
+
+#### Parameters
+
+##### db
+
+`D1Database`
+
+##### service
+
+[`KeyService`](#keyservice)
 
 ##### key
 
 `string`
 
-##### userId
-
-`string`
-
 #### Returns
 
-`Promise`\<\{ `ciphertext`: `string`; `iv`: `string`; \}\>
+`Promise`\<`string` \| `null`\>
 
 ***
 
-### getAiSettings()
+### markAiKeyRejected()
 
-> **getAiSettings**(`db`, `userId`): `Promise`\<[`AiSettings`](#aisettings) \| `null`\>
+> **markAiKeyRejected**(`env`, `config`, `message`): `Promise`\<`void`\>
 
-The user's AI settings, or null when no key is stored.
+Records that the AI provider refused the deployment's key, pausing enrichment.
 
 #### Parameters
 
-##### db
+##### env
 
-`D1Database`
+[`Env`](../env.md#env)
 
-##### userId
+##### config
+
+[`AiConfig`](#aiconfig)
+
+##### message
 
 `string`
 
 #### Returns
 
-`Promise`\<[`AiSettings`](#aisettings) \| `null`\>
-
-***
-
-### getStoredKey()
-
-> **getStoredKey**(`db`, `userId`, `columns`, `extra?`): `Promise`\<\{ `key`: [`StoredKey`](#storedkey); `row`: `Record`\<`string`, `string` \| `null`\>; \} \| `null`\>
-
-The user's key stored under `columns`, with the `extra` users columns read
-beside it, or null when none is stored.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-##### columns
-
-[`KeyColumns`](#keycolumns)
-
-##### extra?
-
-`string`[] = `[]`
-
-#### Returns
-
-`Promise`\<\{ `key`: [`StoredKey`](#storedkey); `row`: `Record`\<`string`, `string` \| `null`\>; \} \| `null`\>
+`Promise`\<`void`\>
 
 ***
 
 ### markKeyRejected()
 
-> **markKeyRejected**(`db`, `userId`, `message`): `Promise`\<`void`\>
+> **markKeyRejected**(`db`, `service`, `key`, `message`): `Promise`\<`void`\>
 
-Marks the user's key as rejected by the provider, pausing their enrichment.
-
-#### Parameters
-
-##### db
-
-`D1Database`
-
-##### userId
-
-`string`
-
-##### message
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
-### markStoredKeyRejected()
-
-> **markStoredKeyRejected**(`db`, `userId`, `columns`, `message`): `Promise`\<`void`\>
-
-Marks the user's key under `columns` as rejected by its service, with the service's message.
+Records that `service` refused `key`, with its message, replacing any earlier refusal.
 
 #### Parameters
 
@@ -319,86 +192,17 @@ Marks the user's key under `columns` as rejected by its service, with the servic
 
 `D1Database`
 
-##### userId
+##### service
+
+[`KeyService`](#keyservice)
+
+##### key
 
 `string`
-
-##### columns
-
-[`KeyColumns`](#keycolumns)
 
 ##### message
 
 `string`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
-### saveAiSettings()
-
-> **saveAiSettings**(`env`, `userId`, `provider`, `model`, `key`): `Promise`\<`void`\>
-
-Stores a verified key, replacing any earlier settings and lifting a rejection.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### userId
-
-`string`
-
-##### provider
-
-[`Provider`](#provider-1)
-
-##### model
-
-`string`
-
-##### key
-
-`string`
-
-#### Returns
-
-`Promise`\<`void`\>
-
-***
-
-### saveStoredKey()
-
-> **saveStoredKey**(`env`, `userId`, `columns`, `key`, `extra?`): `Promise`\<`void`\>
-
-Stores a verified key under `columns`, replacing any earlier one and lifting
-a rejection, and sets the `extra` users columns with it.
-
-#### Parameters
-
-##### env
-
-[`Env`](../env.md#env)
-
-##### userId
-
-`string`
-
-##### columns
-
-[`KeyColumns`](#keycolumns)
-
-##### key
-
-`string`
-
-##### extra?
-
-`Record`\<`string`, `string`\> = `{}`
 
 #### Returns
 

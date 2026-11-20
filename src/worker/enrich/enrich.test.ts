@@ -8,25 +8,21 @@ import {
   deliverEnrichments,
   env,
   recordEnrichQueue,
+  rejectAiKey,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { blogArticle, longArticle } from '../fetcher/fixtures/pages';
 import { scannedPdf } from '../fetcher/fixtures/pdfs';
 import { buildPrompt, normalizeResult } from './enrich';
+import { keyRejection, REJECTION_RETRY_MS } from './keys';
 import { RESULT_SCHEMA, setProviderTimeout } from './providers';
+import { RESUME_PER_MINUTE, resumeEnrichment } from './resume';
 
 const ARTICLE = 'https://news.example/enrich-me';
-
-async function saveKey(
-  user: TestUser,
-  body: Record<string, unknown> = { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-) {
-  const r = await api('PUT', '/api/v1/settings/ai', { as: user.session, body });
-  expect(r.status).toBe(200);
-}
 
 async function link(user: TestUser, id: string) {
   return (await api('GET', `/api/v1/links/${id}`, { as: user.session })).json;
@@ -68,7 +64,7 @@ describe('enriching a fetched link', () => {
       topic: 'web development',
     });
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const { id, enrichMessages } = await addFetchAndEnrich(user, ARTICLE);
     expect(enrichMessages.map((m) => m.body)).toEqual([
       { user_id: user.id, link_id: id, attempt: 1 },
@@ -95,7 +91,7 @@ describe('enriching a fetched link', () => {
     new FakeOrigin().page(ARTICLE, page);
     const ai = new FakeAi();
     const user = await signIn('owner@example.test', 'Ada Owner');
-    await saveKey(user);
+    useAi();
     const { id } = await addFetchAndEnrich(user, ARTICLE);
     const [request] = ai.enrichments;
     const body = JSON.stringify(request!.body);
@@ -194,7 +190,7 @@ describe('enriching a fetched link', () => {
       topic: 'general',
       ...answer,
     });
-    await saveKey(user);
+    useAi();
     const { id } = await addFetchAndEnrich(user, ARTICLE);
     if (tags) expect(await storedTags(id)).toEqual(tags);
     if (topic) {
@@ -237,7 +233,7 @@ describe('enriching a fetched link', () => {
       .run();
     new FakeOrigin().page(ARTICLE, blogArticle);
     new FakeAi().answer({ summary: 'S.', tags: ['one', 'two', 'three'], topic });
-    await saveKey(user);
+    useAi();
     const { id } = await addFetchAndEnrich(user, ARTICLE);
 
     expect(await link(user, id)).toMatchObject({ topic: path.at(-1), topic_path: path });
@@ -290,7 +286,7 @@ describe('enriching a fetched link', () => {
     await env.DB.batch(uses);
     new FakeOrigin().page(ARTICLE, blogArticle);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     await addFetchAndEnrich(user, ARTICLE);
     const body = JSON.stringify(ai.enrichments[0]!.body);
     for (let i = 0; i < 400; i++) {
@@ -338,7 +334,7 @@ describe('enriching a fetched link', () => {
     await env.DB.batch(statements);
     new FakeOrigin().page(ARTICLE, blogArticle);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     await addFetchAndEnrich(user, ARTICLE);
     const body = JSON.stringify(ai.enrichments[0]!.body);
     expect(body).toContain('\\nSoftware engineering > Testing\\n');
@@ -371,7 +367,7 @@ describe('enriching a fetched link', () => {
     serve(new FakeOrigin(), url);
     const ai = new FakeAi();
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const { id, enrichMessages } = await addFetchAndEnrich(user, url);
     expect(
       (await env.DB.prepare('SELECT enrichment_status FROM links WHERE id = ?').bind(id).first())
@@ -381,32 +377,27 @@ describe('enriching a fetched link', () => {
     expect(ai.enrichments).toEqual([]);
   });
 
-  it('calls each provider only with its own user’s key and model', async () => {
-    new FakeOrigin()
-      .page('https://a-news.example/', blogArticle)
-      .page('https://b-news.example/', blogArticle);
+  it.each([
+    { provider: 'anthropic' as const, key: 'sk-ant-deployment', model: undefined },
+    { provider: 'openrouter' as const, key: 'sk-or-deployment', model: 'mistral/mb' },
+  ])('calls $provider with the deployment’s key and model', async ({ provider, key, model }) => {
+    new FakeOrigin().page(ARTICLE, blogArticle);
     const ai = new FakeAi();
-    const a = await signIn('a@example.test', 'A');
-    const b = await signIn('b@example.test', 'B');
-    await saveKey(a, { provider: 'anthropic', api_key: 'sk-ant-key-of-a' });
-    await saveKey(b, { provider: 'openrouter', api_key: 'sk-or-key-of-b', model: 'mistral/mb' });
-    await addFetchAndEnrich(a, 'https://a-news.example/');
-    await addFetchAndEnrich(b, 'https://b-news.example/');
-    const auth = (r: (typeof ai.requests)[number]) =>
-      r.headers.get('x-api-key') ?? r.headers.get('Authorization') ?? '';
-    const [ra, rb] = ai.enrichments;
-    expect(ra!.provider).toBe('anthropic');
-    expect(auth(ra!)).toContain('sk-ant-key-of-a');
-    expect(rb!.provider).toBe('openrouter');
-    expect(auth(rb!)).toContain('sk-or-key-of-b');
-    expect(rb!.body.model).toBe('mistral/mb');
+    useAi({ provider, key, model });
+    await addFetchAndEnrich(await signIn(), ARTICLE);
+    const [request] = ai.enrichments;
+    expect(request!.provider).toBe(provider);
+    expect(request!.headers.get('x-api-key') ?? request!.headers.get('Authorization')).toContain(
+      key,
+    );
+    expect(request!.body.model).toBe(model ?? 'claude-opus-5-5');
   });
 
   it('leaves enriched links alone when the provider, model or key changes', async () => {
     new FakeOrigin().page(ARTICLE, blogArticle);
     new FakeAi();
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const { id } = await addFetchAndEnrich(user, ARTICLE);
     const before = await env.DB.prepare(
       'SELECT summary, topic_id, enriched_at FROM links WHERE id = ?',
@@ -415,7 +406,8 @@ describe('enriching a fetched link', () => {
       .first();
     const tags = await storedTags(id);
     const sent = recordEnrichQueue();
-    await saveKey(user, { provider: 'openrouter', api_key: 'sk-or-other', model: 'other/model' });
+    useAi({ provider: 'openrouter', key: 'sk-or-other', model: 'other/model' });
+    expect(await resumeEnrichment(env)).toBe(0);
     expect(sent).toEqual([]);
     expect(
       await env.DB.prepare('SELECT summary, topic_id, enriched_at FROM links WHERE id = ?')
@@ -492,7 +484,7 @@ describe('enrichment after renames and merges', () => {
     });
     new FakeOrigin().page(ARTICLE, blogArticle);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     await addFetchAndEnrich(user, ARTICLE);
     const body = JSON.stringify(ai.enrichments[0]!.body);
     // Each tag with the number of links that carry it (the merge moved js's
@@ -518,7 +510,7 @@ describe('enrichment after renames and merges', () => {
     });
     new FakeOrigin().page(ARTICLE, blogArticle);
     new FakeAi().answer({ summary: 'S.', tags: ['JS', 'react', 'javascript'], topic: 'infra' });
-    await saveKey(user);
+    useAi();
     const { id: linkId } = await addFetchAndEnrich(user, ARTICLE);
     expect(await storedTags(linkId)).toEqual(['javascript', 'react']);
     expect(await topicOf(linkId)).toBe('Infrastructure');
@@ -586,20 +578,6 @@ describe('a link without a key', () => {
     expect(enrichMessages).toEqual([]);
     expect(ai.enrichments).toEqual([]);
   });
-
-  it('is not enriched once the key is removed', async () => {
-    new FakeOrigin().page(ARTICLE, blogArticle);
-    const ai = new FakeAi();
-    const user = await signIn();
-    await saveKey(user);
-    await api('DELETE', '/api/v1/settings/ai', { as: user.session });
-    const { id } = await addFetchAndEnrich(user, ARTICLE);
-    expect(
-      (await env.DB.prepare('SELECT enrichment_status FROM links WHERE id = ?').bind(id).first())
-        ?.enrichment_status,
-    ).toBe('no_key');
-    expect(ai.enrichments).toEqual([]);
-  });
 });
 
 describe('an enriched link as the API shows it', () => {
@@ -611,7 +589,7 @@ describe('an enriched link as the API shows it', () => {
       topic: 'Letters',
     });
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const { id } = await addFetchAndEnrich(user, ARTICLE);
     const expected = {
       summary: 'A short summary.',
@@ -651,7 +629,7 @@ describe('enriching all unenriched links', () => {
       ),
     );
     new FakeAi();
-    await saveKey(user);
+    useAi();
     setNow('2026-11-02T09:00:00.000Z');
     const sent = recordEnrichQueue();
     const r = await api('POST', '/api/v1/links/enrich-unenriched', { as: user.session });
@@ -673,16 +651,13 @@ describe('enriching all unenriched links', () => {
   it.each(['no key', 'a rejected key'])('is refused with %s', async (label) => {
     const user = await signIn();
     if (label === 'a rejected key') {
-      new FakeAi();
-      await saveKey(user);
-      await env.DB.prepare("UPDATE users SET ai_key_status = 'rejected' WHERE id = ?")
-        .bind(user.id)
-        .run();
+      useAi();
+      await rejectAiKey();
     }
     const sent = recordEnrichQueue();
     const r = await api('POST', '/api/v1/links/enrich-unenriched', { as: user.session });
     expect(r.status).toBe(409);
-    expect(r.json).toEqual({ error: 'no_ai_key', message: 'add an AI key in settings' });
+    expect(r.json).toEqual({ error: 'no_ai_key', message: 'this deployment has no AI key' });
     expect(sent).toEqual([]);
   });
 });
@@ -692,7 +667,7 @@ describe('a failed enrichment', () => {
   async function queuedLink(ai: FakeAi) {
     new FakeOrigin().page(ARTICLE, blogArticle);
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const enrich = recordEnrichQueue();
     const { id } = await addAndFetch(user, ARTICLE);
     void ai;
@@ -774,7 +749,7 @@ describe('re-running an enrichment', () => {
     new FakeOrigin().page(ARTICLE, blogArticle);
     const ai = new FakeAi();
     const user = await signIn();
-    await saveKey(user);
+    useAi();
     const { id } = await addAndFetch(user, ARTICLE);
     await env.DB.prepare(
       "UPDATE links SET enrichment_status = 'failed', enrichment_reason = 'internal error' WHERE id = ?",
@@ -801,7 +776,7 @@ describe('re-running an enrichment', () => {
   ])('is refused for $label', async ({ setup, error }) => {
     new FakeAi();
     const user = await signIn();
-    if (setup !== 'nokey') await saveKey(user);
+    if (setup !== 'nokey') useAi();
     const [id] = await seedLinks(user, [
       {
         url: 'https://refused.example/',
@@ -832,14 +807,13 @@ describe('a key the provider starts rejecting', () => {
       new FakeOrigin().page(ARTICLE, blogArticle);
       const ai = new FakeAi();
       const user = await signIn();
-      await saveKey(user);
+      useAi();
       const enrich = recordEnrichQueue();
       const { id } = await addAndFetch(user, ARTICLE);
       ai.status(status, message, { testsToo: false });
       const sent = recordEnrichQueue();
       await deliverEnrichments([enrich[0]!.body]);
-      const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
-      expect(settings).toMatchObject({ status: 'rejected', rejected_message: message });
+      expect(await keyRejection(env.DB, 'ai', env.AI_API_KEY!)).toBe(message);
       expect((await link(user, id)).enrichment_status).toBe('waiting_for_key');
       expect(sent).toEqual([]);
     },
@@ -851,12 +825,8 @@ describe('a key the provider starts rejecting', () => {
       .page('https://w2.example/', blogArticle);
     const ai = new FakeAi();
     const user = await signIn();
-    await saveKey(user);
-    await env.DB.prepare(
-      "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'no credit' WHERE id = ?",
-    )
-      .bind(user.id)
-      .run();
+    useAi();
+    await rejectAiKey('no credit');
     const before = ai.requests.length;
     const one = await addFetchAndEnrich(user, 'https://w1.example/');
     const two = await addFetchAndEnrich(user, 'https://w2.example/');
@@ -867,28 +837,82 @@ describe('a key the provider starts rejecting', () => {
     expect(ai.requests.length).toBe(before);
   });
 
-  it('is replaced by a key the provider accepts, which lifts the pause and leaves the waiting links waiting', async () => {
-    new FakeOrigin()
-      .page('https://waiting.example/', blogArticle)
-      .page('https://fresh.example/', blogArticle);
-    new FakeAi();
+  it.each(['a new key', 'an hour gone by'])(
+    'is lifted by %s, and the waiting links are queued again',
+    async (lift) => {
+      new FakeOrigin()
+        .page('https://waiting.example/', blogArticle)
+        .page('https://fresh.example/', blogArticle);
+      new FakeAi();
+      const T = Date.parse('2026-11-20T09:00:00.000Z');
+      setNow(T);
+      const user = await signIn();
+      useAi();
+      await rejectAiKey('no credit');
+      const waiting = await addFetchAndEnrich(user, 'https://waiting.example/');
+      expect(await resumeEnrichment(env)).toBe(0);
+      if (lift === 'a new key') useAi({ key: 'sk-ant-newkey9999' });
+      else setNow(T + REJECTION_RETRY_MS);
+      const fresh = await addFetchAndEnrich(user, 'https://fresh.example/');
+      expect((await link(user, fresh.id)).enrichment_status).toBe('enriched');
+      const sent = recordEnrichQueue();
+      expect(await resumeEnrichment(env)).toBe(1);
+      expect(sent.map((m) => m.body.link_id)).toEqual([waiting.id]);
+      expect((await link(user, waiting.id)).enrichment_status).toBe('queued');
+      await deliverEnrichments(sent.map((m) => m.body));
+      expect((await link(user, waiting.id)).enrichment_status).toBe('enriched');
+    },
+  );
+});
+
+describe('resuming the links that wait for a key', () => {
+  /** Seeds `n` links of `user` in `status`, the first waiting longest. */
+  async function waitingLinks(user: TestUser, n: number, status: string, prefix: string) {
+    const ids = await seedLinks(
+      user,
+      Array.from({ length: n }, (_, i) => ({ url: `https://${prefix}${i}.example/` })),
+    );
+    for (const [i, id] of ids.entries()) {
+      await env.DB.prepare('UPDATE links SET enrichment_status = ?, updated_at = ? WHERE id = ?')
+        .bind(status, new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(), id)
+        .run();
+    }
+    return ids;
+  }
+
+  it('queues nothing while the deployment has no usable key', async () => {
     const user = await signIn();
-    await saveKey(user);
-    await env.DB.prepare(
-      "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'no credit' WHERE id = ?",
-    )
-      .bind(user.id)
+    await waitingLinks(user, 2, 'no_key', 'n');
+    const sent = recordEnrichQueue();
+    expect(await resumeEnrichment(env)).toBe(0);
+    useAi();
+    await rejectAiKey();
+    expect(await resumeEnrichment(env)).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  it('queues 20 a minute across the owners, the longest waiting first, leaving failed links and deleted accounts', async () => {
+    useAi();
+    const a = await signIn('a@example.test', 'A');
+    const b = await signIn('b@example.test', 'B');
+    const gone = await signIn('gone@example.test', 'Gone');
+    const waitingA = await waitingLinks(a, 15, 'no_key', 'a');
+    const waitingB = await waitingLinks(b, 10, 'waiting_for_key', 'b');
+    const [failed] = await waitingLinks(a, 1, 'failed', 'f');
+    await waitingLinks(gone, 3, 'no_key', 'g');
+    await env.DB.prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
+      .bind('2026-11-01T00:00:00.000Z', gone.id)
       .run();
-    const waiting = await addFetchAndEnrich(user, 'https://waiting.example/');
-    await saveKey(user, { provider: 'anthropic', api_key: 'sk-ant-newkey9999' });
-    const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
-    expect(settings).toMatchObject({
-      status: 'verified',
-      rejected_message: null,
-      unenriched_count: 1,
-    });
-    const fresh = await addFetchAndEnrich(user, 'https://fresh.example/');
-    expect((await link(user, fresh.id)).enrichment_status).toBe('enriched');
-    expect((await link(user, waiting.id)).enrichment_status).toBe('waiting_for_key');
+    const sent = recordEnrichQueue();
+    expect(await resumeEnrichment(env)).toBe(RESUME_PER_MINUTE);
+    const queued = new Set(sent.map((m) => m.body.link_id));
+    expect(queued.size).toBe(RESUME_PER_MINUTE);
+    const first = a.id < b.id ? waitingA : waitingB;
+    const second = a.id < b.id ? waitingB : waitingA;
+    for (const id of [...first, ...second.slice(0, RESUME_PER_MINUTE - first.length)])
+      expect(queued.has(id)).toBe(true);
+    expect(queued.has(failed!)).toBe(false);
+    expect(await resumeEnrichment(env)).toBe(25 - RESUME_PER_MINUTE);
+    expect(await resumeEnrichment(env)).toBe(0);
   });
 });

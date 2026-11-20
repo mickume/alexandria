@@ -18,11 +18,13 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | ------------------ | --------------------------- | ------- |
 | `ALLOWED_EMAILS`   | per deployment              | Comma-separated email addresses that may sign in. Compared case-insensitively; whitespace around each entry is ignored. Read on every request that needs it, so a change takes effect at once. Unset: nobody. |
 | `GOOGLE_CLIENT_ID` | per deployment              | The OAuth 2.0 client id of the Google Cloud project. |
+| `AI_PROVIDER`      | per deployment, optional    | The AI provider that enriches links, answers Ask and splits topics, for every owner: `anthropic` (the default) or `openrouter`. See [The AI provider and Firecrawl](#the-ai-provider-and-firecrawl). |
+| `AI_MODEL`         | per deployment, optional    | The provider's model identifier. Unset with Anthropic, `claude-opus-5-5`; OpenRouter needs one (such as `anthropic/claude-sonnet-5.5`), and without it the deployment has no AI. |
 | `PUBLIC_ORIGIN`    | per deployment, optional    | The site's own origin, such as `https://alexandria.example.com`. Used for the OAuth redirect URI (`<origin>/auth/google/callback`), to check that changes made with the session cookie come from the site, for the export's content URLs and in the fetcher's User-Agent. Unset, the origin each request reached is used (such as the Worker's workers.dev address), and the User-Agent names no address. Set it when the site has more than one address, so that Google always gets the same callback. |
 | `GOOGLE_AUTH_URL`  | `wrangler.jsonc`            | Google's authorization endpoint, `https://accounts.google.com/o/oauth2/v2/auth`. Changed only to run against a local fake provider in tests. |
 | `GOOGLE_TOKEN_URL` | `wrangler.jsonc`            | Google's token endpoint, `https://oauth2.googleapis.com/token`. Changed only for tests, as above. |
 | `ANTHROPIC_BASE_URL`, `OPENROUTER_BASE_URL` | `wrangler.jsonc` | The AI providers' API base URLs; changed only for tests. |
-| `FIRECRAWL_API_URL` | `wrangler.jsonc` | Firecrawl's API base URL, `https://api.firecrawl.dev`, used for pages behind a bot check when the owner stored a Firecrawl key; changed only for tests. |
+| `FIRECRAWL_API_URL` | `wrangler.jsonc` | Firecrawl's API base URL, `https://api.firecrawl.dev`, used for pages behind a bot check when the deployment has `FIRECRAWL_API_KEY`; changed only for tests. |
 | `GITHUB_API_URL` | `wrangler.jsonc` | The GitHub REST API's base URL, `https://api.github.com`, which the GitHub retriever asks (see [Retrievers](#retrievers)); changed only for tests. |
 | `YOUTUBE_API_URL` | `wrangler.jsonc` | The YouTube Data API's base URL, `https://www.googleapis.com/youtube/v3`, which the YouTube retriever asks; changed only for tests. |
 | `MEANING_FAKE_URL` | end-to-end tests only | When set, embeddings and the vector index are served by the fake at this URL (`e2e/fake-meaning.ts`) instead of the `AI` and `VECTORIZE` bindings. Never set in a deployment. |
@@ -34,7 +36,8 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
 | `GOOGLE_CLIENT_SECRET` | The OAuth 2.0 client secret of the Google Cloud project. Set with `wrangler secret put GOOGLE_CLIENT_SECRET`, or in `.dev.vars` locally. |
 | `GITHUB_TOKEN` | Optional. A GitHub token the GitHub retriever sends with every request to GitHub's API, for its limit of 5,000 requests an hour; a fine-grained token with no repository access will do, as only public data is read. Unset, GitHub's API is called without a token (60 requests an hour per client address, often spent), and a spent limit means the page is fetched instead. |
 | `YOUTUBE_API_KEY` | Optional. A Google Cloud API key with the YouTube Data API v3 enabled. Unset, the YouTube retriever is off and YouTube's pages are fetched as other pages are. |
-| `KEY_ENCRYPTION_KEY` | Any long random string. The owners' AI and Firecrawl keys are encrypted with AES-256-GCM under a key derived from it (its SHA-256), with each user's id bound as additional data. Changing it makes every stored key unreadable: owners then enter their keys again. |
+| `AI_API_KEY` | Optional. The AI provider's API key (Anthropic's, or OpenRouter's with `AI_PROVIDER=openrouter`). Every owner's enrichment, Ask and topic splits run with it, billed to it. Unset, no link is enriched (`no_key`) and Ask and splitting a topic answer `no_ai_key`. |
+| `FIRECRAWL_API_KEY` | Optional. A Firecrawl API key: a page whose site answers Alexandria with a bot check is fetched again through Firecrawl, using its credits. Unset, such links stay unreachable. |
 
 ## Bindings
 
@@ -64,8 +67,10 @@ local development. Without `ALLOWED_EMAILS` and `GOOGLE_CLIENT_ID` (and the secr
   minutes, and cleans the stored titles once after the title rules changed
   (see [Title rules](#title-rules)), sweeps the copies stored before snapshots,
   and sends up to 20 links that a retriever claims but has never retrieved to
-  the fetch worker (see [Retrievers](#retrievers)). They are independent: one
-  failing does not stop the others.
+  the fetch worker (see [Retrievers](#retrievers)), and, once the deployment
+  has an AI key its provider has not refused, queues up to 20 links that wait
+  for one (see [The AI provider and Firecrawl](#the-ai-provider-and-firecrawl)).
+  They are independent: one failing does not stop the others.
 - `*/5 * * * *`: the sweep that runs the deletion job of every account marked
   for deletion more than 5 minutes ago.
 
@@ -121,6 +126,30 @@ run: it compares the hash of the rules file with the one recorded in
 pages of 500), records the new hash, and is done until the rules change again.
 A title the owner edited is never changed. Removing a rule does not restore
 the titles it cleaned; a refresh of a link fetches its title again.
+
+## The AI provider and Firecrawl
+
+The AI provider and the Firecrawl key belong to the deployment, not to its
+owners: `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY` and `FIRECRAWL_API_KEY` (see
+[Variables](#variables) and [Secrets](#secrets)), set with
+`npm run configure` or `wrangler secret put`. The settings page has no AI or
+Firecrawl section; the statistics page shows whether the AI key is set,
+working or refused. A key is read on every use, so a new one takes effect at
+once, without a deploy. Neither key is tested when it is set.
+
+When the provider refuses the AI key (HTTP 401, 402 or 403), its message is
+recorded in `key_rejections` by the key's SHA-256 (never the key itself), and
+enrichment pauses: links that reach it wait (`waiting_for_key`), and Ask and
+splitting a topic answer `ai_key_rejected` with the provider's message. The
+refusal is lifted by a different key, or after an hour, when the key is tried
+again (so that a key whose account was topped up comes back on its own). The
+every-minute run then queues the links that waited for a key, those left
+`no_key` while the deployment had none among them, 20 a minute across all
+owners, the longest waiting first. A refused Firecrawl key is recorded and
+lifted the same way; until then, pages behind a bot check stay unreachable.
+
+Each provider call is still recorded for the owner it was made for, with its
+tokens, in the daily AI usage of the statistics.
 
 ## Retrievers
 
@@ -187,7 +216,8 @@ from a `.env` file in the checkout, or from the file named after it
 (`npm run configure -- prod.env`). Copy `.env.example` to `.env` (git ignores
 `.env` and `.env.*`) and fill it in. The script stores each of
 `ALLOWED_EMAILS`, `GOOGLE_CLIENT_ID`, `PUBLIC_ORIGIN`, `GOOGLE_CLIENT_SECRET`,
-`KEY_ENCRYPTION_KEY`, `GITHUB_TOKEN` and `YOUTUBE_API_KEY` that the file holds as a secret of the Worker, in one
+`AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`, `FIRECRAWL_API_KEY`, `GITHUB_TOKEN` and
+`YOUTUBE_API_KEY` that the file holds as a secret of the Worker, in one
 `wrangler secret bulk` call, so that every deploy keeps them; a setting the
 file leaves out is left as it is. `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID` may be in the file too: they are used to reach the
@@ -220,6 +250,9 @@ its telemetry off (`WRANGLER_SEND_METRICS=false`).
 
 `e2e/fake-google.ts` signs in `FAKE_GOOGLE_EMAIL` (default `owner@example.test`)
 named `FAKE_GOOGLE_NAME` (default `Ada Owner`).
+
+`e2e/fake-ai.ts` stands in for Anthropic and OpenRouter; `wrangler dev` runs
+with `AI_PROVIDER=anthropic` and the `AI_API_KEY` it accepts.
 
 `e2e/fake-origin.ts` also fakes GitHub's and YouTube's APIs: the Worker is
 given `GITHUB_API_URL` and `YOUTUBE_API_URL` pointing at it, and a

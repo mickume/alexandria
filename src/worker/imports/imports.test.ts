@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   api,
   count,
-  env,
   deliverEnrichments,
   deliverFetches,
+  env,
   recordEnrichQueue,
   recordFetchQueue,
   seedLinks,
+  type SentMessage,
   setNow,
   signIn,
-  type SentMessage,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import type { FetchMessage } from '../env';
 import { FakeAi } from '../test/ai';
@@ -589,11 +590,7 @@ describe('an import’s progress and report', () => {
   it('counts the links waiting, in progress, done and enriched', async () => {
     const user = await signIn();
     new FakeAi();
-    const key = await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
-    expect(key.status).toBe(200);
+    useAi();
     const origin = new FakeOrigin();
     for (let i = 1; i <= 30; i++) origin.page(`https://pr${i}.example/`, blogArticle);
     const fetches = recordFetchQueue();

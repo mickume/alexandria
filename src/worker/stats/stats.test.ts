@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { runScheduled } from '../decay/cron';
-import { FakeAi } from '../test/ai';
 import {
   api,
   createToken,
   env,
   recordLivenessQueue,
+  rejectAiKey,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { statsHooks } from './stats';
 
@@ -519,23 +520,10 @@ describe('health', () => {
     ['none', 'no key'],
     ['verified', 'a key the provider accepted'],
     ['rejected', 'a key the provider later rejected'],
-  ])('gives the AI key status %s for %s', async (status) => {
-    new FakeAi();
+  ])('gives the deployment’s AI key status %s for %s', async (status) => {
     const user = await signIn();
-    if (status !== 'none') {
-      const put = await api('PUT', '/api/v1/settings/ai', {
-        as: user.session,
-        body: { provider: 'anthropic', api_key: 'sk-ant-test-key-1234' },
-      });
-      expect(put.status).toBe(200);
-    }
-    if (status === 'rejected') {
-      await env.DB.prepare(
-        "UPDATE users SET ai_key_status = 'rejected', ai_key_rejected_message = 'invalid' WHERE id = ?",
-      )
-        .bind(user.id)
-        .run();
-    }
+    if (status !== 'none') useAi();
+    if (status === 'rejected') await rejectAiKey('invalid');
     const r = await stats(user);
     expect(r.json.health.ai_key).toBe(status);
   });

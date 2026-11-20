@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { addLinkIds, cardOf, d1, fakeAi, saveAiKey, signIn } from './helpers';
+import { addLinkIds, cardOf, d1, fakeAi, signIn } from './helpers';
 
 const QUEUES = 'https://docs.example/queues';
 const KAFKA = 'https://blog.example/kafka';
@@ -16,7 +16,6 @@ test('the owner searches with a filter and clears the search', async ({ page }) 
     topic: 'Data',
   });
   await signIn(page);
-  await saveAiKey(page);
   const [queues, kafka] = await addLinkIds(page, [QUEUES, KAFKA]);
   await page.goto('/');
   await expect(cardOf(page, queues!).getByRole('list', { name: 'Tags' })).toContainText(

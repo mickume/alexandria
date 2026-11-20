@@ -58,8 +58,10 @@
   "r2_buckets": [{ "binding": "SNAPSHOTS", "bucket_name": "alexandria-snapshots" }],
   // The settings every deployment shares. ALLOWED_EMAILS, GOOGLE_CLIENT_ID and
   // PUBLIC_ORIGIN belong to one deployment and are not here: set them, with the
-  // secrets GOOGLE_CLIENT_SECRET and KEY_ENCRYPTION_KEY, with `wrangler secret
-  // put <NAME>` (or in the dashboard), and in .dev.vars for local development.
+  // secret GOOGLE_CLIENT_SECRET and the optional AI_PROVIDER, AI_MODEL,
+  // AI_API_KEY, FIRECRAWL_API_KEY, GITHUB_TOKEN and YOUTUBE_API_KEY, with
+  // `wrangler secret put <NAME>` or `npm run configure` (or in the dashboard),
+  // and in .dev.vars for local development.
   // keep_vars keeps what the dashboard holds across deploys.
   "keep_vars": true,
   "vars": {

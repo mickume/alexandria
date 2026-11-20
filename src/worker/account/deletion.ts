@@ -33,8 +33,8 @@ export async function beingDeleted(db: D1Database, email: string): Promise<boole
 /**
  * DELETE /api/v1/me: the owner, signed in with a session, deletes the account
  * by typing its email (compared ignoring case and surrounding whitespace).
- * Every session and token and the AI key go at once, the account is marked
- * and its deletion job queued; the session cookie is cleared.
+ * Every session and token goes at once, the account is marked and its
+ * deletion job queued; the session cookie is cleared.
  */
 export async function requestDeletion(c: Context<AppEnv>): Promise<Response> {
   if (c.get('via') !== 'session') {
@@ -57,14 +57,7 @@ export async function requestDeletion(c: Context<AppEnv>): Promise<Response> {
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
     db.prepare('DELETE FROM tokens WHERE user_id = ?').bind(user.id),
     db
-      .prepare(
-        `UPDATE users SET ai_provider = NULL, ai_model = NULL, ai_key_ciphertext = NULL,
-           ai_key_iv = NULL, ai_key_last4 = NULL, ai_key_status = NULL,
-           ai_key_rejected_message = NULL, firecrawl_key_ciphertext = NULL,
-           firecrawl_key_iv = NULL, firecrawl_key_last4 = NULL, firecrawl_key_status = NULL,
-           firecrawl_key_rejected_message = NULL, deletion_requested_at = ?
-         WHERE id = ?`,
-      )
+      .prepare('UPDATE users SET deletion_requested_at = ? WHERE id = ?')
       .bind(now().toISOString(), user.id),
   ]);
   await c.env.ACCOUNT_QUEUE.send({ user_id: user.id });

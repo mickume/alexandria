@@ -1,22 +1,13 @@
-import { Hono } from 'hono';
-import { readJson, refusal, validationError } from '../api/errors';
-import {
-  clearStoredKey,
-  decryptKey,
-  getStoredKey,
-  markStoredKeyRejected,
-  saveStoredKey,
-  type StoredKey,
-} from '../enrich/keys';
-import type { AppEnv, Env } from '../env';
+import { firecrawlKey, keyRejection, markKeyRejected } from '../enrich/keys';
+import type { Env } from '../env';
 import { isFetchable } from '../links/normalize';
 import { PAGE_LIMIT, type FetchFailed, type FetchOk } from './fetch';
 
 /**
- * The fallback for pages behind a bot check: with the owner's own Firecrawl
- * key, a page whose site answered Alexandria with a bot check is fetched
- * through Firecrawl, which loads it in a browser. Only such pages are sent
- * to Firecrawl, and only for an owner who stored a key.
+ * The fallback for pages behind a bot check: with the deployment's Firecrawl
+ * key (FIRECRAWL_API_KEY), a page whose site answered Alexandria with a bot
+ * check is fetched through Firecrawl, which loads it in a browser. Only such
+ * pages are sent to Firecrawl, and only when the deployment has a key.
  */
 
 /** How long Firecrawl may take to load a page, sent as its own time limit. */
@@ -31,27 +22,6 @@ let timeoutOverride: number | null = null;
 /** Shortens the call timeout, for tests; null restores it. */
 export function setFirecrawlTimeout(ms: number | null): void {
   timeoutOverride = ms;
-}
-
-/** A user's stored Firecrawl key. */
-export type FirecrawlSettings = StoredKey;
-
-/** The user's Firecrawl settings, or null when no key is stored. */
-export async function getFirecrawlSettings(
-  db: D1Database,
-  userId: string,
-): Promise<FirecrawlSettings | null> {
-  return (await getStoredKey(db, userId, 'firecrawl_key'))?.key ?? null;
-}
-
-/** Stores a verified key, replacing any earlier one and lifting a rejection. */
-export function saveFirecrawlKey(env: Env, userId: string, key: string): Promise<void> {
-  return saveStoredKey(env, userId, 'firecrawl_key', key);
-}
-
-/** Forgets the user's Firecrawl key. */
-export function clearFirecrawlKey(db: D1Database, userId: string): Promise<void> {
-  return clearStoredKey(db, userId, 'firecrawl_key');
 }
 
 /** What a call to Firecrawl came to. */
@@ -109,12 +79,6 @@ async function call(
     return { ok: false, kind: 'failed', message };
   }
   return { ok: true, value: body };
-}
-
-/** Tests `apiKey` with a request that costs no credits: the team's credit usage. */
-export async function testFirecrawlKey(env: Env, apiKey: string): Promise<FirecrawlOutcome<null>> {
-  const outcome = await call(env, apiKey, '/v2/team/credit-usage', { method: 'GET' });
-  return outcome.ok ? { ok: true, value: null } : outcome;
 }
 
 /** The part of Firecrawl's scrape answer Alexandria reads. */
@@ -178,80 +142,27 @@ export async function scrape(
 }
 
 /**
- * The fallback after a direct fetch of `url` met a bot check: with the user's
- * verified Firecrawl key, the page as Firecrawl fetched it; otherwise the
- * failure as it was. A refused key is marked rejected; a failure Firecrawl may
- * get over is no longer final, so the link's fetch is retried.
+ * The fallback after a direct fetch of `url` met a bot check: with the
+ * deployment's Firecrawl key, unless Firecrawl refused it within the hour, the
+ * page as Firecrawl fetched it; otherwise the failure as it was. A refused key
+ * is recorded as refused; a failure Firecrawl may get over is no longer final,
+ * so the link's fetch is retried.
  */
 export async function fetchThroughFirecrawl(
   env: Env,
-  userId: string,
   url: string,
   failure: FetchFailed,
 ): Promise<FetchOk | FetchFailed> {
-  const settings = await getFirecrawlSettings(env.DB, userId);
-  if (settings?.status !== 'verified') return failure;
-  let apiKey: string;
-  try {
-    apiKey = await decryptKey(env, settings.ciphertext, settings.iv, userId);
-  } catch {
-    return failure;
-  }
+  const apiKey = firecrawlKey(env);
+  if (!apiKey || (await keyRejection(env.DB, 'firecrawl', apiKey)) !== null) return failure;
   const outcome = await scrape(env, apiKey, url);
   if (outcome.ok) return outcome.value;
-  if (outcome.kind === 'rejected')
-    await markStoredKeyRejected(env.DB, userId, 'firecrawl_key', outcome.message);
+  if (outcome.kind === 'rejected') {
+    await markKeyRejected(env.DB, 'firecrawl', apiKey, outcome.message);
+  }
   return {
     ...failure,
     reason: `${failure.reason} (Firecrawl: ${outcome.message})`,
     final: outcome.kind !== 'unavailable',
   };
 }
-
-/** The settings as the API shows them: never the key, only its last 4 characters. */
-function settingsView(s: FirecrawlSettings) {
-  return {
-    configured: true as const,
-    key_last4: s.last4,
-    status: s.status,
-    rejected_message: s.rejectedMessage,
-  };
-}
-
-/** The owner's Firecrawl key, under /api/v1/settings. */
-export const firecrawlSettingsRoutes = new Hono<AppEnv>();
-
-firecrawlSettingsRoutes.get('/firecrawl', async (c) => {
-  const settings = await getFirecrawlSettings(c.env.DB, c.get('user').id);
-  return c.json(settings ? settingsView(settings) : { configured: false });
-});
-
-firecrawlSettingsRoutes.put('/firecrawl', async (c) => {
-  const parsed = await readJson(c);
-  if (!parsed.ok) return parsed.response;
-  const apiKey = parsed.body.api_key;
-  if (typeof apiKey !== 'string' || apiKey.trim() === '') {
-    return validationError(c, 'invalid_key', 'api_key', 'an API key is required');
-  }
-  const outcome = await testFirecrawlKey(c.env, apiKey.trim());
-  if (!outcome.ok) {
-    if (outcome.kind === 'rejected' || outcome.kind === 'failed') {
-      return validationError(c, 'key_rejected', 'api_key', outcome.message);
-    }
-    return refusal(
-      c,
-      502,
-      'provider_unavailable',
-      `Firecrawl could not be reached: ${outcome.message}`,
-    );
-  }
-  const userId = c.get('user').id;
-  await saveFirecrawlKey(c.env, userId, apiKey.trim());
-  const settings = await getFirecrawlSettings(c.env.DB, userId);
-  return c.json(settingsView(settings!));
-});
-
-firecrawlSettingsRoutes.delete('/firecrawl', async (c) => {
-  await clearFirecrawlKey(c.env.DB, c.get('user').id);
-  return c.body(null, 204);
-});

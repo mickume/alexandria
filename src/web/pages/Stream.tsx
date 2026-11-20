@@ -6,10 +6,8 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { Link as PageLink } from '../App';
-import { ai, ApiError, links as linksApi, type Link } from '../api';
+import { ApiError, links as linksApi, type Link } from '../api';
 import { AddLinks } from '../components/AddLinks';
-import { Icon } from '../components/Icon';
 import { LinkCard, type CardActions } from '../components/LinkCard';
 import { useUndoableDelete } from '../undo';
 
@@ -165,27 +163,6 @@ function useChangeFeed(items: Link[], setItems: SetItems) {
   };
 }
 
-/** 'not enriched: add an AI key in settings', once, while there is no key and links wait. */
-function NoKeyBanner() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    let live = true;
-    ai.get()
-      .then((s) => live && setShow(!s.configured && s.unenriched_count > 0))
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, []);
-  if (!show) return null;
-  return (
-    <PageLink to="/settings" className="banner">
-      <Icon name="info" />
-      not enriched: add an AI key in settings
-    </PageLink>
-  );
-}
-
 /** The stream: the home page. The pinned links in a list of their own on top, then the rest by points. */
 export function Stream() {
   const { items, setItems, loaded, failed, refresh, loadMore } = useStreamPages();
@@ -238,7 +215,6 @@ export function Stream() {
       <h1 className="visually-hidden">Your library</h1>
       <p className="lead">Paste a link to keep it. The ones you use most stay on top.</p>
       <AddLinks onAdded={(fresh) => setItems((current) => withOnTop(current, fresh))} />
-      <NoKeyBanner />
       {notice && (
         <p className="notice" role="alert">
           {notice}

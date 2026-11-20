@@ -426,24 +426,6 @@
     color: var(--destructive);
   }
 
-  /* A notice across the page that leads somewhere, such as the missing AI key. */
-  .banner {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 1rem 0;
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--card);
-    box-shadow: var(--shadow-surface);
-    text-decoration: none;
-  }
-
-  .banner:hover {
-    background: var(--accent);
-  }
-
   .notice-box {
     display: flex;
     flex-wrap: wrap;

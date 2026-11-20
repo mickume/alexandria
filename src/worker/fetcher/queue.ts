@@ -598,7 +598,7 @@ function retrievedResult(retrieved: Fetched): FetchOk {
  * API; a snapshot of it still takes the page's article, and a retriever that
  * cannot answer leaves the link to be fetched as a page, the reason recorded
  * in its history. A page behind a bot check is fetched again through the
- * owner's Firecrawl key, when they stored one. The one-time retrieval of a
+ * deployment's Firecrawl key, when it has one. The one-time retrieval of a
  * link meeting a spent rate limit hands the link back to it instead, and
  * enriches the link again only when its text changed.
  */
@@ -642,7 +642,7 @@ async function processFetch(env: Env, message: Message<FetchMessage>): Promise<v
     } else {
       let result = await fetchPage(env, link.url);
       if (!result.ok && result.final) {
-        result = await fetchThroughFirecrawl(env, user_id, link.url, result);
+        result = await fetchThroughFirecrawl(env, link.url, result);
       }
       // Nor is anything written for it when its deletion began during the fetch.
       if (!(await accountActive(env.DB, user_id))) return message.ack();

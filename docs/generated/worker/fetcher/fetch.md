@@ -81,7 +81,7 @@ A web page longer than PAGE_LIMIT, of which only the first PAGE_LIMIT bytes were
 
 > `optional` **via?**: `"firecrawl"`
 
-Set when the page came through the owner's Firecrawl key instead of a direct fetch.
+Set when the page came through the deployment's Firecrawl key instead of a direct fetch.
 
 ## Type Aliases
 

@@ -4,12 +4,12 @@ import { FakeAi } from '../test/ai';
 import { FakeOrigin } from '../test/origin';
 import {
   addAndFetch,
-  api,
   deliverEnrichments,
   env,
   recordEnrichQueue,
   setNow,
   signIn,
+  useAi,
 } from '../test/helpers';
 import { blogArticle } from '../fetcher/fixtures/pages';
 import { scheduleThrottled, sendThrottled } from './throttle';
@@ -79,10 +79,7 @@ describe('the background throttle', () => {
     new FakeOrigin().page('https://later.example/', blogArticle);
     const ai = new FakeAi();
     const user = await signIn();
-    await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
+    useAi();
     recordEnrichQueue();
     const { id } = await addAndFetch(user, 'https://later.example/');
     const before = ai.enrichments.length;

@@ -1,14 +1,14 @@
 /**
  * Asking the library: POST /api/v1/ask answers a question from the passages of
- * the owner's links, written by the owner's own AI provider with the owner's
- * own key, and streams the answer; a detailed ask reads more passages and asks
+ * the owner's links, written by the deployment's AI provider with its key,
+ * and streams the answer; a detailed ask reads more passages and asks
  * for a longer, thorough answer.
  */
 import { Hono } from 'hono';
 import { limitReached, readJson, refusal, validationError } from '../api/errors';
 import { now } from '../clock';
 import type { AppEnv } from '../env';
-import { decryptKey, getAiSettings, markKeyRejected } from '../enrich/keys';
+import { aiState, markAiKeyRejected, NO_AI_KEY_MESSAGE } from '../enrich/keys';
 import { phrasingsWith, streamAnswer, type AnswerRequest } from '../enrich/providers';
 import { getLink, parseStrings, toView, type LinkRow } from '../links/store';
 import { parseQuery } from '../search/query';
@@ -226,18 +226,10 @@ askRoutes.post('/', async (c) => {
   if (parsed.words.length === 0) return noWord();
 
   const userId = c.get('user').id;
-  const settings = await getAiSettings(c.env.DB, userId);
-  if (!settings) return limitReached(c, 'no_ai_key', 'add an AI key in settings');
-  if (settings.status === 'rejected') {
-    return limitReached(
-      c,
-      'ai_key_rejected',
-      settings.rejectedMessage ?? 'the provider rejected the key',
-    );
-  }
-
-  const apiKey = await decryptKey(c.env, settings.ciphertext, settings.iv, userId);
-  const call = { provider: settings.provider, apiKey, model: settings.model, userId };
+  const ai = await aiState(c.env);
+  if (ai.status === 'none') return limitReached(c, 'no_ai_key', NO_AI_KEY_MESSAGE);
+  if (ai.status === 'rejected') return limitReached(c, 'ai_key_rejected', ai.message);
+  const call = { ...ai.config, userId };
 
   // The question as its author wrote it comes first: the reranker reads the passages against it.
   const typed = parsed.words.join(' ');
@@ -246,7 +238,7 @@ askRoutes.post('/', async (c) => {
   if (phrased.ok) {
     queries.push(...usablePhrasings(phrased.value, typed));
   } else if (phrased.kind === 'rejected') {
-    await markKeyRejected(c.env.DB, userId, phrased.message);
+    await markAiKeyRejected(c.env, ai.config, phrased.message);
     return refusal(c, 409, 'ai_key_rejected', phrased.message);
   }
   // Any other failure of the rephrasing leaves the question as typed.
@@ -301,8 +293,8 @@ askRoutes.post('/', async (c) => {
         if (outcome.ok) {
           controller.enqueue(event('done', {}));
         } else if (outcome.kind === 'rejected') {
-          // As a rejected enrichment does: the owner sees the key marked, and enrichment pauses.
-          await markKeyRejected(c.env.DB, userId, outcome.message);
+          // As a rejected enrichment does: the key is marked refused, and enrichment pauses.
+          await markAiKeyRejected(c.env, ai.config, outcome.message);
           controller.enqueue(
             event('error', { error: 'ai_key_rejected', message: outcome.message }),
           );

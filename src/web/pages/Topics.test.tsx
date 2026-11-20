@@ -233,13 +233,15 @@ describe('the Topics page', () => {
         .on('GET', '/api/v1/topics', { status: 200, body: { items: tree, next_cursor: null } })
         .on('POST', '/api/v1/topics/:id/split', {
           status: 409,
-          body: { error: 'no_ai_key', message: 'add an AI key in settings' },
+          body: { error: 'no_ai_key', message: 'this deployment has no AI key' },
         });
       renderPage('/topics', api);
       const se = await row('Software engineering');
       const before = rows();
       await act(async () => within(se).getByRole('button', { name: 'Split' }).click());
-      expect((await screen.findByRole('alert')).textContent).toContain('add an AI key in settings');
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'this deployment has no AI key',
+      );
       expect(rows()).toEqual(before);
       expect(within(se).getByRole('button', { name: 'Split' })).toHaveProperty('disabled', false);
     });

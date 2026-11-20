@@ -14,6 +14,7 @@ import {
   seedLinks,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { blogArticle } from '../fetcher/fixtures/pages';
 
@@ -222,10 +223,7 @@ describe('an edited field', () => {
       new FakeOrigin().page(URL, blogArticle);
       const ai = new FakeAi().answer(second);
       const user = await signIn();
-      await api('PUT', '/api/v1/settings/ai', {
-        as: user.session,
-        body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-      });
+      useAi();
       const enrich = recordEnrichQueue();
       const { id } = await addAndFetch(user, URL);
       ai.whileEnriching(async () => {
@@ -254,10 +252,7 @@ describe('an edited field', () => {
     const origin = new FakeOrigin().page(URL, blogArticle);
     const ai = new FakeAi();
     const user = await signIn();
-    await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
+    useAi();
     const first = recordEnrichQueue();
     const { id } = await addAndFetch(user, URL);
     await deliverEnrichments(first.map((m) => m.body));

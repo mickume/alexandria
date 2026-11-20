@@ -21,6 +21,7 @@ import type {
 import worker from '../index';
 import { sha256Hex } from '../auth/crypto';
 import { now, setNow as setClock } from '../clock';
+import { markKeyRejected } from '../enrich/keys';
 import { snapshotFolder } from '../fetcher/snapshots';
 
 export { sha256Hex };
@@ -95,8 +96,41 @@ export interface RecordedResponse {
 /** Every response api() received in the current test file. */
 export const recordedResponses: RecordedResponse[] = [];
 
-/** Every AI key a test saved through the API in the current test file. */
+/** Every key a test gave the deployment in the current test file: no answer may carry one. */
 export const savedKeys = new Set<string>();
+
+/** The deployment's AI settings a test sets with useAi. */
+export interface AiSetup {
+  provider?: 'anthropic' | 'openrouter';
+  model?: string;
+  key?: string;
+}
+
+/**
+ * Gives the deployment an AI provider, model and key for the rest of the test
+ * (Anthropic with its default model and a key the fake accepts, unless told
+ * otherwise); returns the key.
+ */
+export function useAi({ provider = 'anthropic', model, key }: AiSetup = {}): string {
+  const apiKey = key ?? (provider === 'anthropic' ? 'sk-ant-abcd1234' : 'sk-or-abcd1234');
+  env.AI_PROVIDER = provider;
+  env.AI_MODEL = model ?? (provider === 'openrouter' ? 'openai/gpt-test' : undefined);
+  env.AI_API_KEY = apiKey;
+  savedKeys.add(apiKey);
+  return apiKey;
+}
+
+/** Gives the deployment a Firecrawl key for the rest of the test; returns it. */
+export function useFirecrawl(key = 'fc-test-key-1234'): string {
+  env.FIRECRAWL_API_KEY = key;
+  savedKeys.add(key);
+  return key;
+}
+
+/** Records that the deployment's AI key was refused with `message`, as the provider's answer would. */
+export async function rejectAiKey(message = 'invalid x-api-key'): Promise<void> {
+  await markKeyRejected(env.DB, 'ai', env.AI_API_KEY ?? '', message);
+}
 
 /** Sends a request through the Worker, as a browser or a script would. */
 export async function api(

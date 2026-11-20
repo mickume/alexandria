@@ -23,8 +23,8 @@ npx vite dev     # a local development server
 ```
 
 For local sign-in, create `.dev.vars` with `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, `PUBLIC_ORIGIN` and
-`KEY_ENCRYPTION_KEY` (see [docs/configuration.md](docs/configuration.md)), and
+`GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS` and `PUBLIC_ORIGIN`, and, for
+enrichment and Ask, `AI_API_KEY` (see [docs/configuration.md](docs/configuration.md)), and
 apply the migrations with `npx wrangler d1 migrations apply alexandria --local`.
 
 To deploy to Cloudflare, run `npm run deploy` with `CLOUDFLARE_API_TOKEN`
@@ -75,7 +75,7 @@ the number of links under each topic and beneath it. Each opens its search, and
 each can be renamed or merged into another, chosen from a list in alphabetical
 order; a topic can also be moved, with everything beneath it, under another
 topic or to the top level with **Move**, and a topic with at least 20
-links of its own can be broken up with **Split**: your AI provider proposes 2 to
+links of its own can be broken up with **Split**: the AI provider proposes 2 to
 10 sub-topics and files each of its links under one of them, or leaves it, all
 at once. Typing a path such as
 `Software engineering > Testing` into a link's topic files it under a sub-topic,
@@ -115,9 +115,9 @@ library are read again through the API once, in the background.
 
 The **Ask** tab, between Tags and Expired, answers a question from your own
 links. Type it (at most 500 characters, with the same filters as the search
-box if you like) and press **Ask**: the answer streams in, with a spinner until it is done, written by your own
-AI provider with the key saved under Settings, from the passages of your links
-that best answer the question. Your provider first rewrites the question as
+box if you like) and press **Ask**: the answer streams in, with a spinner until it is done, written by the
+deployment's AI provider (`AI_PROVIDER`, `AI_MODEL` and `AI_API_KEY`), from the passages of your links
+that best answer the question. The provider first rewrites the question as
 two or three search queries, so that pages worded differently from it are
 found too; the queries are shown under the sources as "Also searched for".
 The passages are found by their words and by meaning and ordered by relevance
@@ -133,7 +133,7 @@ title and URL (only the links found, when the model wrote no answer). Answers
 are written as plain text with little formatting, so that they can be passed on
 to another agent. Nothing is kept:
 asking again, or leaving the page, loses the answer, and asking records no use
-of the links it cites. Without a key the page asks you to add one in settings.
+of the links it cites. Without an AI key on the deployment, the page says so.
 Agents get the passages instead, with the MCP tool `search_passages`.
 
 ## Import
@@ -169,7 +169,7 @@ again; the page never reloads by itself.
 Its Trends section shows the daily record kept since the record began, over
 the last 7, 30, 90 or 365 days: links added against those removed, expired or
 deleted, uses, the fetch success rate, enrichments and questions asked, the
-library's size in each state, and the tokens your AI key's calls used, with
+library's size in each state, and the tokens the AI calls made for you used, with
 their totals by purpose and model. It counts links that have since been
 removed; the days before the record began are marked "not recorded yet".
 

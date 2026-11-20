@@ -4,13 +4,15 @@ import {
   env,
   placeTopic,
   recordIndexQueue,
+  rejectAiKey,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { FakeAi, type SplitLink } from '../test/ai';
-import { markKeyRejected } from '../enrich/keys';
+import { keyRejection } from '../enrich/keys';
 import { setProviderTimeout } from '../enrich/providers';
 import { listVocabulary } from '../enrich/vocabulary';
 import { applySplit } from './vocabulary';
@@ -995,14 +997,6 @@ describe('merging and renaming topics in the tree', () => {
 describe('splitting a topic', () => {
   const T0 = Date.parse('2026-07-01T00:00:00.000Z');
 
-  async function saveKey(user: TestUser) {
-    const r = await api('PUT', '/api/v1/settings/ai', {
-      as: user.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-    });
-    expect(r.status).toBe(200);
-  }
-
   /**
    * Files `n` new links of the user directly under the topic `name` (created,
    * under `parent` when given, if it does not exist), through SQL so that no
@@ -1062,7 +1056,7 @@ describe('splitting a topic', () => {
     const [testing] = await fileLinks(user, 'Testing', 1, { parent: 'Software engineering' });
     const [databases] = await fileLinks(user, 'Databases', 1);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     ai.split(
       filed(['Testing', 'Databases', 'Compilers', 'Unused'], (i) =>
         i < 10 ? 'Testing' : i < 15 ? 'Databases' : i < 20 ? 'Compilers' : '',
@@ -1095,7 +1089,7 @@ describe('splitting a topic', () => {
     await fileLinks(user, 'Programming', 1);
     await fileLinks(user, 'Web', 1);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     ai.split(filed(['Programming', 'Web'], (i) => (i % 2 === 0 ? 'Programming' : 'Web')));
     const r = await split(user, 'Dev');
     expect(r.status).toBe(200);
@@ -1177,7 +1171,7 @@ describe('splitting a topic', () => {
     const sent = await fileLinks(user, 'Rustacean', 17);
     const edited = await fileLinks(user, 'Rustacean', 3, { edited: true, prefix: 'Edited' });
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     ai.split(filed(['Async', 'Embedded'], (i) => (i % 2 ? 'Async' : 'Embedded')));
     const r = await split(user, 'Rustacean');
     expect(r.status).toBe(200);
@@ -1238,7 +1232,7 @@ describe('splitting a topic', () => {
       key: 'none',
       status: 409,
       error: 'no_ai_key',
-      message: 'add an AI key in settings',
+      message: 'this deployment has no AI key',
     },
     {
       label: 'a key marked rejected',
@@ -1287,8 +1281,8 @@ describe('splitting a topic', () => {
     }
     await fileLinks(owner, 'Target', row.links, row.level3 ? { parent: 'Middle' } : {});
     const ai = new FakeAi();
-    if (row.key !== 'none') await saveKey(user);
-    if (row.key === 'rejected') await markKeyRejected(env.DB, user.id, 'invalid x-api-key');
+    if (row.key !== 'none') useAi();
+    if (row.key === 'rejected') await rejectAiKey('invalid x-api-key');
     ai.requests.length = 0;
     ai.split(filed(['Left', 'Right'], (i) => (i % 2 ? 'Left' : 'Right')));
     const before = await topics(owner);
@@ -1323,7 +1317,7 @@ describe('splitting a topic', () => {
     const user = await signIn();
     const ids = await fileLinks(user, 'Target', 25);
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     const unchanged = async () => {
       expect(await topics(user)).toEqual({ Target: { parent: null, count: 25 } });
     };
@@ -1370,8 +1364,9 @@ describe('splitting a topic', () => {
         setProviderTimeout(null);
       }
       await unchanged();
-      const settings = (await api('GET', '/api/v1/settings/ai', { as: user.session })).json;
-      expect(settings.status).toBe(rejected ? 'rejected' : 'verified');
+      expect(await keyRejection(env.DB, 'ai', env.AI_API_KEY!)).toBe(
+        rejected ? 'invalid x-api-key' : null,
+      );
     },
   );
 

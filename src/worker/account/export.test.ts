@@ -10,6 +10,7 @@ import {
   signIn,
   storeSnapshot,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 import { ARTICLES, seedArticle } from '../test/meaning';
 import { SELF } from 'cloudflare:test';
@@ -209,12 +210,7 @@ describe('GET /api/v1/export', () => {
   it('holds no key, token, session or import report, and nothing of another user', async () => {
     const a = await signIn('owner@example.test');
     const b = await signIn('other@example.test');
-    const { FakeAi } = await import('../test/ai');
-    new FakeAi();
-    await api('PUT', '/api/v1/settings/ai', {
-      as: a.session,
-      body: { provider: 'anthropic', api_key: 'sk-ant-test-abcd1234' },
-    });
+    const key = useAi({ key: 'sk-ant-test-abcd1234' });
     const tokens = [await createToken(a), await createToken(a)];
     await seedLinks(a, [{ url: 'https://mine.example' }]);
     await api('POST', '/api/v1/imports', {
@@ -226,19 +222,11 @@ describe('GET /api/v1/export', () => {
     await patch(b, theirs!, { topic: 'Their topic', tags: ['their-tag'], note: 'their note' });
     await workspace(b, 'Their workspace', [theirs!]);
     const { text } = await exportOf(a);
-    const stored = await env.DB.prepare(
-      'SELECT ai_key_ciphertext, ai_key_iv FROM users WHERE id = ?',
-    )
-      .bind(a.id)
-      .first<{ ai_key_ciphertext: string; ai_key_iv: string }>();
     const hashes = await env.DB.prepare(
       'SELECT secret_hash AS h FROM tokens UNION SELECT id_hash FROM sessions',
     ).all<{ h: string }>();
     for (const secret of [
-      'sk-ant-test-abcd1234',
-      '1234',
-      stored!.ai_key_ciphertext,
-      stored!.ai_key_iv,
+      key,
       ...tokens.map((t) => t.secret),
       ...hashes.results.map((r) => r.h),
       a.session,

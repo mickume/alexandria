@@ -154,7 +154,7 @@ A link is shown as:
 `unreachable` after three failed attempts, or after the first when the site
 answers with a bot check (`state_reason` says why: "timed out", "HTTP 503",
 "blocked by a bot check", …; a page behind a bot check is fetched through
-Firecrawl instead when the owner stored a [Firecrawl key](#firecrawl-settings),
+Firecrawl instead when the deployment has a [Firecrawl key](configuration.md#the-ai-provider-and-firecrawl),
 and then carries the note "fetched through Firecrawl"). Until a fetch
 succeeds, `title` is the host,
 then, once an attempt fails, words read from the address (unless the owner
@@ -501,56 +501,30 @@ minutes: a second one is
 `429 {"error": "refreshed_recently", "message": "already refreshed recently"}`
 with `Retry-After` in seconds.
 
-### AI provider settings
+### Enrichment
 
-Enrichment runs only with the owner's own AI key ("bring your own key"),
-Anthropic or OpenRouter. The key is stored encrypted and never returned: the
-API shows only its last 4 characters.
-
-#### `GET /api/v1/settings/ai`
-
-`200 {"configured": true, "provider": "anthropic" | "openrouter", "model", "key_last4", "status": "verified" | "rejected", "rejected_message": <string or null>, "unenriched_count"}`,
-or `{"configured": false, "unenriched_count"}` without a key. `unenriched_count`
-counts the links waiting to be enriched (`no_key`, `waiting_for_key` or
-`failed`).
-
-#### `PUT /api/v1/settings/ai`
-
-Body `{"provider": "anthropic" | "openrouter", "api_key": "…", "model": "…"}`.
-The model is optional for Anthropic (default `claude-opus-5-5`) and required
-for OpenRouter (at most 200 characters). The key is stored only after a test
-request the provider accepts, replacing any earlier settings and lifting a
-rejection.
-
-- `200` with the settings as above (without `unenriched_count`), `status: "verified"`
-- `400 {"error": "invalid_provider" | "invalid_key" | "model_required" | "invalid_model", "field", "message"}`,
-  without calling the provider
-- `400 {"error": "key_rejected", "field": "api_key", "message": <the provider's message>}`
-- `502 {"error": "provider_unavailable", "message"}` when the provider cannot
-  be reached, answers 5xx, or does not answer within 60 seconds
-
-When the provider later answers an enrichment with HTTP 401, 402 or 403 (a
-revoked key, no credit), the key's `status` becomes `rejected` with the
-provider's message in `rejected_message`, the user's enrichment pauses, and
-links reaching enrichment wait as `waiting_for_key`. Saving a key the
-provider accepts lifts the pause; the waiting links are enriched by
-`POST /api/v1/links/enrich-unenriched`.
-
-#### `DELETE /api/v1/settings/ai`
-
-Forgets the provider, model and key: `204`. Later links are not enriched.
+Enrichment runs with the deployment's AI provider, model and key
+(`AI_PROVIDER`, `AI_MODEL` and `AI_API_KEY`; see
+[The AI provider and Firecrawl](configuration.md#the-ai-provider-and-firecrawl)),
+the same for every owner. The API has no AI settings: no key, nor any part of
+one, is ever returned. Without a key, fetched links are `no_key`. When the
+provider answers an enrichment, a question or a split with HTTP 401, 402 or
+403 (a revoked key, no credit), the key is marked refused with the provider's
+message, enrichment pauses, and links reaching it wait as `waiting_for_key`.
+A different key, or an hour gone by, lifts the refusal; the every-minute run
+then queues the `no_key` and `waiting_for_key` links again, 20 a minute.
 
 #### `POST /api/v1/links/enrich-unenriched`
 
 Schedules every link waiting to be enriched (`no_key`, `waiting_for_key` or
 `failed`) through the background throttle, at most 20 a minute, and marks
-them `queued`: `202 {"queued": <n>}`. Without a key, or with a rejected one:
-`409 {"error": "no_ai_key", "message": "add an AI key in settings"}`.
+them `queued`: `202 {"queued": <n>}`. When the deployment has no key, or its
+key is refused: `409 {"error": "no_ai_key", "message": "this deployment has no AI key"}`.
 
 #### `POST /api/v1/links/{id}/enrich`
 
 Runs the link's enrichment again, at once and outside the throttle:
-`202 {"status": "queued"}`. Without a verified key:
+`202 {"status": "queued"}`. Without a usable key:
 `409 {"error": "no_ai_key", …}`; for a link that is pending, unreachable or
 skipped: `409 {"error": "nothing_to_enrich", "message"}`.
 
@@ -583,41 +557,6 @@ for good: later enrichment, re-runs and refreshes never overwrite it.
   names, an empty name or one over 100 characters is `invalid_topic` with the
   message "a topic or a path of up to three topics separated by >, each 1 to
   100 characters".
-
-### Firecrawl settings
-
-Pages whose site answers with a bot check ("blocked by a bot check") can be
-fetched through Firecrawl with the owner's own key; see
-[ADR 04](adr/04-fetch-pages-behind-a-bot-check-through-firecrawl.md). Without
-a key, no page is sent to Firecrawl. The key is stored encrypted and never
-returned: the API shows only its last 4 characters.
-
-#### `GET /api/v1/settings/firecrawl`
-
-`200 {"configured": true, "key_last4", "status": "verified" | "rejected", "rejected_message": <string or null>}`,
-or `{"configured": false}` without a key.
-
-#### `PUT /api/v1/settings/firecrawl`
-
-Body `{"api_key": "…"}`. The key is stored only after Firecrawl accepts it on
-a request that costs no credits, replacing any earlier key and lifting a
-rejection.
-
-- `200` with the settings as above, `status: "verified"`
-- `400 {"error": "invalid_key", "field": "api_key", "message"}` without a key,
-  without calling Firecrawl
-- `400 {"error": "key_rejected", "field": "api_key", "message": <Firecrawl's message>}`
-- `502 {"error": "provider_unavailable", "message"}` when Firecrawl cannot be
-  reached, answers 5xx, or is rate limited
-
-When Firecrawl later refuses the key while fetching a page (HTTP 401, 402 or
-403: a revoked key, no credits left), the key's `status` becomes `rejected`
-with Firecrawl's message, and no page goes to Firecrawl until a key is saved
-again.
-
-#### `DELETE /api/v1/settings/firecrawl`
-
-Forgets the key: `204`. Pages behind a bot check stay unreachable.
 
 ### Workspaces
 
@@ -1058,18 +997,18 @@ search_unavailable` as for passages.
 
 #### `POST /api/v1/ask`
 
-Asks the library a question, which the owner's own AI provider answers from
+Asks the library a question, which the deployment's AI provider answers from
 passages of the owner's own links: `{"question": "<text>", "detailed": false}`.
 The question is at most 500 characters, written in the search query language;
 `detailed` (optional, default `false`) asks for a longer, thorough answer. Its free words are the
 question, and the prefix filters narrow the passages exactly as in
-`GET /api/v1/passages`. The provider is the one saved under settings, called
-with the owner's key and model; nothing about the question or the answer is
+`GET /api/v1/passages`. The provider is the deployment's, called with its key
+and model ([configuration](configuration.md#the-ai-provider-and-firecrawl)); nothing about the question or the answer is
 stored. An ask counts once against the 600 requests a minute and records no use
 of the links it cites.
 
 Every refusal is answered as JSON before any stream starts, in this order;
-those down to the key marked rejected call neither the provider nor the index:
+those down to the refused key call neither the provider nor the index:
 
 - `400 {"error": "invalid_json", …}` for a body that is not a JSON object;
 - `400 {"error": "invalid_question", "field": "question", "message": "ask with
@@ -1082,12 +1021,12 @@ those down to the key marked rejected call neither the provider nor the index:
 - (a `state:` or `is:` with a value the filter does not take is not refused
   here, as it is in search: a question is prose, and "what I mean is: …" reads
   as words;)
-- `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`;
+- `409 {"error": "no_ai_key", "message": "this deployment has no AI key"}`;
 - `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
-  while the saved key is marked rejected;
+  while the deployment's key is marked refused;
 - `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}`
   when the provider rejects the key (401, 402, 403) while it is asked for the
-  question's phrasings (below); the key is marked rejected;
+  question's phrasings (below); the key is marked refused;
 - `503 {"error": "search_unavailable", "message": "search by meaning is
   unavailable, try again"}` when the passages cannot be read at all. Workers AI
   or Vectorize failing does not refuse the question: see `meaning` below.
@@ -1138,7 +1077,7 @@ Once the stream has started, a failure ends it with one `error` event
 
 | `error` | When | Also |
 |---|---|---|
-| `ai_key_rejected` | the provider answered 401, 402 or 403; `message` is the provider's | the key is marked rejected, as a rejected enrichment marks it (`GET /api/v1/settings/ai` shows `status: "rejected"`) |
+| `ai_key_rejected` | the provider answered 401, 402 or 403; `message` is the provider's | the deployment's key is marked refused, as a rejected enrichment marks it (`GET /api/v1/stats` shows `health.ai_key: "rejected"`) |
 | `provider_unavailable` | the provider could not be reached, answered 5xx, or had not finished within 60 seconds | |
 | `provider_failed` | any other failure: a rate limit (`rate limited: …`), a refused request, a refusal ("the model declined") or an empty answer; `message` is the provider's | |
 
@@ -1258,12 +1197,12 @@ then `null` and `children` empty. Refused, changing nothing:
 - `409 {"error": "too_few_links", "message": "a topic needs at least 20 links to be split"}`
   and `409 {"error": "too_many_links", "message": "a topic with more than 500 links cannot be split at once"}`,
   counting every link filed directly under the topic;
-- `409 {"error": "no_ai_key", "message": "add an AI key in settings"}`, and
+- `409 {"error": "no_ai_key", "message": "this deployment has no AI key"}`, and
   `409 {"error": "ai_key_rejected", "message": "<the provider's message>"}` while
-  the saved key is marked rejected, as `POST /api/v1/ask` answers;
+  the deployment's key is marked refused, as `POST /api/v1/ask` answers;
 - the provider's failures, with Ask's codes and the provider's message:
   `409 {"error": "ai_key_rejected", "message"}` when it rejects the key, which
-  is then marked rejected; `503 {"error": "provider_unavailable", "message"}`
+  is then marked refused; `503 {"error": "provider_unavailable", "message"}`
   when it is unreachable, answers 5xx or gives no answer within 60 seconds;
   `502 {"error": "provider_failed", "message"}` for any other failure;
 - `502 {"error": "provider_failed", "message": "the provider's split could not be used"}`
@@ -1506,7 +1445,8 @@ answers `500 {"error": "internal"}`, with no partial result.
   the links with a failed liveness check (`liveness_failures` above 0), and
   those dead for 30 days or more; the links in each `enrichment_status`
   (`none` for none yet) with the 5 most common reasons of the failed ones;
-  and the AI key's status, `none`, `verified` or `rejected`.
+  and the status of the deployment's AI key, `none` (unset), `verified` or
+  `rejected` (refused by its provider within the hour).
 - `backlog`: what the database records as waiting for background work. The
   pending links and, of them, those with a failed attempt; the links queued for
   enrichment; the imports with links still waiting or in progress (newest
@@ -1618,7 +1558,7 @@ Every link is there, in every state (expired included), as
 its manual order. The document is sent as it is read: when reading fails
 part-way the download breaks off, so a file that does not end with
 `"complete": true` (and does not parse) is not a whole export. The export holds
-nothing else: no settings, no part of the AI key, no tokens, sessions or import
+nothing else: no settings, no part of a key, no tokens, sessions or import
 reports.
 
 #### `GET /api/v1/export/links/{id}/snapshot` and `GET /api/v1/export/links/{id}/text`

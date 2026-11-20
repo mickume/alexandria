@@ -4,7 +4,7 @@ import type { EnrichMessage, Env } from '../env';
 import { getLink, ownerEdited, parseStrings, type LinkRow } from '../links/store';
 import { queueIndexing } from '../meaning/indexing';
 import { applyAliases, buildPrompt, normalizeResult, type Enrichment } from './enrich';
-import { decryptKey, getAiSettings, markKeyRejected, type AiSettings } from './keys';
+import { aiState, markAiKeyRejected } from './keys';
 import { enrichWith } from './providers';
 import { deferIfEarly } from './throttle';
 import {
@@ -46,8 +46,8 @@ export async function setEnrichmentStatus(
 
 /**
  * Hands a freshly fetched link to enrichment: skipped when it has nothing to
- * read, 'no_key' without a key, 'waiting_for_key' while the key is rejected,
- * else 'queued' with an enrichment message sent at once.
+ * read, 'no_key' when the deployment has no AI key, 'waiting_for_key' while
+ * its key is refused, else 'queued' with an enrichment message sent at once.
  */
 export async function afterFetch(
   env: Env,
@@ -55,9 +55,9 @@ export async function afterFetch(
   notes: string[],
 ): Promise<void> {
   if (hasNothingToEnrich(notes)) return setEnrichmentStatus(env.DB, link, 'skipped');
-  const settings = await getAiSettings(env.DB, link.user_id);
-  if (!settings) return setEnrichmentStatus(env.DB, link, 'no_key');
-  if (settings.status === 'rejected') return setEnrichmentStatus(env.DB, link, 'waiting_for_key');
+  const ai = await aiState(env);
+  if (ai.status === 'none') return setEnrichmentStatus(env.DB, link, 'no_key');
+  if (ai.status === 'rejected') return setEnrichmentStatus(env.DB, link, 'waiting_for_key');
   await setEnrichmentStatus(env.DB, link, 'queued');
   await env.ENRICH_QUEUE.send({ user_id: link.user_id, link_id: link.id, attempt: 1 });
 }
@@ -124,7 +124,7 @@ async function promptFor(env: Env, link: LinkRow): Promise<string> {
   });
 }
 
-/** Enriches one link with its user's own key and model. */
+/** Enriches one link with the deployment's provider, model and key. */
 async function processEnrichment(env: Env, message: Message<EnrichMessage>): Promise<void> {
   const { user_id, link_id } = message.body;
   // An account being deleted is enriched for no more.
@@ -132,24 +132,23 @@ async function processEnrichment(env: Env, message: Message<EnrichMessage>): Pro
   if (await deferIfEarly(env, message.body)) return message.ack();
   const link = await getLink(env.DB, user_id, link_id);
   if (!link) return message.ack();
-  const settings: AiSettings | null = await getAiSettings(env.DB, user_id);
-  if (!settings) {
+  const ai = await aiState(env);
+  if (ai.status === 'none') {
     await setEnrichmentStatus(env.DB, link, 'no_key');
     return message.ack();
   }
-  if (settings.status === 'rejected') {
-    // Enrichment is paused until the owner replaces the key.
+  if (ai.status === 'rejected') {
+    // Enrichment is paused until the key changes or its refusal is an hour old.
     await setEnrichmentStatus(env.DB, link, 'waiting_for_key');
     return message.ack();
   }
-  const apiKey = await decryptKey(env, settings.ciphertext, settings.iv, user_id);
   const outcome = await enrichWith(
     env,
-    { provider: settings.provider, apiKey, model: settings.model, userId: user_id },
+    { ...ai.config, userId: user_id },
     await promptFor(env, link),
   );
   if (!outcome.ok && outcome.kind === 'rejected') {
-    await markKeyRejected(env.DB, user_id, outcome.message);
+    await markAiKeyRejected(env, ai.config, outcome.message);
     await setEnrichmentStatus(env.DB, link, 'waiting_for_key');
     return message.ack();
   }

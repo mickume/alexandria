@@ -194,15 +194,6 @@ export function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
-/** Saves the Anthropic key the fake AI provider accepts, through the API. */
-export async function saveAiKey(page: Page): Promise<void> {
-  const r = await page.request.put('/api/v1/settings/ai', {
-    data: { provider: 'anthropic', api_key: 'sk-ant-test-1234' },
-    headers: { Origin: new URL(page.url()).origin },
-  });
-  expect(r.status()).toBe(200);
-}
-
 /** The stream card of the link `id`. */
 export function cardOf(page: Page, id: string) {
   return page

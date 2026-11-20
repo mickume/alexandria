@@ -14,20 +14,21 @@ import { ARTICLES, seedArticle } from '../test/meaning';
 import { FakeOrigin } from '../test/origin';
 import { usageHooks } from './daily';
 import {
-  api,
   addAndFetch,
+  api,
   createToken,
   deliverEnrichments,
   deliverFetches,
   deliverIndexing,
   env,
+  mcpTool,
   recordEnrichQueue,
   recordFetchQueue,
-  mcpTool,
   seedLinks,
   setNow,
   signIn,
   type TestUser,
+  useAi,
 } from '../test/helpers';
 
 const NOW = '2026-11-10T12:00:00.000Z';
@@ -309,15 +310,6 @@ async function historyFetches(user: TestUser, ids: string[]) {
   return out;
 }
 
-/** Saves an Anthropic key the fake provider accepts. */
-async function saveKey(user: TestUser) {
-  const r = await api('PUT', '/api/v1/settings/ai', {
-    as: user.session,
-    body: { provider: 'anthropic', api_key: 'sk-ant-abcd1234' },
-  });
-  expect(r.status).toBe(200);
-}
-
 describe('counting background work', () => {
   it('counts each fetch event by its outcome, as the link histories show them', async () => {
     setNow(NOW);
@@ -360,7 +352,7 @@ describe('counting background work', () => {
     setNow(NOW);
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     new FakeOrigin()
       .page('https://enrich.example/a', blogArticle)
       .page('https://fails.example/a', blogArticle);
@@ -386,7 +378,7 @@ describe('counting background work', () => {
     setNow(NOW);
     const user = await signIn();
     const ai = new FakeAi();
-    if (how !== 'nokey') await saveKey(user);
+    if (how !== 'nokey') useAi();
     const id = await seedArticle(user, ARTICLES.alarms);
     expect((await deliverIndexing([{ user_id: user.id, link_id: id }])).retried).toEqual([]);
     if (how === 'fail') ai.status(500, 'overloaded');
@@ -525,7 +517,6 @@ describe('AI usage', () => {
   }
 
   it.each([
-    ['key_test', async () => {}],
     ['enrich', async (u: TestUser) => void (await enrichOne(u, 'https://used.example/a'))],
     ['split', async (u: TestUser, ai: FakeAi) => splitOne(u, ai)],
     ['ask', async (u: TestUser) => askOne(u)],
@@ -533,7 +524,7 @@ describe('AI usage', () => {
     setNow(NOW);
     const user = await signIn();
     const ai = new FakeAi().usage({ input: 120, output: 30 });
-    await saveKey(user);
+    useAi();
     await act(user, ai);
     // An ask is two calls: the question's phrasings, then the answer.
     const calls = purpose === 'ask' ? 2 : 1;
@@ -565,15 +556,7 @@ describe('AI usage', () => {
       setNow(NOW);
       const user = await signIn();
       const ai = new FakeAi();
-      const r = await api('PUT', '/api/v1/settings/ai', {
-        as: user.session,
-        body: {
-          provider,
-          api_key: provider === 'anthropic' ? 'sk-ant-abcd1234' : 'sk-or-abcd1234',
-          ...(provider === 'openrouter' ? { model: 'openai/gpt-test' } : {}),
-        },
-      });
-      expect(r.status).toBe(200);
+      useAi({ provider });
       ai.usage(usage);
       if (purpose === 'enrich') await enrichOne(user, 'https://tokens.example/a');
       else await askOne(user);
@@ -592,7 +575,7 @@ describe('AI usage', () => {
     setNow(NOW);
     const user = await signIn();
     const ai = new FakeAi();
-    await saveKey(user);
+    useAi();
     new FakeOrigin().page('https://fails.example/a', blogArticle);
     const enrich = recordEnrichQueue();
     await addAndFetch(user, 'https://fails.example/a');
@@ -620,7 +603,7 @@ describe('AI usage', () => {
     setNow(NOW);
     const user = await signIn();
     new FakeAi();
-    await saveKey(user);
+    useAi();
     usageHooks.beforeRecord = () => {
       throw new Error('the usage write failed');
     };
@@ -632,8 +615,8 @@ describe('AI usage', () => {
     } finally {
       usageHooks.beforeRecord = undefined;
     }
-    // The key's test was recorded before the recorder broke; the enrichment's usage is lost.
-    expect((await usageToday(user)).map((u) => u.purpose)).toEqual(['key_test']);
+    // The enrichment's usage is lost.
+    expect(await usageToday(user)).toEqual([]);
   });
 });
 

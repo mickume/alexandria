@@ -38,8 +38,14 @@ export interface Env {
   SNAPSHOTS: R2Bucket;
   /** End-to-end tests only: every fetch goes to this URL with the target in X-Alexandria-Target. */
   ORIGIN_PROXY_URL?: string;
-  /** The secret the owners' AI keys are encrypted under. */
-  KEY_ENCRYPTION_KEY: string;
+  /** The AI provider enrichment, Ask and topic splits use: 'anthropic' (the default) or 'openrouter'. */
+  AI_PROVIDER?: string;
+  /** The provider's model; unset, Anthropic's default model (OpenRouter needs one). */
+  AI_MODEL?: string;
+  /** The AI provider's API key; unset, nothing is enriched and Ask is off. */
+  AI_API_KEY?: string;
+  /** A Firecrawl key, for pages behind a bot check; unset, such pages stay unreachable. */
+  FIRECRAWL_API_KEY?: string;
   /** The Anthropic API's base URL; configurable so tests can run a local fake. */
   ANTHROPIC_BASE_URL: string;
   /** OpenRouter's API base URL; configurable so tests can run a local fake. */

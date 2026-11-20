@@ -8,7 +8,6 @@ import {
   fakeMeaning,
   r2Object,
   runMinute,
-  saveAiKey,
   signIn,
 } from './helpers';
 
@@ -89,7 +88,6 @@ test.describe.serial('the owner’s account', () => {
   test('is deleted from the settings page and nothing of it remains', async ({ page }) => {
     test.setTimeout(11 * 60_000);
     await signIn(page);
-    await saveAiKey(page);
     const ids = await addFetched(page, [
       'https://leaving.example/one',
       'https://leaving.example/two',
@@ -155,7 +153,6 @@ test.describe.serial('the owner’s account', () => {
       tags: ['backup', 'library', 'export'],
       topic: 'Backups',
     });
-    await saveAiKey(page);
     const ids = await addFetched(page, [
       'https://backup.example/one',
       'https://backup.example/two',

@@ -16,7 +16,7 @@
  *    renamed and merged ones, in D1. Tags left without a link, and topics left
  *    with no link and no child topic, are deleted by the database's own
  *    triggers, so enrichment builds the topic tree and the tags again from
- *    nothing. It needs a verified AI key.
+ *    nothing. It needs the deployment's AI key, working.
  * 1. Refreshes every link that is active, unreachable or archived, at most
  *    --per-minute (default 20) a minute. A successful refresh rewrites the
  *    reader text, which makes the link stale for the index, and enriches the
@@ -259,10 +259,10 @@ const reset = flags['reset-vocabulary'];
 if (reset) {
   console.log('Topics and tags are reset first and built again by enrichment.');
   // Without a working key every link would be left with no topic or tags.
-  const { body } = await api('GET', '/settings/ai');
-  const ai = body as { configured?: boolean; status?: string } | null;
-  if (!ai?.configured || ai.status !== 'verified') {
-    fail('--reset-vocabulary needs a verified AI key: add one in Settings first');
+  const { body } = await api('GET', '/stats');
+  const stats = body as { health?: { ai_key?: string } } | null;
+  if (stats?.health?.ai_key !== 'verified') {
+    fail('--reset-vocabulary needs a working AI key: set AI_API_KEY on the deployment first');
   }
 }
 if (flags['dry-run']) process.exit(0);
@@ -333,7 +333,7 @@ await paced('enriched', enrichable, async (id) => {
   const { status, body } = await api('POST', `/links/${id}/enrich`);
   if ((body as { error?: string } | null)?.error === 'no_ai_key') {
     noKey = true;
-    console.warn('  no verified AI key: add one in Settings; enrichment skipped');
+    console.warn('  no working AI key: set AI_API_KEY on the deployment; enrichment skipped');
   } else if (status !== 202 && status !== 404 && status !== 409) {
     console.warn(`  ${byId.get(id)?.url}: enrich answered ${status}`);
   }
@@ -349,6 +349,6 @@ console.log(
 );
 if (reset) {
   console.log(
-    'A link whose enrichment fails is left without a topic or tags; Settings offers to enrich those again.',
+    'A link whose enrichment fails is left without a topic or tags; POST /api/v1/links/enrich-unenriched enriches those again.',
   );
 }

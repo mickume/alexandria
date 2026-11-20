@@ -96,7 +96,8 @@ One provider call to record: when it ended, and the tokens its answer reported, 
 
 > **Purpose** = `"enrich"` \| `"split"` \| `"ask"` \| `"key_test"`
 
-Why a call to the owner's AI provider was made.
+Why a call to the AI provider was made for an owner. 'key_test' is kept for
+the days recorded while owners saved their own keys, each tested first.
 
 ## Variables
 

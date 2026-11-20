@@ -141,23 +141,6 @@ export const Link = z.strictObject({
 /** A link read on its own, with its whole note. */
 export const LinkWithNote = Link.extend({ note: z.string() });
 
-/** The AI settings, never with the key beyond its last 4 characters. */
-const AiSettingsView = z.strictObject({
-  configured: z.literal(true),
-  provider: z.enum(['anthropic', 'openrouter']),
-  model: z.string(),
-  key_last4: z.string(),
-  status: z.enum(['verified', 'rejected']),
-  rejected_message: z.string().nullable(),
-});
-
-const FirecrawlSettingsView = z.strictObject({
-  configured: z.literal(true),
-  key_last4: z.string(),
-  status: z.enum(['verified', 'rejected']),
-  rejected_message: z.string().nullable(),
-});
-
 /** A workspace in a list. */
 export const WorkspaceSummary = z.strictObject({
   id: z.string(),
@@ -471,7 +454,9 @@ export const Stats = z.strictObject({
       none: count,
       failed_by_reason: z.array(Reason),
     }),
-    ai_key: z.enum(['none', 'verified', 'rejected']),
+    ai_key: z
+      .enum(['none', 'verified', 'rejected'])
+      .describe('The deployment’s AI key: unset, usable, or refused by its provider'),
   }),
   backlog: z.strictObject({
     fetch_pending: count,
@@ -590,81 +575,6 @@ export const operations: Operation[] = [
         schema: z.looseObject({ openapi: z.string() }),
       },
     },
-  },
-  {
-    method: 'get',
-    path: '/settings/ai',
-    operationId: 'getAiSettings',
-    summary: 'The AI provider, model and key (by its last 4 characters), and how many links wait',
-    responses: {
-      200: {
-        description: 'The settings, or configured: false without a key',
-        schema: z.union([
-          AiSettingsView.extend({ unenriched_count: z.number().int() }),
-          z.strictObject({ configured: z.literal(false), unenriched_count: z.number().int() }),
-        ]),
-      },
-    },
-  },
-  {
-    method: 'put',
-    path: '/settings/ai',
-    operationId: 'saveAiSettings',
-    summary: 'Store the AI provider, model and key after a test request the provider accepts',
-    body: z.object({
-      provider: z.enum(['anthropic', 'openrouter']),
-      api_key: z.string().min(1),
-      model: z
-        .string()
-        .max(200)
-        .optional()
-        .describe('Required for OpenRouter; default claude-opus-5-5'),
-    }),
-    responses: {
-      200: { description: 'Stored and verified', schema: AiSettingsView },
-      400: error(
-        'invalid_json, invalid_provider, invalid_key, model_required, invalid_model, or key_rejected with the provider’s message',
-      ),
-      502: error('provider_unavailable: the provider could not be reached or did not answer'),
-    },
-  },
-  {
-    method: 'delete',
-    path: '/settings/ai',
-    operationId: 'deleteAiSettings',
-    summary: 'Forget the AI provider, model and key',
-    responses: { 204: { description: 'Removed' } },
-  },
-  {
-    method: 'get',
-    path: '/settings/firecrawl',
-    operationId: 'getFirecrawlSettings',
-    summary: 'The Firecrawl key (by its last 4 characters) used for pages behind a bot check',
-    responses: {
-      200: {
-        description: 'The settings, or configured: false without a key',
-        schema: z.union([FirecrawlSettingsView, z.strictObject({ configured: z.literal(false) })]),
-      },
-    },
-  },
-  {
-    method: 'put',
-    path: '/settings/firecrawl',
-    operationId: 'saveFirecrawlSettings',
-    summary: 'Store the Firecrawl key after a test request Firecrawl accepts',
-    body: z.object({ api_key: z.string().min(1) }),
-    responses: {
-      200: { description: 'Stored and verified', schema: FirecrawlSettingsView },
-      400: error('invalid_json, invalid_key, or key_rejected with Firecrawl’s message'),
-      502: error('provider_unavailable: Firecrawl could not be reached or did not answer'),
-    },
-  },
-  {
-    method: 'delete',
-    path: '/settings/firecrawl',
-    operationId: 'deleteFirecrawlSettings',
-    summary: 'Forget the Firecrawl key',
-    responses: { 204: { description: 'Removed' } },
   },
   {
     method: 'get',
@@ -1024,7 +934,7 @@ export const operations: Operation[] = [
         }),
       },
       409: error(
-        'too_few_links (under 20), too_many_links (over 500), too_deep (a level-3 topic), no_ai_key, or ai_key_rejected (the key is marked rejected)',
+        'too_few_links (under 20), too_many_links (over 500), too_deep (a level-3 topic), no_ai_key, or ai_key_rejected (the deployment’s key is marked refused)',
       ),
       502: error('provider_failed: the provider failed, or its split could not be used'),
       503: error('provider_unavailable: unreachable, 5xx, or no answer within 60 seconds'),
@@ -1264,7 +1174,7 @@ export const operations: Operation[] = [
         description: 'How many links were queued',
         schema: z.strictObject({ queued: z.number().int() }),
       },
-      409: error('no_ai_key: "add an AI key in settings" (no key, or a rejected one)'),
+      409: error('no_ai_key: "this deployment has no AI key" (no key, or a refused one)'),
     },
   },
   {

@@ -3,6 +3,7 @@ import { SWEEP_CRON, sweepDeletions } from './account/sweep';
 import { app } from './app';
 import { runScheduled } from './decay/cron';
 import { handleEnrichBatch } from './enrich/queue';
+import { resumeEnrichment } from './enrich/resume';
 import { handleLivenessBatch } from './decay/liveness';
 import type {
   AccountMessage,
@@ -32,6 +33,7 @@ async function everyMinute(env: Env): Promise<void> {
     applyTitleRules(env),
     sweepLegacySnapshots(env),
     retrieveStoredLinks(env),
+    resumeEnrichment(env),
   ]);
   for (const job of jobs) {
     if (job.status === 'rejected') console.error('an every-minute job failed', job.reason);
@@ -44,8 +46,8 @@ export default {
   },
   scheduled(controller, env, ctx) {
     // Every minute: imported links, the index, the kept search rankings, the title rules, the
-    // sweep of the copies stored before snapshots and the one-time retrieval of links stored
-    // before their retriever; every 5 minutes: account deletions; every hour: decay and liveness.
+    // sweep of the copies stored before snapshots, the one-time retrieval of links stored
+    // before their retriever and the links waiting for an AI key; every 5 minutes: account deletions; every hour: decay and liveness.
     const run =
       controller.cron === DISPATCH_CRON
         ? everyMinute(env)

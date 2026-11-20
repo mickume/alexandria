@@ -1,5 +1,6 @@
 import { DAY_MS, epochMs, IN_WORKSPACE, pointsSql } from '../decay/points';
 import { checkDue, checkDueTimes } from '../decay/liveness';
+import type { AiState } from '../enrich/keys';
 import { PROGRESS_COLUMNS } from '../imports/imports';
 import { LIBRARY_LIMIT } from '../links/store';
 import { IS_STALE } from '../meaning/indexing';
@@ -50,6 +51,8 @@ export interface StatsContext {
   userId: string;
   /** The instant of the request. */
   at: Date;
+  /** The deployment's AI key: none, usable, or refused by its provider. */
+  aiKey: AiState['status'];
 }
 
 /** What a section is built from: the context and the links' own counts (linkCounts). */
@@ -318,13 +321,8 @@ const health: Section = {
       )
       .bind(ctx.userId),
     topReasons(ctx, 'l.enrichment_reason', "l.enrichment_status = 'failed'"),
-    ctx.db
-      .prepare(
-        'SELECT ai_key_ciphertext IS NOT NULL AS has_key, ai_key_status FROM users WHERE id = ?',
-      )
-      .bind(ctx.userId),
   ],
-  build: ([unreachable, [dead], [statuses], failed, [key]], { links }) => ({
+  build: ([unreachable, [dead], [statuses], failed], { links, aiKey }) => ({
     unreachable: { count: n(links, 'unreachable'), by_reason: reasons(unreachable) },
     dead: { count: n(dead, 'dead'), dead_over_30_days: n(dead, 'dead_over_30_days') },
     enrichment: {
@@ -332,11 +330,7 @@ const health: Section = {
       none: n(statuses, 'none'),
       failed_by_reason: reasons(failed),
     },
-    ai_key: !n(key, 'has_key')
-      ? 'none'
-      : key?.ai_key_status === 'rejected'
-        ? 'rejected'
-        : 'verified',
+    ai_key: aiKey,
   }),
 };
 
@@ -524,8 +518,9 @@ export async function computeStats(
   db: D1Database,
   userId: string,
   at: Date,
+  aiKey: AiState['status'],
 ): Promise<Record<string, unknown>> {
-  const ctx: StatsContext = { db, userId, at };
+  const ctx: StatsContext = { db, userId, at, aiKey };
   const plans = SECTIONS.map((s) => ({ section: s, statements: s.statements(ctx) }));
   const results = await db.batch<Row>([linkCounts(ctx), ...plans.flatMap((p) => p.statements)]);
   const built: BuildContext = { ...ctx, links: results[0]?.results[0] ?? {} };
