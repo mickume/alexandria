@@ -118,7 +118,7 @@ function LibrarySection({ s }: { s: StatsAnswer }) {
         />
         <Row label="Expired" value={library.by_state.expired} to="/expired" />
         <Row label="Archived" value={library.by_state.archived} to="/archive" />
-        <Row label="Pinned" value={library.pinned} to={searchPath('is:pinned state:any')} />
+        <Row label="Pinned" value={library.pinned} to="/pinned" />
         <Row
           label="In a workspace"
           value={library.in_workspace}

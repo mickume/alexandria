@@ -171,7 +171,7 @@ enrichments, imports, indexing, liveness checks), and the last 30 days of
 links added, uses and fetches, in two columns (one on a phone). Each count
 of links by state, and the pinned links and those in a workspace, opens the
 list of those links: **Unreachable** searches `state:unreachable`,
-**Expired** and **Archived** open their own pages. **Refresh** loads it
+**Expired**, **Archived** and **Pinned** open their own pages. **Refresh** loads it
 again; the page never reloads by itself.
 
 Its Trends section shows the daily record kept since the record began, over
