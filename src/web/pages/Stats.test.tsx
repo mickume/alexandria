@@ -207,7 +207,7 @@ describe('the Stats page’s links, charts and captions', () => {
     ['Unreachable', searchPath('state:unreachable')],
     ['Expired', '/expired'],
     ['Archived', '/archive'],
-    ['Pinned', searchPath('is:pinned state:any')],
+    ['Pinned', '/pinned'],
     ['In a workspace', searchPath('is:in-workspace state:any')],
   ])(
     'links the Links row %s, its label and its count, to the list of those links',

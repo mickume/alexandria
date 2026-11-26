@@ -31,6 +31,7 @@
 - [web/pages/Expired](web/pages/Expired.md)
 - [web/pages/ImportSection](web/pages/ImportSection.md)
 - [web/pages/LinkDetail](web/pages/LinkDetail.md)
+- [web/pages/Pinned](web/pages/Pinned.md)
 - [web/pages/Read](web/pages/Read.md)
 - [web/pages/Search](web/pages/Search.md)
 - [web/pages/Settings](web/pages/Settings.md)

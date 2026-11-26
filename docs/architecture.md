@@ -79,8 +79,10 @@ account and checks the PKCE verifier as Google does.
   `main.tsx` mounts `App.tsx`, which picks the page for the current path:
   `pages/SignIn`, `pages/Stream` (the add input, which reads a paste line by
   line as an import file is read, through `urlLines` of
-  `src/worker/imports/parse.ts`; the cards, infinite scroll,
-  pinning by drag, deleting with undo), `pages/LinkDetail` and
+  `src/worker/imports/parse.ts`; the cards of every link but the pinned
+  ones, infinite scroll, deleting with undo), `pages/Pinned` (the pinned
+  links in pin order, from `GET /api/v1/links?is=pinned`, reordered by
+  drag), `pages/LinkDetail` and
   `pages/Settings` (tokens, and among its sections `pages/ImportSection`: the
   drop zone, the workspace to add the links to, which can be a new one, and
   the import's progress), `pages/Search` (the results of the search box,

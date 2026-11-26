@@ -59,7 +59,8 @@ async function allPages<T>(path: string): Promise<T[]> {
   let cursor: string | null = null;
   do {
     const after: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
-    const page: Page<T> = await request('GET', `${path}?limit=100${after}`);
+    const join = path.includes('?') ? '&' : '?';
+    const page: Page<T> = await request('GET', `${path}${join}limit=100${after}`);
     all.push(...page.items);
     cursor = page.next_cursor;
   } while (cursor);
@@ -164,6 +165,8 @@ export const links = {
   restore: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/restore`),
   archive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/archive`),
   unarchive: (id: string) => request<Link>('POST', `/links/${encodeURIComponent(id)}/unarchive`),
+  /** Every pinned link, in pin order. */
+  pinned: () => allPages<Link>('/links?is=pinned'),
   /** Every expired link, most recently expired first, page after page. */
   expired: () => allPages<Link>('/expired'),
   /** Every archived link, most recently archived first, page after page. */

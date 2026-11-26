@@ -68,6 +68,7 @@ describe('the Ask page', () => {
     const tabs = within(screen.getByRole('navigation', { name: 'Sections' }));
     expect(tabs.getAllByRole('link').map((l) => l.textContent)).toEqual([
       'Stream',
+      'Pinned',
       'Workspaces',
       'Topics',
       'Tags',
