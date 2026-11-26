@@ -14,10 +14,13 @@ import { useUndoableDelete } from '../undo';
 /** Puts `fresh` links on top, newest use first, removing their earlier places. */
 function withOnTop(current: Link[], fresh: Link[]): Link[] {
   const ids = new Set(fresh.map((l) => l.id));
-  const top = [...fresh].sort((a, b) => (a.last_used_at < b.last_used_at ? 1 : -1));
-  const pinned = current.filter((l) => l.pinned && !ids.has(l.id));
-  const rest = current.filter((l) => !l.pinned && !ids.has(l.id));
-  return [...pinned, ...top, ...rest];
+  const top = unpinned(fresh).sort((a, b) => (a.last_used_at < b.last_used_at ? 1 : -1));
+  return [...top, ...current.filter((l) => !ids.has(l.id))];
+}
+
+/** The links that are not pinned: the pinned ones have a page of their own. */
+function unpinned(links: Link[]): Link[] {
+  return links.filter((l) => !l.pinned);
 }
 
 /** Calls `onVisible` whenever the returned element scrolls into view. */
@@ -41,66 +44,39 @@ function useSentinel(onVisible: () => void) {
 
 type SetItems = Dispatch<SetStateAction<Link[]>>;
 
-/** The most pages a refresh reads to show again as many cards as were shown. */
-const REFRESH_PAGES = 20;
-
-/** The loaded pages of the stream: the first on mount, the next ones on demand. */
+/** The loaded pages of the stream, without its pinned links: the first on mount, the next ones on demand. */
 function useStreamPages() {
   const [items, setItems] = useState<Link[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const loading = useRef(false);
-  /** Counts the reloads, so that a page asked for before one is not added after it. */
-  const generation = useRef(0);
-  const count = useRef(0);
-  useEffect(() => {
-    count.current = items.length;
-  }, [items]);
-
-  /** Shows the stream as loaded from the top: these links, and the cursor after them. */
-  const show = useCallback((all: Link[], next: string | null) => {
-    generation.current += 1;
-    setItems(all);
-    setCursor(next);
-    setLoaded(true);
-    setFailed(false);
-  }, []);
 
   useEffect(() => {
     let live = true;
     linksApi
       .list()
-      .then((page) => live && show(page.items, page.next_cursor))
+      .then((page) => {
+        if (!live) return;
+        setItems(unpinned(page.items));
+        setCursor(page.next_cursor);
+        setLoaded(true);
+      })
       .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };
-  }, [show]);
-
-  /** Loads the stream from the top again, as far as the cards already shown reach. */
-  const refresh = useCallback(async () => {
-    const wanted = count.current;
-    let page = await linksApi.list();
-    const all = [...page.items];
-    for (let n = 1; page.next_cursor && all.length < wanted && n < REFRESH_PAGES; n++) {
-      page = await linksApi.list(page.next_cursor);
-      all.push(...page.items);
-    }
-    show(all, page.next_cursor);
-  }, [show]);
+  }, []);
 
   const loadMore = useCallback(() => {
     if (!cursor || loading.current) return;
     loading.current = true;
-    const asked = generation.current;
     linksApi
       .list(cursor)
       .then((page) => {
-        if (asked !== generation.current) return;
         setItems((current) => {
           const known = new Set(current.map((l) => l.id));
-          return [...current, ...page.items.filter((l) => !known.has(l.id))];
+          return [...current, ...unpinned(page.items).filter((l) => !known.has(l.id))];
         });
         setCursor(page.next_cursor);
       })
@@ -110,7 +86,7 @@ function useStreamPages() {
       });
   }, [cursor]);
 
-  return { items, setItems, loaded, failed, refresh, loadMore };
+  return { items, setItems, loaded, failed, loadMore };
 }
 
 /** How often the stream asks for changes while a link is being fetched. */
@@ -147,7 +123,7 @@ function useChangeFeed(items: Link[], setItems: SetItems) {
         .then((changes) => {
           since.current = changes.server_time;
           const changed = new Map(changes.items.map((l) => [l.id, l]));
-          setItems((current) => current.map((l) => changed.get(l.id) ?? l));
+          setItems((current) => unpinned(current.map((l) => changed.get(l.id) ?? l)));
           setRefreshing((ids) => {
             const left = new Set([...ids].filter((id) => !changed.has(id)));
             return left.size === ids.size ? ids : left;
@@ -163,51 +139,30 @@ function useChangeFeed(items: Link[], setItems: SetItems) {
   };
 }
 
-/** The stream: the home page. The pinned links in a list of their own on top, then the rest by points. */
+/** The stream: the home page. Every link but the pinned ones, which have a page of their own, by points. */
 export function Stream() {
-  const { items, setItems, loaded, failed, refresh, loadMore } = useStreamPages();
+  const { items, setItems, loaded, failed, loadMore } = useStreamPages();
   const deletes = useUndoableDelete(items, setItems);
   const feed = useChangeFeed(items, setItems);
   const [notice, setNotice] = useState<string | null>(null);
-  const dragged = useRef<Link | null>(null);
   const sentinel = useSentinel(loadMore);
 
-  /** Runs a pin change, then shows the stream as the API orders it. */
-  async function change(action: () => Promise<unknown>) {
+  /** Takes the link's card out of the stream once `action` has done what it asks. */
+  function takeOut(action: () => Promise<unknown>, link: Link, failure: string) {
     setNotice(null);
-    try {
-      await action();
-      await refresh();
-    } catch (err) {
-      setNotice(err instanceof ApiError ? err.message : 'something went wrong, try again');
-    }
+    action()
+      .then(() => setItems((current) => current.filter((l) => l.id !== link.id)))
+      .catch((err) => setNotice(err instanceof ApiError ? err.message : failure));
   }
 
   const actions: CardActions = {
-    onPin: (link) => void change(() => linksApi.pin(link.id)),
-    onUnpin: (link) => void change(() => linksApi.unpin(link.id)),
+    onPin: (link) => takeOut(() => linksApi.pin(link.id), link, 'could not pin, try again'),
+    onUnpin: () => undefined,
     onDelete: deletes.remove,
     onRefreshing: feed.markRefreshing,
     onChanged: (link) => setItems((current) => current.map((l) => (l.id === link.id ? link : l))),
-    onArchive: (link) => {
-      setNotice(null);
-      linksApi
-        .archive(link.id)
-        .then(() => setItems((current) => current.filter((l) => l.id !== link.id)))
-        .catch((err) =>
-          setNotice(err instanceof ApiError ? err.message : 'could not archive, try again'),
-        );
-    },
-    onUnarchive: (link) => void change(() => linksApi.unarchive(link.id)),
-    onDragStart: (link) => {
-      dragged.current = link;
-    },
-    onDropOn: (target) => {
-      const moving = dragged.current;
-      dragged.current = null;
-      if (!moving || moving.id === target.id || target.pin_position === null) return;
-      void change(() => linksApi.pin(moving.id, target.pin_position ?? undefined));
-    },
+    onArchive: (link) =>
+      takeOut(() => linksApi.archive(link.id), link, 'could not archive, try again'),
   };
 
   return (
@@ -220,19 +175,10 @@ export function Stream() {
           {notice}
         </p>
       )}
-      <div className="cards pinned-cards">
-        {deletes.shown
-          .filter((link) => link.pinned)
-          .map((link) => (
-            <LinkCard key={link.id} link={link} actions={actions} />
-          ))}
-      </div>
       <div className="cards">
-        {deletes.shown
-          .filter((link) => !link.pinned)
-          .map((link) => (
-            <LinkCard key={link.id} link={link} actions={actions} />
-          ))}
+        {deletes.shown.map((link) => (
+          <LinkCard key={link.id} link={link} actions={actions} />
+        ))}
       </div>
       {failed && !loaded && (
         <p className="notice" role="alert">

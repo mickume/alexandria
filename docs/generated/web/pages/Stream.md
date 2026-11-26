@@ -6,7 +6,7 @@
 
 > **Stream**(): `Element`
 
-The stream: the home page. The pinned links in a list of their own on top, then the rest by points.
+The stream: the home page. Every link but the pinned ones, which have a page of their own, by points.
 
 #### Returns
 

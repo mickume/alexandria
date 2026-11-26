@@ -88,6 +88,14 @@ Two keys, and no others: `/` (outside a text field) puts the cursor in the
 search box, and `Escape` in the box clears it and goes back to the page the
 search started from.
 
+## Pinned links
+
+**Pin** on a card takes the link out of the stream and onto the **Pinned**
+page, the tab between Stream and Workspaces. It lists the pinned links (at
+most 30) in your own order, as a search lists its results: drag a card onto
+another to move it to that place, and **Unpin** one to send it back to the
+stream. Pinned links never expire.
+
 ## A link's page
 
 **Details** in a card's ⋯ menu opens the link's own page, laid out like an

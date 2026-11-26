@@ -1817,6 +1817,16 @@ Every expired link, most recently expired first, page after page.
 
 `Promise`\<[`Link`](#link-1)\>
 
+##### pinned
+
+> **pinned**: () => `Promise`\<[`Link`](#link-1)[]\>
+
+Every pinned link, in pin order.
+
+###### Returns
+
+`Promise`\<[`Link`](#link-1)[]\>
+
 ##### refresh
 
 > **refresh**: (`id`) => `Promise`\<\{ `status`: `"queued"`; \}\>

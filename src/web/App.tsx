@@ -3,6 +3,7 @@ import { Archive } from './pages/Archive';
 import { Expired } from './pages/Expired';
 import { Ask } from './pages/Ask';
 import { LinkDetail } from './pages/LinkDetail';
+import { Pinned } from './pages/Pinned';
 import { Icon, Mark, type IconName } from './components/Icon';
 import type { SearchMode } from './api';
 import { SearchBox } from './components/SearchBox';
@@ -92,6 +93,7 @@ export function Link({
 /** The sections of the navigation, by path. */
 const SECTIONS: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: 'Stream', icon: 'stream' },
+  { to: '/pinned', label: 'Pinned', icon: 'pin' },
   { to: '/workspaces', label: 'Workspaces', icon: 'workspaces' },
   { to: '/topics', label: 'Topics', icon: 'topics' },
   { to: '/tags', label: 'Tags', icon: 'tags' },
@@ -176,6 +178,7 @@ export function App() {
   if (path === '/signin') return <SignIn />;
   let page: ReactNode = <p>{path}</p>;
   if (path === '/') page = <Stream />;
+  else if (path === '/pinned') page = <Pinned />;
   else if (path === '/settings') page = <Settings />;
   else if (path === '/workspaces') page = <Workspaces />;
   else if (path === '/expired')
